@@ -1,0 +1,2223 @@
+---
+title: "Replication of Drucker's Excemption Scenarios"
+author: "Alea Wilbur"
+date: "`r Sys.Date()`"
+output:
+  word_document:
+    toc: yes
+  html_document:
+    toc: yes
+    df_print: paged
+  pdf_document:
+    toc: yes
+---
+
+
+```{r setup, message = FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+
+library(tidyverse) # normal package I need for almost everything
+#install.packages("remotes")
+#remotes::install_gitlab("ccao-data-science---modeling/packages/ptaxsim")
+# OR 
+#renv::install("gitlab::ccao-data-science---modeling/packages/ptaxsim")
+
+library(DBI)
+library(data.table)
+library(ggspatial)
+library(gstat)
+library(here)
+library(httr)
+library(jsonlite)
+library(ptaxsim)
+library(sf)
+library(stars)
+library(glue)
+
+
+#remotes::install_gitlab("ccao-data-science---modeling/packages/ptaxsim")
+
+#renv::install("gitlab::ccao-data-science---modeling/packages/ptaxsim")
+
+
+# Create the DB connection with the default name expected by PTAXSIM functions
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
+
+# has all potential property classes for pins
+# downloaded from CCAO gitlab website
+## I used this to merge additional information to the pins and class data later on.
+class_dict <- read_csv("class_dict.csv")
+```
+
+
+I want Taxing Agencies, EAV, Tax Rate using ptaxsim and then calculate Weighted Tax Rate, and  Composite Tax Rate for Cicero, Forest Park, and Oak Park. Year = 2021. 
+
+
+
+Ptaxsim includes all pins for parcels as well as the tax data associated with each pin. It does NOT contain geospatial info associated with the pin.
+
+The Parcel Universe database does include the geospatial polygons for all parcels plus a ton of other variables. Each parcel has its own pin number. 
+
+- Ptaxsim tax bill values and parcel_universe can be joined by the pins.
+
+[Example from gitlab site](https://ccao-data-science---modeling.gitlab.io/packages/ptaxsim/articles/reassessment.html#chicago-ward)
+
+Cook County Assessors Data description page and other [datasets](https://datacatalog.cookcountyil.gov/stories/s/i22y-9sd2).
+
+
+Get PINS for region during a specific year.
+
+Dataset variables were found [here](https://datacatalog.cookcountyil.gov/Property-Taxation/Assessor-Parcel-Universe/tx2p-k2g9). 
+
+
+
+
+# Cicero Replication Numbers
+
+Including `pin`, `class` and `tax_code` in the `$select` command creates duplicate rows.  If you want unique pins to use in other commands (such as `lookup_pin()`), then you must group & summarize by pin.
+
+```{r}
+base_url <- "https://datacatalog.cookcountyil.gov/resource/tx2p-k2g9.json"
+
+area_pins <- GET(
+  base_url,
+  query = list(
+    year = 2021,
+    property_city = "CICERO",
+    `$select` = paste0(c("pin", "class","tax_code"),
+   collapse = ","),   
+   #`$select` =  "pin",     # if we want ONLY the pin
+    `$limit` = 500000L
+  )
+)
+
+# change data type to character
+# 17,288 pins for Cicero
+area_pins2 <- fromJSON(rawToChar(area_pins$content))$pin
+area_taxcodes <- fromJSON(rawToChar(area_pins$content))$tax_code
+```
+
+### Other code not directly related to JD replication
+```{r}
+agency_names <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT agency_num, agency_name, minor_type
+  FROM agency_info
+  WHERE agency_name LIKE '%CICERO%'"
+)
+## This DOES include TIF and nonTIF taxing agencies in one list!
+agency_names
+
+muni_agency_nums<- agency_names %>% 
+  filter(minor_type %in% c("MUNI", "TOWNSHIP")) %>%
+  select(agency_num)
+
+muni_tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn, 
+  glue_sql("
+  SELECT tax_code_num
+  FROM tax_code
+  WHERE agency_num IN ({muni_agency_nums$agency_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+)
+
+
+muni_pins <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql(
+  "SELECT pin, class
+  FROM pin
+  WHERE tax_code_num IN ({muni_tax_codes$tax_code_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+))
+
+
+# Determining the increment / TIF stuff
+tif_agency_nums<- agency_names%>% filter(minor_type == "TIF") %>% select(agency_num)
+
+tif_tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn, 
+  glue_sql("
+  SELECT tax_code_num
+  FROM tax_code
+  WHERE agency_num IN ({tif_agency_nums$agency_num*})
+  ",
+  .con = ptaxsim_db_conn
+  )
+)
+
+tif_pins <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql(
+  "SELECT pin, class
+  FROM pin
+  WHERE tax_code_num IN ({tif_tax_codes$tax_code_num*})
+  ",
+  .con = ptaxsim_db_conn
+))
+```
+
+
+```{r map-attempt, eval=FALSE}
+# PIN geometries only exist for 10-digit PINs, so we'll need to truncate our
+# existing  PINs
+muni_pin10s <- unique(substr(muni_pins$pin, 1, 10))
+
+# The geometry is stored in the database as simple text, so we need to convert
+# it to the correct type using sf
+wh_pins_geo <- lookup_pin10_geometry(year = 2020, pin10 = muni_pin10s)
+wh_pins_geo <- wh_pins_geo %>%
+  st_as_sf(wkt = "geometry", crs = 4326)
+
+# We'll also attach the first class code from each PIN14 to each PIN10 geometry
+# and group them into broad buckets. This is just to help our visualization
+wh_pins_geo <- wh_pins_geo %>%
+  left_join(
+    tif_pins %>%
+      mutate(pin10 = substr(pin, 1, 10)) %>%
+      group_by(pin10) %>%
+      summarize(class = first(class)),
+    by = "pin10"
+  ) %>%
+  mutate(
+    major_class = substr(class, 1, 1),
+    major_class_fct = recode_factor(
+      major_class,
+      "2" = "2 - Residential",
+      "3" = "3 & 5 - Commercial",
+      "5" = "3 & 5 - Commercial",
+      "0" = "Other", "1" = "Other", "6" = "Other", "7" = "Other"
+    )
+  )
+
+bound_muni <- st_read(paste0(
+  "https://opendata.arcgis.com/api/v3/datasets/",
+  "534226c6b1034985aca1e14a2eb234af_2/downloads/",
+  "data?format=geojson&spatialRefId=4326&where=1%3D1"
+), quiet = TRUE) %>%
+  filter(MUNICIPALITY == "Cicero")
+
+bound_tif <- st_read(paste0(
+  "https://opendata.arcgis.com/api/v3/datasets/",
+  "8aeb00520c544aafb9a22510465c679d_18/downloads/",
+  "data?format=geojson&spatialRefId=4326&where=1%3D1"
+), quiet = TRUE) %>%
+  # Pulled from the table of agency numbers above
+  filter(AGENCY == tif_agency_nums$agency_num)
+
+wh_pins_map <- ggplot() +
+  annotation_map_tile(type = "cartolight", zoomin = -1) +
+  geom_sf(
+    data = wh_pins_geo,
+    aes(fill = major_class_fct),
+    alpha = 0.5,
+    linewidth = 0.1
+  ) +
+  geom_sf(data = bound_muni, fill = "transparent", linewidth = 1) +
+  geom_sf(
+    data = bound_tif,
+    fill = "purple2",
+    color = "purple4",
+    alpha = 0.3,
+    linewidth = 0.9
+  ) +
+  annotation_scale(location = "br") +
+  scale_fill_brewer(name = "", palette = "Set1") +
+  guides(color = guide_legend(override.aes = list(size = 5))) +
+  theme_void() +
+  theme(
+    legend.title = element_text(size = 14),
+    legend.text = element_text(size = 12),
+    legend.key.size = unit(24, "points"),
+    legend.position = "bottom"
+  )
+wh_pins_map
+
+```
+
+Increment:   
+- Gather all pins within the TIF  
+- Sum their EAV  
+- compare to value "frozen" by the TIF   
+
+```{r}
+# TIF distributions will include all the unique tax codes that make up
+# a TIF
+
+# has eav values for each tax code
+tif_dists <- DBI::dbGetQuery(
+  ptaxsim_db_conn, 
+  glue_sql("
+  SELECT *
+  FROM tif_distribution
+  WHERE agency_num IN ({tif_agency_nums$agency_num*})
+  ",
+  .con = ptaxsim_db_conn
+  )
+)
+
+tif_pins_vec <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue::glue_sql("
+    SELECT DISTINCT pin
+    FROM pin
+    WHERE tax_code_num IN ({unique(tif_dists$tax_code_num)*})
+  ",
+    .con = ptaxsim_db_conn
+  )
+) %>%
+  pull(pin)
+
+# has EAV values for each pin in the TIF
+tif_pins_dt <- lookup_pin(2006:2021, pin = tif_pins_vec) %>%
+  mutate(tax_code = lookup_tax_code(year, pin))
+
+
+tif_pins_summ <- tif_pins_dt %>%
+  group_by(year) %>%
+  #Summed TIF EAV amounts 
+  summarize(total_eav = sum(eav)) %>%
+  left_join(tif_dists, by = "year") %>%
+  # amount of value  = all EAV in TIFS - Frozen EAV level
+  mutate(amt_to_tif = total_eav - tax_code_frozen_eav)
+
+tif_pins_summ %>% group_by(year) %>% 
+  summarize(tax_code_sum = sum(tax_code_eav))
+
+tif_pins_summ %>% arrange(total_eav)
+
+```
+
+```{r}
+tif_inc_plot <- 
+  tif_pins_summ %>% 
+  group_by(year, total_eav)%>% 
+  summarize(frozen_eav = sum(tax_code_frozen_eav)) %>%
+  ggplot() +
+  
+    geom_area(
+    aes(x = year, y = total_eav),
+    fill = "red",
+    alpha = 0.5
+  ) +
+      geom_area(
+    aes(x = year, y = frozen_eav),
+    fill = "gray40"
+  ) +
+  scale_y_continuous(
+    labels = scales::label_dollar(scale = 1e-6, suffix = "M"),
+    expand = c(0, 0)
+  ) +
+  scale_x_continuous(n.breaks = 9, expand = c(0, 0.4)) +
+  labs(x = "Year", y = "Total EAV of PINs in _____", caption = "Red is amount of EAV taxed where the revenue went to the TIF") +
+  theme_minimal() +
+  theme(
+    axis.title = element_text(size = 13),
+    axis.title.x = element_text(margin = margin(t = 6)),
+    axis.title.y = element_text(margin = margin(r = 6)),
+    axis.text = element_text(size = 11),
+    axis.ticks.x = element_line(color = "grey70"),
+    strip.text = element_text(size = 16),
+    strip.background = element_rect(fill = "#c9c9c9"),
+    legend.title = element_text(size = 14),
+    legend.key.size = unit(24, "points"),
+    legend.text = element_text(size = 12),
+    legend.position = "bottom"
+  )
+tif_inc_plot
+```
+
+```{r eval=FALSE, include=FALSE}
+# Create polygon to highlight the increment taxed by the TIF
+# This was for Wheeling specifically! Commenting it out for now 
+# filled in the tif amount a different color in the graph
+
+# plot_pin_fill <- tibble(
+#   x = c(2014, 2015, 2016, 2017, 2018, 2019, 2020, 2020, 2021),
+#   y = c(
+#     tif_pins_summ$total_eav[tif_pins_summ$year >= 2014],
+#     tif_pins_summ$total_eav[tif_pins_summ$year == 2014]
+#   )
+# )
+
+#plot_pin_fill <- i
+
+tif_inc_plot <- tif_pins_sum %>% 
+  group_by(year,total_eav)%>% 
+  summarize(frozen_eav = sum(tax_code_frozen_eav)) %>%
+  ggplot(tif_pins_summ) +
+  # geom_area(
+  #   aes(x = year, y = total_eav),
+  #   fill = "grey50",
+  #   alpha = 0.5
+  # ) +
+  
+    geom_area(
+    aes(x = year, y = tax_code_eav),
+    fill = "grey40",
+    alpha = 0.5
+  ) +
+  
+
+    geom_area(
+    aes(x = year, y = tax_code_frozen_eav),
+    fill = "purple",
+    alpha = 0.5
+  ) +
+  
+  
+    geom_area(
+    aes(x = year, y = amt_to_tif+tax_code_eav+tax+code+frozen+eav),
+    fill = "red",
+    alpha = 0.5
+  ) +
+ # geom_polygon(
+ #   data = plot_pin_fill,
+ #   aes(x = x, y = y),
+ #   fill = "purple2",
+ #   alpha = 0.5
+#  ) +
+ # geom_vline(xintercept = 2014, linetype = "dashed", alpha = 0.7) +
+  # annotate(
+  #   "text",
+  #   x = 2013.7,
+  #   y = 7.5e7,
+  #   label = "Wheeling Town Center II\nTIF created",
+  #   hjust = 1,
+  #   size = 3.5,
+  #   alpha = 0.5
+  # ) +
+  annotate(
+    "text",
+    x = 2017.9,
+    y = 5.5e7,
+    label = "Increment to TIF",
+    hjust = 1,
+    size = 5,
+    color = "red",
+    alpha = 0.5,
+    fontface = "bold"
+  ) +
+  scale_y_continuous(
+    labels = scales::label_dollar(scale = 1e-6, suffix = "M"),
+    expand = c(0, 0)
+  ) +
+  scale_x_continuous(n.breaks = 9, expand = c(0, 0.4)) +
+  labs(x = "Year", y = "Total EAV of PINs in _____") +
+  theme_minimal() +
+  theme(
+    axis.title = element_text(size = 13),
+    axis.title.x = element_text(margin = margin(t = 6)),
+    axis.title.y = element_text(margin = margin(r = 6)),
+    axis.text = element_text(size = 11),
+    axis.ticks.x = element_line(color = "grey70"),
+    strip.text = element_text(size = 16),
+    strip.background = element_rect(fill = "#c9c9c9"),
+    legend.title = element_text(size = 14),
+    legend.key.size = unit(24, "points"),
+    legend.text = element_text(size = 12),
+    legend.position = "bottom"
+  )
+tif_inc_plot
+```
+
+Tax revenue by district:
+
+```{r}
+tif_bills <- tax_bill(2006:2020, tif_pins_vec)
+
+tif_bills_summ <- tif_bills %>%
+  mutate(
+    agency_minor_type = recode(
+      agency_minor_type,
+      "GEN ASST" = "MUNI",
+      "PARK" = "MUNI",
+      "INFRA" = "MUNI",
+      "LIBRARY" = "MUNI",
+      "MOSQUITO" = "MISC",
+      "WATER" = "MISC"
+    ),
+    agency_minor_type = factor(
+      agency_minor_type,
+      levels = c(
+        "TIF", "COOK", "MUNI", "TOWNSHIP", "MISC",
+        "COMM COLL", "ELEMENTARY", "SECONDARY"
+      )
+    )
+  ) %>%
+  group_by(year, agency_minor_type) %>%
+  summarize(total_rev = sum(final_tax))
+
+
+# make a graph! Copied mostly from TIF vingette examples 
+tif_dist_plot <- ggplot(data = tif_bills_summ) +
+  geom_area(
+    aes(x = year, y = total_rev, fill = agency_minor_type),
+    alpha = 0.8
+  ) +
+  scale_y_continuous(
+    labels = scales::label_dollar(scale = 1e-6, suffix = "M"),
+    expand = c(0, 0)
+  ) +
+  scale_x_continuous(n.breaks = 9, expand = c(0, 0.4)) +
+  scale_fill_manual(
+    name = "",
+    values = c("#7d26cd", RColorBrewer::brewer.pal(7, "Set2"))
+  ) +
+  labs(x = "Year", y = "Total Tax Revenue from TIF PINs", caption = "Multiple TIFs are aggregated together in this graph") +
+  theme_minimal() +
+  theme(
+    axis.title = element_text(size = 13),
+    axis.title.x = element_text(margin = margin(t = 6)),
+    axis.title.y = element_text(margin = margin(r = 6)),
+    axis.text = element_text(size = 11),
+    axis.ticks.x = element_line(color = "grey70"),
+    strip.text = element_text(size = 16),
+    strip.background = element_rect(fill = "#c9c9c9"),
+    legend.title = element_text(size = 14),
+    legend.key.size = unit(24, "points"),
+    legend.text = element_text(size = 12)
+  )
+tif_dist_plot
+```
+
+
+## Historic Values
+
+Composite tax rates is the aggregate of taxing agency rates. 
+
+Taxing agencies revenues = tax rate * frozen EAV
+
+Frozen EAV = Tax Revenue / tax rate
+TIF revenue = TIF's tax rate * incremental EAV
+
+
+### Using tax_bill()
+
+
+
+```{r}
+#207,565 taxbills/observations for Cicero for 2021
+area_data <- tax_bill(2021, area_pins2, simplify = FALSE)
+
+area_data # look at what  we created
+# get class info with pin expemption data
+class_dict$class_code <- as.character(class_dict$class_code)
+area_data <- left_join(area_data, class_dict, by=c("class" = "class_code")) %>% 
+  mutate(in_tif = ifelse(final_tax_to_tif > 0, 1, 0))
+
+
+setkey(area_data, year, tax_code, agency_num)
+
+# 145 unique year-taxcode-agencynum combinatins. 
+# send this through other functions
+#unique_values<-area_data %>% group_by(year, tax_code, agency_num) %>% summarize()
+
+#unique_values
+
+## values are after exemptions have been subtracted! 
+taxing_agencies <- area_data %>% 
+  group_by(agency_name, agency_num, agency_tax_rate) %>% 
+  summarize(eav = sum(eav),
+        #    final_tax = sum(final_tax), # final tax only exists if simplify = TRUE in that tax_bill() command.
+            final_tax_to_dist = sum(final_tax_to_dist),
+            final_tax_to_tif = sum(final_tax_to_tif),
+            tax_amt_exe = sum(tax_amt_exe),
+            tax_amt_pre_exe = sum(tax_amt_pre_exe),
+            tax_amt_post_exe = sum(tax_amt_post_exe),
+        agency_tax_rate = mean(agency_tax_rate)
+            ) %>%
+  arrange(agency_num) %>%
+  mutate(weighted_tax_rate = agency_tax_rate*eav) %>% 
+  ungroup() %>%
+  mutate(composite_tax_rate = sum(weighted_tax_rate)/max(eav) )
+
+taxing_agencies
+
+# saves composite tax rate as its own object because I might plug it in with the TIF stuff later.
+composite_tax_rate <- first(taxing_agencies$composite_tax_rate)
+
+
+## Exact match (besides column names) with JD's values for Taxing Agencies. 
+taxing_agencies %>%
+    mutate(`Tax Rate` = round(agency_tax_rate, digits = 6),
+           EAV = scales::comma(eav)) %>%
+select(agency_name, agency_name, EAV, `Tax Rate`, weighted_tax_rate, composite_tax_rate)
+```
+
+Taxing Agency Values above match JD's simulation 5 excel file. 
+
+These are all the Non-TIF taxing agencies though! The ones that are in output when using tax_bill() in ptaxsim.
+
+## Using lookup() commands
+
+### Composite Tax Rate & Taxing Agencies
+
+
+
+### EAV by Class
+
+> Are there exemptions for the Classes not included in the nonresidential classes section (e.g. 7,8?)
+Maybe these are Cicero specific....
+
+
+
+```{r}
+#17,283 pins, has av, eav, class, and exemptions for each pin
+pin_data <- lookup_pin(2021, area_pins2)
+
+# get class info with pin expemption data
+#class_dict$class_code <- as.character(class_dict$class_code)
+pin_data <- left_join(pin_data, class_dict, by=c("class" = "class_code"))
+
+# aggregate by major class code
+# MATCHES - By Class (from PTAXSIM) by JD
+exemptions_by_class_summary <- pin_data %>% 
+  group_by(major_class_code, major_class_type) %>% 
+  summarise(eav = sum(eav))
+#exemptions_by_class_summary
+
+nonresidential<- data.frame(major_class_code = "Non-residential", 
+                            major_class_type = "Non-residential", 
+                            eav= with(exemptions_by_class_summary, sum(eav[major_class_code %in% c("1", "5A", "5B", "6B")])))
+
+residential<-  data.frame(major_class_code = "Residential", 
+                            major_class_type = "Residential", 
+                            eav=with(exemptions_by_class_summary, sum(eav[major_class_code %in% c("2","3")])))
+
+TOTAL <-  data.frame(major_class_code = "TOTAL", 
+                            major_class_type = "TOTAL", 
+                            eav= with(exemptions_by_class_summary, sum(eav)))
+
+## Matches JD excel file!
+values_by_class<- rbind(exemptions_by_class_summary, TOTAL, residential, nonresidential) 
+
+ values_by_class %>% mutate(eav = format(eav, big.mark=","))
+```
+Perfect match for EAV by class.
+
+```{r}
+#area_data %>%arrange(desc(eav))
+class_exemptions <- area_data %>% 
+  group_by(           
+    major_class_code) %>% 
+  summarize(
+            final_tax_to_dist = sum(final_tax_to_dist),
+            final_tax_to_tif = sum(final_tax_to_tif),
+            tax_amt_exe = sum(tax_amt_exe),
+            tax_amt_pre_exe = sum(tax_amt_pre_exe),
+            tax_amt_post_exe = sum(tax_amt_post_exe),
+            ) %>%
+
+ # arrange(agency_num) %>%
+ # mutate(weighted_tax_rate = agency_tax_rate*eav) %>% 
+ # ungroup() %>%
+      mutate(tax_amount = final_tax_to_dist+final_tax_to_tif,
+             tax_share = tax_amount / sum(tax_amount))
+
+
+
+class_exemptions %>% mutate(#EAV = scales::dollar(eav),
+                            "Tax Revenue(District+TIF)" = scales::dollar(tax_amt_post_exe),
+                            "District Revenue" = scales::dollar(final_tax_to_dist),
+                            "TIF Revenue" = scales::dollar(final_tax_to_tif),
+                            "Exemptions" = scales::dollar(tax_amt_exe), # same as tax_amt_pre_exe-tax_amt_post_exe
+                            "Tax Share" = scales::percent(tax_share)
+                            ) %>% 
+  select(-c(tax_amt_post_exe:tax_share, final_tax_to_dist:tax_amt_pre_exe)) 
+
+
+class_exemptions <- full_join(class_exemptions, exemptions_by_class_summary, by = "major_class_code")
+class_exemptions
+
+```
+
+Amount paid to taxing district and tif by property class?
+
+> the final_tax_to_dist(renamed to District Revenue) variable is very close to JD's Tax Amount Column by class in Excel. 
+
+
+
+
+### Exemptions by Type
+
+```{r}
+pin_data_summarytable<- pin_data %>% 
+  summarize(#eav = sum(eav),
+  exe_homeowner = sum(exe_homeowner),
+  exe_senior = sum(exe_senior),
+  exe_freeze = sum(exe_freeze),
+  exe_longtime_homeowner = sum(exe_longtime_homeowner),
+  exe_disabled = sum(exe_disabled),
+  exe_vet_returning = sum(exe_vet_returning),
+  exe_vet_dis = sum(exe_vet_dis_lt50+exe_vet_dis_50_69+exe_vet_dis_ge70),
+  exe_abate = sum(exe_abate)
+  
+) %>%
+  mutate(TOTAL = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+                       exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate))  %>% 
+  pivot_longer(cols = exe_homeowner:TOTAL, 
+               values_to = "exemptions", 
+               names_to = "exemption_type")
+
+pin_data_summarytable
+
+```
+
+Exemption Total Values match JD's file.
+
+`r pin_data_summarytable %>% filter(exemption_type == "TOTAL") %>% mutate(exemptions = format(exemptions, big.mark=","))`
+
+
+Not sure how value within TIF is calculated. 
+
+
+
+### TIFs
+
+Tax Code Rate 2021 for All Cicero TIFS is 14.376. That is exactly the same as the composite tax rate calculated earlier.
+
+TIF information comes from Cook County Clerk's Office.
+
+`tif_share` = the tax_code_distribution_pct / 100 and comes from tif_distribution table. Comes from lookup_tif() command. Calculated behind the scenes. Documentation for their process is in Gitlab R/lookup.R file
+
+Lets fine TIF taxing agencies and combine them with the other taxing agencies for the geographic area:
+
+```{r tif-taxing-agencies}
+
+# slightly more tax_codes than pins
+# most pins have one tax code
+tax_codes <- lookup_tax_code(2021, area_pins2) 
+
+# gives you tax_codes and agency_num and agency_name and the tif_share
+# agency_minor_type = TIF
+tif_taxing_agencies <- lookup_tif(2021, tax_codes) #all tax codes within a tif
+
+tif_taxing_agencies # tif taxcodes and tif taxing agencies
+
+
+#pindata_in_tifs <- inner_join(tif_taxing_agencies, area_data
+      #)
+# 25,200 pins in tifs. 
+#pindata_in_tifs %>% arrange(tif_share)
+
+
+tif_tax_codes <- as.character(tif_taxing_agencies$tax_code)
+#tax_codes <- lookup_tax_code(2021, tif_tax_codes)
+```
+
+All non tif taxing agencies:
+```{r}
+# there are 13 non-tif taxing agencies in Cicero.
+taxing_agencies <- lookup_agency(2021, tax_codes) 
+taxing_agencies %>% arrange(tax_code)
+
+taxing_agencies %>% 
+  group_by(agency_name)%>%
+  summarize(EAV = first(agency_total_eav),
+    total_levy = first(agency_total_ext)) %>% 
+  arrange(total_levy)
+  
+# all_taxing_agencies <- full_join(taxing_agencies, tif_taxing_agencies, 
+#                              #    by = c("year", "tax_code", "agency_name", "agency_num")
+#                                  ) %>% mutate(in_tif = ifelse(is.na(tif_share), 0, 1))
+```
+
+Combine tif and non-tif taxing agencies:
+```{r}
+
+
+all_taxing_agencies <- rbind(taxing_agencies, tif_taxing_agencies, fill=TRUE) %>% 
+  mutate(in_tif = ifelse(is.na(tif_share), 0, 1))
+
+
+all_taxing_agencies %>%
+  group_by(agency_num, agency_name, in_tif) %>% 
+  summarize(agency_total_eav = mean(agency_total_eav),
+            tif_share = mean(tif_share),
+            agency_total_ext=mean(agency_total_ext)
+          #  ,summed_eav = sum(eav)
+            )
+
+all_taxing_agencies %>%
+  group_by(agency_num,agency_name, in_tif) %>% 
+  summarize(eav = first(agency_total_eav)) %>% 
+  pivot_wider(names_from="in_tif", values_from = "eav")
+```
+
+Need EAV of each Tax Code. Then we know the TIF eav from TIF tax_codes and other agency EAVs from Tax codes associated with other agencies.
+all_taxing_agencies has agency_total_eav but that includes all pin values everywhere that are included in that tax_code (So across all of cook county for Cook County's total eav)
+
+```{r pins-in-tifs}
+taxcodes_intifs <- all_taxing_agencies %>% filter(in_tif==1) %>% select(tax_code) %>% distinct() 
+
+taxcodes_intifs
+# 9 tax codes in tifs
+
+tif_agency_nums <- all_taxing_agencies %>% filter(in_tif==1) %>% select(agency_num) %>% distinct()
+
+tif_agency_nums
+# TIF distributions will include all the unique tax codes that make up
+# a TIF
+
+# tif_dists <- DBI::dbGetQuery(
+#   ptaxsim_db_conn, "
+#   SELECT *
+#   FROM tif_distribution
+#   WHERE agency_num IN tif_agency_nums
+#   "
+# )
+
+ joined_data <- left_join(pin_data, all_taxing_agencies)
+
+ joined_data %>%
+   group_by(agency_num, agency_name, in_tif) %>% 
+   summarize(eav =# ifelse(in_tif==1, sum(eav), 
+                          mean(agency_total_eav),
+             levy=mean(agency_total_ext))# %>% 
+  # pivot_wider(names_from = "in_tif", values_from = "eav")
+```
+> Calculate the increment by comparing the total property value in the TIF (in EAV) to the frozen amount. Anything above the frozen amount is taxed by the TIF
+
+Get all pins within TIF area, then compare total equalized assessed value to the value "frozen" by the TIF.
+
+```{r}
+# pins_in_tifs <- pindata_in_tifs %>% distinct(pin) %>% as.character()
+# tif_pins_dt <- lookup_pin(2021, pins_in_tifs)# %>%
+#   mutate(tax_code = lookup_tax_code(year, pin))
+# 
+# tif_pins_summ <- tif_pins_dt %>%
+#   group_by(year) %>%
+#   summarize(total_eav = sum(eav)) %>%
+#   left_join(tif_dists, by = "year") %>%
+#   mutate(amt_to_tif = total_eav - tax_code_frozen_eav)
+```
+
+
+```{r eval=FALSE}
+pins_in_tifs <- left_join(taxcodes_intifs, area_data#, by = c("agency_name"="tif_agency_name")
+                          ) %>% 
+  mutate(pin_in_tif = ifelse(final_tax_to_tif > 0, 1, 0))
+
+area_data <- left_join(area_data, pins_in_tifs)
+
+pins_in_tifs %>% group_by(tif_agency_name) %>% 
+  summarize(eav = sum(eav),
+        #    final_tax = sum(final_tax), # final tax only exists if simplify = TRUE in that tax_bill() command.
+            final_tax_to_dist = sum(final_tax_to_dist),
+            final_tax_to_tif = sum(final_tax_to_tif),
+            tax_amt_exe = sum(tax_amt_exe),
+            tax_amt_pre_exe = sum(tax_amt_pre_exe),
+            tax_amt_post_exe = sum(tax_amt_post_exe),
+        agency_tax_rate = mean(agency_tax_rate)
+            ) %>%
+#  arrange(agency_num) %>%
+  mutate(weighted_tax_rate = agency_tax_rate*eav) %>% 
+  ungroup() %>%
+  mutate(composite_tax_rate = sum(weighted_tax_rate)/max(eav) )
+```
+
+
+agency_total_eav			The total amount of EAV within the taxing district, otherwise known as the “base”. This is the denominator when calculating tax rates
+
+
+agency_total_ext			The total extension requested by the taxing district, otherwise known as the “levy”. This is the amount the district needs in tax revenue and is the numerator when calculating tax rates
+
+
+"Changing tax_code_vec “relocates” a PIN by changing the things that are taxing it. This can be useful for counterfactual analysis. For example, if you own property within a school district and want to know what your tax bill would be just outside the district, but otherwise within the same municipality, then you can find the tax code that represents that situation and plug it into tax_bill()"
+
+
+
+
+```{r}
+#agency <- lookup_agency(2021, tax_code)
+#agency 
+
+#oak_pins2 <- fromJSON(rawToChar(oak_pins$content))$pin
+
+#oak_pins2 %>% group_by(pin) %>% distinct()
+
+tifs <- lookup_tif(2021, tax_codes)
+tifs
+
+joined <- left_join(area_data, tifs, by = c("year", "tax_code", "agency_num", "agency_name"))
+
+
+
+joined  %>%
+  group_by(major_class_type, major_class_code) %>%
+  summarize(EAV = sum(eav),
+    Exemptions =  sum(tax_amt_exe),
+    tax_amt_pre_exe = sum(tax_amt_pre_exe),
+            tax_amt_post_exe = sum(tax_amt_post_exe),
+            tif_amount = sum(final_tax_to_tif),
+            tax_to_district = sum(final_tax_to_dist)) %>%
+  arrange(major_class_code)
+ # mutate(Tax_Amount=sum(district_amount),
+ #        TIF_Amount = sum(tif_amount))
+
+
+#area_data <- full_join(area_data, pin_data)
+area_data%>% 
+  filter(final_tax_to_tif>0) %>%
+  group_by(major_class_code)%>%
+  summarise(tax_to_tif = sum(final_tax_to_tif),)
+```
+
+# Counterfactuals
+
+## Removing Exemptions
+
+```{r}
+bills_w_exe <- tax_bill(2018:2021, muni_pins$pin, simplify = FALSE)
+
+bills_w_exe_summ <- bills_w_exe %>%
+  group_by(year) %>%
+  summarize(
+    exe = sum(tax_amt_exe),
+    bill_total = sum(final_tax_to_tif) + sum(final_tax_to_dist),
+    Type = "With exemptions"
+  ) %>%
+  select(Year = year, Type, "Exemption Amt." = exe, "Bill Amt." = bill_total)
+
+## now remove exemptions
+exe_dt <- lookup_pin(2018:2021, muni_pins$pin) %>%
+  mutate(across(starts_with("exe_"), ~0)) %>%
+  setDT(key = c("year", "pin"))
+
+bills_no_exe <- tax_bill(2018:2021,
+  muni_pins$pin,
+  pin_dt = exe_dt,
+  simplify = FALSE
+)
+
+bills_no_exe_summ <- bills_no_exe %>%
+  group_by(year) %>%
+  summarize(
+    exe = sum(tax_amt_exe),
+    bill_total = sum(final_tax_to_tif) + sum(final_tax_to_dist),
+    Type = "No exemptions"
+  ) %>%
+  select(Year = year, Type, "Exemption Amt." = exe, "Bill Amt." = bill_total)
+bills_no_exe_summ
+
+bills_plot_2 <- rbind(bills_w_exe_summ, bills_no_exe_summ) %>%
+  ggplot() +
+  geom_line(aes(x = Year, y = `Bill Amt.`, linetype = Type), linewidth = 1.1) +
+#  scale_x_continuous(n.breaks = 9) +
+  scale_y_continuous(labels = scales::label_dollar()) +
+  scale_linetype_manual(
+    name = "",
+    values = c("With exemptions" = "solid", "No exemptions" = "dashed")
+  ) +
+  theme_minimal() 
+bills_plot_2
+```
+```{r}
+t_pins <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "
+  SELECT DISTINCT pin
+  FROM pin
+  WHERE substr(tax_code_num, 1, 2) = '14'
+  "
+)
+t_pins <- muni_pins$pin
+t_years <- 2006:2021
+
+t_bills_w_exe <- tax_bill(t_years, t_pins)[, stage := "With exemptions"]
+
+t_pin_dt_no_exe <- lookup_pin(t_years, t_pins)
+t_pin_dt_no_exe[, tax_code := lookup_tax_code(year, pin)]
+
+exe_cols <- names(t_pin_dt_no_exe)[startsWith(names(t_pin_dt_no_exe), "exe_")]
+t_tc_sum_no_exe <- t_pin_dt_no_exe[,
+  .(exe_total = sum(rowSums(.SD))),
+  .SDcols = exe_cols,
+  by = .(year, tax_code)
+]
+
+t_agency_dt_no_exe <- lookup_agency(t_years, t_pin_dt_no_exe$tax_code)
+t_agency_dt_no_exe[
+  t_tc_sum_no_exe,
+  on = .(year, tax_code),
+  agency_total_eav := agency_total_eav + exe_total
+]
+
+t_pin_dt_no_exe[, (exe_cols) := 0][, c("tax_code") := NULL]
+
+t_bills_no_exe <- tax_bill(
+  year_vec = t_years,
+  pin_vec = t_pins,
+  agency_dt = t_agency_dt_no_exe,
+  pin_dt = t_pin_dt_no_exe
+)[
+  , stage := "No exemptions"
+]
+
+# Little function to get the statistical mode
+Mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+t_no_exe_summ <- rbind(t_bills_w_exe, t_bills_no_exe)[
+  , class := Mode(substr(class, 1, 1)),
+  by = pin
+][
+  class %in% c("2", "3", "5"),
+][
+  , class := ifelse(class == "2", "Residential", "Commercial")
+][
+  , .(total_bill = sum(final_tax)),
+  by = .(year, pin, class, stage)
+][
+  , .(avg_bill = mean(total_bill)),
+  by = .(year, class, stage)
+][
+  , idx_bill := (avg_bill / avg_bill[year == 2006]) * 100,
+  by = .(class, stage)
+]
+
+t_annot <- tibble(
+  class = c("Residential", "Commercial"),
+  x = c(2008, 2006.4),
+  y = c(105, 115)
+)
+
+# Plot the change in indexed values over time
+t_no_exe_summ_plot <- ggplot(data = t_no_exe_summ) +
+  geom_line(
+    aes(x = year, y = idx_bill, color = class, linetype = stage),
+    linewidth = 1.1
+  ) +
+  geom_text(
+    data = t_annot,
+    aes(x = x, y = y, color = class, label = class),
+    hjust = 0
+  ) +
+  scale_y_continuous(name = "Average Tax Bill, Indexed to 2006") +
+  scale_x_continuous(name = "Year", n.breaks = 10, limits = c(2006, 2020.4)) +
+  scale_linetype_manual(
+    name = "",
+    values = c("With exemptions" = "solid", "No exemptions" = "dashed")
+  ) +
+  scale_color_brewer(name = "", palette = "Set1", direction = -1) +
+  guides(color = "none") +
+  facet_wrap(vars(class)) +
+  theme_minimal() +
+  theme(
+    axis.title = element_text(size = 13),
+    axis.title.x = element_text(margin = margin(t = 6)),
+    axis.title.y = element_text(margin = margin(r = 6)),
+    axis.text.y = element_text(size = 11),
+    strip.text = element_text(size = 16),
+    strip.background = element_rect(fill = "#c9c9c9"),
+    legend.title = element_text(size = 14),
+    legend.key.size = unit(24, "points"),
+    legend.text = element_text(size = 12),
+    legend.position = "bottom"
+  )
+t_no_exe_summ_plot
+```
+
+## Changing exemptions
+
+We can also use PTAXSIM to answer hypotheticals. For example, how would this PIN's bill history change if the Homeowner Exemption increased from \$10,000 to \$15,000 in 2018?
+
+To find out, we again create a modified PIN input to pass to `tax_bill()`. This time, we increase the Homeowner Exemption to $15,000 for all years after 2018. 
+
+```{r}
+exe_dt_2 <- lookup_pin(2006:2020, "25321140050000") %>%
+  mutate(exe_homeowner = ifelse(year >= 2018, 15000, exe_homeowner)) %>%
+  setDT(key = c("year", "pin"))
+```
+
+Then, we recalculate all the bills with the new PIN input and do the same aggregation as before.
+
+```{r}
+bills_new_exe <- tax_bill(
+  2006:2020,
+  "25321140050000",
+  pin_dt = exe_dt_2,
+  simplify = FALSE
+)
+
+bills_new_exe_summ <- bills_new_exe %>%
+  group_by(year) %>%
+  summarize(
+    exe = sum(tax_amt_exe),
+    bill_total = sum(final_tax_to_tif) + sum(final_tax_to_dist),
+    Type = "Changed exemption"
+  ) %>%
+  select(Year = year, Type, "Exemption Amt." = exe, "Bill Amt." = bill_total)
+```
+
+Finally, we add a third line to our plot showing the total tax bill by year after the hypothetical exemption increase in 2018.
+
+<details>
+
+<summary><strong>Click here</strong> to show plot code</summary>
+
+```{r}
+bills_plot_3 <- rbind(
+  bills_w_exe_summ,
+  bills_no_exe_summ,
+  bills_new_exe_summ
+) %>%
+  ggplot() +
+  geom_line(aes(x = Year, y = `Bill Amt.`, linetype = Type), linewidth = 1.1) +
+  scale_x_continuous(n.breaks = 9) +
+  scale_y_continuous(labels = scales::label_dollar(), limits = c(0, 6500)) +
+  scale_linetype_manual(
+    name = "",
+    values = c(
+      "With exemptions" = "solid",
+      "No exemptions" = "dashed",
+      "Changed exemption" = "dotted"
+    )
+  ) +
+  theme_minimal() +
+  theme(
+    axis.title = element_text(size = 13),
+    axis.title.x = element_text(margin = margin(t = 6)),
+    axis.title.y = element_text(margin = margin(r = 6)),
+    axis.text = element_text(size = 11),
+    strip.text = element_text(size = 16),
+    strip.background = element_rect(fill = "#c9c9c9"),
+    legend.title = element_text(size = 14),
+    legend.key.size = unit(24, "points"),
+    legend.text = element_text(size = 12),
+    legend.position = "bottom"
+  )
+```
+
+</details>
+
+<br>
+
+```{r, echo=FALSE, out.width="100%"}
+bills_plot_3
+```
+
+Increasing the Homeowner Exemption to \$15,000 would save this property owner around \$1,000 per year in taxes. However, this hypothetical does not account for changes in the tax base that would occur if overall exemption amounts changed, so it is (slightly) inaccurate.
+
+# Many PINs
+
+PTAXSIM can also perform more complex analysis, such as measuring the impact of exemptions in a given area. To perform this analysis, we can again use the `tax_bill()` function to calculate tax bills before and after exemptions are removed, this time for many PINs.
+
+## Removing exemptions
+
+Let's look at the overall effect of exemptions in the Cook County township of Calumet, shown in <span style="color:#e41a1c"><strong>red</strong></span> below.
+
+![](../man/figures/exemptions-map.png)
+
+First, we can use the PTAXSIM database to get a list of all the unique PINs in Calumet township. We can also create a vector of years we're interested in.
+
+```{r}
+t_pins <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "
+  SELECT DISTINCT pin
+  FROM pin
+  WHERE substr(tax_code_num, 1, 2) = '14'
+  "
+)
+t_pins <- t_pins$pin
+t_years <- 2006:2020
+```
+
+Next, we can generate bills for all PINs in Calumet for the past 15 years. These bills will _include_ any exemptions they actually received.
+
+We're using `data.table` syntax here because it's much faster than `dplyr` when working with large data. Note that PTAXSIM functions always output a `data.table` with keys.
+
+```{r}
+t_bills_w_exe <- tax_bill(t_years, t_pins)[, stage := "With exemptions"]
+```
+
+Unlike a single PIN, removing exemptions from many PINs means that the base (the amount of total taxable value available) will change substantially. In order to accurately model the effect of removing exemptions, we need to fully recalculate the base of each district by adding the sum of taxable value recovered from each PIN. 
+
+To start, we use the `lookup_pin()` function to recover the total EAV of exemptions for each PIN.
+
+```{r}
+t_pin_dt_no_exe <- lookup_pin(t_years, t_pins)
+t_pin_dt_no_exe[, tax_code := lookup_tax_code(year, pin)]
+
+exe_cols <- names(t_pin_dt_no_exe)[startsWith(names(t_pin_dt_no_exe), "exe_")]
+t_tc_sum_no_exe <- t_pin_dt_no_exe[,
+  .(exe_total = sum(rowSums(.SD))),
+  .SDcols = exe_cols,
+  by = .(year, tax_code)
+]
+```
+
+Next, we recalculate the base of all taxing districts in Calumet by adding the EAV returned from exemptions to each district's total EAV.
+
+```{r}
+t_agency_dt_no_exe <- lookup_agency(t_years, t_pin_dt_no_exe$tax_code)
+t_agency_dt_no_exe[
+  t_tc_sum_no_exe,
+  on = .(year, tax_code),
+  agency_total_eav := agency_total_eav + exe_total
+]
+```
+
+Then, we again alter the `pin_dt` input by setting all exemption columns equal to zero.
+
+```{r}
+t_pin_dt_no_exe[, (exe_cols) := 0][, c("tax_code") := NULL]
+```
+
+We recalculate all Calumet tax bills _without_ exemptions and with an updated tax base for each district (passed via `agency_dt`).
+
+```{r}
+t_bills_no_exe <- tax_bill(
+  year_vec = t_years,
+  pin_vec = t_pins,
+  agency_dt = t_agency_dt_no_exe,
+  pin_dt = t_pin_dt_no_exe
+)[
+  , stage := "No exemptions"
+]
+```
+
+To see the results, we can calculate the average tax bill by year by property type (residential or commercial), with and without exemptions. We can also index the result to the earliest year available (in this case 2006) to make the different property types comparable on the same scale.
+
+```{r}
+# Little function to get the statistical mode
+Mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+t_no_exe_summ <- rbind(t_bills_w_exe, t_bills_no_exe)[
+  , class := Mode(substr(class, 1, 1)),
+  by = pin
+][
+  class %in% c("2", "3", "5"),
+][
+  , class := ifelse(class == "2", "Residential", "Commercial")
+][
+  , .(total_bill = sum(final_tax)),
+  by = .(year, pin, class, stage)
+][
+  , .(avg_bill = mean(total_bill)),
+  by = .(year, class, stage)
+][
+  , idx_bill := (avg_bill / avg_bill[year == 2006]) * 100,
+  by = .(class, stage)
+]
+```
+
+Finally, we can plot the average bill with and without exemptions by property type. 
+
+<details>
+
+<summary><strong>Click here</strong> to show plot code</summary>
+
+```{r}
+t_annot <- tibble(
+  class = c("Residential", "Commercial"),
+  x = c(2008, 2006.4),
+  y = c(105, 115)
+)
+
+# Plot the change in indexed values over time
+t_no_exe_summ_plot <- ggplot(data = t_no_exe_summ) +
+  geom_line(
+    aes(x = year, y = idx_bill, color = class, linetype = stage),
+    linewidth = 1.1
+  ) +
+  geom_text(
+    data = t_annot,
+    aes(x = x, y = y, color = class, label = class),
+    hjust = 0
+  ) +
+  scale_y_continuous(name = "Average Tax Bill, Indexed to 2006") +
+  scale_x_continuous(name = "Year", n.breaks = 10, limits = c(2006, 2020.4)) +
+  scale_linetype_manual(
+    name = "",
+    values = c("With exemptions" = "solid", "No exemptions" = "dashed")
+  ) +
+  scale_color_brewer(name = "", palette = "Set1", direction = -1) +
+  guides(color = "none") +
+  facet_wrap(vars(class)) +
+  theme_minimal() +
+  theme(
+    axis.title = element_text(size = 13),
+    axis.title.x = element_text(margin = margin(t = 6)),
+    axis.title.y = element_text(margin = margin(r = 6)),
+    axis.text.y = element_text(size = 11),
+    strip.text = element_text(size = 16),
+    strip.background = element_rect(fill = "#c9c9c9"),
+    legend.title = element_text(size = 14),
+    legend.key.size = unit(24, "points"),
+    legend.text = element_text(size = 12),
+    legend.position = "bottom"
+  )
+```
+
+</details>
+
+<br>
+
+```{r, echo=FALSE, out.width="100%"}
+t_no_exe_summ_plot
+```
+
+Exemptions in Calumet have significantly increased in both volume and amount (via increased tax rates) in recent years. In 2019, the average residential homeowner saved around $1,100 via exemptions.
+
+Conversely, Calumet's commercial property owners have picked up an increasingly large share of the overall tax burden since 2006. In 2019, the average commercial property paid about $1,100 more than they would have if exemptions did not exist.
+
+## Changing exemptions 
+
+PTAXSIM can also answer hypotheticals about large areas. For example, how would the average residential tax bill in ____ change if the Senior Exemption increased by $5,000 and the Senior Freeze Exemption was removed?
+
+To find out, we again create a PIN input with modified exemption amounts, then recalculate the base by taking the difference between the real and hypothetical exemptions.
+
+```{r}
+t_pin_dt_new_exe <- lookup_pin(t_years, t_pins)
+t_pin_dt_new_exe[, tax_code := lookup_tax_code(year, pin)]
+
+t_tc_sum_new_exe <- t_pin_dt_new_exe[
+  , .(exe_total = sum(exe_freeze - (5000 * (exe_senior != 0)))),
+  by = .(year, tax_code)
+]
+```
+
+Next, we recalculate the base of each district. This time, the base may _lose_ some EAV, since the Senior Exemption is increasing substantially.
+
+```{r}
+t_agency_dt_new_exe <- lookup_agency(t_years, t_pin_dt_new_exe$tax_code)
+t_agency_dt_new_exe[
+  t_tc_sum_new_exe,
+  on = .(year, tax_code),
+  agency_total_eav := agency_total_eav + exe_total
+]
+```
+
+Then, we again alter the `pin_dt` input by setting the Senior Freeze Exemption to zero and adding $5,000 to any Senior Exemption.
+
+```{r}
+t_pin_dt_new_exe <- t_pin_dt_new_exe[
+  , exe_freeze := 0
+][
+  exe_senior != 0, exe_senior := exe_senior + 5000
+][
+  , c("tax_code") := NULL
+]
+```
+
+We again recalculate all Calumet tax bills with our updated exemptions and with an updated tax base for each district.
+
+```{r}
+t_bills_new_exe <- tax_bill(
+  year_vec = t_years,
+  pin_vec = t_pins,
+  agency_dt = t_agency_dt_new_exe,
+  pin_dt = t_pin_dt_new_exe
+)[
+  , stage := "Changed exemptions"
+]
+```
+
+Then, do the same aggregation and indexing we did previously, this time using the updated bills.
+
+```{r}
+t_new_exe_summ <- rbind(t_bills_w_exe, t_bills_new_exe)[
+  , class := Mode(substr(class, 1, 1)),
+  by = pin
+][
+  class %in% c("2", "3", "5"),
+][
+  , class := ifelse(class == "2", "Residential", "Commercial")
+][
+  , .(total_bill = sum(final_tax)),
+  by = .(year, pin, class, stage)
+][
+  , .(avg_bill = mean(total_bill)),
+  by = .(year, class, stage)
+][
+  , idx_bill := (avg_bill / avg_bill[year == 2006]) * 100,
+  by = .(class, stage)
+]
+
+
+
+t_new_exe_summ_plot <- ggplot(data = t_new_exe_summ) +
+  geom_line(
+    aes(x = year, y = idx_bill, color = class, linetype = stage),
+    linewidth = 1.1
+  ) +
+  geom_text(
+    data = t_annot,
+    aes(x = x, y = y, color = class, label = class),
+    hjust = 0
+  ) +
+  scale_y_continuous(name = "Average Tax Bill, Indexed to 2006") +
+  scale_x_continuous(name = "Year", n.breaks = 10, limits = c(2006, 2020.4)) +
+  scale_linetype_manual(
+    name = "",
+    values = c("With exemptions" = "solid", "Changed exemptions" = "dotted")
+  ) +
+  scale_color_brewer(name = "", palette = "Set1", direction = -1) +
+  guides(color = "none") +
+  facet_wrap(vars(class)) +
+  theme_minimal() +
+  theme(
+    axis.title = element_text(size = 13),
+    axis.title.x = element_text(margin = margin(t = 6)),
+    axis.title.y = element_text(margin = margin(r = 6)),
+    axis.text.y = element_text(size = 11),
+    strip.text = element_text(size = 16),
+    strip.background = element_rect(fill = "#c9c9c9"),
+    legend.title = element_text(size = 14),
+    legend.key.size = unit(24, "points"),
+    legend.text = element_text(size = 12),
+    legend.position = "bottom"
+  )
+
+t_new_exe_summ_plot
+```
+
+"The net effect of increasing the Senior Exemption while removing the Senior Freeze Exemption is a slight decrease in the _average_ bill. However, this conclusion is ambiguous, complicated by the fact that the Senior Freeze is means-tested, while the Senior Exemption is not. The "real-world effect" of our hypothetical policy change would most likely be an increase in the property tax bills of poorer seniors, even though the average bill decreased.
+
+Ultimately, with some careful coding and assumptions, PTAXSIM (and its included data) can be used to test almost any hypothetical change in exemptions." - exemption vingette
+
+
+## What if there were no TIFs?
+
+Update output of lookup_tif. `tif_share` is a variable used within tax_bill(). To remove the share of the bill dedicated to a TIF, make this percentage equal to zero. 
+
+Then recalculate Tax Base for all 
+
+```{r}
+tif_dt_noTIFS <- lookup_tif(
+  2006:2021,
+  lookup_tax_code(2006:2021, muni_pins$pin)
+) %>%
+  # Set TIF shares to 0 for ALL tifs in the municipality, leave non-tif others untouched
+  mutate(tif_share = ifelse(agency_num %in% tif_agency_nums, 0, tif_share))
+
+# Recalcuclate Tax base:
+
+# Get the unaltered levy and base for all PINs in geographic area
+tif_agency_cntr <- lookup_agency(
+  2006:2021,
+  lookup_tax_code(2006:2021, muni_pins$pin)
+)
+
+# For each agency and year, get the amount recovered from the TIF using the
+# summary table we created earlier (tif_pins_summ)
+tif_agency_amt_to_add <- tif_agency_cntr %>%
+ # filter(tax_code == "38228") %>%
+  distinct(year, agency_num) %>%
+  left_join(
+    tif_pins_summ %>% select(year, amt_to_tif),
+    by = "year"
+  )
+
+# Update the base by adding the recovered amount to the each district's tax base
+tif_agency_cntr_updated <- tif_agency_cntr %>%
+  left_join(tif_agency_amt_to_add, by = c("year", "agency_num")) %>%
+  rowwise() %>%
+  mutate(agency_total_eav = sum(agency_total_eav, amt_to_tif, na.rm = TRUE)) %>%
+  select(-amt_to_tif) %>%
+  setDT(key = c("year", "tax_code", "agency_num"))
+```
+
+Didn't finish this. Memory issue and impatient. Code might work? But idk for sure. 
+```{r eval=FALSE}
+## Step 3. Recalculate bills
+# Calculate unaltered, original bills for comparison
+muni_bills <- tax_bill(2006:2021, muni_pins$pin)
+
+# Calculate counterfactual tax bills where the WTC2 TIF does not exist
+tif_bills <- tax_bill(
+  year_vec = 2006:2021,
+  pin_vec = muni_pins$pin,
+  agency_dt = tif_agency_cntr_updated,
+  tif_dt = tif_dt_noTIFS
+)
+
+
+
+## Make a graph
+tif_bills_cntr_summ <- muni_bills %>%
+  group_by(year, pin) %>%
+  summarize(`With TIF` = sum(final_tax)) %>%
+  left_join(
+    tif_bills %>%
+      group_by(year, pin) %>%
+      summarize(`No TIF` = sum(final_tax)),
+    by = c("year", "pin")
+  ) %>%
+  tidyr::pivot_longer(ends_with("TIF")) %>%
+  group_by(year, name) %>%
+  summarize(med_bill = median(value)) %>%
+  mutate(
+    lt = ifelse(name == "No TIF" & year >= 2015, "s", "d"),
+    name = factor(name, levels = c("No TIF", "With TIF")),
+  )
+
+tif_bills_cntr_summ
+
+
+tif_plot_cntr <- ggplot(tif_bills_cntr_summ) +
+  geom_line(
+    aes(x = year, y = med_bill, color = name, linetype = lt),
+    linewidth = 1.1
+  ) +
+  scale_x_continuous(n.breaks = 9, expand = c(0, 0.4)) +
+  scale_y_continuous(n.breaks = 7, labels = scales::label_dollar()) +
+  scale_color_manual(
+    name = "",
+    values = c("With TIF" = "grey50", "No TIF" = "#7d26cd")
+  ) +
+  labs(x = "Year", y = "Median Tax Bill") +
+  guides(linetype = "none") +
+  theme_minimal() +
+  theme(
+    axis.title = element_text(size = 13),
+    axis.title.x = element_text(margin = margin(t = 6)),
+    axis.title.y = element_text(margin = margin(r = 6)),
+    axis.text = element_text(size = 11),
+    axis.ticks.x = element_line(color = "grey70"),
+    strip.text = element_text(size = 16),
+    strip.background = element_rect(fill = "#c9c9c9"),
+    legend.title = element_text(size = 14),
+    legend.key.size = unit(24, "points"),
+    legend.text = element_text(size = 12),
+    legend.position = "bottom"
+  )
+tif_plot_cntr
+```
+
+
+> what if exemption maximum changed?
+
+
+
+stage
+A length 1 character vector indicating the assessment stage from which to pull assessed value (column av) and equalized assessed value (column eav). Options include "mailed", "certified", "board", and "clerk".
+
+eq_version
+A length 1 character vector indicating the version of the equalizer. The Illinois Department of Revenue calculates two equalizers:
+
+"tentative" - The tentative equalizer based on CCAO certified values
+
+"final" - The final equalizer based on Board of Review certified values
+
+In general, the "tentative" value should be used with the "mailed" and "certified" stage options, while the "final" value should be used with the "board" and "clerk" stage options.
+
+Example from [gitlab](https://gitlab.com/ccao-data-science---modeling/packages/ptaxsim/-/blob/master/vignettes/reassessment.Rmd) 
+
+### Ward Data
+
+Code works but set to eval=FALSE to knit faster.
+
+```{r eval=FALSE}
+base_url <- "https://datacatalog.cookcountyil.gov/resource/tx2p-k2g9.json"
+
+cw_pins <- GET(
+  base_url,
+  query = list(
+    year = 2018, # uses pins that existed in 2018
+    ward_num = "22",
+    `$select` = "pin",
+    `$limit` = 500000L
+  )
+)
+cw_pins <- fromJSON(rawToChar(cw_pins$content))$pin
+
+cw_bills <- tax_bill(2006:2021, cw_pins)
+
+cw_years <- 2006:2021
+
+# Grab unaltered components to feed to tax_bill()
+cw_pins_dt <- lookup_pin(cw_years, cw_pins)
+cw_tax_codes <- lookup_tax_code(cw_years, cw_pins)
+cw_levies <- lookup_agency(cw_years, cw_tax_codes)
+cw_tifs <- lookup_tif(cw_years, cw_tax_codes)
+
+# Get unaltered, unprojected tax bills
+cw_bills <- tax_bill(
+  year_vec = cw_years,
+  pin_vec = cw_pins,
+  tax_code_vec = cw_tax_codes,
+  pin_dt = cw_pins_dt,
+  agency_dt = cw_levies,
+  tif_dt = cw_tifs
+)
+cw_bills_summ <- cw_bills %>%
+  select(pin, year, av, final_tax) %>%
+  group_by(pin, year) %>%
+  summarize(av = first(av), total_tax = sum(final_tax)) %>%
+  group_by(year) %>%
+  summarize(med_av = median(av), med_bill = median(total_tax)) %>%
+  select(year, med_av, med_bill) %>%
+  ungroup() %>%
+  mutate(
+    av_idx = med_av / med_av[year == 2006] * 100,  
+    # year in this line of code should be your first year in your data sample that you use.
+    tb_idx = med_bill / med_bill[year == 2006] * 100
+  ) %>%
+  select(year, av_idx, tb_idx) %>%
+  pivot_longer(
+    cols = ends_with("idx"),
+    values_to = "value",
+    names_to = "type"
+  )
+cw_bills_summ
+
+cw_bills_summ_plot <- cw_bills_summ %>%
+  ggplot() +
+  geom_hline(yintercept = 100, alpha = 0.5) +
+  geom_vline(
+    xintercept = seq(2006, 2021, 3),
+    linetype = "dotted",
+    alpha = 0.5
+  ) +
+  geom_line(
+    aes(x = year, y = value, color = type),
+    linewidth = 1.1
+  ) +
+  scale_x_continuous(n.breaks = 9) +
+  scale_color_brewer(
+    name = "",
+    palette = "Set2",
+    labels = c("Assessed Values", "Total Tax Bills")
+  ) +
+  guides(color = guide_legend(ncol = 2, byrow = TRUE)) +
+  labs(
+    x = "Year", y = "Median Value, Indexed to 2006",
+    caption = "Dotted lines represent reassessment years"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.title = element_text(size = 13),
+    axis.title.x = element_text(margin = margin(t = 6)),
+    axis.title.y = element_text(margin = margin(r = 6)),
+    axis.text = element_text(size = 11),
+    strip.text = element_text(size = 16),
+    strip.background = element_rect(fill = "#c9c9c9"),
+    legend.title = element_text(size = 14),
+    legend.key.size = unit(24, "points"),
+    legend.text = element_text(size = 12),
+    legend.position = "bottom"
+  )
+cw_bills_summ_plot
+```
+
+Something is happening in Ward 22: Assessed values have diverged from taxbills. Assessed values decreased by around 25% since 2006 and tax bills have climbed around 50% since 2006. 
+
+Why? Let's do some counterfactuals!
+Holds levies constant and generates new tax bills for all of the Ward.
+
+```{r eval = FALSE}
+#chicago-ward_tax-code is cw_tc acronym.
+cw_tc <- lookup_tax_code(2006:2021, cw_pins)
+
+cw_levies <- lookup_agency(2006:2021, cw_tc) %>%
+  arrange(agency_num, year) %>%
+  group_by(agency_num) %>%
+  mutate(agency_total_ext = first(agency_total_ext)) %>%
+  setDT(key = c("year", "tax_code", "agency_num"))
+
+# recalculates taxbill with the levies for each agency we just made
+cw_cntr_bills <- tax_bill(2006:2021, cw_pins, agency_dt = cw_levies)
+
+cw_cntr_bills_summ <- cw_cntr_bills %>%
+  select(pin, year, av, final_tax) %>%
+  group_by(pin, year) %>%
+  summarize(total_tax = sum(final_tax)) %>%
+  group_by(year) %>%
+  summarize(med_bill = median(total_tax)) %>%
+  ungroup() %>%
+  mutate(tbc_idx = med_bill / med_bill[year == 2006] * 100) %>%
+  select(year, tbc_idx) %>%
+  pivot_longer(
+    cols = ends_with("idx"),
+    values_to = "value",
+    names_to = "type"
+  )
+cw_cntr_bills_summ
+
+cw_cntr_bills_summ_plot <- bind_rows(cw_bills_summ, cw_cntr_bills_summ) %>%
+  ggplot() +
+  geom_hline(yintercept = 100, alpha = 0.5) +
+  geom_vline(
+    xintercept = seq(2006, 2021, 3),
+    linetype = "dotted",
+    alpha = 0.5
+  ) +
+  geom_line(
+    aes(x = year, y = value, color = type, linetype = type),
+    linewidth = 1.1
+  ) +
+  scale_x_continuous(n.breaks = 9) +
+  scale_color_brewer(
+    name = "",
+    palette = "Set2",
+    labels = c(
+      "Assessed Values",
+      "Total Tax Bills",
+      "Counterfactual Total Tax Bills (Levies Frozen to 2006)"
+    )
+  ) +
+  scale_linetype_manual(
+    name = "",
+    values = c(
+      "av_idx" = "solid",
+      "tb_idx" = "solid",
+      "tbc_idx" = "dashed"
+    ),
+    labels = c(
+      "Assessed Values",
+      "Total Tax Bills",
+      "Counterfactual Total Tax Bills (Levies Frozen to 2006)"
+    )
+  ) +
+  guides(color = guide_legend(ncol = 2, byrow = TRUE)) +
+  labs(
+    x = "Year", y = "Median Value, Indexed to 2006",
+    caption = "Dotted lines represent reassessment years"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.title = element_text(size = 13),
+    axis.title.x = element_text(margin = margin(t = 6)),
+    axis.title.y = element_text(margin = margin(r = 6)),
+    axis.text = element_text(size = 11),
+    strip.text = element_text(size = 16),
+    strip.background = element_rect(fill = "#c9c9c9"),
+    legend.title = element_text(size = 14),
+    legend.key.size = unit(24, "points"),
+    legend.text = element_text(size = 12),
+    legend.position = "bottom"
+  )
+cw_cntr_bills_summ_plot
+```
+
+Graph suggests that tax bills with frozen levies followed actual bills until 2012. Then lines diverge.   
+Implication: Levies likely increased more substantially after 2012.   
+- Without levy increases, Ward 22's median tax bill would be roughly 50% lower.   
+
+### Cicero area
+```{r }
+# Grab all PINs in Cicero for 2018
+t_pins <- GET(
+  base_url,
+  query = list(
+    year = 2018,
+    township_name = "Cicero",
+    `$select` = "pin",
+    `$limit` = 500000L
+  )
+)
+t_pins <- fromJSON(rawToChar(t_pins$content))$pin
+
+# Iterating through years instead of calculating all bills at once. This is to
+# avoid memory constraints
+t_bills_summ <- purrr::map_dfr(2006:2021, function(x) {
+  tax_bill(x, t_pins) %>%
+    select(pin, year, av, final_tax) %>%
+    group_by(pin, year) %>%
+    summarize(av = first(av), total_tax = sum(final_tax)) %>%
+    group_by(year) %>%
+    summarize(med_av = median(av), med_bill = median(total_tax)) %>%
+    select(year, med_av, med_bill) %>%
+    ungroup()
+}) %>%
+  mutate(
+    av_idx = med_av / med_av[year == 2006] * 100,
+    tb_idx = med_bill / med_bill[year == 2006] * 100
+  ) %>%
+  select(year, av_idx, tb_idx) %>%
+  pivot_longer(
+    cols = ends_with("idx"),
+    values_to = "value",
+    names_to = "type"
+  )
+t_bills_summ_plot <- t_bills_summ %>%
+  ggplot() +
+  geom_hline(yintercept = 100, alpha = 0.5) +
+  geom_vline(
+    xintercept = seq(2006, 2021, 3),
+    linetype = "dotted",
+    alpha = 0.5
+  ) +
+  geom_line(
+    aes(x = year, y = value, color = type),
+    linewidth = 1.1
+  ) +
+  scale_x_continuous(n.breaks = 9) +
+  scale_color_brewer(
+    name = "",
+    palette = "Set2",
+    labels = c("Assessed Values", "Total Tax Bills")
+  ) +
+  guides(color = guide_legend(ncol = 2, byrow = TRUE)) +
+  labs(
+    x = "Year", y = "Median Value, Indexed to 2006",
+    caption = "Dotted lines represent reassessment years"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.title = element_text(size = 13),
+    axis.title.x = element_text(margin = margin(t = 6)),
+    axis.title.y = element_text(margin = margin(r = 6)),
+    axis.text = element_text(size = 11),
+    strip.text = element_text(size = 16),
+    strip.background = element_rect(fill = "#c9c9c9"),
+    legend.title = element_text(size = 14),
+    legend.key.size = unit(24, "points"),
+    legend.text = element_text(size = 12),
+    legend.position = "bottom"
+  )
+t_bills_summ_plot
+
+
+
+## now recalculate levies with 2006 values
+
+t_tc <- lookup_tax_code(2006:2021, t_pins)
+
+t_levies <- lookup_agency(2006:2021, t_tc) %>%
+  arrange(agency_num, year) %>%
+  group_by(agency_num) %>%
+  mutate(agency_total_ext = first(agency_total_ext)) %>%
+  setDT(key = c("year", "tax_code", "agency_num"))
+
+t_cntr_bills_summ <- purrr::map_dfr(2006:2021, function(x) {
+  tax_bill(x, t_pins, agency_dt = t_levies) %>%
+    select(pin, year, av, final_tax) %>%
+    group_by(pin, year) %>%
+    summarize(av = first(av), total_tax = sum(final_tax)) %>%
+    group_by(year) %>%
+    summarize(med_av = median(av), med_bill = median(total_tax)) %>%
+    select(year, med_av, med_bill) %>%
+    ungroup()
+}) %>%
+  mutate(tbc_idx = med_bill / med_bill[year == 2006] * 100) %>%
+  select(year, tbc_idx) %>%
+  pivot_longer(
+    cols = ends_with("idx"),
+    values_to = "value",
+    names_to = "type"
+  )
+t_cntr_bills_summ_plot <- bind_rows(t_bills_summ, t_cntr_bills_summ) %>%
+  ggplot() +
+  geom_hline(yintercept = 100, alpha = 0.5) +
+  geom_vline(
+    xintercept = seq(2006, 2021, 3),
+    linetype = "dotted",
+    alpha = 0.5
+  ) +
+  geom_line(
+    aes(x = year, y = value, color = type, linetype = type),
+    linewidth = 1.1
+  ) +
+  scale_x_continuous(n.breaks = 9) +
+  scale_color_brewer(
+    name = "",
+    palette = "Set2",
+    labels = c(
+      "Assessed Values",
+      "Total Tax Bills",
+      "Counterfactual Total Tax Bills (Levies Frozen to 2006)"
+    )
+  ) +
+  scale_linetype_manual(
+    name = "",
+    values = c(
+      "av_idx" = "solid",
+      "tb_idx" = "solid",
+      "tbc_idx" = "dashed"
+    ),
+    labels = c(
+      "Assessed Values",
+      "Total Tax Bills",
+      "Counterfactual Total Tax Bills (Levies Frozen to 2006)"
+    )
+  ) +
+  guides(color = guide_legend(ncol = 2, byrow = TRUE)) +
+  labs(
+    x = "Year", y = "Median Value, Indexed to 2006",
+    caption = "Dotted lines represent reassessment years"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.title = element_text(size = 13),
+    axis.title.x = element_text(margin = margin(t = 6)),
+    axis.title.y = element_text(margin = margin(r = 6)),
+    axis.text = element_text(size = 11),
+    strip.text = element_text(size = 16),
+    strip.background = element_rect(fill = "#c9c9c9"),
+    legend.title = element_text(size = 14),
+    legend.key.size = unit(24, "points"),
+    legend.text = element_text(size = 12),
+    legend.position = "bottom"
+  )
+t_cntr_bills_summ_plot
+
+```
+
+# Oak Park Replication Numbers
+
+## Base Information
+
+"Property tax exemptions are savings that lower a homeowner’s property tax bill. They work by reducing or freezing the taxable value (Equalized Assessed Value, or EAV) of a home. For example, the most common exemption, the Homeowner Exemption, reduces EAV by $10,000.
+
+Once the exemption EAV has been subtracted from the property’s EAV, the final EAV is multiplied by the local tax rate to get the final property tax bill. Since local tax rates can vary significantly by area, the actual effective value of each exemption likewise varies geographically.
+
+The worth of an exemption can also be calculated directly by multiplying the local tax rate by the exemption amount. In the example bill below (PIN = 25-32-114-005-0000), the local tax rate of 18.898% is multiplied by the Homeowner Exemption flat amount of $10,000, yielding an exemption amount of $1889.80."
+ ^^ Copy and pasted from a gitlab vignette 
+
+
+Levy = Extension
+
+```{r get-oakpark-pins}
+base_url <- "https://datacatalog.cookcountyil.gov/resource/tx2p-k2g9.json"
+
+# Grab all PINs in Oak Park in 202`
+oak_pins <- GET(
+  base_url,
+  query = list(
+    year = 2021,
+    property_city = "OAK PARK",
+    `$select` = paste0(c("pin", "class","tax_code"),
+   collapse = ","),   
+   #`$select` =  "pin",
+    `$limit` = 500000L
+  )
+)
+
+# change data type to characters
+oak_pins2 <- fromJSON(rawToChar(oak_pins$content))$pin
+
+oakpark_data <- tax_bill(2021, oak_pins2, simplify = FALSE)
+
+#263,945 rows, 25 columns. 
+oakpark_data # look at what  we created
+
+```
+
+```{r residential-code}
+###Create new variable for residential and non-residential###
+
+# 1 for residential, 0 for nonresidential
+oakpark_data <- oakpark_data %>% 
+  mutate(residential = ifelse(between(class, 200, 399),1,0)) %>%
+  mutate(
+major_class = substr(class, 1, 1),
+major_class_fct = recode_factor(
+major_class,
+"2" = "2 - Residential",
+"3" = "3 & 5 - Commercial",
+"5" = "3 & 5 - Commercial")
+)
+
+
+```
+
+### Composite Tax Rates & Taxing Agencies
+
+```{r}
+# Base informatipn
+composite_tax_rates <- oakpark_data %>% 
+  group_by(agency_name, agency_num, agency_tax_rate) %>% 
+  summarize(eav = sum(eav),
+        #    final_tax = sum(final_tax), 
+        # final tax only exists if simplify = TRUE in that tax_bill() command.
+            final_tax_to_dist = sum(final_tax_to_dist),
+            final_tax_to_tif = sum(final_tax_to_tif),
+            tax_amt_exe = sum(tax_amt_exe),
+            tax_amt_pre_exe = sum(tax_amt_pre_exe),
+            tax_amt_post_exe = sum(tax_amt_post_exe)
+            ) %>%
+  arrange(agency_num) %>%
+  mutate(weighted_tax_rate = agency_tax_rate*eav) %>% 
+  ungroup() %>%
+  mutate(composite_tax_rate = sum(weighted_tax_rate)/max(eav) ) 
+composite_tax_rates
+
+composite_tax_rates %>%
+    mutate(`Tax Rate` = round(agency_tax_rate, digits = 6)) %>%
+select(agency_name, agency_name, eav, `Tax Rate`, weighted_tax_rate,composite_tax_rate)
+
+composite_tax_rates
+
+oakpark_data_simplified <- tax_bill(2021, oak_pins2, simplify = TRUE)
+
+oakpark_data_simplified %>%
+mutate(
+major_class = substr(class, 1, 1),
+major_class_fct = recode_factor(
+major_class,
+"1" = "1 - Vacant",
+"2" = "2 - Residential",
+"3" = "3 - Multifamily",
+"4" = "4 - Non-profit",
+"5" = "5 - Commercial & Industrial",
+"6" = "6 - Industrial",
+"7" = "7 - Commercial",
+"9" = "9 - Multifamily"
+)
+) %>%
+group_by(major_class_fct) %>%
+#summarize(exemp = sum(exe_total))
+#  group_by(major_class_code) %>% 
+  summarize(eav = sum(eav),
+            final_tax = sum(final_tax)) 
+        # final tax only exists if simplify = TRUE in that tax_bill() command.
+```
+
+
+
+### Exemptions by Type
+
+Use lookup_pin() to find variables associated with each pin. (e.g. pin class, exemptions)
+
+
+Total Values:
+```{r}
+
+# final tax variable doesn't exist if simply=false
+#oakpark_data <- tax_bill(2021, oak_pins2, simplify = TRUE)
+
+# group and summarize the data
+# agency_type_sum <- oakpark_data %>%
+#   group_by(year, agency_minor_type) %>%
+#   summarize(final_tax = sum(final_tax)) %>%
+#   mutate(
+#     agency_minor_type = factor(
+#       agency_minor_type,
+#       levels = c(
+#         "TIF", "BOND", "COOK", "LIBRARY",
+#         "MUNI", "PARK", "SCHOOL", "WATER"
+#       )
+#     )
+#   )
+# 
+# agency_type_sum
+
+### Matches Drucker numbers for Oak Park exemptions by type!! ### 
+
+
+#Must use the character form of pins for the geographic area
+
+pin_data <- lookup_pin(2021, oak_pins2)
+
+exemptions <- pin_data %>% 
+  summarize(
+  exe_homeowner = sum(exe_homeowner),
+  exe_senior = sum(exe_senior),
+  exe_freeze = sum(exe_freeze),
+  exe_longtime_homeowner = sum(exe_longtime_homeowner),
+  exe_disabled = sum(exe_disabled),
+  exe_vet_returning = sum(exe_vet_returning),
+  exe_vet_dis = sum(exe_vet_dis_lt50+exe_vet_dis_50_69+exe_vet_dis_ge70),
+  exe_abate = sum(exe_abate)
+  
+) %>%
+  mutate(TOTAL = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+                       exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate))  %>% 
+  pivot_longer(cols = exe_homeowner:TOTAL, 
+               values_to = "exemptions", 
+               names_to = "exemption_type")
+
+exemptions
+
+```
+
+> Comment from JD: Eventually we'll want to be able to change this parameter, as well as complicate it - change some exemptions, not others. Would that be done in the R code or can it be through user entry at the time of analysis?
+
+Above chunk matches Drucker's excel numbers for Composite Tax Rates tab for Oak Park perfectly. Yay. 
+
+> Does not include Taxing Agencies with values of zero! Excel version has 31 rows for Oak Park, this has 23. 
+
+#### Merging TIFs and Exemptions
+
+agency dataframe has total extensions (aka levy) amount for each taxing agency
+
+```{r}
+tax_code <- lookup_tax_code(2021, oak_pins2)
+agency <- lookup_agency(2021, tax_code)
+agency 
+
+#oak_pins2 <- fromJSON(rawToChar(oak_pins$content))$pin
+
+#oak_pins2 %>% group_by(pin) %>% distinct()
+
+tifs <- lookup_tif(2021, tax_code)
+tifs
+
+# kept getting zero rows.... but oak park doesn't have tifs.
+# So it is working correctly.
+
+# would do EAV by class - amount in TIF like JD in excel
+```
+
+table above has 
+
+
+### Property Classes
+```{r}
+class_dict$class_code <- as.character(class_dict$class_code)
+
+oakpark_data <- left_join(oakpark_data, class_dict, by=c("class" = "class_code"))
+
+oakpark_data %>% 
+  group_by(pin, major_class_code) %>% 
+  summarize(eav=sum(eav)) %>% 
+  arrange(major_class_code) %>%
+  group_by(major_class_code) %>% 
+  summarize(eav=sum(eav)) %>% 
+  arrange(major_class_code) %>%
+  mutate(TOTAL = sum(eav))
+```
+
+
+## Simulations? 
+
+tax_bill() defaults to historic data that exists in the database. 
+
+Simulations, or counterfactuals, are done by changing the assumptions that go into the tax_bill calculations (which were historic values by default)
+
+
+
+Uses data.table syntax because it’s much faster than dplyr when working with large data. Note that PTAXSIM functions always output a data.table with keys.
+
+
+```{r eval=FALSE}
+# use the lookup_pin() function to recover the total EAV of exemptions for each PIN.
+## this is directly from one of their vignettes. 
+## have not edited or played around with this yet. 
+t_years <- 2021
+
+# tax bills with exemptions
+t_bills_w_exe <- tax_bill(t_years, oak_pins2)[, stage := "With exemptions"]
+
+# tax bills without exemptions
+t_pin_dt_no_exe <- lookup_pin(t_years, oak_pins2)
+
+
+t_pin_dt_no_exe[, tax_code := lookup_tax_code(year, pin)]
+
+exe_cols <- names(t_pin_dt_no_exe)[startsWith(names(t_pin_dt_no_exe), "exe_")]
+t_tc_sum_no_exe <- t_pin_dt_no_exe[,
+  .(exe_total = sum(rowSums(.SD))),
+  .SDcols = exe_cols,
+  by = .(year, tax_code)
+]
+
+
+t_agency_dt_no_exe <- lookup_agency(t_years, t_pin_dt_no_exe$tax_code)
+t_agency_dt_no_exe[
+  t_tc_sum_no_exe,
+  on = .(year, tax_code),
+  agency_total_eav := agency_total_eav + exe_total
+]
+
+t_pin_dt_no_exe[, (exe_cols) := 0][, c("tax_code") := NULL]
+
+## recalculate tax bills without exemptions and with updated tax base for each district
+t_bills_no_exe <- tax_bill(
+  year_vec = t_years,
+  pin_vec = oak_pins2,
+  agency_dt = t_agency_dt_no_exe,
+  pin_dt = t_pin_dt_no_exe
+)[
+  , stage := "No exemptions"
+]
+
+# Little function to get the statistical mode
+Mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+t_no_exe_summ <- rbind(t_bills_w_exe, t_bills_no_exe)[
+  , class := Mode(substr(class, 1, 1)),
+  by = pin
+][
+  class %in% c("2", "3", "5"),
+][
+  , class := ifelse(class == "2", "Residential", "Commercial")
+][
+  , .(total_bill = sum(final_tax)),
+  by = .(year, pin, class, stage)
+][
+  , .(avg_bill = mean(total_bill)),
+  by = .(year, class, stage)
+][
+  , idx_bill := (avg_bill / avg_bill[year == 2006]) * 100,
+  by = .(class, stage)
+]
+t_no_exe_summ
+```
+
+
+
+
+
+
+
+## ptaxsim() commands
+
+
+Lookup tax data with **lookup_agency(), lookup_pin(), lookup_tif()**
+
+- Lookup data sets required to calculate property tax bills and hypotheticals
+
+
+**lookup_tax_code()**: Lookup values required to calculate property tax bills  
+- tax_codes <- lookup_tax_code(2018:2021, "25321140050000")
+
+**lookup_agency():** Lookup tax agency (CPS, Cook County, forest preserve) total equalized assessed values. Such values are known as the "base" and are used to calculate per agency tax rates. Also returns each agency's levy amount. Returns a data.table with 1 row for each agency associated with the input tax code and year.
+
+- lookup_agency(years_I_want, tax_code, conn = ptaxsim_db_conn)
+
+
+
+**lookup_pin():** Lookup the equalized assessed value and exemptions for a specific PIN and year. Returns a data.table with AV, EAV, and a column specifying the EAV value of each received exemption.
+
+lookup_pin(
+  year,
+  pin,
+  stage = "clerk",
+  eq_version = "final",
+  conn = ptaxsim_db_conn
+)
+
+
+
+**lookup_tif():** Lookup any TIFs that apply to a given tax code and year. Returns a data.table with only 1 row per tax code and year, or 0 rows if the tax code is not part of a TIF.
+
+- lookup_tif(year, tax_code, conn = ptaxsim_db_conn)
+
+
+
+
+**tax_bill()**: Calculate an approximate Cook County property tax bill
+- tax_code_vec is an arguement within tax_bill(). A tax code is a 5 digit number that identifies the unique overlap of taxing districtsfor a given pin and year. 
+
+# Loops
+
+```{r eval=FALSE}
+output <- vector("double", ncol(df))  # 1. output
+for (i in seq_along(df)) {            # 2. sequence
+  output[[i]] <- median(df[[i]])      # 3. body
+}
+output
+#> [1] -0.24576245 -0.28730721 -0.05669771  0.14426335
+```
+
+
