@@ -1,0 +1,779 @@
+---
+title: "All Muni Calculations"
+author: "Alea Wilbur"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: yes
+    df_print: paged
+    code_folding: hide
+---
+
+```{r setup, message = FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, collapse = TRUE)
+
+
+library(tidyverse)
+library(DBI)
+library(data.table)
+library(ggspatial)
+library(gstat)
+library(here)
+library(httr)
+library(jsonlite)
+library(ptaxsim)
+library(sf)
+library(stars)
+library(glue)
+
+
+#remotes::install_gitlab("ccao-data-science---modeling/packages/ptaxsim")
+
+#renv::install("gitlab::ccao-data-science---modeling/packages/ptaxsim")
+
+
+# Create the DB connection with the default name expected by PTAXSIM functions
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
+
+# has all potential property classes for pins
+# downloaded from CCAO gitlab website
+## I used this to merge additional information to the pins and class data later on.
+class_dict <- read_csv("class_dict.csv")
+
+options(digits=4, scipen = 999)
+
+```
+
+[Example from gitlab site](https://ccao-data-science---modeling.gitlab.io/packages/ptaxsim/articles/reassessment.html#chicago-ward)
+
+Cook County Assessors Data description page and other [datasets](https://datacatalog.cookcountyil.gov/stories/s/i22y-9sd2).
+
+# Agency Data
+
+```{r all-muni-names}
+# has EAV values, extensions by agency_num
+agency_dt <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT *
+  FROM agency
+  WHERE year = 2021
+  "
+)
+
+
+# grabs all unique muni names. Would be needed if creating a loop for calculating all munis
+# municipality names and their agency number
+muni_agency_names <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT DISTINCT agency_num, agency_name, minor_type
+  FROM agency_info
+  WHERE minor_type = 'MUNI'
+  "
+)
+
+muni_agency_names <- muni_agency_names %>% 
+  mutate(first6 = str_sub(agency_num,1,6),
+         first5 = str_sub(agency_num,1,5)) %>% 
+  select(-minor_type)
+
+# Remember, Cicero only exists as a township, so bring that in later.
+# grabs all townships (there are 30)
+# all_townships <- DBI::dbGetQuery(
+#   ptaxsim_db_conn,
+#   "SELECT DISTINCT agency_num, agency_name, major_type, minor_type
+#   FROM agency_info
+#   WHERE minor_type = 'TOWNSHIP'
+#   "
+# )
+
+
+# all agency names, numbers, and types
+# includes TIF and non-TIF agencies
+all_taxing_agencies <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT agency_num, agency_name, major_type, minor_type
+  FROM agency_info
+  "
+)
+
+
+all_taxing_agencies <- all_taxing_agencies %>%
+  mutate(first6 = str_sub(agency_num,1,6),
+         first5 = str_sub(agency_num,1,5)) 
+
+
+all_taxing_agencies <- all_taxing_agencies %>% 
+  left_join(muni_agency_names, by = c("first5", "first6")) %>% 
+  rename(muni_name =  agency_name.y,
+        muni_num = agency_num.y,
+        agency_name = agency_name.x,
+        agency_num = agency_num.x)
+
+
+
+# add taxing agency names and agency type to data table that has eav and extension values
+agency_data <- right_join(agency_dt, all_taxing_agencies) %>% 
+  select(-c(cty_dupage_eav:cty_livingston_eav, lim_numerator, lim_denominator)) %>% 
+  arrange(first5, agency_num)
+
+
+
+agency_data
+
+write_csv(agency_data, "all_agenciesJune12.csv")
+
+
+```
+
+```{r}
+
+
+# muni_agency_nums<- all_taxing_agencies %>% 
+#   filter(minor_type %in% c("MUNI")) %>%
+#   select(agency_num)
+
+# muni_tax_codes <- DBI::dbGetQuery(
+#   ptaxsim_db_conn, 
+#   glue_sql("
+#   SELECT tax_code_num
+#   FROM tax_code
+#   WHERE agency_num IN ({muni_agency_nums$agency_num*})
+#   AND year = 2021
+#   ",
+#   .con = ptaxsim_db_conn
+#   )
+# )
+# 
+# muni_pins <- DBI::dbGetQuery(
+#   ptaxsim_db_conn,
+#   glue_sql(
+#   "SELECT DISTINCT pin, class
+#   FROM pin
+#   WHERE tax_code_num IN ({muni_tax_codes$tax_code_num*})
+#   AND year = 2021
+#   ",
+#   .con = ptaxsim_db_conn
+# ))
+```
+
+## Exemptions
+
+```{r}
+# Prepare query-------
+query <- paste("select * from pin where pin in (", muni_agency_nums, ")")
+
+# Load each file and cleanup columns, then combine into single df
+exemptions <- map_dfr(muni_agency_nums$agency_num, function(file) {
+
+sub_query <- glue_sql("
+  SELECT pin
+  FROM {`pin`}
+  WHERE {`agency`}.agency_num LIKE {muni_agency_names$agency.num}
+  ", .con = ptaxsim_db_conn)
+
+glue_sql("
+  SELECT s.{``}
+  FROM ({sub_query}) AS s
+  ", .con = con)
+
+
+
+muni_tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT tax_code_num
+  FROM tax_code
+  WHERE agency_num IN ({muni_agency_nums$agency_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+)
+  
+  
+muni_pins <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql(
+  "SELECT DISTINCT pin, class
+  FROM pin
+  WHERE tax_code_num IN ({muni_tax_codes$tax_code_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+))
+  
+  bills <- tax_bill(2021, muni_pins$pin, simplify = FALSE)
+
+# all taxpbills for PINs in 2021 in the municipality
+# does include 
+bills 
+
+# get class info with pin expemption data
+class_dict$class_code <- as.character(class_dict$class_code)
+
+bills <- left_join(bills, class_dict, 
+                       by=c("class" = "class_code")) %>% 
+  # create variable for if tax revenue went toward TIF.
+  mutate(in_tif = ifelse(final_tax_to_tif > 0, 1, 0))
+})
+
+```
+
+
+## TIF Agencies & Tax Codes
+
+
+
+```{r tif-datatables}
+# Agency number and agency name for all TIFs
+TIF_agencies <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT DISTINCT agency_num, agency_name, major_type, minor_type
+  FROM agency_info
+  WHERE minor_type = 'TIF'
+  "
+)
+
+
+# Some TIFs will have more than 1 agency number. This happens when TIFs are
+# expanded or when another TIF is created on top of an existing one. The
+# multiple agency_num records still aggregate up to one "main" TIF record (in
+# the agency_info and tif tables). This crosswalk is used to determine which
+# TIFs aggregate to which agency_nums. See issue #39 for more information
+
+# has tifs and year they existed.
+# we want TIFS that existed in the year we are looking at
+tif_crosswalk_dt <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT *
+  FROM tif_crosswalk
+  WHERE year = 2021
+  "
+)
+
+
+# results: 2021 030210628	030210540
+# this TIF (030210628) aggregates up to agency 030210540
+tif_crosswalk_dt %>% filter(agency_num_dist != agency_num_final)
+```
+
+> have not addressed the tif agency number potential problems yet
+
+```{r tif-history}
+
+tif_history <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT *
+  FROM tif
+  WHERE year = 2021
+  "
+)
+
+# Tax Codes that are in TIFS
+
+# tif_tax_codes <- DBI::dbGetQuery(
+#   ptaxsim_db_conn, 
+#   glue_sql("
+#   SELECT DISTINCT tax_code_num
+#   FROM tax_code
+#   WHERE agency_num IN ({TIFs$agency_num*})
+#   ",
+#   .con = ptaxsim_db_conn
+#   )
+# )
+
+# # all tax codes for all munis. Large
+# all_tax_codes <- DBI::dbGetQuery(
+#   ptaxsim_db_conn, 
+#   glue_sql("
+#   SELECT DISTINCT * 
+#   FROM tax_code
+#   WHERE year = 2021
+#   ",
+#   .con = ptaxsim_db_conn
+#   )
+# )
+
+# #85 unique tax codes and the number of times they appear:
+# unique_tif_taxcodes <- tif_tax_codes %>% group_by(tax_code_num ) %>% summarize(n=n())
+
+
+# tif_pins <- DBI::dbGetQuery(
+#   ptaxsim_db_conn,
+#   glue_sql(
+#   "SELECT DISTINCT pin, class
+#   FROM pin
+#   WHERE tax_code_num IN ({unique_tif_taxcodes$tax_code_num*})
+#   ",
+#   .con = ptaxsim_db_conn
+# ))
+# 
+# # 4978 distinct pins that are in TIFs.
+# unique_tif_pins <- tif_pins %>% distinct(pin) %>% count()
+
+
+```
+
+```{r munitifs-tiftaxcodes}
+# Determining the increment / TIF stuff
+tif_agency_nums <- all_taxing_agencies %>% 
+  filter(minor_type == "TIF") %>% select(agency_num)
+
+unique_tif_taxcodes <- DBI::dbGetQuery(
+  ptaxsim_db_conn, 
+  glue_sql("
+  SELECT DISTINCT tax_code_num
+  FROM tax_code
+  WHERE agency_num IN ({tif_agency_nums$agency_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+)
+```
+
+## Tax Codes
+
+57,000+ tax_codes with their tax_code rates exist during 2021. Also has agency_number and agency_rate 
+
+```{r }
+# all tax codes for all municipalities in 2021
+# Over 57,000 tax codes with agency_rate and tax_code_rate. Over 57,000
+tax_code_dt <- DBI::dbGetQuery(
+  ptaxsim_db_conn, 
+  glue_sql("
+  SELECT * 
+  FROM tax_code
+  WHERE year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+)
+
+# create dummy variable for tax_codes that in TIFs
+tax_code_dt <- tax_code_dt %>% 
+  mutate(in_TIF = ifelse(tax_code_num %in% unique_tif_taxcodes$tax_code_num, 1,0) )
+
+
+
+table(tax_code_dt$in_TIF)
+```
+
+In 2021, there are 34,266 tax codes not in a TIF and 23,279 tax codes that are within TIF areas. 
+
+To get all pins that are in a TIF, run the code below. It is currently commented out so that it doesn't run because it is a BIG data table and I don't know if I need it yet. 
+
+
+```{r tif-pins}
+
+# if I wanted all pins that are within a TIF, I would run this.
+
+# unqiue_tif_pins <- DBI::dbGetQuery(
+#   ptaxsim_db_conn,
+#   glue_sql(
+#   "SELECT DISTINCT pin, class
+#   FROM pin
+#   WHERE tax_code_num IN ({unique_tif_taxcodes$tax_code_num*})
+#   AND year = 2021
+#   ",
+#   .con = ptaxsim_db_conn
+# ))
+
+
+```
+
+## TIF EAV and Revenue
+
+```{r tif-eav}
+# TIF distributions will include all the unique tax codes that make up
+# a TIF
+
+# has eav values for each tax code
+# has ALL years
+
+# tif_distrib_allyears <- DBI::dbGetQuery(
+#   ptaxsim_db_conn, 
+#   glue_sql("
+#   SELECT *
+#   FROM tif_distribution
+#   WHERE agency_num IN ({tif_agency_nums$agency_num*})
+#   ",
+#   .con = ptaxsim_db_conn
+#   )
+# )
+
+
+tif_distrib <- DBI::dbGetQuery(
+  ptaxsim_db_conn, 
+  glue_sql("
+  SELECT *
+  FROM tif_distribution
+  WHERE agency_num IN ({tif_agency_nums$agency_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+)
+
+
+tif_distrib <- tif_distrib %>% 
+  mutate(tif_increment = tax_code_eav - tax_code_frozen_eav,
+         total_taxcode_revenue = tax_code_eav*tax_code_rate/100,
+         district_revenue_withinTIF = tax_code_frozen_eav*tax_code_rate/100,
+         # checking to see if equal to tax_code_recenue
+         # same but has the negative revenue values instead of zeros.
+         tif_revenue_withinTIF = tif_increment*tax_code_rate/100)
+
+tif_distrib
+
+tif_distrib %>% select(tax_code_num, tax_code_rate, tax_code_revenue, tif_revenue_withinTIF, )
+
+# # another way to get all pins within a tif:
+# tif_pins_vec <- DBI::dbGetQuery(
+#   ptaxsim_db_conn,
+#   glue::glue_sql("
+#     SELECT DISTINCT pin
+#     FROM pin
+#     WHERE tax_code_num IN ({unique(tif_distrib$tax_code_num)*})
+#     AND year = 2021
+#   ",
+#     .con = ptaxsim_db_conn
+#   )
+# ) %>%
+#   pull(pin)
+```
+
+The tax_code_revenue returned in this table represents the TIF revenue collected within an agency If the tax_code's EAV decreased from its frozen value, then the tax_code_revenue is 0 instead of going negative.
+
+`tif_distrib` has the frozen eav for tax codes that are in tifs, the total revenue for the tax code, the revenue that went to the municipality, and the revenue that went to the tif. 
+
+
+```{r}
+class_dict$class_code <- as.character(class_dict$class_code)
+
+# tax_code values for areas in Tif summed to agency level. 
+# 
+all_taxing_agencies<- tif_distrib %>% group_by(agency_num) %>% 
+  summarize(tax_code_revenue_inTIFs = sum(tax_code_revenue),
+            sum_eav = sum(tax_code_eav),
+            frozen_eav = sum(tax_code_frozen_eav)) %>% 
+  mutate(in_TIF="1") %>%
+  right_join(all_taxing_agencies) %>%
+  mutate(tax_code_revenue_inTIFs = ifelse(is.na(tax_code_revenue_inTIFs)| tax_code_revenue_inTIFs == "NA", 0, tax_code_revenue_inTIFs),
+       in_TIF= ifelse(is.na(in_TIF)| in_TIF == "NA", 0,in_TIF) 
+)
+
+```
+
+
+
+> EAV from tax_bill() returned is value before exemptions are removed. Kind of like an unaltered EAV or "true" EAV.
+
+> EAV from `agency` data table is after exemptions. 
+
+```{r}
+
+tax_code_dt <- left_join(tax_code_dt, tif_distrib)
+
+agency_data <- tax_code_dt %>% 
+  group_by(agency_num, agency_rate) %>% 
+  summarize(agency_eav_after_exemptions = sum(tax_code_eav),
+            agency_frozen_eav = sum(tax_code_frozen_eav),
+            total_taxcode_revenue = sum(total_taxcode_revenue),
+            district_revenue_withinTIF = sum(district_revenue_withinTIF),
+            tif_revenue_withinTIF=sum(tax_code_revenue),
+            tif_increment = sum(tif_increment)) %>%
+  right_join(agency_data)
+
+#agency_data <- tax_code_dt %>% select(agency_num,agency_rate) %>% distinct() %>%
+#  right_join(agency_data)
+```
+
+
+```{r eval=FALSE}
+area_pins2 <- as.character(muni_pins$pin)
+
+#207,565 taxbills/observations for Cicero for 2021
+area_data <- tax_bill(2021, area_pins2, simplify = FALSE)
+
+# get class info with pin exemption data
+class_dict$class_code <- as.character(class_dict$class_code)
+
+area_data <- left_join(area_data, class_dict, by=c("class" = "class_code")) %>% 
+  mutate(in_tif = ifelse(final_tax_to_tif > 0, 1, 0),
+         DecreasedTaxBillAmount = tax_amt_pre_exe-tax_amt_post_exe, 
+         # lost revenue from exemptions decreasing EAV taxed
+         )
+
+area_data
+#setkey(area_data, year, tax_code, agency_num)
+
+# 145 unique year-taxcode-agencynum combinatins. 
+# send this through other functions
+#unique_values<-area_data %>% group_by(year, tax_code, agency_num) %>% summarize()
+
+#unique_values
+
+## values are after exemptions have been subtracted! 
+taxing_agencies <- area_data %>% 
+  group_by(agency_name, agency_num, agency_tax_rate) %>% 
+  summarize(eav = sum(eav),
+        #    final_tax = sum(final_tax), 
+        # final tax only exists if simplify = TRUE in that tax_bill() command.
+            final_tax_to_dist = sum(final_tax_to_dist),   #revenue to district
+            final_tax_to_tif = sum(final_tax_to_tif),     # revenue to TIF
+            tax_amt_exe = sum(tax_amt_exe),     # reduction in tax bill due to exemptions
+            tax_amt_pre_exe = sum(tax_amt_pre_exe), #tax bill before exemptions
+            tax_amt_post_exe = sum(tax_amt_post_exe), # tax bills after exemptions are subtracted from EAVs
+        agency_tax_rate = mean(agency_tax_rate),
+        agency_total_ext = mean(agency_total_ext)
+            ) %>%
+  arrange(agency_num) %>%
+  mutate(weighted_tax_rate = agency_tax_rate*eav) %>% 
+  ungroup() %>%
+  mutate(composite_tax_rate = sum(weighted_tax_rate)/max(eav) )
+
+taxing_agencies
+
+# saves composite tax rate as its own object because I might plug it in with the TIF stuff later.
+composite_tax_rate <- first(taxing_agencies$composite_tax_rate)
+
+
+## Exact match (besides column names) with JD's values for Taxing Agencies. 
+taxing_agencies %>%
+    mutate(`Tax Rate` = round(agency_tax_rate, digits = 6),
+           EAVbeforeExemptions = scales::comma(eav)) %>%
+select(agency_name, agency_name, EAVbeforeExemptions, `Tax Rate`, weighted_tax_rate, composite_tax_rate)
+```
+
+## Taxcodes: Combining TIF and nonTIF data
+
+```{r}
+# class_eav <- area_data %>% 
+#   group_by(           
+#     major_class_code) %>% 
+#   summarize(
+#             final_tax_to_dist = sum(final_tax_to_dist),
+#             final_tax_to_tif = sum(final_tax_to_tif),
+#             tax_amt_exe = sum(tax_amt_exe),
+#             tax_amt_pre_exe = sum(tax_amt_pre_exe),
+#             tax_amt_post_exe = sum(tax_amt_post_exe),
+#             ) %>%
+# 
+#  # arrange(agency_num) %>%
+#  # mutate(weighted_tax_rate = agency_tax_rate*eav) %>% 
+#  # ungroup() %>%
+#       mutate(total_revenue = final_tax_to_dist+final_tax_to_tif,
+#              dist_tax_share = final_tax_to_dist/sum(final_tax_to_dist))
+
+
+
+tax_code_dt <-tax_code_dt %>%
+  mutate(first_2digits = str_sub(agency_num,1,2),
+                            last_2digits = str_sub(agency_num,8,9))
+
+tax_code_dt
+# all_tax_codes %>% group_by(agency_name, minor_type) %>%
+#   summarize(tax_code_eav = sum(tax_code_eav, na.rm=TRUE),
+#             district_revenue_withinTIF = sum(district_revenue_withinTIF,na.rm = TRUE),
+#             tif_revenue_withinTIF = sum(tif_revenue_withinTIF, na.rm=TRUE),
+#             total_taxcode_revenue = sum(total_taxcode_revenue, na.rm = TRUE),
+#             
+#             tax_code_frozen_eav = sum(tax_code_frozen_eav, na.rm = TRUE))
+# nicer_table <- all_tax_codes %>%
+# 
+#   mutate(#EAV = scales::dollar(eav),
+#                             "Total Tax Revenue(District+TIF)" = scales::dollar(max(total_taxcode_revenue)),
+#                             "District Revenue" = scales::dollar(max(district_revenue_withinTIF)),
+#                             "TIF Revenue" = scales::dollar(max(tif_revenue_withinTIF)),
+#                             
+#                          #   "Lost Revenue from Exempt." = #scales::dollar(tax_amt_exe), # same as tax_amt_pre_exe-tax_amt_post_exe
+#                             #"District Tax Share" = scales::percent(dist_tax_share),
+#                          #   "EAV in TIF (Increment)" = final_tax_to_tif/composite_tax_rate,
+#                             # TIF EAV matches JD almost perfectly, Commercial 5A does not match. 
+#                           #  "EAV outside TIF" = final_tax_to_dist/composite_tax_rate
+#                             ) 
+
+#%>% #mutate(`EAV in and out of TIFs` = `EAV in TIF (Increment)`+`EAV outside TIF`, EAVbeforeExemptions = `EAV in and out of TIFs`+Exemptions)
+```
+
+```{r eval=FALSE}
+
+nicer_table <- class_eav %>% left_join(exemptions_by_class)%>%
+  mutate(#EAV = scales::dollar(eav),
+    Exemptions=TOTAL,
+                            "Total Tax Revenue(District+TIF)" = scales::dollar(tax_amt_post_exe),
+                            "District Revenue" = scales::dollar(final_tax_to_dist),
+                            "TIF Revenue" = scales::dollar(final_tax_to_tif),
+                            "Lost Revenue from Exempt." = scales::dollar(tax_amt_exe), # same as tax_amt_pre_exe-tax_amt_post_exe
+                            "District Tax Share" = scales::percent(dist_tax_share),
+                            "EAV in TIF (Increment)" = final_tax_to_tif/composite_tax_rate,
+                            # TIF EAV matches JD almost perfectly, Commercial 5A does not match. 
+                            "EAV outside TIF" = final_tax_to_dist/composite_tax_rate
+                            ) %>% 
+  mutate(`EAV in and out of TIFs` = `EAV in TIF (Increment)`+`EAV outside TIF`,
+             EAVbeforeExemptions = `EAV in and out of TIFs`+Exemptions) %>%
+  select(-c(tax_amt_post_exe,total_revenue, dist_tax_share, final_tax_to_dist:tax_amt_pre_exe,exe_homeowner:TOTAL)) 
+
+nicer_table
+
+#class_exemptions <- full_join(exemptions_by_class,  class_eav, by = "major_class_code") %>%
+#  select(major_class_code, major_class_type, eav, final_tax_to_dist, tax_share)
+#class_exemptions
+```
+
+> What is this ratio supposed to be? Exemptions / ????? Total EAV, EAV the district taxes, or what
+
+```{r eval=FALSE}
+total_exemptions/sum(nicer_table$TaxableBase)
+```
+
+```{r eval=FALSE}
+area_data %>% 
+  summarize(
+    final_tax_to_dist = sum(final_tax_to_dist),
+    final_tax_to_tif = sum(final_tax_to_tif),
+    tax_amt_exe = sum(tax_amt_exe),
+    tax_amt_pre_exe = sum(tax_amt_pre_exe),
+    tax_amt_post_exe = sum(tax_amt_post_exe),
+  ) %>%
+  mutate(total_revenue = final_tax_to_dist+final_tax_to_tif,
+         tax_share = total_revenue / sum(total_revenue),
+         dist_tax_share = final_tax_to_dist/sum(final_tax_to_dist)) %>%
+  mutate(
+    "Total Tax Revenue(District+TIF)" = scales::dollar(tax_amt_post_exe),
+    "District Revenue" = scales::dollar(final_tax_to_dist),
+    "TIF Revenue" = scales::dollar(final_tax_to_tif),
+    "Lost Revenue from Exempt." = scales::dollar(tax_amt_exe), # same as tax_amt_pre_exe-tax_amt_post_exe
+    "District Tax Share" = scales::percent(dist_tax_share),
+    "EAV in TIF" = final_tax_to_tif/composite_tax_rate,
+    # TIF EAV matches JD almost perfectly, Commercial 5A does not match. 
+    "EAV outside TIF" = final_tax_to_dist/composite_tax_rate,
+    TotalEAVafterExemptions = `EAV outside TIF`+total_exemptions$TotalExemptions) %>% 
+  mutate(EAVbeforeExemptions = `EAV in TIF`+ `EAV outside TIF` + total_exemptions$TotalExemptions) %>%
+  select(-c(tax_amt_post_exe:tax_share, dist_tax_share, final_tax_to_dist:tax_amt_pre_exe))
+```
+
+TIF information comes from Cook County Clerk's Office.
+
+`tif_share` = the tax_code_distribution_pct / 100 and comes from tif_distribution table. Comes from lookup_tif() command. Calculated behind the scenes. Documentation for their process is in Gitlab R/lookup.R file
+
+Lets find TIF taxing agencies and combine them with the other taxing agencies for the geographic area:
+
+```{r}
+
+unique_tax_codes <- tax_code_dt %>% distinct(tax_code_num) %>% pull()
+
+all_agency_data <- lookup_agency(2021, unique_tax_codes) %>%
+  mutate(first_2digits = str_sub(agency_num, 1,2),
+         last_2digits = str_sub(agency_num, 8,9)) %>%
+  filter(first_2digits != "01" )
+
+
+
+muni_eav <- all_agency_data %>% 
+ # filter(last_2digits == "00" & agency_total_ext>0) %>%
+  filter(agency_num %in% muni_agency_names$agency_num) %>%
+  group_by(agency_num, agency_name, agency_major_type, agency_minor_type) %>% 
+  summarize(agency_total_eav = mean(agency_total_eav, na.rm = TRUE),
+            agency_total_ext = mean(agency_total_ext,na.rm=TRUE)) %>% 
+  left_join(tax_code_dt) %>%
+  mutate(agency_rate = mean(agency_rate, na.rm=TRUE))
+
+
+# 
+# muni_eav %>%
+#   group_by(agency_name)%>%
+#   summarize(EAV = first(agency_total_eav),
+#     total_levy = first(agency_total_ext),
+#     tax_code_eav = sum(tax_code_eav),
+#     tax_code_frozen_eav = sum(tax_code_frozen_eav),
+#     tax_code_revenue=sum(tax_code_revenue)
+#   ) 
+#   
+# all_taxing_agencies <- full_join(taxing_agencies, tif_taxing_agencies, 
+#                              #    by = c("year", "tax_code", "agency_name", "agency_num")
+#                                  ) %>% mutate(in_tif = ifelse(is.na(tif_share), 0, 1))
+```
+
+```{r eval=FALSE}
+
+all_taxing_agencies %>%
+  group_by(agency_num, agency_name, in_TIF) %>% 
+  summarize(agency_total_eav = mean(agency_total_eav),
+            tif_share = mean(tif_share),
+            agency_total_ext=mean(agency_total_ext)
+          #  ,summed_eav = sum(eav)
+            )
+
+all_taxing_agencies %>%
+  group_by(agency_num,agency_name, in_tif) %>% 
+  summarize(eav = first(agency_total_eav)) %>% 
+  pivot_wider(names_from="in_tif", values_from = "eav")
+```
+
+Need EAV of each Tax Code. Then we know the TIF eav from TIF tax_codes and other agency EAVs from Tax codes associated with other agencies. all_taxing_agencies has agency_total_eav but that includes all pin values everywhere that are included in that tax_code (So across all of cook county for Cook County's total eav)
+
+```{r eval=FALSE}
+pins_in_tifs <- left_join(taxcodes_intifs, area_data#, by = c("agency_name"="tif_agency_name")
+                          ) %>% 
+  mutate(pin_in_tif = ifelse(final_tax_to_tif > 0, 1, 0))
+
+area_data <- left_join(area_data, pins_in_tifs)
+
+pins_in_tifs %>% group_by(tif_agency_name) %>% 
+  summarize(eav = sum(eav),
+        #    final_tax = sum(final_tax), # final tax only exists if simplify = TRUE in that tax_bill() command.
+            final_tax_to_dist = sum(final_tax_to_dist),
+            final_tax_to_tif = sum(final_tax_to_tif),
+            tax_amt_exe = sum(tax_amt_exe),
+            tax_amt_pre_exe = sum(tax_amt_pre_exe),
+            tax_amt_post_exe = sum(tax_amt_post_exe),
+        agency_tax_rate = mean(agency_tax_rate)
+            ) %>%
+#  arrange(agency_num) %>%
+  mutate(weighted_tax_rate = agency_tax_rate*eav) %>% 
+  ungroup() %>%
+  mutate(composite_tax_rate = sum(weighted_tax_rate)/max(eav) )
+```
+
+agency_total_eav The total amount of EAV within the taxing district, otherwise known as the "base". This is the denominator when calculating tax rates
+
+agency_total_ext The total extension requested by the taxing district, otherwise known as the "levy". This is the amount the district needs in tax revenue and is the numerator when calculating tax rates
+
+"Changing tax_code_vec "relocates" a PIN by changing the things that are taxing it. This can be useful for counterfactual analysis. For example, if you own property within a school district and want to know what your tax bill would be just outside the district, but otherwise within the same municipality, then you can find the tax code that represents that situation and plug it into tax_bill()"
+
+```{r eval=FALSE}
+#agency <- lookup_agency(2021, tax_code)
+#agency 
+
+#oak_pins2 <- fromJSON(rawToChar(oak_pins$content))$pin
+
+#oak_pins2 %>% group_by(pin) %>% distinct()
+
+tifs <- lookup_tif(2021, tax_codes)
+tifs
+
+joined <- left_join(area_data, tifs, by = c("year", "tax_code", "agency_num", "agency_name"))
+
+
+
+joined  %>%
+  group_by(major_class_type, major_class_code) %>%
+  summarize(EAV = sum(eav),
+    Exemptions =  sum(tax_amt_exe),
+    tax_amt_pre_exe = sum(tax_amt_pre_exe),
+            tax_amt_post_exe = sum(tax_amt_post_exe),
+            tif_amount = sum(final_tax_to_tif),
+            tax_to_district = sum(final_tax_to_dist)) %>%
+  arrange(major_class_code)
+ # mutate(Tax_Amount=sum(district_amount),
+ #        TIF_Amount = sum(tif_amount))
+
+
+#area_data <- full_join(area_data, pin_data)
+area_data%>% 
+  filter(final_tax_to_tif>0) %>%
+  group_by(major_class_code)%>%
+  summarise(tax_to_tif = sum(final_tax_to_tif),)
+```
