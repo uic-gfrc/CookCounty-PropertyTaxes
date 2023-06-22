@@ -4,8 +4,10 @@ author: "Alea Wilbur"
 date: "`r Sys.Date()`"
 output:
   html_document:
+    toc: true
+    toc_float: true
     df_print: paged
-  pdf_document: default
+    code_folding: hide
 ---
 
 ```{r setup, include = FALSE, message = FALSE}
@@ -24,25 +26,20 @@ library(ptaxsim)
 library(sf)
 library(stars)
 library(glue)
-
-
-#remotes::install_gitlab("ccao-data-science---modeling/packages/ptaxsim")
-
-#renv::install("gitlab::ccao-data-science---modeling/packages/ptaxsim")
-
-
+library(lmtest)
+library(jtools)
+library(plm) #for fixed effects
+library(huxtable) # for summ() and regression output formatting
 # Create the DB connection with the default name expected by PTAXSIM functions
 ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
 
 ```
 
-```{r eval = FALSE}
-municipality_name, municipality_num, census_place_geoid
-```
+Random notes:
 
 Goal: Estimate the revenue elasticity of the property tax base.
 
-Theory: Revenue elasaticity of the tax basemight be equal to zero at least in expected value (all else being equal).
+Theory: Revenue elasticity of the tax base might be equal to zero at least in expected value (all else being equal).
 
 -   beta = dtaxlevy/dEAV\
 -   Beta = (change in tax levy)/(change in EAV)
@@ -57,17 +54,8 @@ Need:
 -   Tax Levy for every taxing body in every year
     -   Levies = tax extensions. Total dollar amount each taxing agency decides to collect from property owners in its district
 
-Progress so far:
+# Data Gathering and Cleaning
 
--   There are 1878 taxing agencies in Cook County\
--   16,354 taxing agency-year observations. Includes Levy and EAV for each taxing agency-year.
-
-Want:
-
--   \% Residential, % Commercial, etc. inside of each taxing agency?
-    -   Would need to use pins, class, and tax code, calculate the pin count (or percentage the make up) of each tax_code, then merge tax_codes to taxing agencies, and sum the count of each pin type within the taxing agency? Then could do land use percentages after pin counts are aggregated up through the taxing agency level.
-    
-## Creating samples for models
 
 ```{r all-muni-names}
 # has EAV values, extensions by agency_num
@@ -129,14 +117,12 @@ agency_data <- right_join(agency_dt, all_taxing_agencies, by = c("first6", "firs
          in_SSA = ifelse(minor_type == "SSA", 1,0),
          in_chicago = ifelse(str_detect(agency_name, "CHICAGO"),1,0)) %>%
   select(-c(cty_dupage_eav:cty_livingston_eav)) 
+
 agency_data <- agency_data %>% 
-  mutate(agency_major_id = str_c(agency_num, major_type, sep = "-"),
-         agency_minor_id = str_c(agency_name,minor_type, sep = "-"),
-         cty_cook_eav = as.numeric(cty_cook_eav), # EAV after exemptions
+  mutate(cty_cook_eav = as.numeric(cty_cook_eav), # EAV after exemptions
          total_final_levy = as.numeric(total_final_levy), # value that matches Clerk Office PDF for Levy
-        cty_cook_eav = ifelse(cty_cook_eav < 1, NA, cty_cook_eav), # Code as missing so Log() doesn't make -Inf
-        total_final_levy = ifelse(total_final_levy <1, NA, total_final_levy)       
-       ) %>%
+         cty_cook_eav = ifelse(cty_cook_eav < 1, NA, cty_cook_eav), # Code as missing so Log() doesn't make -Inf
+         total_final_levy = ifelse(total_final_levy <1, NA, total_final_levy)) %>%
   mutate(log_eav = log(cty_cook_eav), 
          log_levy = log(total_final_levy))
          
@@ -144,40 +130,111 @@ agency_data <- agency_data %>%
 
 
 
-# Homerule, no TIFs or SSAs, no Chicago, Munis only
+```{r eval=FALSE, include=FALSE}
+# loop practice
+# calculates  the mean for every variable at once
 
-Note that plm() uses the entity-demeaned OLS algorithm and does not report dummy coefficients.
+output <- vector("double", ncol(agency_data))
+names(output) <- names(agency_data)
+for (i in names(agency_data)) {
+  output[i] <- mean(agency_data[[i]], na.rm=TRUE)
+}
+output
+
+# calculates the number of observations for each variable
+output <- vector("double", ncol(agency_data))
+names(output) <- names(agency_data)
+for (i in names(agency_data)) {
+  output[i] <- n_distinct(agency_data[[i]])
+}
+output
+
+```
+
+# Creating samples for models
+
+## Homerule Munis: no TIFs or SSAs, no Chicago
+
+> Also testing different model specifications in code below (standardized coefficients, robust standard errors)
+
+- plm() uses the entity-demeaned OLS algorithm and does not report dummy coefficients.
+
+- robust has multiple options: HC0 to HC5. Default is set to "HC3 BUT Stata default is to use "HC1"
+
+[Command and package author site for summ() and table formatting](https://jtools.jacob-long.com/reference/summ.lm.html) 
+
+model = "within" is the same as creating dummies for all agencies
 
 ```{r filtering-agencies}
+
 homerule <- agency_data %>% 
-  filter(major_type == "MUNICIPALITY/TOWNSHIP" & in_SSA==0 & home_rule_ind==1 & in_chicago ==0 & (minor_type !=" TIF" & minor_type!="COOK")) %>% 
-  select(year, agency_name, agency_num, major_type, minor_type, cty_cook_eav, 
-         total_final_levy, log_eav, log_levy, total_final_rate
+  filter(major_type == "MUNICIPALITY/TOWNSHIP" & 
+           in_SSA==0 &  # Not SSA
+           home_rule_ind==1 &  # Homerule only
+           in_chicago ==0 & # Not chicago
+           (minor_type !=" TIF" & minor_type!="COOK")) %>% 
+  select(year, agency_name, agency_num, 
+         major_type, minor_type, cty_cook_eav, 
+         total_final_levy,  total_final_rate,
+         log_eav, log_levy
          ) 
+
 
 
 agencies<- pdata.frame(homerule, index = c("agency_num", "year"))
 
-agencies %>% is.pbalanced()
+pdim(agencies)
 
-
+# doesn't matter, same results.
 balanced_panel <- make.pbalanced(agencies,  balance.type = "fill")
 
-plm(log_levy ~ log_eav, 
-    data = balanced_panel,
+#pdim(balanced_panel)
+
+m1 = lm(log_levy ~ log_eav, data = homerule)
+
+# not balanced panel, only has agency_name as factor
+m2 <- plm(log_levy ~ log_eav, 
+    data = agencies,
+    index = c("agency_name", "year"), 
+                   model = "within", effect = "individual")
+
+# unbalanced panel, two way fixed effects
+m3 <- plm(log_levy ~ log_eav + agency_name + year, 
+    data = homerule,
     index = c("agency_name", "year"), 
                    model = "within", effect= "twoways")
 
-results<-plm(log_levy ~ log_eav + agency_name + year, 
-    data = balanced_panel,
-    index = c("agency_name", "year"), 
-                   model = "within", effect= "twoways")
 
-vcovHC(results, type = "HC1")
+model_names <- c("Naive:No FE", "Agency FE", "Agency & Year FE")
+# coefs <- c("","") # to make names nicer
+
+export_summs(m1, m2, m3, model.names = model_names, scale=TRUE, robust = "TRUE")
+#export_summs(m1, m2, m3, model.names = model_names, scale=TRUE, robust = "HC1")
+
+export_summs(m1, m2, m3, model.names = model_names)
+
+
+vcovHC(m1, type = "HC1")
 # obtain a summary based on clusterd standard errors 
 # (adjustment for autocorrelation + heteroskedasticity)
-coeftest(results, vcov. = vcovHC, type = "HC1")
+coeftest(m1, vcov. = vcovHC, type = "HC1")
 ```
+```{r year-dummies, eval=FALSE}
+homerule <- homerule %>% mutate( year = as.factor(year),
+                                 agency_name=as.factor(agency_name),
+                                 agency_num = as.factor(agency_num))
+
+#m1 <- lm(log_levy~log_eav + agency_name, data = homerule)
+
+#m2 <- lm(log_levy~log_eav + agency_name + year ,data = homerule)
+
+#export_summs(m1,m2, robust = "HC1", error_format ="({statistic}, p = {p.value})")
+
+# r2 = .97 and .99 for the two models
+# where year and agency_name are factors
+
+```
+
 ### Heteroskedasticity
 
 https://www.econometrics-with-r.org/10-5-tferaaseffer.html
@@ -191,7 +248,6 @@ The null hypothesis for the Breusch-Pagan test is homoskedasticity.
 
 
 ```{r}
-library(lmtest)
 bptest(log_levy~log_eav + factor(agency_num) + factor(year), data = balanced_panel)
 ```
 Controlling for heteroskedasticity: Robust covariance matrix estimation (Sandwich estimator)
@@ -206,8 +262,8 @@ for random effects.
 effects.   
 
 ```{r}
-coeftest(results)
-coeftest(results, vcovHC(fixed, method = "arellano"))
+#coeftest(m1)
+#coeftest(m1, vcovHC(fixed, method = "arellano"))
 ```
 
 
@@ -216,8 +272,7 @@ coeftest(results, vcovHC(fixed, method = "arellano"))
 ```{r }
 # still includes cook county and other kind of weird agencies
 no_homerule <- agency_data %>% 
-  filter(home_rule_ind==0) %>% 
-  select(-c(cty_dupage_eav:cty_livingston_eav))
+  filter(home_rule_ind==0) #%>% select(-c(cty_dupage_eav:cty_livingston_eav))
 
 
 
@@ -227,43 +282,25 @@ no_homerule <- agency_data %>%
 ## Schools
 
 ```{r}
-library(plm)
+
 schools <- agency_data %>% 
-  filter(major_type=="SCHOOL") %>% 
-  mutate( agency_num = as.character(agency_num)) %>% 
-    mutate(cty_cook_eav = as.numeric(cty_cook_eav), # EAV after exemptions
-         total_final_levy = as.numeric(total_final_levy), # value that matches Clerk Office PDF for Levy
-        cty_cook_eav = ifelse(cty_cook_eav < 1, NA, cty_cook_eav), # Code as missing so Log() doesn't make -Inf
-        total_final_levy = ifelse(total_final_levy <1, NA, total_final_levy)       
-       ) %>%
-  mutate(log_eav = log(cty_cook_eav), 
-         log_levy = log(total_final_levy))
+  filter(major_type=="SCHOOL")  %>% 
+  select(agency_name, year, agency_num, log_levy, log_eav)
 # group schools by minor type later!
 
-agencies<- pdata.frame(schools, index = c("agency_name", "year"))
-
-agencies %>% is.pbalanced()
-
-balanced_panel <- make.pbalanced(agencies,  balance.type = "fill")
-
-plm(log_levy ~ log_eav, 
-                   index = c("agency_name", "year"), 
-                   model = "within", effect= "twoways",                    
-    data = balanced_panel) %>% 
-  summary()
+# model wouldn't work until I selected only a few variables. in line above
+plm(log_levy ~ log_eav, index = c("agency_name", "year"), model = "within",  effect= "twoways", data = schools)
 ```
 
 
-```{r filtering-agencies}
+```{r}
 munis_homerule <- agency_data %>% 
   filter(minor_type=="MUNI" & home_rule_ind==1) %>% 
-  mutate( agency_num = as.character(agency_num)) %>%
-  select(-c(cty_dupage_eav:cty_livingston_eav))
+  mutate( agency_num = as.character(agency_num)) 
 
 munis_no_homerule <- agency_data %>% 
   filter(minor_type=="MUNI" & home_rule_ind==0) %>% 
-  mutate( agency_num = as.character(agency_num)) %>%
-  select(-c(cty_dupage_eav:cty_livingston_eav))
+  mutate( agency_num = as.character(agency_num)) 
 ```
 
 >  add heteroskedastic errors to models
@@ -332,7 +369,7 @@ Taxable Value of property = Equalized Assessed Value (EAV) = "assessed value as 
 Note:
 
 -   EAV from tax_bill() command is the EAV before exemptions are removed. Think of it like the "starting point" before it is manipulated at all.\
--   That is different than the EAV from the clerk office on PDFs (which is after exemptions)
+-   That is different than the EAV from the clerk office on PDFs (which is after exemptions.... and tifs?)
 
 Exemptions lower tax bills by reducing the equalized assessed value of your property.
 
@@ -346,9 +383,6 @@ Chicago general composite rate does not include special districts such as mosqui
 
 ## Descriptive Stats
 
-```{r}
-
-
 Levy variables exploration:
 
 -   Total Levy is what they asked for\
@@ -358,12 +392,16 @@ Taxing District Tax Levy / Taxable Value in a Taxing District = District Tax Rat
 
 Therefore, **TaxRateXLevy = TaxableValue**
 
-TaxableValue is the EAV - exemptions - TIF increment
+TaxableValue = original EAV - exemptions - TIF increment
+
+
+
 
 ```{r}
-agency_data %>% ggplot()+
-  geom_point(aes(x=as.numeric(total_levy), y=as.numeric(total_max_levy), col=major_type)) +
-  ggtitle("Total Levy and Total Max Levy")
+# # diagnal line. Same variable
+# agency_data %>% ggplot()+
+#   geom_point(aes(x=as.numeric(total_levy), y=as.numeric(total_max_levy), col=major_type)) +
+#   ggtitle("Total Levy and Total Max Levy")
 
 agency_data %>% ggplot()+
   geom_point(aes(x=as.numeric(total_final_levy), y=as.numeric(total_max_levy), col=major_type)) +
@@ -375,7 +413,7 @@ agency_data %>% ggplot()+
 
 agency_data %>% ggplot()+
   geom_point(aes(x=as.numeric(total_final_levy), y=as.numeric(total_ext), col=major_type)) +
-  ggtitle("Total Final Levy and Total Extension")
+  ggtitle("Total Final Levy and Total Extension \nSome Schools and Misc Agencies cross Cook Lines")
 ```
 
 EAV exploration:
@@ -400,23 +438,27 @@ Total Final Levy and Cook County EAV values:
 ```{r}
 agency_data %>% ggplot()+
   geom_point(aes(x=total_final_levy, y=cty_cook_eav, col=major_type))+
+  coord_flip()+
   ggtitle("Total Final Levy and Cook County EAV")
 
 agency_data %>% 
   filter(year == 2021) %>%
-  filter(minor_type == "MUNI") %>%
+  filter(minor_type == "MUNI" &
+           in_chicago == "0") %>% # Chicago was massive outlier in the uppper right corner
   ggplot(aes(x=total_final_levy, y=cty_cook_eav, col=major_type, label = agency_name))+
-  geom_point()#+ 
- # geom_text()
+  geom_point() +#
+coord_flip()+
+  ggtitle("Municipalities EAV & Levy")
 
 agency_data %>% ggplot()+
   geom_point(aes(x=total_max_levy, y=cty_cook_eav, col=major_type))+
-  ggtitle("Total Final Levy and Cook County EAV")
+  coord_flip()+
+  ggtitle("Total Max Levy and Cook County EAV")
 
 
 
 agency_data %>% ggplot()+
-  geom_point(aes(x=total_final_levy, y=cty_cook_eav, col=minor_type))
+  geom_point(aes(y=total_final_levy, x=cty_cook_eav, col=minor_type))
 
 
 ```
@@ -425,36 +467,57 @@ agency_data %>% ggplot()+
 agency_data %>% 
   filter(year== 2021) %>% 
   ggplot()+
-  geom_point(aes(x=total_final_levy, y=cty_cook_eav, col=major_type))+ 
-  ggtitle("Agency EAV vs Final Levy for 2021")
+  geom_point(aes(x=total_final_levy, y=cty_cook_eav, col=major_type))+ coord_flip()
+  ggtitle("Major Types: Agency EAV vs Final Levy for 2021")
 
 agency_data %>% 
   filter(year== 2021) %>% 
   ggplot()+
   geom_point(aes(x=total_final_levy, y=cty_cook_eav, col=minor_type))+ 
-  ggtitle("Agency EAV vs Final Levy for 2021")
+  ggtitle("Minor Types: Agency EAV vs Final Levy for 2021") + coord_flip()
 ```
 
 ## Munis only
 
 ```{r}
-library(plm)
 agency_data %>% 
   filter(year == 2021) %>% #2021 only
   
   # not in Chicago and municipalitys + Cicero
   filter(!(agency_num %in% c("030210000", "030210001", "030210002" ) ) 
-         & (minor_type == "MUNI" | minor_type == "TIF"| agency_num =="020060000")) %>%
+         & (minor_type == "MUNI" | agency_num =="020060000")) %>%
   ggplot(aes(x=cty_cook_eav, y=total_final_levy, col=minor_type, label = agency_name))+
-  geom_point()
+  geom_point() + coord_flip()
+
+agency_data %>% 
+  # not in Chicago and municipalitys + Cicero
+  filter(!(agency_num %in% c("030210000", "030210001", "030210002" ) ) 
+         & (minor_type == "MUNI" | agency_num =="020060000")) %>%
+  ggplot(aes(x=cty_cook_eav, y=total_final_levy, col=agency_name, label = agency_name))+
+  geom_point(alpha=.5) + coord_flip()+
+theme(legend.position = "none")
+
+agency_data %>% 
+#Cicero only  
+  filter(agency_num =="020060000") %>%
+  ggplot(aes(x=cty_cook_eav, y=total_final_levy, col=agency_name, label = agency_name))+
+  geom_point(alpha=.5) + coord_flip()+
+theme(legend.position = "none")
+
+agency_data %>% 
+#Cicero only  
+  filter(agency_num =="020060000") %>%
+  ggplot(aes(x=year, y=total_final_levy, col=agency_name, label = agency_name))+
+  geom_point(alpha=.5) +
+theme(legend.position = "none")
 
 agency_data %>% 
   filter(year == 2021) %>%
   filter(!(agency_num %in% c("030210000", "030210001", "030210002" ) ) 
-         & (minor_type == "MUNI" | minor_type == "TIF"| agency_num =="020060000")) %>%
+         & (minor_type == "MUNI" | agency_num =="020060000")) %>%
   ggplot(aes(x=cty_cook_eav, y=total_final_levy, col=minor_type, label = agency_name))+
   geom_point()+ 
-  geom_text(size = 2, vjust=-1.5)
+  geom_text(size = 2, vjust=-1.5) + coord_flip()
 ```
 
 ```{r}
@@ -464,35 +527,20 @@ muni_panel <- agency_data %>%
   select(year, agency_name, agency_num, major_type, minor_type, cty_cook_eav, total_final_levy, log_eav, log_levy, total_final_rate
          ) 
 
-lm(log(total_final_levy)~log(cty_cook_eav), data = muni_panel) %>% summary()
 
-#balanced_panel <- make.pbalanced(panel_data,  balance.type = "fill")
-agencies<- pdata.frame(muni_panel, index = c("agency_name", "year"))
-agencies %>% is.pbalanced()
-balanced_panel <- make.pbalanced(agencies,  balance.type = "fill")
-# shared. individuals keeps observations that existed every year
-# "fill" adds zeros for any years or agencies missing values
-balanced_panel %>% is.pbalanced()
-
-# NOT LOGGED
-plm(cty_cook_eav ~ total_final_levy, 
-                   index = c("agency_name", "year"), 
-                   model = "within", effect= "twoways",                    
-    data = balanced_panel) %>% 
-  summary()
 
 ## NExt two just switch X and Y 
 plm(log_eav ~ log_levy, 
                    index = c("agency_name", "year"), 
                    model = "within", effect= "twoways",                    
-    data = balanced_panel) %>% 
+    data = muni_panel) %>% 
   summary()
 
 
 plm(log_levy ~ log_eav, 
                    index = c("agency_name", "year"), 
                    model = "within", effect= "twoways",                    
-    data = balanced_panel) %>% 
+    data = muni_panel) %>% 
   summary()
 ```
 
@@ -510,7 +558,7 @@ nohr_notifs <- agency_data %>%
 
 ```
 
-# Regressions - All Agencies - WRONG
+# Regressions - All Agencies
 
 Simple model was log(levy) \~ log(base) where each observation is an agency-year and the base is the sum of that jurisdiction's taxable eav.
 
@@ -524,70 +572,26 @@ The coefficients would be interpretted as "a x% change in eav leads to a y% chan
 panel_data <- agency_data %>% select(year, agency_name, agency_num, major_type, minor_type, cty_cook_eav, total_final_levy, log_eav, log_levy, total_final_rate
          ) 
 
-lm(log(total_final_levy)~log(cty_cook_eav), data = agency_data) %>% summary()
-
-lm(log_levy~log_eav, data = panel_data) %>% summary()#same
-
-```
-
-Fixed Effects Panel Data:
-
-```{r}
-#balanced_panel <- make.pbalanced(panel_data,  balance.type = "fill")
 
 agencies<- pdata.frame(panel_data, index = c("agency_name", "year"))
-agencies %>% is.pbalanced()
-balanced_panel <- make.pbalanced(agencies,  balance.type = "fill")
-# shared. individuals keeps observations that existed every year
-# "fill" adds zeros for any years or agencies missing values
-balanced_panel %>% is.pbalanced()
-
-
-is.data.frame(agencies)
-dim(agencies)
-class(agencies$year)
-class(agencies$agency_num)
 
 
 # one way, individual effect within model.
 
-levy_fe_mod <- plm(total_final_levy ~ cty_cook_eav, 
-                    data = balanced_panel)
+levy_fe_mod <- plm(total_final_levy ~ cty_cook_eav,
+                    index = c("agency_name"), 
+
+                     model = "within",                  
+
+                    data = agencies)
 levy_fe_mod %>% summary
 
-
-
-plm(cty_cook_eav ~ total_final_levy, 
-                   index = c("agency_name", "year"), 
-                   model = "within", effect= "twoways",                    
-    data = balanced_panel) %>% 
-  summary()
-
-
-plm(cty_cook_eav ~ log_levy, 
-                   index = c("agency_name", "year"), 
-                   model = "within", effect= "twoways",                    
-    data = balanced_panel) %>% 
-  summary()
-
-# 
-# plm(cty_cook_eav ~ log_levy + minor_type, 
-#                    index = c("agency_name", "year"), 
-#                    model = "within", effect= "twoways",                    
-#     data = balanced_panel) %>% 
-#   summary()
-
-plm(log_eav ~ log_levy, 
-                   index = c("agency_name", "year"), 
-                   model = "within", effect= "twoways",                    
-    data = balanced_panel) %>% 
-  summary()
 
 
 plm(log_levy ~ log_eav, 
                    index = c("agency_name", "year"), 
                    model = "within", effect= "twoways",                    
-    data = balanced_panel) %>% 
+    data = agencies) %>% 
   summary()
 ```
 
@@ -623,4 +627,7 @@ It is possible to see exactly how much goes to Public Safety, Health Facilities,
 
 
 
+```{r eval = FALSE, include = FALSE}
+municipality_name, municipality_num, census_place_geoid
+```
 
