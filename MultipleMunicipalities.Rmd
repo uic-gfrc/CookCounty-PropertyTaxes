@@ -51,7 +51,7 @@ options(digits=4, scipen = 999)
 
 Cook County Assessors Data description page and other [datasets](https://datacatalog.cookcountyil.gov/stories/s/i22y-9sd2).
 
-# Agency Data
+# Data Prep
 
 Pull all agency names that exist, then use agency numbers associated with MUNI types to pull only the `muni_agency_names` object.
 
@@ -317,11 +317,9 @@ Each tax code has a unique combination of taxing agencies taxing properties with
 
 `rev_perTC`(previously named weighted_tax_rate in earlier code versions) was calculated for every tax bill observation for every pin and is equal to the eav of a property X agency_tax_rate. Then all pins within tax codes were summed together to get a tax code level EAV and tax code level tax rate. _Note: There is a tax_code_rate variable included in the `muni_tax_codes` object made from the `tax_code` dt included in ptaxsim_ 
 
-> Not sure if the agency_tax_rate calculated in the chunk below is reliable. would the agency_tax_rate be the mean of all agency tax rates for a tax code. I don't think so. The muni_tax_codes data table has all tax codes, tax code rates, agency numbers and agency rates. Compare to these numbers. Should they be the same or different?  
-
 
 ```{r pull-taxbills, eval =FALSE}
-
+# creates the 4.5 GB file of all taxbills for 2021. 
 bills <- tax_bill(2021, muni_pins$pin, simplify = FALSE)
 
 bills_byClass_pertaxcode <- bills %>%
@@ -359,7 +357,9 @@ write_csv(bills, "all_taxbills.csv")
 # write_csv(bills_pertaxingagency, "alltaxbills_byTaxingAgency.csv")
 ```
 
-# Tax Bills by TaxCode
+# Combining Data!
+
+## Tax Bills and Levies for Taxcodes and Municipalities
 
 Taxbills by property class has 9716 observations. (3774 tax codes X multiple property types).
 
@@ -396,7 +396,9 @@ Oak Park: 234,665,831 vs 233,132,867 JD.
 
 
 
-# Exemptions summarized by Tax Code
+## Exemptions summarized by Tax Code
+
+Uses exemption data from the lookup_pin() command for all pins in Cook County in 2021. Values are then summarized by Taxcodes and property types (so each Municipality has a lot of rows at this point BUT this stage of the data is the most flexible for calculations and future research questions.)
 
 
 ```{r}
@@ -416,8 +418,10 @@ exemptions_by_class_per_TC <- left_join(exemptions_by_class_per_TC, muni_tax_cod
   mutate(in_TIF = ifelse(tax_code_num %in% unique_tif_taxcodes$tax_code_num, 1,0) )
 
 exemptions_by_class_per_TC
+```
 
 
+```{r}
 exemptions_by_class_per_TC <- left_join(exemptions_by_class_per_TC, muni_levies, by = c("agency_name", "agency_num", "year")) %>%
   mutate(in_TIF = ifelse(tax_code_num %in% unique_tif_taxcodes$tax_code_num, 1,0) )
 
@@ -470,9 +474,32 @@ exemptions_perMuni
 
 EAV_tifs_and_exemps_byClass_andMuni <- summtable %>% 
   left_join(exemptions_perMuni , by = c("agency_name", "agency_num", "agency_rate"))
+```
+
+## Tax Burden
+
+Share of residential = amount collected by residential/ amount collected overall.
 
 
 
+Current burden is the % of the levy paid by each property class.
+
+
+Levy (aka tot_ext) does not change. So the money the municipality needs divided by the pre_exe_eav would be the new tax rate if exemptions didn't exist. 
+
+
+
+The percent of all residential property that is exempt (due to ONLY homeowner exemptions) is below for each Municipality:
+
+% residential exempt = sum of all homeowner exemptions in a municipality divided by the pre-exemption EAV for residential properties in that municipality. 
+
+- In Chicago, only 6.2% of residential eav is not taxed due to homeowner exemptions. Bridgeview has 14% of is residential EAV not taxed, Dolton = 24%...., Oak Park has 8% of its residential EAV exempt due to homeowners exemptions. 
+
+
+
+The levy amount and eav values from the `agency` data table represent only the Taxable Base.
+
+```{r}
 burden_shift_byMuni_PropClass <- EAV_tifs_and_exemps_byClass_andMuni %>% #ungroup() %>% 
   select(agency_name, major_class_type, in_TIF, agency_rate, eav_pre_exe_perClass, EAV_post_exe_PerClass, agency_num, eav_pre_exe_perMuni, eav_post_exe_perMuni) %>% 
   left_join(MuniLevy) %>%
@@ -520,7 +547,10 @@ burden_shift_byMuni_PropClass %>% filter(agency_num %in% c("030120000", "0302100
 
 
 
-# Exemptions by Municipality
+# Combined Data: Ignoring TIFs completely
+
+
+## Exemptions
 
 ```{r}
 exemps_byClass_perMuni <- exemptions_by_class_per_TC %>% 
@@ -641,632 +671,12 @@ burden_shift_byMuni_PropClass %>% filter(agency_num %in% c("030120000", "0302100
 Overall burden shift is change in percentage points.
 
 
-### Add in Levy Data at Muni level:
-
-```{r}
-EAV_and_exemps_byClass_andMuni <- EAV_and_exemps_byClass_andMuni %>% 
-  left_join(muni_levies, by = c("agency_num", "agency_name")) %>%
-  select(-c(year, agg_ext_base_year:lim_rate, curr_new_prop, cty_total_eav, pct_burden, total_final_rate, total_prelim_rate, total_reduced_levy, total_max_levy, total_levy, reduction_type:total_non_cap_ext))
-
-EAV_and_exemps_byClass_andMuni
-write.csv(EAV_and_exemps_byClass_andMuni, "EAV_and_exemps_byClass_andMuni.csv")
-
-```
-
-
-#### Exemptions within TIFs per muni
-
-Not sure if we want this yet but still included for now. 0 means values not in a tif, 1 means values in a tif.
-
-```{r}
-exemptions_inTIFs_perMuni <- exemptions_by_class_per_TC %>%
-  group_by(agency_name, agency_num, in_TIF) %>% 
-  summarize(eav_pre_exe = sum(eav),
-            TotalExemptions=sum(exe_homeowner +exe_senior+exe_freeze+exe_longtime_homeowner + exe_disabled+ exe_vet_returning +exe_vet_dis + exe_abate),
-         ResidentialExemp = sum(exe_homeowner +exe_senior+exe_freeze+exe_longtime_homeowner + exe_disabled+ exe_vet_returning +exe_vet_dis),
-         CommercialExemp = sum(exe_abate),
-         eav_post_exe = eav_pre_exe-TotalExemptions)
-
-exemptions_inTIFs_perMuni
-
-
-#All nonTIF values
-exemptions_inTIFs_perMuni %>% 
-  filter(in_TIF == "0") %>% 
-  left_join(muni_levies) %>% 
-  select(agency_name, total_ext, eav_pre_exe) %>%
-  mutate(no_exemption_rate = total_ext/eav_pre_exe)
-
-
-```
 
 > To do: Create residential & commercial categories and EAV in each. Then calculate the share of exemptions/residential eav, exemptions/total_eav, and residential eav/total_eav.
 
-# Burden Share and Shift
 
-## Current Burden 
 
-Share of residential = amount collected by residential/ amount collected overall.
 
 
 
-Current burden is the % of the levy paid by each property class.
 
-```{r}
-
-```
-
-
-Levy (aka tot_ext) does not change. So the money the municipality needs divided by the pre_exe_eav would be the new tax rate if exemptions didn't exist. 
-
-
-
-The percent of all residential property that is exempt (due to ONLY homeowner exemptions) is below for each Municipality:
-
-% residential exempt = sum of all homeowner exemptions in a municipality divided by the pre-exemption EAV for residential properties in that municipality. 
-
-- In Chicago, only 6.2% of residential eav is not taxed due to homeowner exemptions. Bridgeview has 14% of is residential EAV not taxed, Dolton = 24%...., Oak Park has 8% of its residential EAV exempt due to homeowners exemptions. 
-
-
-```{r}
-
-# EAV_and_exemps_byClass_andMuni %>% 
-#   mutate(class_burden = taxamount_perClass/taxamount) %>%
-#   select(agency_name, class_burden)
-
-
-exemptions_by_class_per_TC %>% 
-  filter(major_class_code == "2") %>% 
-  group_by(agency_name, agency_num) %>%
-  summarize(eav_pre_exe_perClass = sum(eav, na.rm = TRUE), 
-            tax_revenue = sum(agency_rate/100*eav),
-            exe_homeowner = sum(exe_homeowner, na.rm = TRUE)) %>%
-             mutate(homeowner_exe_perResEAV = exe_homeowner/eav_pre_exe_perClass)# %>%
-#  select(agency_name, homeowner_exe_perResEAV, eav_pre_exe_perClass) 
-  #select(agency_name,major_class_code, major_class_type, eav_pre_exe_perClass, Exemp_in_PropClass, EAV_post_exe_PerClass, agency_num, agency_rate) %>% 
-
-#write.csv("EAV_and_exemps_byClass_andMuni.csv")
-
-```
-
-```{r}
-
-exemptions_perMuni %>% 
-  mutate(exemps_per_residentialEAV = ResidentialExemp/ eav_pre_exe_perMuni,
-         exemps_per_allEAV = TotalExemptions/eav_pre_exe_perMuni) %>% 
-  arrange(exemps_per_residentialEAV)
-
-```
-
-ageny_rate_noexemps is NOT correct below!
-
-```{r}
-exemptions_perMuni <- exemptions_perMuni %>% left_join(muni_levies)
-
-exemptions_perMuni <- exemptions_perMuni %>%
-  
-  mutate(agency_rates_noExemps = TotalExemptions/eav_pre_exe_perMuni)
-exemptions_perMuni
-```
-
-The levy amount and eav values from the `agency` data table represent only the Taxable Base.
-
-> Subtract original agency rate from new agency rate for the rate increase. This is the indirect effect of the residential tax exemptions.
-
-# Extra Stuff: Eval=FALSE for now
-# Revenue
-
-## TIF Agencies & Tax Codes
-
-Not runing these codes for now, focusing on exemptions and burden shift.
-
-```{r tif-datatables, eval=FALSE}
-
-# Some TIFs will have more than 1 agency number. This happens when TIFs are
-# expanded or when another TIF is created on top of an existing one. The
-# multiple agency_num records still aggregate up to one "main" TIF record (in
-# the agency_info and tif tables). This crosswalk is used to determine which
-# TIFs aggregate to which agency_nums. See issue #39 for more information
-
-# has tifs and year they existed.
-# we want TIFS that existed in the year we are looking at
-tif_crosswalk_dt <- DBI::dbGetQuery(
-  ptaxsim_db_conn,
-  "SELECT *
-  FROM tif_crosswalk
-  WHERE year = 2021
-  "
-)
-
-```
-
-
-```{r tif-history, eval=FALSE}
-
-tif_history <- DBI::dbGetQuery(
-  ptaxsim_db_conn,
-  "SELECT *
-  FROM tif
-  WHERE year = 2021
-  "
-)
-
-# Tax Codes that are in TIFS
-
-# tif_tax_codes <- DBI::dbGetQuery(
-#   ptaxsim_db_conn, 
-#   glue_sql("
-#   SELECT DISTINCT tax_code_num
-#   FROM tax_code
-#   WHERE agency_num IN ({TIFs$agency_num*})
-#   ",
-#   .con = ptaxsim_db_conn
-#   )
-# )
-
-# # all tax codes for all munis. Large
-# all_tax_codes <- DBI::dbGetQuery(
-#   ptaxsim_db_conn, 
-#   glue_sql("
-#   SELECT DISTINCT * 
-#   FROM tax_code
-#   WHERE year = 2021
-#   ",
-#   .con = ptaxsim_db_conn
-#   )
-# )
-
-# #85 unique tax codes and the number of times they appear:
-# unique_tif_taxcodes <- tif_tax_codes %>% group_by(tax_code_num ) %>% summarize(n=n())
-
-
-# tif_pins <- DBI::dbGetQuery(
-#   ptaxsim_db_conn,
-#   glue_sql(
-#   "SELECT DISTINCT pin, class
-#   FROM pin
-#   WHERE tax_code_num IN ({unique_tif_taxcodes$tax_code_num*})
-#   ",
-#   .con = ptaxsim_db_conn
-# ))
-# 
-# unique_tif_pins <- tif_pins %>% distinct(pin) %>% count()
-
-
-```
-
-```{r munitifs-tiftaxcodes, eval=FALSE}
-# Determining the increment / TIF stuff
-tif_agency_nums <- all_taxing_agencies %>% 
-  filter(minor_type == "TIF") %>% select(agency_num)
-
-unique_tif_taxcodes <- DBI::dbGetQuery(
-  ptaxsim_db_conn, 
-  glue_sql("
-  SELECT DISTINCT tax_code_num
-  FROM tax_code
-  WHERE agency_num IN ({tif_agency_nums$agency_num*})
-  AND year = 2021
-  ",
-  .con = ptaxsim_db_conn
-  )
-)
-```
-
-### Tax Codes in TIFs
-
-57,000+ tax_codes with their tax_code rates exist during 2021. Also has agency_number and agency_rate
-
-```{r eval=FALSE}
-# all tax codes for all municipalities in 2021
-# Over 57,000 tax codes with agency_rate and tax_code_rate. Over 57,000
-tax_code_dt <- DBI::dbGetQuery(
-  ptaxsim_db_conn, 
-  glue_sql("
-  SELECT * 
-  FROM tax_code
-  WHERE year = 2021
-  ",
-  .con = ptaxsim_db_conn
-  )
-)
-
-# create dummy variable for tax_codes that in TIFs
-tax_code_dt <- tax_code_dt %>% 
-  mutate(in_TIF = ifelse(tax_code_num %in% unique_tif_taxcodes$tax_code_num, 1,0) )
-
-
-
-table(tax_code_dt$in_TIF)
-```
-
-In 2021, there are 34,266 tax codes not in a TIF and 23,279 tax codes that are within TIF areas.
-
-To get all pins that are in a TIF, run the code below. It is currently commented out so that it doesn't run because it is a BIG data table and I don't know if I need it yet.
-
-```{r tif-pins, eval=FALSE}
-
-# if I wanted all pins that are within a TIF, I would run this.
-
-# unqiue_tif_pins <- DBI::dbGetQuery(
-#   ptaxsim_db_conn,
-#   glue_sql(
-#   "SELECT DISTINCT pin, class
-#   FROM pin
-#   WHERE tax_code_num IN ({unique_tif_taxcodes$tax_code_num*})
-#   AND year = 2021
-#   ",
-#   .con = ptaxsim_db_conn
-# ))
-
-
-```
-
-Thought process in meeting:
-Taxable eav will increase if no exemptions.
-
-
-```{r tif-eav, eval=FALSE}
-# TIF distributions will include all the unique tax codes that make up
-# a TIF
-
-# has eav values for each tax code
-# has ALL years
-
-# tif_distrib_allyears <- DBI::dbGetQuery(
-#   ptaxsim_db_conn, 
-#   glue_sql("
-#   SELECT *
-#   FROM tif_distribution
-#   WHERE agency_num IN ({tif_agency_nums$agency_num*})
-#   ",
-#   .con = ptaxsim_db_conn
-#   )
-# )
-
-
-# # another way to get all pins within a tif:
-# tif_pins_vec <- DBI::dbGetQuery(
-#   ptaxsim_db_conn,
-#   glue::glue_sql("
-#     SELECT DISTINCT pin
-#     FROM pin
-#     WHERE tax_code_num IN ({unique(tif_distrib$tax_code_num)*})
-#     AND year = 2021
-#   ",
-#     .con = ptaxsim_db_conn
-#   )
-# ) %>%
-#   pull(pin)
-```
-
-The tax_code_revenue returned in this table represents the TIF revenue collected within an agency If the tax_code's EAV decreased from its frozen value, then the tax_code_revenue is 0 instead of going negative.
-
-`tif_distrib` has the frozen eav for tax codes that are in tifs, the total revenue for the tax code, the revenue that went to the municipality, and the revenue that went to the tif.
-
-```{r eval=FALSE}
-class_dict$class_code <- as.character(class_dict$class_code)
-
-# tax_code values for areas in Tif summed to agency level. 
-# 
-all_taxing_agencies<- tif_distrib %>% group_by(agency_num) %>% 
-  summarize(tax_code_revenue_inTIFs = sum(tax_code_revenue),
-            sum_eav = sum(tax_code_eav),
-            frozen_eav = sum(tax_code_frozen_eav)) %>% 
-  mutate(in_TIF="1") %>%
-  right_join(all_taxing_agencies) %>%
-  mutate(tax_code_revenue_inTIFs = ifelse(is.na(tax_code_revenue_inTIFs)| tax_code_revenue_inTIFs == "NA", 0, tax_code_revenue_inTIFs),
-       in_TIF= ifelse(is.na(in_TIF)| in_TIF == "NA", 0,in_TIF) 
-)
-
-```
-
-> EAV from tax_bill() returned is value before exemptions are removed. Kind of like an unaltered EAV or "true" EAV.
-
-> EAV from `agency` data table is after exemptions subtracts tif increments. (i.e. it is the taxable base used for the levy calculations)
-
-```{r eval=FALSE}
-
-tax_code_dt <- left_join(tax_code_dt, tif_distrib)
-
-agency_data <- tax_code_dt %>% 
-  group_by(agency_num, agency_rate) %>% 
-  summarize(agency_eav_after_exemptions = sum(tax_code_eav),
-            agency_frozen_eav = sum(tax_code_frozen_eav),
-            total_taxcode_revenue = sum(total_taxcode_revenue),
-            district_revenue_withinTIF = sum(district_revenue_withinTIF),
-            tif_revenue_withinTIF=sum(tax_code_revenue),
-            tif_increment = sum(tif_increment)) %>%
-  right_join(agency_data)
-
-#agency_data <- tax_code_dt %>% select(agency_num,agency_rate) %>% distinct() %>%
-#  right_join(agency_data)
-```
-
-```{r eval=FALSE}
-area_pins2 <- as.character(muni_pins$pin)
-
-#207,565 taxbills/observations for Cicero for 2021
-area_data <- tax_bill(2021, area_pins2, simplify = FALSE)
-
-# get class info with pin exemption data
-class_dict$class_code <- as.character(class_dict$class_code)
-
-area_data <- left_join(area_data, class_dict, by=c("class" = "class_code")) %>% 
-  mutate(in_tif = ifelse(final_tax_to_tif > 0, 1, 0),
-         DecreasedTaxBillAmount = tax_amt_pre_exe-tax_amt_post_exe, 
-         # lost revenue from exemptions decreasing EAV taxed
-         )
-
-area_data
-#setkey(area_data, year, tax_code, agency_num)
-
-# 145 unique year-taxcode-agencynum combinatins. 
-# send this through other functions
-#unique_values<-area_data %>% group_by(year, tax_code, agency_num) %>% summarize()
-
-#unique_values
-
-## values are after exemptions have been subtracted! 
-taxing_agencies <- area_data %>% 
-  group_by(agency_name, agency_num, agency_tax_rate) %>% 
-  summarize(eav = sum(eav),
-        #    final_tax = sum(final_tax), 
-        # final tax only exists if simplify = TRUE in that tax_bill() command.
-            final_tax_to_dist = sum(final_tax_to_dist),   #revenue to district
-            final_tax_to_tif = sum(final_tax_to_tif),     # revenue to TIF
-            tax_amt_exe = sum(tax_amt_exe),     # reduction in tax bill due to exemptions
-            tax_amt_pre_exe = sum(tax_amt_pre_exe), #tax bill before exemptions
-            tax_amt_post_exe = sum(tax_amt_post_exe), # tax bills after exemptions are subtracted from EAVs
-        agency_tax_rate = mean(agency_tax_rate),
-        agency_total_ext = mean(agency_total_ext)
-            ) %>%
-  arrange(agency_num) %>%
-  mutate(weighted_tax_rate = agency_tax_rate*eav) %>% 
-  ungroup() %>%
-  mutate(composite_tax_rate = sum(weighted_tax_rate)/max(eav) )
-
-taxing_agencies
-
-# saves composite tax rate as its own object because I might plug it in with the TIF stuff later.
-composite_tax_rate <- first(taxing_agencies$composite_tax_rate)
-
-
-## Exact match (besides column names) with JD's values for Taxing Agencies. 
-taxing_agencies %>%
-    mutate(`Tax Rate` = round(agency_tax_rate, digits = 6),
-           EAVbeforeExemptions = scales::comma(eav)) %>%
-select(agency_name, agency_name, EAVbeforeExemptions, `Tax Rate`, weighted_tax_rate, composite_tax_rate)
-```
-
-### Taxcodes: Combining TIF and nonTIF data
-
-```{r eval=FALSE}
-# class_eav <- area_data %>% 
-#   group_by(           
-#     major_class_code) %>% 
-#   summarize(
-#             final_tax_to_dist = sum(final_tax_to_dist),
-#             final_tax_to_tif = sum(final_tax_to_tif),
-#             tax_amt_exe = sum(tax_amt_exe),
-#             tax_amt_pre_exe = sum(tax_amt_pre_exe),
-#             tax_amt_post_exe = sum(tax_amt_post_exe),
-#             ) %>%
-# 
-#  # arrange(agency_num) %>%
-#  # mutate(weighted_tax_rate = agency_tax_rate*eav) %>% 
-#  # ungroup() %>%
-#       mutate(total_revenue = final_tax_to_dist+final_tax_to_tif,
-#              dist_tax_share = final_tax_to_dist/sum(final_tax_to_dist))
-
-
-
-tax_code_dt <-tax_code_dt %>%
-  mutate(first_2digits = str_sub(agency_num,1,2),
-                            last_2digits = str_sub(agency_num,8,9))
-
-tax_code_dt
-# all_tax_codes %>% group_by(agency_name, minor_type) %>%
-#   summarize(tax_code_eav = sum(tax_code_eav, na.rm=TRUE),
-#             district_revenue_withinTIF = sum(district_revenue_withinTIF,na.rm = TRUE),
-#             tif_revenue_withinTIF = sum(tif_revenue_withinTIF, na.rm=TRUE),
-#             total_taxcode_revenue = sum(total_taxcode_revenue, na.rm = TRUE),
-#             
-#             tax_code_frozen_eav = sum(tax_code_frozen_eav, na.rm = TRUE))
-# nicer_table <- all_tax_codes %>%
-# 
-#   mutate(#EAV = scales::dollar(eav),
-#                             "Total Tax Revenue(District+TIF)" = scales::dollar(max(total_taxcode_revenue)),
-#                             "District Revenue" = scales::dollar(max(district_revenue_withinTIF)),
-#                             "TIF Revenue" = scales::dollar(max(tif_revenue_withinTIF)),
-#                             
-#                          #   "Lost Revenue from Exempt." = #scales::dollar(tax_amt_exe), # same as tax_amt_pre_exe-tax_amt_post_exe
-#                             #"District Tax Share" = scales::percent(dist_tax_share),
-#                          #   "EAV in TIF (Increment)" = final_tax_to_tif/composite_tax_rate,
-#                             # TIF EAV matches JD almost perfectly, Commercial 5A does not match. 
-#                           #  "EAV outside TIF" = final_tax_to_dist/composite_tax_rate
-#                             ) 
-
-#%>% #mutate(`EAV in and out of TIFs` = `EAV in TIF (Increment)`+`EAV outside TIF`, EAVbeforeExemptions = `EAV in and out of TIFs`+Exemptions)
-```
-
-```{r eval=FALSE}
-
-nicer_table <- class_eav %>% left_join(exemptions_by_class)%>%
-  mutate(#EAV = scales::dollar(eav),
-    Exemptions=TOTAL,
-                            "Total Tax Revenue(District+TIF)" = scales::dollar(tax_amt_post_exe),
-                            "District Revenue" = scales::dollar(final_tax_to_dist),
-                            "TIF Revenue" = scales::dollar(final_tax_to_tif),
-                            "Lost Revenue from Exempt." = scales::dollar(tax_amt_exe), # same as tax_amt_pre_exe-tax_amt_post_exe
-                            "District Tax Share" = scales::percent(dist_tax_share),
-                            "EAV in TIF (Increment)" = final_tax_to_tif/composite_tax_rate,
-                            # TIF EAV matches JD almost perfectly, Commercial 5A does not match. 
-                            "EAV outside TIF" = final_tax_to_dist/composite_tax_rate
-                            ) %>% 
-  mutate(`EAV in and out of TIFs` = `EAV in TIF (Increment)`+`EAV outside TIF`,
-             EAVbeforeExemptions = `EAV in and out of TIFs`+Exemptions) %>%
-  select(-c(tax_amt_post_exe,total_revenue, dist_tax_share, final_tax_to_dist:tax_amt_pre_exe,exe_homeowner:TOTAL)) 
-
-nicer_table
-
-#class_exemptions <- full_join(exemptions_by_class,  class_eav, by = "major_class_code") %>%
-#  select(major_class_code, major_class_type, eav, final_tax_to_dist, tax_share)
-#class_exemptions
-```
-
-> What is this ratio supposed to be? Exemptions / ????? Total EAV, EAV the district taxes, or what
-
-```{r eval=FALSE}
-total_exemptions/sum(nicer_table$TaxableBase)
-```
-
-```{r eval=FALSE}
-area_data %>% 
-  summarize(
-    final_tax_to_dist = sum(final_tax_to_dist),
-    final_tax_to_tif = sum(final_tax_to_tif),
-    tax_amt_exe = sum(tax_amt_exe),
-    tax_amt_pre_exe = sum(tax_amt_pre_exe),
-    tax_amt_post_exe = sum(tax_amt_post_exe),
-  ) %>%
-  mutate(total_revenue = final_tax_to_dist+final_tax_to_tif,
-         tax_share = total_revenue / sum(total_revenue),
-         dist_tax_share = final_tax_to_dist/sum(final_tax_to_dist)) %>%
-  mutate(
-    "Total Tax Revenue(District+TIF)" = scales::dollar(tax_amt_post_exe),
-    "District Revenue" = scales::dollar(final_tax_to_dist),
-    "TIF Revenue" = scales::dollar(final_tax_to_tif),
-    "Lost Revenue from Exempt." = scales::dollar(tax_amt_exe), # same as tax_amt_pre_exe-tax_amt_post_exe
-    "District Tax Share" = scales::percent(dist_tax_share),
-    "EAV in TIF" = final_tax_to_tif/composite_tax_rate,
-    # TIF EAV matches JD almost perfectly, Commercial 5A does not match. 
-    "EAV outside TIF" = final_tax_to_dist/composite_tax_rate,
-    TotalEAVafterExemptions = `EAV outside TIF`+total_exemptions$TotalExemptions) %>% 
-  mutate(EAVbeforeExemptions = `EAV in TIF`+ `EAV outside TIF` + total_exemptions$TotalExemptions) %>%
-  select(-c(tax_amt_post_exe:tax_share, dist_tax_share, final_tax_to_dist:tax_amt_pre_exe))
-```
-
-TIF information comes from Cook County Clerk's Office.
-
-`tif_share` = the tax_code_distribution_pct / 100 and comes from tif_distribution table. Comes from lookup_tif() command. Calculated behind the scenes. Documentation for their process is in Gitlab R/lookup.R file
-
-Lets find TIF taxing agencies and combine them with the other taxing agencies for the geographic area:
-
-```{r eval=FALSE}
-
-unique_tax_codes <- tax_code_dt %>% distinct(tax_code_num) %>% pull()
-
-all_agency_data <- lookup_agency(2021, unique_tax_codes) %>%
-  mutate(first_2digits = str_sub(agency_num, 1,2),
-         last_2digits = str_sub(agency_num, 8,9)) %>%
-  filter(first_2digits != "01" )
-
-
-
-muni_eav <- all_agency_data %>% 
- # filter(last_2digits == "00" & agency_total_ext>0) %>%
-  filter(agency_num %in% muni_agency_names$agency_num) %>%
-  group_by(agency_num, agency_name, agency_major_type, agency_minor_type) %>% 
-  summarize(agency_total_eav = mean(agency_total_eav, na.rm = TRUE),
-            agency_total_ext = mean(agency_total_ext,na.rm=TRUE)) %>% 
-  left_join(tax_code_dt) %>%
-  mutate(agency_rate = mean(agency_rate, na.rm=TRUE))
-
-
-# 
-# muni_eav %>%
-#   group_by(agency_name)%>%
-#   summarize(EAV = first(agency_total_eav),
-#     total_levy = first(agency_total_ext),
-#     tax_code_eav = sum(tax_code_eav),
-#     tax_code_frozen_eav = sum(tax_code_frozen_eav),
-#     tax_code_revenue=sum(tax_code_revenue)
-#   ) 
-#   
-# all_taxing_agencies <- full_join(taxing_agencies, tif_taxing_agencies, 
-#                              #    by = c("year", "tax_code", "agency_name", "agency_num")
-#                                  ) %>% mutate(in_tif = ifelse(is.na(tif_share), 0, 1))
-```
-
-```{r eval=FALSE}
-
-all_taxing_agencies %>%
-  group_by(agency_num, agency_name, in_TIF) %>% 
-  summarize(agency_total_eav = mean(agency_total_eav),
-            tif_share = mean(tif_share),
-            agency_total_ext=mean(agency_total_ext)
-          #  ,summed_eav = sum(eav)
-            )
-
-all_taxing_agencies %>%
-  group_by(agency_num,agency_name, in_tif) %>% 
-  summarize(eav = first(agency_total_eav)) %>% 
-  pivot_wider(names_from="in_tif", values_from = "eav")
-```
-
-Need EAV of each Tax Code. Then we know the TIF eav from TIF tax_codes and other agency EAVs from Tax codes associated with other agencies. all_taxing_agencies has agency_total_eav but that includes all pin values everywhere that are included in that tax_code (So across all of cook county for Cook County's total eav)
-
-```{r eval=FALSE}
-pins_in_tifs <- left_join(taxcodes_intifs, area_data#, by = c("agency_name"="tif_agency_name")
-                          ) %>% 
-  mutate(pin_in_tif = ifelse(final_tax_to_tif > 0, 1, 0))
-
-area_data <- left_join(area_data, pins_in_tifs)
-
-pins_in_tifs %>% group_by(tif_agency_name) %>% 
-  summarize(eav = sum(eav),
-        #    final_tax = sum(final_tax), # final tax only exists if simplify = TRUE in that tax_bill() command.
-            final_tax_to_dist = sum(final_tax_to_dist),
-            final_tax_to_tif = sum(final_tax_to_tif),
-            tax_amt_exe = sum(tax_amt_exe),
-            tax_amt_pre_exe = sum(tax_amt_pre_exe),
-            tax_amt_post_exe = sum(tax_amt_post_exe),
-        agency_tax_rate = mean(agency_tax_rate)
-            ) %>%
-#  arrange(agency_num) %>%
-  mutate(weighted_tax_rate = agency_tax_rate*eav) %>% 
-  ungroup() %>%
-  mutate(composite_tax_rate = sum(weighted_tax_rate)/max(eav) )
-```
-
-agency_total_eav The total amount of EAV within the taxing district, otherwise known as the "base". This is the denominator when calculating tax rates
-
-agency_total_ext The total extension requested by the taxing district, otherwise known as the "levy". This is the amount the district needs in tax revenue and is the numerator when calculating tax rates
-
-"Changing tax_code_vec"relocates" a PIN by changing the things that are taxing it. This can be useful for counterfactual analysis. For example, if you own property within a school district and want to know what your tax bill would be just outside the district, but otherwise within the same municipality, then you can find the tax code that represents that situation and plug it into tax_bill()"
-
-```{r eval=FALSE}
-#agency <- lookup_agency(2021, tax_code)
-#agency 
-
-#oak_pins2 <- fromJSON(rawToChar(oak_pins$content))$pin
-
-#oak_pins2 %>% group_by(pin) %>% distinct()
-
-tifs <- lookup_tif(2021, tax_codes)
-tifs
-
-joined <- left_join(area_data, tifs, by = c("year", "tax_code", "agency_num", "agency_name"))
-
-
-
-joined  %>%
-  group_by(major_class_type, major_class_code) %>%
-  summarize(EAV = sum(eav),
-    Exemptions =  sum(tax_amt_exe),
-    tax_amt_pre_exe = sum(tax_amt_pre_exe),
-            tax_amt_post_exe = sum(tax_amt_post_exe),
-            tif_amount = sum(final_tax_to_tif),
-            tax_to_district = sum(final_tax_to_dist)) %>%
-  arrange(major_class_code)
- # mutate(Tax_Amount=sum(district_amount),
- #        TIF_Amount = sum(tif_amount))
-
-
-#area_data <- full_join(area_data, pin_data)
-area_data%>% 
-  filter(final_tax_to_tif>0) %>%
-  group_by(major_class_code)%>%
-  summarise(tax_to_tif = sum(final_tax_to_tif),)
-```
