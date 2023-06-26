@@ -315,17 +315,12 @@ The tax_bill command returns informatin for erach taxing agency that taxed a pin
 
 Each tax code has a unique combination of taxing agencies taxing properties within in. So, each tax code has a summed EAV value from each pin within it and a "composite tax rate" made from the taxing agencies and their taxable base. In the code below, its called the weighted tax rate but that isn't the best name for it... It is more like the amount of money that each taxing agency gets from each property.
 
-Changing to "RevenueCollected
-Weighted tax rate was calculated for every tax bill observation for every pin and is equal to the eav X agency_tax_rate. Then all pins within tax codes were summed together to get a tax code level EAV and tax code level tax rate.
+`rev_perTC`(previously named weighted_tax_rate in earlier code versions) was calculated for every tax bill observation for every pin and is equal to the eav of a property X agency_tax_rate. Then all pins within tax codes were summed together to get a tax code level EAV and tax code level tax rate. _Note: There is a tax_code_rate variable included in the `muni_tax_codes` object made from the `tax_code` dt included in ptaxsim_ 
 
-> Not sure if the agency_tax_rate calculated in the chunk below is reliable. would the agency_tax_rate be the mean of all agency tax rates for a tax code. I don't think so. The muni_tax_codes data table has all tax codes, tax code rates, agency numbers and agency rates. Use those numbers. 
-
-> Should the weighted tax rate be the SUM of weighted tax rates within a tax code after it is grouped?
+> Not sure if the agency_tax_rate calculated in the chunk below is reliable. would the agency_tax_rate be the mean of all agency tax rates for a tax code. I don't think so. The muni_tax_codes data table has all tax codes, tax code rates, agency numbers and agency rates. Compare to these numbers. Should they be the same or different?  
 
 
-> Rerun chunk below for the 4.5 GB file of tax bills. Change the summarized weighted tax bill to a Sum()  instead of a mean() value. Also drop the agency_tax_value in the `bills_pertaxcode` file. when rerunning it. Add count of pins for each tax code too! 
-
-```{r eval =FALSE}
+```{r pull-taxbills, eval =FALSE}
 
 bills <- tax_bill(2021, muni_pins$pin, simplify = FALSE)
 
@@ -366,70 +361,172 @@ write_csv(bills, "all_taxbills.csv")
 
 # Tax Bills by TaxCode
 
+Taxbills by property class has 9716 observations. (3774 tax codes X multiple property types).
+
 ```{r}
-taxbills_by_Class_per_TC <- read_csv("taxbills_byPropClass_perTC.csv")
+taxbills_by_Class_per_TC <- read_csv("taxbills_byPropClass_perTC.csv") %>%
+  mutate(tax_code = as.character(tax_code),
+         rev_perTC = round(rev_perTC)) %>%
+  left_join(muni_tax_codes, by = c("tax_code" = "tax_code_num"))
 
-#taxbills_by_agency <- read_csv("alltaxbills_byTaxingAgency.csv")
 
-
-# 924 taxing agencies in 2021 
-#taxbills_by_agency  
+taxbills_by_Class_per_TC <- left_join(taxbills_by_Class_per_TC , muni_agency_names)
 
 # all munis + Cicero
-taxbills_by_agency %>% 
-  filter(agency_minor_type == "MUNI" | agency_num == "020060000") %>% 
-  select(agency_name, final_tax_to_dist)
+MuniLevy <- taxbills_by_Class_per_TC %>% 
+  group_by(agency_name)%>%
+  summarize(MuniLevy = round(sum(final_tax_to_dist)),
+            Levy_plus_TIFrev =round(sum(final_tax_to_dist + final_tax_to_tif)))
 
-MuniLevy <- taxbills_by_agency %>%
-    filter(agency_minor_type == "MUNI" | agency_num == "020060000") %>%
-  group_by(agency_num) %>% summarize(total_tax_to_district = sum(final_tax_to_dist),
-                                     total_revenue = final_tax_to_dist+final_tax_to_tif)
+MuniLevy
 ```
+
+Comparison of ptaxsim/Alea calculations and the numbers in Josh Drucker's Excel files. Pretty close but not perfect matches (which is fine, I'm not surprised by that).
+
+Chicago: 6,536,952,735 vs. 6,490,629,279 JD
+Bridgeview: 65,534,363 vs. 65,133,190 JD
+Dolton: 54,957,926 vs. 56,755,459 JD
+Hoffman Estates: 177,316,159	vs. 182,363,626 JD
+
+Midlothian: 30,988,554 vs 30,877,423 JD
+
+
+Oak Park: 234,665,831 vs 233,132,867 JD.
+
+
+
 
 # Exemptions summarized by Tax Code
 
 
 ```{r}
-exemptions_by_class_per_TC <- read_csv("all_exemptions_by_TC.csv")
-
-joined <- exemptions_by_class_per_TC %>% left_join(taxbills_by_Class_per_TC)
-
-exemptions_by_class_per_TC$tax_code_num <- as.character(exemptions_by_class_per_TC$tax_code_num)
-
+exemptions_by_class_per_TC <- read_csv("all_exemptions_by_TC.csv") %>% 
+  mutate(tax_code_num = as.character(tax_code_num))
 
 
 muni_tax_codes <- full_join(muni_tax_codes, muni_agency_names)
 
+# make tax code variables character formatted for the join
 muni_tax_codes$tax_code_num <- as.character(muni_tax_codes$tax_code_num)
-
 exemptions_by_class_per_TC$tax_code_num <- as.character(exemptions_by_class_per_TC$tax_code_num)
 
-exemptions_by_class_per_TC <- left_join(exemptions_by_class_per_TC, muni_tax_codes, by ="tax_code_num") %>%
+
+# make dummy variable for if a tax code is a tif tax code or not
+exemptions_by_class_per_TC <- left_join(exemptions_by_class_per_TC, muni_tax_codes, by =c("tax_code_num")) %>%
   mutate(in_TIF = ifelse(tax_code_num %in% unique_tif_taxcodes$tax_code_num, 1,0) )
 
 exemptions_by_class_per_TC
 
 
-exemptions_by_class_per_TC <- left_join(exemptions_by_class_per_TC, muni_levies, by = c("agency_name", "agency_num")) %>%
+exemptions_by_class_per_TC <- left_join(exemptions_by_class_per_TC, muni_levies, by = c("agency_name", "agency_num", "year")) %>%
   mutate(in_TIF = ifelse(tax_code_num %in% unique_tif_taxcodes$tax_code_num, 1,0) )
 
+exemps_inTIF_byClass_perMuni <- exemptions_by_class_per_TC %>% 
+  mutate(taxamount = tax_code_rate/100*eav) %>%
+  group_by(agency_name, agency_num, major_class_code, in_TIF,
+           major_class_type, agency_rate) %>%
+  summarize(taxamount_perClass = round(sum(taxamount)),
+            eav_pre_exe_perClass  = sum(eav, na.rm=TRUE),
+            exe_homeowner = sum(exe_homeowner, na.rm=TRUE),
+            exe_senior = sum(exe_senior, na.rm=TRUE),
+            exe_freeze = sum(exe_freeze, na.rm=TRUE),
+            exe_longtime_homeowner = sum(exe_longtime_homeowner, na.rm=TRUE),
+            exe_disabled = sum(exe_disabled, na.rm=TRUE),
+            exe_vet_returning = sum(exe_vet_returning, na.rm=TRUE),
+            exe_vet_dis = sum(exe_vet_dis, na.rm=TRUE),
+            exe_abate = sum(exe_abate, na.rm=TRUE)
+           ) %>%
+  
+  mutate(Exemp_in_PropClass = exe_homeowner + exe_senior+ exe_freeze +
+           exe_longtime_homeowner + exe_disabled+ exe_vet_returning +exe_vet_dis + exe_abate,
+          
+            EAV_post_exe_PerClass = eav_pre_exe_perClass-Exemp_in_PropClass, 
+     #    tax_share_pre_exemp = taxamount / eav_pre_exe_perClass,
+          
+         tax_share_post_exemp = taxamount_perClass/ EAV_post_exe_PerClass #curreny situation
+         )
 
-taxbills_by_TC$tax_code <- as.character(taxbills_by_TC$tax_code)
-merged <- left_join(exemptions_by_class_per_TC, taxbills_by_TC, by = c("tax_code_num" = "tax_code")) #%>% select(-c(total_final_rate:total_non_cap_ext, year.y:curr_new_prop,pct_burden:total_reduced_levy))
+exemps_inTIF_byClass_perMuni
 
-merged
+
+summtable <- exemps_inTIF_byClass_perMuni %>% 
+  select(agency_name, major_class_code, in_TIF , tax_share_post_exemp, taxamount_perClass, 
+         eav_pre_exe_perClass, Exemp_in_PropClass, EAV_post_exe_PerClass, agency_num, agency_rate, major_class_type)
+summtable
+
+exemptions_perMuni <- exemps_inTIF_byClass_perMuni %>%
+  group_by(agency_name, agency_num, agency_rate) %>% 
+  summarize(taxamount_perMuni = sum(taxamount_perClass),
+            eav_pre_exe_perMuni = sum(eav_pre_exe_perClass),
+            TotalExemptions=sum(Exemp_in_PropClass),
+         ResidentialExemp = sum(exe_homeowner +exe_senior+exe_freeze + exe_longtime_homeowner
+                                + exe_disabled+ exe_vet_returning +exe_vet_dis, na.rm=TRUE),
+         CommercialExemp = sum(exe_abate, na.rm=TRUE)) %>%
+  mutate(
+         eav_post_exe_perMuni = eav_pre_exe_perMuni-TotalExemptions) %>% 
+  arrange(agency_num)
+
+exemptions_perMuni
+
+EAV_tifs_and_exemps_byClass_andMuni <- summtable %>% 
+  left_join(exemptions_perMuni , by = c("agency_name", "agency_num", "agency_rate"))
+
+
+
+burden_shift_byMuni_PropClass <- EAV_tifs_and_exemps_byClass_andMuni %>% #ungroup() %>% 
+  select(agency_name, major_class_type, in_TIF, agency_rate, eav_pre_exe_perClass, EAV_post_exe_PerClass, agency_num, eav_pre_exe_perMuni, eav_post_exe_perMuni) %>% 
+  left_join(MuniLevy) %>%
+  mutate(noexemps_agency_rate = MuniLevy / eav_pre_exe_perMuni,
+         exemps_agency_rate = MuniLevy / eav_post_exe_perMuni) %>%
+  group_by(agency_name, agency_num, major_class_code, major_class_type, in_TIF#, noexemps_agency_rate, exemps_agency_rate
+           ) %>%
+   summarize(agency_rate_no_exemps = noexemps_agency_rate,
+             agency_rate_w_exemps= exemps_agency_rate,
+             MuniLevy = MuniLevy, 
+             eav_pre_exe_perClass = eav_pre_exe_perClass,
+             EAV_post_exe_PerClass = EAV_post_exe_PerClass,
+             eav_post_exe_perMuni = eav_post_exe_perMuni, 
+             eav_pre_exe_perMuni = eav_pre_exe_perMuni) %>% 
+  mutate(
+    # if there were no exemptions
+     rev_w_no_exemps = round(agency_rate_no_exemps * eav_pre_exe_perClass),
+     
+     # the current situation with current exemptions
+     rev_w_exemps = round(agency_rate_w_exemps* EAV_post_exe_PerClass)) %>%
+  ungroup() %>%
+  ungroup() %>%
+  mutate(
+     
+     # percent of levy paid by each property class if there were no exemptions
+     tax_burden_noexemps = round(eav_pre_exe_perClass / MuniLevy, digits = 5),
+     
+     # percent of levey paid by each property class based on current exemptions
+     tax_burden_current = round(EAV_post_exe_PerClass / MuniLevy, digits = 5),
+     
+     # difference in percent of the levy being paid by each property class
+     burden_shift_from_current_exemps = tax_burden_noexemps - tax_burden_current ) 
+
+# write.csv(EAV_and_exemps_byClass_andMuni, "EAV_and_exemps_byClass_andMuni.csv")
+
+burden_shift_byMuni_PropClass
+
+burden_shift_byMuni_PropClass %>% filter(agency_num %in% c("030120000", "030210000", "030800000", "030920000","030580000","030310000"))
+
+burden_shift_byMuni_PropClass %>% filter(agency_num %in% c("030120000", "030210000", "030800000", "030920000","030580000","030310000") &
+                                           major_class_code == "2"& in_TIF==0)
 
 ```
+
 
 
 
 # Exemptions by Municipality
 
 ```{r}
-exemps_byClass_perMuni <- merged %>% 
+exemps_byClass_perMuni <- exemptions_by_class_per_TC %>% 
   mutate(taxamount = tax_code_rate/100*eav) %>%
   group_by(agency_name, agency_num, major_class_code, major_class_type, agency_rate) %>%
-  summarize(taxamount_perClass = sum(taxamount),
+  summarize(taxamount_perClass = round(sum(taxamount)),
             eav_pre_exe_perClass  = sum(eav, na.rm=TRUE),
             exe_homeowner = sum(exe_homeowner, na.rm=TRUE),
             exe_senior = sum(exe_senior, na.rm=TRUE),
@@ -453,7 +550,9 @@ exemps_byClass_perMuni <- merged %>%
 exemps_byClass_perMuni
 
 
-summtable <- exemps_byClass_perMuni %>% select(agency_name, major_class_code, taxamount, eav_pre_exe_perClass, Exemp_in_PropClass, EAV_post_exe_PerClass, agency_num, agency_rate, major_class_type)
+summtable <- exemps_byClass_perMuni %>% 
+  select(agency_name, major_class_code, tax_share_post_exemp, taxamount_perClass, 
+         eav_pre_exe_perClass, Exemp_in_PropClass, EAV_post_exe_PerClass, agency_num, agency_rate, major_class_type)
 summtable
 
 #muni_levies %>% 
@@ -465,7 +564,7 @@ summtable
 
 # #assessment_rates <- c(0, .1, .1, .1, .2, .25, .25, NA, NA, NA, NA, NA, NA, .1)
 # class = c("0", "1","2", "3", "4" ,"5A", "5B", "6A", "6B", "6C", "7A", "7B", "8", "9")
-# class_rates <- as.data.frame(assessment_rates,class)
+# class_rates <- as.data.frame(assessm ent_rates,class)
 # class_rates
 ```
 
@@ -475,10 +574,11 @@ summtable
 ```{r}
 exemptions_perMuni <- exemps_byClass_perMuni %>%
   group_by(agency_name, agency_num, agency_rate) %>% 
-  summarize(taxamount = sum(taxamount),
-            eav_pre_exe_perMuni = sum(eav_pre_exe_perClass, na.rm=TRUE),
-            TotalExemptions=sum(Exemp_in_PropClass, na.rm=TRUE),
-         ResidentialExemp = sum(exe_homeowner +exe_senior+exe_freeze+exe_longtime_homeowner + exe_disabled+ exe_vet_returning +exe_vet_dis, na.rm=TRUE),
+  summarize(taxamount_perMuni = sum(taxamount_perClass),
+            eav_pre_exe_perMuni = sum(eav_pre_exe_perClass),
+            TotalExemptions=sum(Exemp_in_PropClass),
+         ResidentialExemp = sum(exe_homeowner +exe_senior+exe_freeze + exe_longtime_homeowner
+                                + exe_disabled+ exe_vet_returning +exe_vet_dis, na.rm=TRUE),
          CommercialExemp = sum(exe_abate, na.rm=TRUE)) %>%
   mutate(
          eav_post_exe_perMuni = eav_pre_exe_perMuni-TotalExemptions) %>% 
@@ -486,10 +586,60 @@ exemptions_perMuni <- exemps_byClass_perMuni %>%
 
 exemptions_perMuni
 
-EAV_and_exemps_byClass_andMuni <- summtable %>% left_join(exemptions_perMuni , by = c("agency_name", "agency_num", "agency_rate"))
-EAV_and_exemps_byClass_andMuni
+EAV_and_exemps_byClass_andMuni <- summtable %>% 
+  left_join(exemptions_perMuni , by = c("agency_name", "agency_num", "agency_rate"))
+
+
+
+burden_shift_byMuni_PropClass <- EAV_and_exemps_byClass_andMuni %>% #ungroup() %>% 
+  select(agency_name, major_class_type, agency_rate, eav_pre_exe_perClass, EAV_post_exe_PerClass, agency_num, eav_pre_exe_perMuni, eav_post_exe_perMuni) %>% 
+  left_join(MuniLevy) %>%
+  mutate(noexemps_agency_rate = MuniLevy / eav_pre_exe_perMuni,
+         exemps_agency_rate = MuniLevy / eav_post_exe_perMuni) %>%
+  group_by(agency_name, agency_num, major_class_code, major_class_type#, noexemps_agency_rate, exemps_agency_rate
+           ) %>%
+   summarize(agency_rate_no_exemps = noexemps_agency_rate,
+             agency_rate_w_exemps= exemps_agency_rate,
+             MuniLevy = MuniLevy, 
+             eav_pre_exe_perClass = eav_pre_exe_perClass,
+             EAV_post_exe_PerClass = EAV_post_exe_PerClass,
+             eav_post_exe_perMuni = eav_post_exe_perMuni, 
+             eav_pre_exe_perMuni = eav_pre_exe_perMuni) %>% 
+  mutate(
+    # if there were no exemptions
+     rev_w_no_exemps = round(agency_rate_no_exemps * eav_pre_exe_perClass),
+     
+     # the current situation with current exemptions
+     rev_w_exemps = round(agency_rate_w_exemps* EAV_post_exe_PerClass)) %>%
+  ungroup() %>%
+  ungroup() %>%
+  mutate(
+     
+     # percent of levy paid by each property class if there were no exemptions
+     tax_burden_noexemps = round(eav_pre_exe_perClass / MuniLevy, digits = 5),
+     
+     # percent of levey paid by each property class based on current exemptions
+     tax_burden_current = round(EAV_post_exe_PerClass / MuniLevy, digits = 5),
+     
+     # difference in percent of the levy being paid by each property class
+     burden_shift_from_current_exemps = tax_burden_noexemps - tax_burden_current ) 
+
 # write.csv(EAV_and_exemps_byClass_andMuni, "EAV_and_exemps_byClass_andMuni.csv")
+
+burden_shift_byMuni_PropClass
 ```
+
+Six community Comparison:
+
+```{r}
+burden_shift_byMuni_PropClass %>% filter(agency_num %in% c("030120000", "030210000", "030800000", "030920000","030580000","030310000"))
+
+burden_shift_byMuni_PropClass %>% filter(agency_num %in% c("030120000", "030210000", "030800000", "030920000","030580000","030310000") &
+                                           major_class_code == "2")
+```
+
+Overall burden shift is change in percentage points.
+
 
 ### Add in Levy Data at Muni level:
 
@@ -526,6 +676,8 @@ exemptions_inTIFs_perMuni %>%
   left_join(muni_levies) %>% 
   select(agency_name, total_ext, eav_pre_exe) %>%
   mutate(no_exemption_rate = total_ext/eav_pre_exe)
+
+
 ```
 
 > To do: Create residential & commercial categories and EAV in each. Then calculate the share of exemptions/residential eav, exemptions/total_eav, and residential eav/total_eav.
@@ -557,6 +709,12 @@ The percent of all residential property that is exempt (due to ONLY homeowner ex
 
 
 ```{r}
+
+# EAV_and_exemps_byClass_andMuni %>% 
+#   mutate(class_burden = taxamount_perClass/taxamount) %>%
+#   select(agency_name, class_burden)
+
+
 exemptions_by_class_per_TC %>% 
   filter(major_class_code == "2") %>% 
   group_by(agency_name, agency_num) %>%
@@ -597,30 +755,6 @@ The levy amount and eav values from the `agency` data table represent only the T
 
 # Extra Stuff: Eval=FALSE for now
 # Revenue
-
-
-> Is final tax to district the same as the total_ext for the muni?
-
-
-
-
-Not done yet:
-
-```{r eval=FALSE}
-# agency_levies <- 
-#   taxbills_by_TC %>% 
-#   group_by() %>%
-#   summarize(
-#  #   weighted_tax_rate = round(sum(weighted_tax_rate), digits=0), #comparison to JD weighted tax rate
-#     levy_within_muni = round(sum(final_tax_to_dist, na.rm=TRUE), digits=0),
-#     tif_rev = round(sum(final_tax_to_tif, na.rm=FALSE), digits=0),
-#     percent_to_tif = round(tif_rev/ (levy_within_muni+tif_rev), digits = 4))
-# 
-# agency_levies
-# 
-
-```
-
 
 ## TIF Agencies & Tax Codes
 
