@@ -1,0 +1,364 @@
+---
+title: "Mapping Residential Property Tax Burden Shift"
+author: "Alea Wilbur"
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+
+library(tidyverse)
+library(DBI)
+library(data.table)
+library(ggspatial)
+library(gstat)
+library(here)
+library(httr)
+library(jsonlite)
+library(ptaxsim)
+library(sf)
+library(stars)
+library(glue)
+
+# Create the DB connection with the default name expected by PTAXSIM functions
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
+
+
+options(digits=4, scipen = 999)
+
+library(sf)
+library(jsonlite)
+library(httr)
+
+# link to the API output as a JSON file
+muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/politicalBoundary/MapServer/2/query?outFields=*&where=1%3D1&f=geojson")
+
+```
+
+# Data Prep
+
+Pull all agency names that exist, then use agency numbers associated with MUNI types to pull only the `muni_agency_names` object.
+
+There are 946 unique taxing agencies that existed in 2021.
+
+```{r agency-dt}
+# has EAV values, extensions by agency_num
+agency_dt <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT *
+  FROM agency
+  WHERE year = 2021
+  "
+)
+
+```
+
+This table is used for the municipality levy in later calculations.
+
+`agency_dt` has all taxing agencies (BUT NOT TIFS!) that existed in 2021 and includes their total taxable base (cty_cook_eav), their levy, taxing rate, binary variables for if a municipality is home rule or not, as well as many other variables. Also currently doesn't have agency_names to go with the agency numbers. That will be merged in shortly.
+
+The table has waaaay too many columns to display all at once.Click the arrow on the right-hand side of the table to see additional columns that are hidden initially in the display.
+
+```{r all-muni-names}
+# grabs all unique muni names. Would be needed if creating a loop for calculating all munis
+# municipality names and their agency number
+muni_agency_names <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT DISTINCT agency_num, agency_name, minor_type
+  FROM agency_info
+  WHERE minor_type = 'MUNI'
+  OR agency_num = '020060000'  
+
+  "
+)
+
+muni_agency_names <- muni_agency_names %>% 
+  mutate(first6 = str_sub(agency_num,1,6),
+         first5 = str_sub(agency_num,1,5)) %>% 
+  select(-minor_type)
+
+```
+
+Makes a list of ALL taxing agencies, including TIFs, SSAs, etc.
+
+First 5 and 6 digit codes variables are created to nest TIFs and other taxing agencies within the municipality. Still experimental, variables are not used in the code below.
+
+There are 1,878 taxing agencies. When grouped by minor_type, there are 133 muni agencies, 639 tif agencies, 30 townships, etc.
+
+```{r all-taxingagency-names}
+# all agency names, numbers, and types
+# includes TIF and non-TIF agencies
+all_taxing_agencies <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT agency_num, agency_name, major_type, minor_type
+  FROM agency_info
+  "
+)
+
+# create same first 5 and 6 digit codes 
+all_taxing_agencies <- all_taxing_agencies %>%
+  mutate(first6 = str_sub(agency_num,1,6),
+         first5 = str_sub(agency_num,1,5))
+
+```
+
+All agencies have an agency name, but there isn't an indicator for which municipality each taxing agency is within. Merging the `muni_agency_names` to `all_taxing_agencies` hopefully adds a variable that allows for grouping and summing at the municipality level that includes SSAs, (if we want to do that). Does not work for School districts or other taxing districts which begin with completely different values (e.g. school districts begin with 4).
+
+> Everything depends on the tax codes.
+
+```{r all-taxingagency-names2}
+# none of these are included in their geographic municipality areas automatically. have different agency number code beginnings too. 
+all_taxing_agencies %>% 
+  filter(major_type == "MISCELLANEOUS") %>% 
+  group_by(minor_type) %>%
+  summarize(count = n()) 
+#all_taxing_agencies %>% filter(minor_type == "FIRE") 
+```
+
+Add agency names since those weren't included originally in the table:
+
+```{r all-taxingagency-names3}
+all_taxing_agencies <- all_taxing_agencies %>% 
+  left_join(muni_agency_names, by = c("first5", "first6")) %>% 
+  rename(muni_name =  agency_name.y,
+        muni_num = agency_num.y,
+        agency_name = agency_name.x,
+        agency_num = agency_num.x)
+
+
+
+# combine taxing agency names and agency type to data table that has eav and extension values
+agency_data <- right_join(agency_dt, all_taxing_agencies) %>% 
+  # get rid of unneeded columns to make table outputs smaller
+  select(-c(cty_dupage_eav:cty_livingston_eav, lim_numerator, lim_denominator)) %>% # drop some of the unused variables
+  arrange(first5, agency_num)
+
+```
+
+Using the agency numbers for each municipality, I pull all tax codes that have an agency_num included in the muni_agency_names object. By narrowing the agencies down to just Municipality types, this prevents duplicate tax_codes from being pulled.
+
+There are 3774 tax codes within Cook County that are taxed by Municipalities. There are 4228 unique tax codes in Cook County in 2021.
+
+```{r municiple-taxcodes}
+# muni_agency_nums<- all_taxing_agencies %>% 
+#   filter(minor_type %in% c("MUNI")) %>%
+#   select(agency_num)
+
+muni_tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT*
+  FROM tax_code
+  WHERE agency_num IN ({muni_agency_names$agency_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+)# %>% select(-agency_rate)
+
+
+```
+
+```{r}
+# Agency number and agency name for all TIFs
+TIF_agencies <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT DISTINCT agency_num, agency_name, major_type, minor_type
+  FROM agency_info
+  WHERE minor_type = 'TIF'
+  "
+)
+
+unique_tif_taxcodes <- DBI::dbGetQuery(
+  ptaxsim_db_conn, 
+  glue_sql("
+  SELECT DISTINCT tax_code_num
+  FROM tax_code
+  WHERE agency_num IN ({TIF_agencies$agency_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+)
+
+
+```
+
+## Tax code level data
+
+Read in summarized tax code level data for exemptions and taxbills.
+
+```{r}
+taxbills_by_Class_per_TC <- read_csv("taxbills_inMunis_perTC.csv")  %>% 
+  mutate(tax_code = as.character(tax_code))  
+
+
+# get rid of rpm variables, tax_amt_exe,pre and post exemption variables,
+exemptions_by_class_per_TC <- read_csv("all_exemptions_by_TC.csv") %>%
+    mutate(tax_code_num = as.character(tax_code_num))
+
+tif_distrib <- DBI::dbGetQuery(
+  ptaxsim_db_conn, 
+  glue_sql("
+  SELECT *
+  FROM tif_distribution
+  WHERE tax_code_num IN ({muni_tax_codes$tax_code_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+) %>% mutate(tax_code_num = as.character(tax_code_num))
+
+
+
+
+taxcodes <- full_join(taxbills_by_Class_per_TC, muni_tax_codes, 
+                      by = c("tax_code" = "tax_code_num")) #%>% left_join(tif_distrib,   by = c("tax_code" = "tax_code_num"))
+  
+  
+Change_in_Taxrates <- taxcodes %>% group_by(agency_num) %>% 
+  summarize(MuniLevy = sum(final_tax_to_dist, na.rm = TRUE),
+            TaxableEAV = sum(final_tax_to_dist/(tax_code_rate.y/100), na.rm = TRUE),
+            TIF_increment = sum(final_tax_to_tif/(tax_code_rate.y/100), na.rm=TRUE),
+            Exempt_EAV = sum(tax_amt_exe/(tax_code_rate.y/100), na.rm=TRUE))  %>%
+  mutate(tax_rate_current = MuniLevy/TaxableEAV,
+         Taxable_plus_exemptEAV = TaxableEAV + Exempt_EAV,
+         taxrate_new = MuniLevy/Taxable_plus_exemptEAV)
+Change_in_Taxrates
+
+
+taxcodes <-full_join(exemptions_by_class_per_TC, tif_distrib) #%>% mutate(tax_code_frozen_eav = ifelse(is.na(tax_code_frozen_eav), 0, tax_code_frozen_eav))
+
+
+taxcodes2 <- taxcodes %>% 
+ # select(-c(rpm_tif_to_cps:rpm_tif_to_dist,rev_perTC_pre_exemp, rev_perTC_post_exemp)) %>%
+  mutate(tax_code_frozen_eav = replace_na(tax_code_frozen_eav, 0),
+
+      ) %>%
+  select(-c(year:tax_code_rate, tax_code_eav, tax_code_revenue, tax_code_distribution_pct))
+
+taxcodes2 <- taxcodes2 %>% 
+  left_join(muni_tax_codes) %>% 
+  left_join(muni_agency_names) %>%   
+  left_join(Change_in_Taxrates) %>%
+  select(-c(first6, first5, agency_rate)) %>%
+  #ungroup() %>%
+  mutate(total_exemptions = exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+           exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate,
+         district_rev_collected  = ((eav - total_exemptions)*tax_rate_current),
+    current_burden = district_rev_collected / MuniLevy,
+         no_exemptions_burden = ((eav)*taxrate_new)/MuniLevy) %>% 
+  arrange(agency_name)
+
+taxcodes2 
+
+taxcodes2 %>% write.csv("taxcodes_byPropClasses_withEachExemptionType.csv")
+
+burden_shift <- taxcodes2 %>% group_by(agency_name, major_class_code, major_class_type, tax_rate_current,taxrate_new) %>%
+  summarize(district_rev_collected = sum(district_rev_collected),
+            current_burden = sum(current_burden),
+            no_exemptions_burden = sum(no_exemptions_burden)) %>%
+  select(agency_name, major_class_type, current_burden, no_exemptions_burden, tax_rate_current, taxrate_new, everything())
+
+burden_shift
+
+#burden_shift %>% write.csv("burdenshift_July5.csv")
+```
+
+
+
+Change in Tax Rate for All municipalities after removing exemptions:
+
+```{r}
+burden_shift <- burden_shift %>% mutate(burden_change = no_exemptions_burden-current_burden,
+                        taxrate_change = taxrate_new - tax_rate_current)
+
+rate_change<- burden_shift %>% group_by(agency_name) %>% summarize(rate_change = first(taxrate_change))
+
+burden_shift %>% 
+    filter(major_class_code == 2) %>%
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+  ggplot(aes(fill = tax_rate_current)) + 
+      theme_classic() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+   scale_fill_gradientn(colors = c("white", "red"), 
+                    #   limits = c(0,.6),
+                       n = 6,
+                        name = "Tax Rate", label = scales::percent)+
+  geom_sf(aes(geometry = geometry), color = "black") +  
+  labs(title = "Current tax rates with current exemptions in place")
+
+
+burden_shift %>% 
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+  filter(major_class_code == 2) %>%
+  ggplot(aes(fill = taxrate_new)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + theme_void()+ 
+  labs(title = "New tax rates after removing ALL exemptions")
+```
+
+
+```{r}
+
+
+
+rate_change %>% 
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+  ggplot(aes(fill = rate_change)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+      theme_classic() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+   scale_fill_gradientn(colors = c("darkblue", "white"), 
+                    #   limits = c(0,.6),
+                       n = 6,
+                        name = "Change in Tax Rate")+
+  labs(title = "Change in Tax Rate when Exemptions are removed")
+
+
+```
+
+Change in Tax Burden for Class 2 Properties:
+
+```{r}
+burden_shift %>% 
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+    filter(major_class_code == 2) %>%
+
+  ggplot(aes(fill =current_burden)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  theme_classic() + 
+  labs(title = "Current share of property tax burden", subtitle = "for Class = 2 Property Types")
+
+
+burden_shift %>% 
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+    filter(major_class_code == 2) %>%
+
+  ggplot(aes(fill = no_exemptions_burden)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + theme_void()+ 
+  labs(title = "New share of property tax burden", subtitle = "for Class = 2 Property Types")
+```
+
+
+
+```{r}
+burden_shift %>% 
+  filter(major_class_code == 2) %>%
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+  ggplot(aes(fill = burden_change)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + theme_void()+ 
+  labs(title = "Change in Residential Share of Tax Burden") +
+    theme_classic() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+   scale_fill_gradientn(colors = c("white", "red"), 
+                    #   limits = c(0,.6),
+                       n = 6,
+                        name = "Change in Burden", label = scales::percent)
+  
+   # geom_sf(data = countyIL, fill=NA, color="dark gray")
+
+```
+
+
+
