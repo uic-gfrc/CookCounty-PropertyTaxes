@@ -2,7 +2,12 @@
 title: "Mapping Residential Property Tax Burden Shift"
 author: "Alea Wilbur"
 date: "`r Sys.Date()`"
-
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    df_print: paged
+    code_folding: hide
 ---
 
 ```{r setup, include=FALSE}
@@ -43,7 +48,7 @@ Pull all agency names that exist, then use agency numbers associated with MUNI t
 
 There are 946 unique taxing agencies that existed in 2021.
 
-```{r agency-dt}
+```{r agency-dt, include=FALSE}
 # has EAV values, extensions by agency_num
 agency_dt <- DBI::dbGetQuery(
   ptaxsim_db_conn,
@@ -59,9 +64,7 @@ This table is used for the municipality levy in later calculations.
 
 `agency_dt` has all taxing agencies (but not TIFs) that existed each year and includes their total taxable base (cty_cook_eav), their levy, taxing rate, binary variables for if a municipality is home rule or not, as well as many other variables. Also currently doesn't have agency_names to go with the agency numbers. That will be merged in shortly.
 
-The table has waaaay too many columns to display all at once. Click the arrow on the right-hand side of the table to see additional columns that are hidden initially in the display.
-
-```{r all-muni-names}
+```{r all-muni-names, include=FALSE}
 # grabs all unique muni names. Would be needed if creating a loop for calculating all munis
 # municipality names and their agency number
 muni_agency_names <- DBI::dbGetQuery(
@@ -87,7 +90,7 @@ First 5 and 6 digit codes variables are created to nest TIFs and other taxing ag
 
 There are 1,878 taxing agencies. When grouped by minor_type, there are 133 muni agencies, 639 tif agencies, 30 townships, etc.
 
-```{r all-taxingagency-names}
+```{r all-taxingagency-names, include=FALSE}
 # all agency names, numbers, and types
 # includes TIF and non-TIF agencies
 all_taxing_agencies <- DBI::dbGetQuery(
@@ -117,9 +120,11 @@ all_taxing_agencies %>%
 #all_taxing_agencies %>% filter(minor_type == "FIRE") 
 ```
 
-Add agency names since those weren't included originally in the table:
 
-```{r all-taxingagency-names3}
+```{r all-taxingagency-names3, include=FALSE}
+
+## Add agency names since those weren't included originally in the table:
+
 all_taxing_agencies <- all_taxing_agencies %>% 
   left_join(muni_agency_names, by = c("first5", "first6")) %>% 
   rename(muni_name =  agency_name.y,
@@ -141,7 +146,7 @@ Using the agency numbers for each municipality, I pull all tax codes that have a
 
 There are 3774 tax codes within Cook County that are taxed by Municipalities. There are 4228 unique tax codes in Cook County in 2021.
 
-```{r municiple-taxcodes}
+```{r municiple-taxcodes, include=FALSE}
 # muni_agency_nums<- all_taxing_agencies %>% 
 #   filter(minor_type %in% c("MUNI")) %>%
 #   select(agency_num)
@@ -161,7 +166,7 @@ muni_tax_codes <- DBI::dbGetQuery(
 
 ```
 
-```{r}
+```{r include=FALSE}
 # Agency number and agency name for all TIFs
 TIF_agencies <- DBI::dbGetQuery(
   ptaxsim_db_conn,
@@ -216,8 +221,11 @@ tif_distrib <- DBI::dbGetQuery(
 
 taxcodes <- full_join(taxbills_by_Class_per_TC, muni_tax_codes, 
                       by = c("tax_code" = "tax_code_num")) #%>% left_join(tif_distrib,   by = c("tax_code" = "tax_code_num"))
-  
-  
+```
+
+# Composite Tax Rates
+
+```{r}
 Change_in_Taxrates <- taxcodes %>% group_by(agency_num) %>% 
   summarize(MuniLevy = sum(final_tax_to_dist, na.rm = TRUE),
             TaxableEAV = sum(final_tax_to_dist/(tax_code_rate.y/100), na.rm = TRUE),
@@ -227,8 +235,10 @@ Change_in_Taxrates <- taxcodes %>% group_by(agency_num) %>%
          Taxable_plus_exemptEAV = TaxableEAV + Exempt_EAV,
          taxrate_new = MuniLevy/Taxable_plus_exemptEAV)
 Change_in_Taxrates
+```
 
 
+```{r collapse=TRUE}
 taxcodes <-full_join(exemptions_by_class_per_TC, tif_distrib) #%>% mutate(tax_code_frozen_eav = ifelse(is.na(tax_code_frozen_eav), 0, tax_code_frozen_eav))
 
 
@@ -258,10 +268,15 @@ taxcodes2 <- taxcodes2 %>%
            TRUE~ "Commercial-Industrial")) %>% 
   arrange(agency_name)
 
+#taxcodes2 %>% write.csv("taxcodes_byPropClasses_withEachExemptionType.csv")
+
+
 taxcodes2 
 
-taxcodes2 %>% write.csv("taxcodes_byPropClasses_withEachExemptionType.csv")
 ```
+
+
+# Single-Family (Class 2) Burden Shift
 
 ```{r}
 cross_county_lines <- c("030340000","030030000","030040000","030050000", "030080000","030150000","030180000",
@@ -320,7 +335,7 @@ burden_shift %>%
       theme_classic() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
    scale_fill_gradientn(colors = c("white", "maroon"), 
-                    #   limits = c(0,.6),
+                      limits = c(0,.32),
                        n = 6,
                         name = "Tax Rate", label = scales::percent)+
   geom_sf(aes(geometry = geometry), color = "black") +  
@@ -335,7 +350,7 @@ burden_shift %>%
   geom_sf(aes(geometry = geometry), color = "black") +       theme_classic() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
    scale_fill_gradientn(colors = c("white", "maroon"), 
-                    #   limits = c(0,.6),
+                      limits = c(0,.32),
                        n = 6,
                         name = "Tax Rate", label = scales::percent)+
   geom_sf(aes(geometry = geometry), color = "black")+
@@ -385,7 +400,7 @@ rate_change %>%
   geom_sf(aes(geometry = geometry), color = "black") +  
       theme_classic() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
-   scale_fill_gradientn(colors = c("darkblue", "white"), 
+   scale_fill_gradientn(colors = c("maroon", "white"), 
                     #   limits = c(0,.6),
                        n = 6,
                         name = "Change in Tax Rate")+
@@ -397,28 +412,41 @@ rate_change %>%
 Change in Tax Burden for Class 2 Properties:
 
 ```{r}
-burden_shift %>% 
+burden_shift %>%
+      filter(major_class_code == 2) %>%
+
   full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
-    filter(major_class_code == 2) %>%
 
   ggplot(aes(fill =current_burden)) + 
   geom_sf(aes(geometry = geometry), color = "black") + 
   theme_classic() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+   scale_fill_gradientn(colors = c("white", "darkblue"), 
+                    #   limits = c(0,.6),
+                       n = 6,
+                        name = "Burden with \nExemptions", label = scales::percent)+
   labs(title = "Current share of property tax burden", subtitle = "for Class = 2 Property Types")
 
 
 burden_shift %>% 
+      filter(major_class_code == 2) %>%
+
   full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
-    filter(major_class_code == 2) %>%
 
   ggplot(aes(fill = no_exemptions_burden)) + 
-  geom_sf(aes(geometry = geometry), color = "black") + theme_void()+ 
+  geom_sf(aes(geometry = geometry), color = "black") +     
+  theme_classic() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+   scale_fill_gradientn(colors = c("white", "darkblue"), 
+                    #   limits = c(0,.6),
+                       n = 6,
+                        name = "Burden w/o \nExemptions", label = scales::percent) +
   labs(title = "New share of property tax burden", subtitle = "for Class = 2 Property Types")
 ```
 
 One of the areas with a huge burden that was really concerning me is the Village of Frankfort. and that is a border muni. Most of its eav is outside of  cook county. So that's why the Residential burden share was 300% of "municipal levy". I sum up the amount of tax billed by the taxing agency within cook county as a proxy for the Muni levy. BUT most of the tax bill doesn't come from Cook, it comes from Grundy county.
 
-```{r}
+```{r collapse=TRUE}
 burden_shift %>% 
   filter(major_class_code == 2) %>%
   full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
@@ -427,7 +455,7 @@ burden_shift %>%
   labs(title = "Change in Residential Share of Tax Burden") +
     theme_classic() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
-   scale_fill_gradientn(colors = c("white", "red"), 
+   scale_fill_gradientn(colors = c("white", "darkblue"), 
                     #   limits = c(0,.6),
                        n = 6,
                         name = "Change in Burden", label = scales::percent)
@@ -436,7 +464,7 @@ burden_shift %>%
 
 ```
 
-```{r}
+```{r collapse=TRUE}
 # as a dot graph ## 
 
 order <- burden_shift %>% 
