@@ -2,6 +2,7 @@
 title: "Mapping Residential Property Tax Burden Shift"
 author: "Alea Wilbur"
 date: "`r Sys.Date()`"
+
 ---
 
 ```{r setup, include=FALSE}
@@ -56,9 +57,9 @@ agency_dt <- DBI::dbGetQuery(
 
 This table is used for the municipality levy in later calculations.
 
-`agency_dt` has all taxing agencies (BUT NOT TIFS!) that existed in 2021 and includes their total taxable base (cty_cook_eav), their levy, taxing rate, binary variables for if a municipality is home rule or not, as well as many other variables. Also currently doesn't have agency_names to go with the agency numbers. That will be merged in shortly.
+`agency_dt` has all taxing agencies (but not TIFs) that existed each year and includes their total taxable base (cty_cook_eav), their levy, taxing rate, binary variables for if a municipality is home rule or not, as well as many other variables. Also currently doesn't have agency_names to go with the agency numbers. That will be merged in shortly.
 
-The table has waaaay too many columns to display all at once.Click the arrow on the right-hand side of the table to see additional columns that are hidden initially in the display.
+The table has waaaay too many columns to display all at once. Click the arrow on the right-hand side of the table to see additional columns that are hidden initially in the display.
 
 ```{r all-muni-names}
 # grabs all unique muni names. Would be needed if creating a loop for calculating all munis
@@ -248,41 +249,77 @@ taxcodes2 <- taxcodes2 %>%
            exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate,
          district_rev_collected  = ((eav - total_exemptions)*tax_rate_current),
     current_burden = district_rev_collected / MuniLevy,
-         no_exemptions_burden = ((eav)*taxrate_new)/MuniLevy) %>% 
+         no_exemptions_burden = ((eav)*taxrate_new)/MuniLevy,
+    ResidentialProps = ifelse(major_class_code %in% c("2", "3", "9"), "Residential", "Commercial"),
+         
+         PropType = case_when(
+           major_class_code %in% c("3","9") ~ "Multi-Family",
+           major_class_code == "2" ~ "Single-Family",
+           TRUE~ "Commercial-Industrial")) %>% 
   arrange(agency_name)
 
 taxcodes2 
 
 taxcodes2 %>% write.csv("taxcodes_byPropClasses_withEachExemptionType.csv")
+```
 
-burden_shift <- taxcodes2 %>% group_by(agency_name, major_class_code, major_class_type, tax_rate_current,taxrate_new) %>%
+```{r}
+cross_county_lines <- c("030340000","030030000","030040000","030050000", "030080000","030150000","030180000",
+  "030280000", "030320000","030440000","030500000", "030560000", "030585000", "030890000",
+  "031000000","031120000","031210000","031270000", "031280000")
+```
+
+```{r}
+burden_shift <- taxcodes2 %>% 
+  group_by(agency_name, major_class_code, major_class_type, tax_rate_current, taxrate_new, PropType, ResidentialProps, agency_num) %>%
   summarize(district_rev_collected = sum(district_rev_collected),
             current_burden = sum(current_burden),
             no_exemptions_burden = sum(no_exemptions_burden)) %>%
-  select(agency_name, major_class_type, current_burden, no_exemptions_burden, tax_rate_current, taxrate_new, everything())
+  select(agency_name, major_class_type, current_burden, no_exemptions_burden, tax_rate_current, taxrate_new, everything()) %>% 
+  filter(!agency_num %in% cross_county_lines)
 
 burden_shift
+
+burden_shift %>% arrange(-current_burden)
 
 #burden_shift %>% write.csv("burdenshift_July5.csv")
 ```
 
 
 
+## Maps
+
+
 Change in Tax Rate for All municipalities after removing exemptions:
 
 ```{r}
-burden_shift <- burden_shift %>% mutate(burden_change = no_exemptions_burden-current_burden,
-                        taxrate_change = taxrate_new - tax_rate_current)
+# 6 Highest and 6 lowest tax rates. View the extremes on both sides
+Change_in_Taxrates %>%  filter(tax_rate_current > 0.25 )
+                           
+Change_in_Taxrates %>%  filter( tax_rate_current < 0.08)
 
-rate_change<- burden_shift %>% group_by(agency_name) %>% summarize(rate_change = first(taxrate_change))
+burden_shift <- burden_shift %>% 
+  mutate(
+    burden_change = no_exemptions_burden-current_burden,
+    taxrate_change = taxrate_new - tax_rate_current,
+    ResidentialProps = ifelse(major_class_code %in% c("2", "3", "9"), "Residential", "Commercial"),
+         
+         PropType = case_when(
+           major_class_code %in% c("3","9") ~ "Multi-Family",
+           major_class_code == "2" ~ "Single-Family",
+           TRUE~ "Commercial-Industrial")) %>% filter(!agency_num %in% cross_county_lines)
+
+rate_change<- burden_shift %>% 
+  group_by(agency_name) %>% 
+  summarize(rate_change = first(taxrate_change))
 
 burden_shift %>% 
-    filter(major_class_code == 2) %>%
+    filter(major_class_code == 2) %>% # all property types have same composite tax rate
   full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
   ggplot(aes(fill = tax_rate_current)) + 
       theme_classic() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
-   scale_fill_gradientn(colors = c("white", "red"), 
+   scale_fill_gradientn(colors = c("white", "maroon"), 
                     #   limits = c(0,.6),
                        n = 6,
                         name = "Tax Rate", label = scales::percent)+
@@ -290,12 +327,51 @@ burden_shift %>%
   labs(title = "Current tax rates with current exemptions in place")
 
 
-burden_shift %>% 
+burden_shift %>%  
+  # eliminate duplicate tax rates for each property type
+  filter(major_class_code == 2) %>% #  all property types have same composite tax rate
   full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
-  filter(major_class_code == 2) %>%
   ggplot(aes(fill = taxrate_new)) + 
-  geom_sf(aes(geometry = geometry), color = "black") + theme_void()+ 
-  labs(title = "New tax rates after removing ALL exemptions")
+  geom_sf(aes(geometry = geometry), color = "black") +       theme_classic() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+   scale_fill_gradientn(colors = c("white", "maroon"), 
+                    #   limits = c(0,.6),
+                       n = 6,
+                        name = "Tax Rate", label = scales::percent)+
+  geom_sf(aes(geometry = geometry), color = "black")+
+  labs(title = "Composite tax rates if there were no homeowner exemptions")
+```
+```{r}
+# as a dot graph ## 
+
+order <- burden_shift %>% ungroup %>% as_tibble() %>%
+# filter(YEAR == 2019 & NAME != "NA" & CIHISPEED == "10") %>% 
+  select(agency_name, tax_rate_current)
+
+
+
+# look at ones that changed the most
+burden_shift %>%  
+  filter(tax_rate_current > 0.23 |tax_rate_current < 0.085) %>% 
+  filter(PropType == "Single-Family") %>%
+  ungroup() %>% 
+  select(agency_name, tax_rate_current, taxrate_new) %>% 
+  pivot_longer(c("tax_rate_current", "taxrate_new"), 
+               names_to = "type", values_to = "tax_rate") %>% 
+  left_join(order) %>%
+  ggplot(aes(x = tax_rate, y= reorder(agency_name, tax_rate_current)))+
+  geom_line(aes(group = agency_name))+ 
+   geom_point(aes(color=type), size=3 )+
+  theme_minimal() + 
+  theme(#legend.position = "none", 
+    legend.title = element_blank(),
+               plot.title.position = "plot",
+     #   panel.background = element_rect(fill='transparent'), #transparent panel bg
+    plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
+   )+
+        scale_color_brewer(palette="Paired", labels = c("Exemptions", "No Exemptions"), direction = 1)+
+
+  labs(title = "Change in Composite Tax Rate if there were No Exemptions", x = "", y = "" , caption = "For the highest and lowest composite tax rates")
 ```
 
 
@@ -306,7 +382,7 @@ burden_shift %>%
 rate_change %>% 
   full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
   ggplot(aes(fill = rate_change)) + 
-  geom_sf(aes(geometry = geometry), color = "black") + 
+  geom_sf(aes(geometry = geometry), color = "black") +  
       theme_classic() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
    scale_fill_gradientn(colors = c("darkblue", "white"), 
@@ -340,7 +416,7 @@ burden_shift %>%
   labs(title = "New share of property tax burden", subtitle = "for Class = 2 Property Types")
 ```
 
-
+One of the areas with a huge burden that was really concerning me is the Village of Frankfort. and that is a border muni. Most of its eav is outside of  cook county. So that's why the Residential burden share was 300% of "municipal levy". I sum up the amount of tax billed by the taxing agency within cook county as a proxy for the Muni levy. BUT most of the tax bill doesn't come from Cook, it comes from Grundy county.
 
 ```{r}
 burden_shift %>% 
@@ -360,5 +436,119 @@ burden_shift %>%
 
 ```
 
+```{r}
+# as a dot graph ## 
 
+order <- burden_shift %>% 
+  ungroup %>% as_tibble() %>%
+  #  filter(ResidentialProps == "Residential") %>%
+
+  filter(PropType == "Single-Family") %>%
+  select(agency_name, current_burden)
+
+
+
+# burder_shift_ordered <-  burden_shift %>% 
+#   ungroup() %>% 
+#   select(agency_name, current_burden, no_exemptions_burden) %>%    
+#   pivot_longer(c("current_burden", "no_exemptions_burden"), 
+#                names_to = "type", values_to = "pct_burden") %>% 
+#   left_join(order)
+
+# look at ones that changed the most
+burden_shift %>%  
+  filter(current_burden > 0.9 |current_burden < .3 ) %>% 
+  #filter(ResidentialProps == "Residential") %>%
+    filter(PropType == "Single-Family") %>%
+
+  ungroup() %>% 
+  select(agency_name, current_burden, no_exemptions_burden) %>% 
+  pivot_longer(c("current_burden", "no_exemptions_burden"), 
+               names_to = "type", values_to = "pct_burden") %>% 
+  inner_join(order) %>%
+  ggplot(aes(x = pct_burden, y= reorder(agency_name, current_burden)))+
+  geom_line(aes(group = agency_name))+ 
+   geom_point(aes(color=type), size=3 )+
+  theme_minimal() + 
+  theme(#legend.position = "none", 
+    legend.title = element_blank(),
+               plot.title.position = "plot",
+     #   panel.background = element_rect(fill='transparent'), #transparent panel bg
+    plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
+   )+
+        scale_color_brewer(palette="Paired", labels = c("Exemptions", "No Exemptions"), direction = 1)+
+
+  labs(title = "Change in Single-family Residential Tax Burden", x = "% Share of Levy", y = "" , caption = "Residential Tax Burden is the Share of the property tax collected that was paid for by 
+     single-family home owners in property classes 2.") #+
+# scale_x_continuous(label = scales::percent)
+
+```
+
+# Burden Shift: 3 Property Categories
+
+
+Current Burden:
+```{r}
+munis_3property_types <- burden_shift %>%
+  ungroup() %>% 
+  group_by(agency_name, PropType) %>%
+  summarize(district_rev_collected = sum(district_rev_collected),
+            current_burden = sum(current_burden),
+            no_exemptions_burden = sum(no_exemptions_burden),
+            burden_change = sum(burden_change)) 
+
+munis_3property_types
+
+munis_3property_types %>% pivot_wider( id_cols = agency_name , names_from = "PropType", values_from = "current_burden") %>% arrange(-`Single-Family`)
+```
+Drop municipalities where most of the EAV is outside of Cook County:
+
+CITY OF ELGIN	North	30340000
+VILLAGE OF BARRINGTON	North	30030000
+VILLAGE OF BARRINGTON HILLS	North	30040000
+VILLAGE OF BARTLETT	North	30050000
+VILLAGE OF BENSENVILLE	NA	30080000
+VILLAGE OF BUFFALO GROVE	North	30150000
+VILLAGE OF BURR RIDGE	South	30180000
+VILLAGE OF DEERFIELD	NA	30280000
+VILLAGE OF EAST DUNDEE	NA	30320000
+VILLAGE OF FRANKFORT	NA	30440000
+VILLAGE OF HANOVER PARK	North	30500000
+VILLAGE OF HINSDALE	South	30560000
+VILLAGE OF HOMER GLEN	NA	30585000
+VILLAGE OF OAK BROOK	NA	30890000
+VILLAGE OF PARK FOREST	South	31000000
+VILLAGE OF ROSELLE	North	31120000
+VILLAGE OF STEGER	South	31210000
+VILLAGE OF TINLEY PARK	South	31270000
+VILLAGE OF UNIVERSITY PARK	NA	31280000
+
+
+```{r}
+cross_county_lines <- c("30340000","30030000","30040000","30050000", "30080000","30150000","30180000",
+  "30280000", "30320000","30440000","30500000", "30560000", "30585000", "30890000",
+  "31000000","31120000","31210000","31270000","31280000")
+```
+
+
+
+
+Tax Burden if there were no exemptions:
+```{r}
+
+munis_3property_types %>% pivot_wider( id_cols = agency_name , names_from = "PropType", values_from = "no_exemptions_burden") %>% arrange(-`Single-Family`)
+```
+
+Change in Share of Burden if there were no exemptions:
+
+```{r}
+burden_shift %>% ungroup() %>% 
+  group_by(agency_name, PropType) %>%
+  summarize(district_rev_collected = sum(district_rev_collected),
+            current_burden = sum(current_burden),
+            no_exemptions_burden = sum(no_exemptions_burden)) 
+
+munis_3property_types %>%
+  pivot_wider( id_cols = agency_name , names_from = "PropType", values_from = "burden_change") %>% arrange(-`Single-Family`)
+```
 
