@@ -299,6 +299,7 @@ rm(taxbills_no_exemps)
 ```
 
 # Muni Land Use 
+
 ```{r}
 TC_bills_current <- read_csv("TC_bills_current.csv") %>% mutate(tax_code = as.character(tax_code))
 class_dict$class_code <- as.character(class_dict$class_code)
@@ -318,34 +319,52 @@ Current_Taxrates <- taxcodes_current %>%
 
   mutate(tax_rate_current = MuniLevy/nonTIF_EAV_post_exemps,
          nonTIF_EAV_pre_exemps = nonTIF_EAV_post_exemps + Exempt_EAV,
-         taxrate_new = MuniLevy/nonTIF_EAV_pre_exemps) %>% 
+         taxrate_new = MuniLevy/nonTIF_EAV_pre_exemps,
+         taxrate_change = tax_rate_current-taxrate_new) %>% 
   select(agency_name, tax_rate_current, taxrate_new, everything()) %>% 
   arrange(desc(tax_rate_current))
 
 land_use <- taxcodes_current %>% 
-  left_join(muni_agency_names) %>%
-  mutate( ResidentialProps = ifelse(major_class_code %in% c("2", "3", "9"), "Residential", "Commercial"),
+  left_join(muni_agency_names) %>% 
+  left_join(Current_Taxrates) %>%
+  mutate(ResidentialProps = ifelse(major_class_code %in% c("2", "3", "9"), "Residential", "Commercial"),
          PropType = case_when(
            major_class_code %in% c("3","9") ~ "Multi-Family",
            major_class_code == "2" ~ "Single-Family",
            TRUE ~ "Commercial-Industrial")) %>%
-  group_by(agency_name, ResidentialProps, agency_num) %>% 
+  group_by(agency_name, ResidentialProps, agency_num, tax_rate_current, taxrate_new, taxrate_change) %>% 
   
   # All of the values calculated below are AFTER exemptions have been removed
   summarize(taxrev_from_proptype = sum(final_tax_to_dist, na.rm = TRUE),
             nonTIF_EAV = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
             TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),
             Exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE),
-            Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE) )
+            Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE) ) %>% ungroup()
 
-land_use
 
-muni_eav <- land_use %>% group_by(agency_name, agency_num) %>% summarize(muni_EAV = sum(Total_EAV)) %>% ungroup()
+
+muni_eav <- land_use %>% group_by(agency_name, agency_num) %>% 
+  summarize(muni_EAV = sum(Total_EAV)) %>% ungroup()
 
 perc_residential <- left_join(land_use, muni_eav) %>% 
   filter(ResidentialProps == "Residential") %>% 
-  mutate(percent_residential = Total_EAV / muni_EAV) %>% 
-  select(agency_name, percent_residential, agency_num) 
+  mutate(percent_residential = Total_EAV / muni_EAV) 
+
+
+table_ResidentialEAV <- land_use %>% 
+  filter(ResidentialProps == "Residential" ) %>% 
+  left_join(perc_residential) %>%
+  select(agency_name,  Total_EAV, Exempt_EAV, percent_residential, tax_rate_current, taxrate_new, taxrate_change, 
+         -c(agency_num, ResidentialProps, nonTIF_EAV, TIF_increment_EAV, taxrev_from_proptype)) %>% 
+  rename("Residential EAV" = Total_EAV,
+         "Exempt EAV" = Exempt_EAV,
+         Municipality = agency_name) 
+
+table_ResidentialEAV %>%
+  mutate(percent_residential = scales::percent(percent_residential, accuracy = 0.01),
+         tax_rate_current = scales::percent(tax_rate_current, accuracy = 0.01),
+         taxrate_new = scales::percent(taxrate_new, accuracy = 0.01),
+         taxrate_change = scales::percent(taxrate_change, accuracy = 0.01)) %>% arrange(desc(taxrate_change))
 
 #lowest % of eav from residential property types
 perc_residential %>%
@@ -523,6 +542,22 @@ burden_shift %>%
   labs(title = "Current composite tax rates with current exemptions in place" ,    
          caption = "Highest composite tax rate is in Park Forest (41.4%.)
        Lowest composite tax rate is in Oak Brook (6.3%) and Chicago (6.7%).")
+
+
+
+burden_shift %>% 
+    filter(major_class_code == 2) %>% # all property types have same composite tax rate
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+  ggplot(aes(fill = taxrate_new)) + 
+      theme_classic() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+   scale_fill_gradientn(colors = c("white", "maroon"), 
+                      limits = c(0,.32),
+                       n = 6,
+                        name = "Tax Rate", label = scales::percent)+
+  geom_sf(aes(geometry = geometry), color = "black") +  
+  labs(title = "New composite tax rates if exemptions were eliminated" ,    
+         caption = "Data from CCAO & PTAXSIM. ")
 ```
 
 ```{r}
@@ -557,8 +592,6 @@ burden_shift %>%
 
   labs(title = "Change in Composite Tax Rate if there were No Exemptions", x = "Composite Tax Rate (%)", y = "" , caption = "For the highest and lowest composite tax rates")
 ```
-
-Table of composite tax rate change:
 
 ```{r}
 
@@ -658,16 +691,18 @@ order <- burden_shift %>%
 
 # look at ones that changed the most
 burden_shift %>%  
-  filter(current_burden > 0.9 |current_burden < .3 ) %>% 
+  filter(current_burden > 0.9 |current_burden < .3) %>% 
   #filter(ResidentialProps == "Residential") %>%
     filter(PropType == "Single-Family") %>%
 
   ungroup() %>% 
   select(agency_name, current_burden, burden_noexemps) %>% 
+  mutate( 
+         burden_noexemps = ifelse(burden_noexemps > 1, 1, burden_noexemps)) %>%
   pivot_longer(c("current_burden", "burden_noexemps"), 
                names_to = "type", values_to = "pct_burden") %>% 
   inner_join(order) %>%
-  ggplot(aes(x = pct_burden, y= reorder(agency_name, current_burden)))+
+  ggplot(aes(x = pct_burden*100, y= reorder(agency_name, current_burden)))+
   geom_line(aes(group = agency_name))+ 
    geom_point(aes(color=type), size=3 )+
   theme_minimal() + 
@@ -677,9 +712,11 @@ burden_shift %>%
      #   panel.background = element_rect(fill='transparent'), #transparent panel bg
     plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
    )+
-        scale_color_brewer(palette="Paired", labels = c("Exemptions", "No Exemptions"), direction = 1)+
+        scale_color_brewer(palette="Paired", labels = c("No Exemptions", "Exemptions"), direction = 1)+
 
-  labs(title = "Change in Single-family Residential Tax Burden", x = "Share of Levy (%)", y = "" , caption = "Residential Tax Burden is the Share of the property tax collected that was paid for by 
+  labs(title = "Change in Single-family Residential Tax Burden", 
+  x = "Share of Levy (%)", y = "" , 
+  caption = "Residential Tax Burden is the Share of the property tax collected that was paid for by 
      single-family home owners in property classes 2.") #+
 # scale_x_continuous(label = scales::percent)
 
@@ -733,5 +770,19 @@ props_wide <- munis_3property_types %>%
 
 props_wide[2:4] <- sapply(props_wide[2:4], function(x) scales::percent(x, accuracy=.001))
 props_wide
+```
+
+# Exporting data to Excel file
+
+
+```{r}
+library(openxlsx)
+
+dataset_names <- list('ResidentialEAV' = table_ResidentialEAV, 
+                      'Burden Shift' = burden_shift_table,
+                      '3 Property Types'= munis_3property_types
+)
+
+write.xlsx(dataset_names, file = 'data_for_slides.xlsx')
 ```
 
