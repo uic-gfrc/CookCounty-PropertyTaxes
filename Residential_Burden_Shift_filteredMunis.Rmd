@@ -341,19 +341,21 @@ Percent Residential is the Residential EAV outside of TIFs / Municipality EAV ou
 # perc_residential %>%  select(-ResidentialProps) %>%
 #   arrange(percent_residential) %>% tail()
 # 
-
+median(perc_residential$percent_residential)
 perc_residential %>% 
   group_by(ResidentialProps)%>%
     mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
   left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
   ggplot(aes(fill = percent_residential)) + 
   geom_sf(aes(geometry = geometry), color = "black") + theme_void()+ 
-  labs(title = "Residential EAV /  Total EAV") +
+  labs(title = "Residential EAV /  Total EAV", caption = "Median municipality has 70% of its EAV from Residential Class 2, 3, & 9 Properties") +
     theme_classic() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank()) +#+
-   scale_fill_stepsn(colors = c("white","darkblue"),
+   scale_fill_steps2(
+     #colors = c("white","darkblue"),
                     #   limits = c(0,.6),
-                       n.breaks = 5, show.limits=TRUE,
+                    midpoint = 0.7042,
+                       n.breaks = 6, show.limits=TRUE,
                         name = "% Residential", label = scales::percent)
 ```
 
@@ -481,7 +483,6 @@ grouped_exemptions <- exemptions_by_class_per_TC %>%
          tax_base_current = sum(tax_base_current, na.rm=TRUE),
          tax_base_noexemps = sum(tax_base_noexemps, na.rm=TRUE)) %>% ungroup()
   
-grouped_exemptions
 
 # calculate totals with ONLY EAV outside of TIFs
 muni_eav <- grouped_exemptions %>%  
@@ -512,14 +513,6 @@ burden_table <- pct_property_types %>%
          burden_current = ifelse(burden_current>1, 1, burden_current)) %>%
   filter(!is.na(major_class_code))%>%
   mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) )
-
-
-burden_table %>% 
-   
-  arrange(desc(burden_change)) %>% 
-  select(clean_name, burden_change, everything()) %>%
-  mutate(burden_change = round(burden_change, digits = 2))  
-
 
 
 burden_shift <- burden_table # only to not change code below in graphs. 
@@ -708,7 +701,10 @@ Current_Taxrates %>%  filter( tax_rate_current < 0.08)
 
 median(Current_Taxrates$tax_rate_current)
 
-quantile(Current_Taxrates$tax_rate_current)
+quantile(Current_Taxrates$tax_rate_current, 
+     #    props = seq(0,1,.2), 
+        # type = 7 
+     )
 
 sd(Current_Taxrates$tax_rate_current)
 
@@ -716,16 +712,16 @@ sd(Current_Taxrates$tax_rate_current)
 
 # Map of Tax Rate Change
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 burden_shift %>% 
     mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
-    mutate(currentrate_quantile = ordered(case_when
-         (#tax_rate_current  0.0673 ~ "",
-           tax_rate_current < 0.1002 ~ "0-25%",
-           tax_rate_current < 0.1226 ~ "25-50%",
-        # tax_rate_current == 0.1226 ~ "Median",
-           tax_rate_current < 0.1500 ~ "50-75%",
-           tax_rate_current <= 0.5 ~ "75-100%"))) %>%
+    # mutate(currentrate_quantile = ordered(case_when
+    #      (#tax_rate_current  0.0673 ~ "",
+    #        tax_rate_current < 0.1002 ~ "0-25%",
+    #        tax_rate_current < 0.11 ~ "25-49%",
+    #      tax_rate_current < 0.14 ~ "50%",
+    #        tax_rate_current < 0.1500 ~ "51-75%",
+    #        tax_rate_current <= 0.5 ~ "75-100%"))) %>%
 
   # mutate(currentrate_quantile = ordered(
   #   case_when
@@ -758,92 +754,80 @@ burden_shift %>%
                    #   limits = c(0,.35),
      type = c("#ffffcc","#a1dab4" ,"#41b6c4","#2c7fb8", "#253494"),
                   #  show.limits=TRUE,
-                     #  n.breaks = 5,
+     n=6,
+                     # n.breaks = 6,
                         name = "Tax Rate")+
                         #, label = scales::percent)+
   geom_sf(aes(geometry = geometry), color = "black") +  
   labs(title = "Ranking of Municipalitis' current composite tax rates" ,    
          caption = "The current median composite tax rate is 12.3%. 
-       Legend indicates the ranking of Munis. (Bottom quarter, etc.).
-       This is different than difference from the median.")
+       Legend indicates the ranking of Munis. (Bottom quarter, etc.)")
 ```
 
 ```{r}
-burden_shift %>% 
+quantile(Current_Taxrates$tax_rate_current)
+
+Current_Taxrates %>% 
     mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) 
     ) %>%
-    filter(major_class_code == 2) %>% # all property types have same composite tax rate
+  #  filter(major_class_code == 2) %>% # all property types have same composite tax rate
   left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
 
     ggplot(aes(fill = tax_rate_current)) +
-                # tax_rate_current)) + 
+    geom_sf(aes(geometry = geometry), color = "black") + 
       theme_classic() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
-  scale_fill_steps2(#high="#41b6c4",   low = "maroon",
-    midpoint = 0.1226, #colors = c("white", "#76C3D6", "#1A5E7D"),
-                   #   limits = c(0,.35),
-     #colors = c("#ffffcc","#a1dab4" ,"#41b6c4","#2c7fb8", "#253494"),
-                  #  show.limits=TRUE,
-    guide = "colorsteps",
-    nice.breaks=FALSE,
-                       n.breaks = 4,
-                        name = "Tax Rate",
-                  label = scales::percent)+
-  geom_sf(aes(geometry = geometry), color = "black") +  
+scale_fill_steps2(
+      midpoint = 0.123, limits = c(0,.45),
+
+                   show.limits=TRUE,
+  nice.breaks=FALSE,
+                  #   n =6,
+                       name = "Tax Rate",
+                 label = scales::percent)+
+ 
   labs(title = "Current composite tax rates" ,    
          caption = "The current median composite tax rate is 12.3%. 
          Highest composite tax rate is in Park Forest (41.4%.)
-       Lowest composite tax rate is in Oak Brook (6.3%) and Chicago (6.7%).")
+       Lowest composite tax rate is in Chicago (6.7%).")
 ```
 
 ```{r}
 # median 
 burden_shift %>% filter(major_class_code == 2) %>%
   summarize(median_currentburden = median(burden_current),
+            median_new_burden = median(burden_noexemps),
             median_burdenchange = median(burden_change),
             median_currenttaxrate = median(tax_rate_current),
             median_taxratechange = median(taxrate_change),
             median_taxratenew = median(taxrate_new))
-
-median(burden_shift$burden_current)
-
-burden_shift %>% 
-    filter(major_class_code == 2) %>% # all property types have same composite tax rate
-  left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
-  ggplot(aes(fill = taxrate_new)) + 
-      theme_classic() + 
-  theme(axis.ticks = element_blank(), axis.text = element_blank())+
-     scale_fill_steps2(#colors = c("white", "#76C3D6", "#1A5E7D"),
-                      #limits = c(0,.35),
-                      midpoint = .10,
-                       n.breaks = 5, show.limits=TRUE,
-                        name = "Tax Rate", label = scales::percent)+
-  geom_sf(aes(geometry = geometry), color = "black") +  
-  labs(title = "New composite tax rates if exemptions were eliminated" ,    
-         caption = "The new median composite tax rate is 10._%.")
 ```
 
 ```{r}
 
 
-
 Current_Taxrates %>% 
-    mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
+      mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) 
+    ) %>%
   left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
-  ggplot(aes(fill = taxrate_change*100)) + 
-  geom_sf(aes(geometry = geometry), color = "black") +  
+  ggplot(aes(fill = taxrate_new)) + 
       theme_classic() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
-  
-    scale_fill_stepsn(colors = c("#ffffcc","#a1dab4" ,"#41b6c4","#2c7fb8", "#253494"),
- # low = "#ffffcc", mid = "#41b6c4", high = "#253494",
-#  space = "Lab",
-                       n.breaks = 6, show.limits=TRUE,
-                        name = "Percentage Point Difference")+
-  labs(title = "Change in Composite Tax Rate if Exemptions are Removed")
+     scale_fill_steps2(#colors = c("white", "#76C3D6", "#1A5E7D"),
+                      limits = c(0,.30),
+                      midpoint = .1052,
+                     #  n.breaks = 5, 
+                     nice.breaks=FALSE,
+                      show.limits=TRUE,
+                        name = "Tax Rate", label = scales::percent)+
+  geom_sf(aes(geometry = geometry), color = "black") +  
+  labs(title = "New composite tax rates if exemptions were eliminated" ,    
+         caption = "The new median composite tax rate woudl be approximately 10.5% 
+       if exemptions were removed")
+```
 
-    #    scale_fill_stepsn(colors = c("white", "#76C3D6", "#1A5E7D"),
-                  #    limits = c(0,.35),
+```{r}
+median(Current_Taxrates$taxrate_change)
 
 Current_Taxrates %>% 
     mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
@@ -854,12 +838,14 @@ Current_Taxrates %>%
       theme_classic() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
   
-    scale_fill_stepsn(colors = c("#ffffcc","#a1dab4" ,"#41b6c4","#2c7fb8", "#253494"),
- # low = "#ffffcc", mid = "#41b6c4", high = "#253494",
+    scale_fill_steps2(#colors = c("#ffffcc","#a1dab4" ,"#41b6c4","#2c7fb8", "#253494"),
+  low = "darkorange", high = "#253494",
 #  space = "Lab",
-                       n.breaks = 5, show.limits=TRUE,
+midpoint = 1.388, show.limits=TRUE,
+nice.breaks=FALSE,
                         name = "Percentage Point Difference")+
-  labs(title = "Change in Composite Tax Rate if Exemptions are Removed")
+  labs(title = "Change in Composite Tax Rate if Exemptions are Removed",
+       caption = "The median change in composite tax rate is 1.38 percentage points")
 ```
 
 
@@ -868,20 +854,20 @@ Current_Taxrates %>%
 
 Current_Taxrates %>% 
     mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
-    mutate(currentrate_quantile = case_when
-         (
-           tax_rate_current < 0.1002 ~ "Lowest 25%",
-           tax_rate_current < 0.1226 ~ "25-50%",
-           tax_rate_current == 0.1226 ~ "Median Rate",
-           tax_rate_current > 0.1500 ~ "50-75%",
-           tax_rate_current <= 0.4136 ~ "Highest 25%")) %>%
+    # mutate(currentrate_quantile = case_when
+    #      (
+    #        tax_rate_current < 0.1002 ~ "Lowest 25%",
+    #        tax_rate_current < 0.1226 ~ "25-50%",
+    #        tax_rate_current == 0.1226 ~ "Median Rate",
+    #        tax_rate_current > 0.1500 ~ "50-75%",
+    #        tax_rate_current <= 0.4136 ~ "Highest 25%")) %>%
   left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
   ggplot(aes(fill = taxrate_change*100)) + 
   geom_sf(aes(geometry = geometry), color = "black") +  
       theme_classic() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
   
-    scale_fill_stepsn(colors = c("#ffffcc","#a1dab4" ,"#41b6c4","#2c7fb8", "#253494"),
+    scale_fill_stepsn(colors = c("darkorange", "#ffffcc","#a1dab4" ,"#41b6c4","#2c7fb8", "#253494"),
  # low = "#ffffcc", mid = "#41b6c4", high = "#253494",
 #  space = "Lab",
                        n.breaks = 6, show.limits=TRUE,
@@ -1005,6 +991,9 @@ burden_shift %>%
   ggplot(aes(x = tax_rate*100, y= reorder(clean_name, taxrate_change)))+
   geom_line(aes(group = clean_name))+ 
    geom_point(aes(color=type), size=3 )+
+  geom_vline(xintercept = 8)+
+    geom_vline(xintercept = 25)+
+
   theme_minimal() + 
   theme( 
     legend.title = element_blank(),
@@ -1034,12 +1023,14 @@ burden_shift %>%
   geom_sf(aes(geometry = geometry), color = "black") + 
   theme_classic() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
-  # scale_fill_gradientn(
-   scale_fill_stepsn(colors = c("#ffffcc","#a1dab4" ,"#41b6c4","#2c7fb8", "#253494"),
-                        show.limits=TRUE, n.breaks = 6,
+   scale_fill_steps2(
+     high = "#253494" , low = "#a1dab4",
+     nice.breaks=FALSE,
+                        show.limits=TRUE, n.breaks = 4,
+                     midpoint = 0.65,
                         name = "Burden with \nExemptions", labels = scales::percent
                     )+
-  labs(title = "Current share of property tax burden", subtitle = "for Class = 2 Property Types")
+  labs(title = "Current share of property tax burden", subtitle = "for Class = 2 Property Types", caption = "The median municipality gets 65% of its property tax revenue from Single-Family properties.")
 
 
 burden_shift %>% 
@@ -1059,48 +1050,35 @@ burden_shift %>%
                        #limits = c(0,.6),
            #            n = 6,
    #   name = "Burden w/o \nExemptions", label = scales::percent)+
-  
-  scale_fill_stepsn(colors = c("#ffffcc","#a1dab4" ,"#41b6c4","#2c7fb8", "#253494"),
- # low = "#ffffcc", mid = "#41b6c4", high = "#253494",
-#  space = "Lab",
-  n.breaks = 6, na.value = "grey50",
-  guide = "coloursteps",
-  aesthetics = "fill", show.limit = TRUE,
-  name = "Burden w/o \nExemptions",
-label = scales::percent
-)+
+     scale_fill_steps2(
+     high = "#253494" , low = "#a1dab4",
+     nice.breaks=FALSE,
+                        show.limits=TRUE, n.breaks = 4,
+                     midpoint = 0.69,
+                        name = "Burden without \nExemptions", labels = scales::percent)+
  labs(title = "New share of property tax burden", subtitle = "for Class = 2 Property Types")
 ```
 
 ```{r}
-burden_shift %>% filter(clean_name != "Phoenix") %>%
+burden_shift %>% #filter(clean_name != "Phoenix") %>%
   filter(major_class_code == 2) %>%
     mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
   mutate(burden_change = ifelse(burden_change<0,0, burden_change))%>%
      #    burden_change = ifelse(burden_change>1,1, burden_change))%>%
   left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
-  ggplot(aes(fill = (0-burden_change*100)) )+ 
+  ggplot(aes(fill = (burden_change*100)) )+ 
   geom_sf(aes(geometry = geometry), color = "black") + theme_void()+ 
-  labs(title = "Change in Residential Share of Tax Burden") +
+  labs(title = "Change in Residential Share of Tax Burden", 
+       caption = "The median shift from single-family properties to other property types
+       due to current exemptions is worth approximately 4.5% of a municipality's levy.") +
     theme_classic() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
-  
-    scale_fill_stepsn(colors = c("#253494", "#2c7fb8", "#41b6c4", "#a1dab4", "#ffffcc"),
- # low = "#ffffcc", mid = "#41b6c4", high = "#253494",
-#  space = "Lab",
-  n.breaks = 5,
-  na.value = "grey50",
-  guide = #"legend", 
-   "coloursteps",
-show.limit = TRUE,
-  name = "Percentage Point \nDifference")
-   # scale_fill_steps( low= "white", high = "darkblue",
-   #   #colors = c("darkblue","white"), 
-   #   show.limits = TRUE,
-   #                     n.breaks = 5,
-   #                      name = "Difference in Burden")
-  
-   # geom_sf(data = countyIL, fill=NA, color="dark gray")
+   scale_fill_steps2(
+     high = "darkblue" , low = "orange",
+     nice.breaks=FALSE,
+                        show.limits=TRUE,# n.breaks = 5,
+                     midpoint = 4.56,
+                        name = "Burden with \nExemptions")
 
 ```
 
@@ -1160,7 +1138,7 @@ burden_shift %>%
      #   panel.background = element_rect(fill='transparent'), #transparent panel bg
     plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
    )+
-        scale_color_brewer(palette="Paired", labels = c("No Exemptions", "Exemptions"), direction = 1)+
+        scale_color_brewer(palette="Paired", labels = c("Current Burden", "Burden if \nNo Exemptions" ), direction = 1)+
 
   labs(title = "Change in Single-family Residential Tax Burden", 
        subtitle = "Ordered by Current Burden Levels",
@@ -1194,7 +1172,7 @@ burden_shift %>%
      #   panel.background = element_rect(fill='transparent'), #transparent panel bg
     plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
    )+
-        scale_color_brewer(palette="Paired", labels = c("No Exemptions", "Exemptions"), direction = 1)+
+        scale_color_brewer(palette="Paired", labels = c("Current Burden","Burden if \nNo Exemptions"), direction = 1)+
 
   labs(title = "Change in Single-family Residential Tax Burden", 
   x = "Share of Levy (%)", y = "" , 
@@ -1225,7 +1203,7 @@ burden_shift %>%
      #   panel.background = element_rect(fill='transparent'), #transparent panel bg
     plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
    )+
-        scale_color_brewer(palette="Paired", labels = c("No Exemptions", "Exemptions"), direction = 1)+
+        scale_color_brewer(palette="Paired", labels = c( "Current Burden","Burden if \nNo Exemptions"), direction = 1)+
 
   labs(title = "Change in Single-family Residential Tax Burden", 
   x = "Share of Levy (%)", y = "" , 
