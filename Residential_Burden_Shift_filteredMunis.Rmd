@@ -252,8 +252,6 @@ cross_county_lines <- c("030440000",
 
 # Muni Land Use
 
-Includes all Munis, even if they are largely outside of Cook County. This skews soeme calculations for the border crossing municipalities. A different markdown file has been created where only Munis with 50% of their EAV in Cook County are kept in the analysis.
-
 ## EAV
 
 using the pin data from ptaxsim, I calculate the eav of all properties, exempt EAV, the current taxbase, and taxbase if there were not exemptios
@@ -262,7 +260,7 @@ using the pin data from ptaxsim, I calculate the eav of all properties, exempt E
 
 -   current taxbase (using the `tif_distrib` table and percent of taxcode rev that goes to the tif). If a taxcode is a TIF taxcode, then do (EAV-exempt EAV) \* (1-%rev that goes to TIF). If the tax code is not a TIF tax code, then use the EAV-exempt EAV.
 
--   taxbase without exemptions: If a taxcode is a TIF taxcode, then do EAV \* (1-%rev that goes to TIF). If the tax code is not a TIF tax code, then use the eav
+-   tax base without exemptions: If a taxcode is a TIF taxcode, then do EAV \* (1-%rev that goes to TIF). If the tax code is not a TIF tax code, then use the eav
 
 > Joining problem: in `muni_agency_names`, Cicero is called "TOWN CICERO", in map shapefile it is called "CITY OF CICERO".
 
@@ -278,9 +276,7 @@ exemptions_by_class_per_TC <- read_csv("all_exemptions_by_TC.csv") %>%
   left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
   filter(!agency_num %in% cross_county_lines) %>%
   
-       #  mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
   # merge with TIF distrib table to calculate the percent of the EAV that goes to the TIF vs the district
-
   left_join(tif_distrib, by=c("tax_code_num", "year", "tax_code_rate")) %>%
   mutate(exempt_EAV = (exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
          exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate) ,
@@ -293,7 +289,12 @@ exemptions_by_class_per_TC <- read_csv("all_exemptions_by_TC.csv") %>%
            major_class_code %in% c("3","9") ~ "Multi-Family",
            major_class_code == "2" ~ "Single-Family",
            TRUE~ "Commercial-Industrial"))
+```
 
+### Residential (Class 2, 3, & 9)
+
+
+```{r}
 grouped_exemptions <- exemptions_by_class_per_TC %>% 
    # group_by(agency_name, major_class_code, major_class_type, ResidentialProps, PropType) %>%
   group_by(clean_name, ResidentialProps, agency_name, agency_num.x) %>%
@@ -325,46 +326,54 @@ perc_residential
 # nicknames  %>% filter(!agency_name %in% muni_shp$AGENCY_DESC)
 
 #muni_shp %>% left_join(muni_agency_names, by = c("AGENCY_DESC" = "agency_name"))
-
+summary(perc_residential)
 ```
 
 > in this stage, Bensenville, East Dundee, and Homer Glen were dropped. This is fine because I was going to drop them later anyways. They don't have residential EAV within Cook County.
 
 Percent Residential is the Residential EAV outside of TIFs / Municipality EAV outside of TIFs.
 
+The median amount of EAV from residentical parcels is `r scales::percent(median(perc_residential$percent_residential))`. 
+
 ```{r}
-# #lowest % of eav from residential property types
-# perc_residential %>% select(-ResidentialProps) %>%
-#   arrange(percent_residential) %>% head()
-# 
-# #highest % of eav from residential property types
-# perc_residential %>%  select(-ResidentialProps) %>%
-#   arrange(percent_residential) %>% tail()
-# 
-median(perc_residential$percent_residential)
+variable <- perc_residential$percent_residential
+
+breaks_sd = c(
+  (median(variable)-2.5*sd(variable)),
+  (median(variable)-1.5*sd(variable)),
+  median(variable)-.5*sd(variable),
+  median(variable),
+  median(variable)+.5*sd(variable),
+  median(variable)+1.5*sd(variable),
+  median(variable)+2.5*sd(variable))
+
+
+
+# class 2, 3, 9 combined
 perc_residential %>% 
   group_by(ResidentialProps)%>%
     mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
   left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
   ggplot(aes(fill = percent_residential)) + 
-  geom_sf(aes(geometry = geometry), color = "black") + theme_void()+ 
-  labs(title = "Residential EAV /  Total EAV", caption = "Median municipality has 70% of its EAV from Residential Class 2, 3, & 9 Properties") +
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  labs(title = "Residential EAV /  Total EAV", caption = "The median municipality has 70.4% of its EAV from Residential Class 2, 3, & 9 Properties") +
     theme_classic() + 
-  theme(axis.ticks = element_blank(), axis.text = element_blank()) +#+
-   scale_fill_steps2(
-     #colors = c("white","darkblue"),
-                    #   limits = c(0,.6),
-                    midpoint = 0.7042,
-                       n.breaks = 6, show.limits=TRUE,
-                        name = "% Residential", label = scales::percent)
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
+    scale_fill_steps2(
+      high = "#008080", low = "#420420",
+  #  guide = "legend",
+      midpoint = median(perc_residential$percent_residential),
+                      breaks = breaks_sd,
+  #                      n.breaks = 6,
+  show.limits=TRUE,
+                        name = "% Residential",
+  labels = scales::percent)
 ```
-
-Homeowner's Exemptions Exempt EAV / Residential EAV
 
 ```{r}
 
 exemptions_to_resEAV_ratios <- grouped_exemptions %>% 
-  filter(ResidentialProps == "Residential") %>%
+  filter(ResidentialProps == "Residential") %>% 
   mutate(exemptEAV_pctof_resEAV = exempt_EAV/eav,
          nontif_ratio = exempt_EAV / tax_base_noexemps) %>% 
   select(agency_name, clean_name, exemptEAV_pctof_resEAV, nontif_ratio) %>% 
@@ -378,10 +387,16 @@ exemptions_to_resEAV_ratios %>%
   labs(title = "Exemptions / Residential EAV (in and out of TIFs)") +
     theme_classic() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
-   scale_fill_stepsn(colors = c("white", "darkblue"), 
-                    #   limits = c(0,.6),
-                       n.breaks = 5, show.limits=TRUE,
-                        name = "% Residential EAV \nthat is exempt", label = scales::percent)
+   scale_fill_steps2(high = "maroon", low = "black", 
+                      # limits = c(0,.8),
+                       n.breaks = 7, show.limits=TRUE,
+                    nice.breaks = FALSE,
+                    midpoint = median(exemptions_to_resEAV_ratios$exemptEAV_pctof_resEAV),
+                        name = "% Residential EAV \nthat is exempt", label = scales::percent) + labs(caption = "Median value is 19.5%. 
+                                                                                                     Nearly 20% of Residential EAV is tax exempt in the median municipality. ")
+
+
+summary(exemptions_to_resEAV_ratios$exemptEAV_pctof_resEAV)
 
 exemptions_to_resEAV_ratios %>%
     mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
@@ -389,12 +404,14 @@ exemptions_to_resEAV_ratios %>%
   ggplot(aes(fill = nontif_ratio)) + 
   geom_sf(aes(geometry = geometry), color = "black") + theme_void()+ 
   labs(title = "Non-TIF EAV only: Homestead Exemptions / Residential EAV", caption = "Village of Phoenix skews graph. Dropped in map below") +
-    theme_classic() + 
+    theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
-   scale_fill_stepsn(colors = c("white", "darkblue"), 
-                    #   limits = c(0,.6),
-                       n.breaks = 5, show.limits=TRUE,
-                        name = "% Residential EAV \nthat is exempt", label = scales::percent)
+   scale_fill_steps2(high = "maroon", low = "black",
+     #colors = c("white", "darkblue"), 
+                       limits = c(0,.8),
+                    midpoint = median(exemptions_to_resEAV_ratios$nontif_ratio),
+                       n.breaks = 7, show.limits=TRUE,
+                        name = "% Residential EAV \nthat is exempt", label = scales::percent) + labs( caption = "Median value is 19.77% ")
 
 exemptions_to_resEAV_ratios %>% 
   filter(nontif_ratio<.5) %>%
@@ -403,19 +420,254 @@ exemptions_to_resEAV_ratios %>%
   ggplot(aes(fill = nontif_ratio)) + 
   geom_sf(aes(geometry = geometry), color = "black") + theme_void()+ 
   labs(title = "Percent of Residential EAV that is Tax Exempt", 
-  subtitle = "Non-TIF EAV only: Homestead Exemptions / Residential EAV", caption = "Drops Village of Phoenix because it skews map colors 
-       (78% of their residential EAV is tax exempt)") +
-    theme_classic() + 
+  subtitle = "% of Non-TIF Residential EAV only: \nHomestead Exemptions / Residential EAV", 
+  caption = "Residential includes Class 2, 3, and 9.
+  Drops Village of Phoenix because it skews map colors (78% of their residential EAV is tax exempt). 
+  Median municipality can not get tax revenue from 19.77% of their residential EAV due to exemptions.") +
+    theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
-   scale_fill_stepsn(colors = c("white", "darkblue"), 
-                    #   limits = c(0,.6),
-                       n.breaks = 5, show.limits=TRUE,
+   scale_fill_steps2(high = "maroon", low = "black",
+   #  colors = c("white", "darkblue"), 
+                      # limits = c(0,.4),
+   midpoint = median(exemptions_to_resEAV_ratios$nontif_ratio),
+                     #  n.breaks = 7, 
+   show.limits=TRUE,
                         name = "% Residential EAV \nthat is exempt", label = scales::percent)
 ```
 
-Bedford Park has less than 2% of its EAV as residential property. Industrial Suburb, population = 600 people.
+```{r}
+exemptions_to_resEAV_ratios %>% arrange(desc(nontif_ratio))
+```
 
-Kenilworth has 97% of its EAV is residential property.
+
+
+```{r include = FALSE}
+library(cmapplot)
+# #lowest % of eav from residential property types
+# perc_residential %>% select(-ResidentialProps) %>%
+#   arrange(percent_residential) %>% head()
+# 
+# #highest % of eav from residential property types
+# perc_residential %>%  select(-ResidentialProps) %>%
+#   arrange(percent_residential) %>% tail()
+
+#breaks = c(0, .1, .3, .5, .7, .9, 1)
+#breaks_5 = c(0, .188, 0.5555,  0.7042,  0.6682,  0.8036, 0.9720 )
+# variable = perc_residential$percent_residential
+# sd(perc_residential$percent_residential) # 1sd = .203. 
+# 
+
+#   )
+# #  (median(variable)+2.5*sd(variable)))
+# 
+# breaks_sd2 = c(0,
+#   (median(variable)-2*sd(variable)),
+#   (median(variable)-1*sd(variable)), 
+#   median(variable), 
+#   median(variable)+1*sd(variable),
+#   (median(variable)+2*sd(variable)),1)
+# 
+# labels = c("No Residential EAV", "More than 20 pct below the median", "Within 20 pct pts of the median", "More than 20 pct pts above the median", "Only Residential EAV")
+# 
+# labels2 = c("0-10%", "10-30%", "30-50%", "50-70%", "70-90%")
+```
+
+
+```{r include = FALSE}
+# perc_residential %>% 
+#   group_by(ResidentialProps)%>%
+#     mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
+#   left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+#   ggplot(aes(fill = percent_residential)) + 
+#   geom_sf(aes(geometry = geometry), color = "black") + theme_cmap()+ 
+#   labs(title = "Version 1: Residential EAV /  Total EAV", caption = "Median municipality has 70% of its EAV from Residential Class 2, 3, & 9 Properties.
+#        Class 2, 3, and 9 are made up of all parcels with class assignments that begin with a 2, 3, or 9.") +
+#   theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+#   cmap_fill_continuous("teal_orange", 
+#                        middle = .7042, 
+#                       guide = "legend",
+#   #n = 7,
+#    breaks = breaks_sd,
+#   #labels = labels,
+# # labels = c("0-20%", "20-40%", "40-60%","60-80%", "80%+"),
+#    name = "% Residential")
+
+
+# library(classInt)
+# breaks_qt <- classIntervals(c(min(perc_residential$percent_residential) - .00001, perc_residential$percent_residential), n =5, style = "quantile")
+# breaks_qt
+# 
+# perc_residential <- mutate(perc_residential, percent_residential_cat = cut(percent_residential, breaks = breaks_qt$brks, include.lowest=TRUE, ordered=TRUE))
+# 
+# #table(perc_residential$percent_residential_cat)
+# 
+# breaks = c(0, .1, .3, .5, .7, .9, 1)
+#
+```
+
+
+
+
+### Residential (Only Class 2 - Single-family)
+
+```{r}
+
+exemptions_by_class_per_TC %>%     
+  filter(major_class_code == 2) %>%
+  summarize(eav = sum(eav,na.rm=TRUE))
+
+# Class 2 only
+class2_perc <- exemptions_by_class_per_TC %>% 
+    filter(major_class_code == 2) %>%
+  group_by(clean_name, major_class_code, agency_name, agency_num.x) %>%
+  summarize(eav = sum(eav),
+           exempt_EAV = sum(exempt_EAV, exe_abate, na.rm=TRUE),
+         tax_base_current = sum(tax_base_current, na.rm=TRUE),
+         tax_base_noexemps = sum(tax_base_noexemps, na.rm=TRUE)) %>% 
+  left_join(muni_eav) %>%
+  mutate(perc_class2_totalEAV = eav / muni_EAV_includesTIF) %>%    
+  mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) )
+
+class2_perc %>%
+  left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+  ggplot(aes(fill = perc_class2_totalEAV)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  labs(title = "Single-Family Property EAV /  Total EAV in Municipality", 
+  caption = "The median municipality has 66.84% of its EAV from Residential Class 2 Properties for Single-Family homes.
+       Total EAV includes frozen EAV & TIF increments, and all exempt EAV.") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
+  scale_fill_steps2(
+    high = "darkblue", low = "black",
+    midpoint = median(class2_perc$perc_class2_totalEAV),
+  #  breaks = breaks_sd,  # tried to do breaks based on standard deviation but map does that in an easier way by setting the midpoint. 
+    nice.breaks = FALSE,
+    show.limits=TRUE,
+    name = "% Residential",
+    labels = scales::percent)
+```
+
+
+```{r eval = FALSE, include = FALSE}
+############
+median(perc_residential$percent_residential)
+
+#breaks  = c("median(x)-3sd(x)", "median(x)-2sd(x)", median(x)-1sd(x), median(x), median(x)+sd(x), median(x)+2*sd(x), median(x)+3*sd(x))
+ 
+breaks = c(0, .1, .3, .5, .7, .9, 1)
+
+labels = c("No residential EAV", "More than 40% below the median","More than 20% less than the median", "Within 20% of the median",  "More than 20% greater than the median", "All Residiential EAV")
+
+perc_residential <- perc_residential %>% mutate(pct_res_cat = cut(percent_residential, breaks = breaks, labels = labels))
+
+table(perc_residential$pct_res_cat)
+caption = "The median municipality has 70% of its EAV from Residientail parcels."
+
+breaks_qt <- classIntervals(c(min(perc_residential$percent_residential) - .00001, perc_residential$percent_residential), n =6, style = "quantile")
+breaks_qt
+stdev <- sd(perc_residential$percent_residential) #0.2033 is standard deviation
+
+perc_residential <- mutate(perc_residential, percent_residential_cat = cut(percent_residential, breaks = breaks_qt$brks, include.lowest=TRUE, ordered=TRUE))
+
+limits = c(0, 1)
+
+table(perc_residential$percent_residential_cat)
+#colors = c("#420420", "beige",  "#008080")
+
+perc_residential %>% 
+  group_by(ResidentialProps)%>%
+    mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
+  left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+  ggplot(aes(fill = percent_residential)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  labs(title = "Version 3: Residential EAV /  Total EAV", caption = "Median municipality has 70% of its EAV from Residential Class 2, 3, & 9 Properties") +
+    theme_classic() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
+    scale_fill_gradient2(
+        high = "#00e304" , mid = "#FFF5EE", low = "#00cfd4",
+   #   low = "maroon", mid = "#FFF5EE", high = "#008080",
+                         guide = "legend",
+                       #  breaks = breaks_sd2,
+      breaks = 7,
+     # labels = labels,
+                   midpoint = median(perc_residential$percent_residential),
+                        # show.limits=TRUE,
+                        name = "% Residential")#, label = scales::percent)
+
+
+
+```
+
+
+Percent of Class 2 EAV that is tax exempt: 
+Exempt EAV / Residential EAV 
+
+
+```{r}
+
+exemptions_to_class2EAV_ratios <- class2_perc %>% 
+  mutate(exemptEAV_pctof_resEAV = exempt_EAV/eav,
+         nontif_ratio = exempt_EAV / tax_base_noexemps) %>% 
+  select(agency_name, clean_name, exemptEAV_pctof_resEAV, nontif_ratio) %>% 
+  arrange(nontif_ratio)
+
+exemptions_to_class2EAV_ratios %>%
+    mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
+ left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+  ggplot(aes(fill = exemptEAV_pctof_resEAV)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + theme_void()+ 
+  labs(title = "Exemptions / Residential EAV (in and out of TIFs)") +
+    theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+   scale_fill_steps2(high = "darkblue", low = "black", 
+                      # limits = c(0,.8),
+                       n.breaks = 7, show.limits=TRUE,
+                    nice.breaks = FALSE,
+                    midpoint = median(exemptions_to_class2EAV_ratios$exemptEAV_pctof_resEAV),
+                        name = "% Residential EAV \nthat is exempt", label = scales::percent) + 
+  labs(caption = "Median value for single-family EAV is 20.76%.")
+
+
+summary(exemptions_to_class2EAV_ratios$exemptEAV_pctof_resEAV)
+
+exemptions_to_class2EAV_ratios %>%
+    mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
+  left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+  ggplot(aes(fill = nontif_ratio)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + theme_void()+ 
+  labs(title = "Non-TIF EAV only: Homestead Exemptions / Residential EAV", caption = "Village of Phoenix skews graph. Dropped in map below") +
+    theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+   scale_fill_steps2(high = "darkblue", low = "black",
+     #colors = c("white", "darkblue"), 
+                      # limits = c(0),
+                    midpoint = median(exemptions_to_class2EAV_ratios$nontif_ratio),
+                       n.breaks = 7, 
+     show.limits=TRUE,
+                        name = "% Residential EAV \nthat is exempt", label = scales::percent) + 
+  labs( caption = "Median value is 20.85% ")
+
+exemptions_to_class2EAV_ratios %>%  filter(nontif_ratio<.6) %>%
+    mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
+  left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+  ggplot(aes(fill = nontif_ratio)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + theme_void()+ 
+  labs(title = "Percent of Residential EAV that is Tax Exempt", 
+  subtitle = "% of Non-TIF Residential EAV only: \nHomestead Exemptions / Residential EAV", 
+  caption = "Drops Village of Phoenix because it skews map colors (78% of their 
+  residential EAV is tax exempt). Median municipality can not get tax revenue from 1/5th 
+  of their residential EAV due to exemptions. 20.85% of Single-family home EAV is 
+  not taxed and transfered to other tax payers.") +
+    theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+   scale_fill_steps2(high = "darkblue", low = "black",
+   #  colors = c("white", "darkblue"), 
+                       limits = c(0,.4),
+   midpoint = median(exemptions_to_class2EAV_ratios$nontif_ratio),
+                       n.breaks = 7, show.limits=TRUE,
+                        name = "% Residential EAV \nthat is tax exempt", label = scales::percent)
+```
+
 
 ## District Shares
 
@@ -527,169 +779,9 @@ burden_table %>%  filter(agency_name %in% c("CITY OF CHICAGO", "VILLAGE OF BRIDG
   select(clean_name, muni_EAV_includesTIF, MuniLevy, exempt_EAV,burden_current, burden_noexemps)
 ```
 
-```{r eval=FALSE, include=FALSE}
-burden_with_exemptions <- taxcodes_current %>% 
-  left_join(muni_agency_names) %>%   
-  left_join(Current_Taxrates) %>% 
-#  left_join(noexemps_rev) %>%
-  select(-c(agency_rate)) %>%
-  
-  mutate(         ResidentialProps = ifelse(major_class_code %in% c("2", "3", "9"), "Residential", "Commercial"),
-         
-         PropType = case_when(
-           major_class_code %in% c("3","9") ~ "Multi-Family",
-           major_class_code == "2" ~ "Single-Family",
-           TRUE~ "Commercial-Industrial")) %>% 
-  arrange(tax_code) %>%
-
-  group_by(agency_name, major_class_type, tax_rate_current, taxrate_new, PropType, ResidentialProps, agency_num, major_class_code) %>%
-  summarize(final_tax_to_dist = sum(final_tax_to_dist, na.rm=TRUE),
-           # final_tax_to_dist_noexemps = sum(final_tax_to_dist_noexemps, na.rm=TRUE),
-            MuniLevy = first(MuniLevy)) %>%
-  mutate(current_burden = final_tax_to_dist/MuniLevy) %>%
-           # no_exemptions_burden = sum(no_exemptions_burden, na.rm = TRUE)) %>%
-  select(agency_name, major_class_type, current_burden, tax_rate_current, taxrate_new, everything()) %>% ungroup()
-
-# find outliers
-burden_with_exemptions %>% arrange(desc(current_burden))
-
-
-burden_noexemps<- taxcodes_noexemps %>% 
- # left_join(muni_tax_codes) %>% 
-  left_join(muni_agency_names) %>%   
-  left_join(noexemps_munisummary) %>% 
-#  left_join(noexemps_rev) %>%
-  select(-c(agency_rate)) %>%
-  
-  mutate(ResidentialProps = ifelse(major_class_code %in% c("2", "3", "9"), "Residential", "Commercial"),
-         
-         PropType = case_when(
-           major_class_code %in% c("3","9") ~ "Multi-Family",
-           major_class_code == "2" ~ "Single-Family",
-           TRUE~ "Commercial-Industrial")) %>% 
-  arrange(tax_code) %>%
-
-  group_by(agency_name, major_class_type, taxrate_noexemps, PropType, ResidentialProps, agency_num, major_class_code) %>%
-  summarize(final_tax_to_dist_noexemps = sum(final_tax_to_dist, na.rm=TRUE),
-           # final_tax_to_dist_noexemps = sum(final_tax_to_dist_noexemps, na.rm=TRUE),
-           # MuniLevy = first(MuniLevy)
-           ) %>%
-#  mutate(burden_noexemps = final_tax_to_dist/MuniLevy) %>%
-           # no_exemptions_burden = sum(no_exemptions_burden, na.rm = TRUE)) %>%
-  select(agency_name, major_class_type,
-      #   burden_noexemps,
-         taxrate_noexemps, everything()) %>% ungroup()
-
-
-#burden_noexemps %>% arrange(desc(burden_noexemps))
-
-burden_shift <- full_join( burden_with_exemptions, burden_noexemps, 
-                           by = c("agency_name", "major_class_type", "PropType", "ResidentialProps", "major_class_code", "agency_num")) %>%
-  mutate(burden_noexemps = final_tax_to_dist_noexemps/MuniLevy,
-       burden_change = current_burden - burden_noexemps,
-                                                         taxrate_change = tax_rate_current - taxrate_new)
-
-
-#burden_shift
-```
-
-```{r eval=FALSE, include=FALSE}
-burden_shift %>% filter(major_class_code == 2)  %>% 
-  select(agency_name, burden_change, taxrate_change, tax_rate_current, taxrate_new, taxrate_noexemps) %>% arrange(burden_change)
-
-
-
-
-burden_shift_table <- burden_shift %>% 
-  mutate(burden_change = round(current_burden - burden_noexemps, digits =5),
-         taxrate_change = tax_rate_current - taxrate_new) %>% 
-  select(agency_name, major_class_type, burden_change, taxrate_change, tax_rate_current, taxrate_new, PropType, ResidentialProps) %>% 
-  arrange(burden_change)
-
-
-muni_eav <- land_use %>% group_by(agency_name, agency_num) %>% 
-  summarize(muni_EAV = sum(Total_EAV)) %>% ungroup()
-
-perc_residential <- left_join(land_use, muni_eav) %>% 
-  filter(ResidentialProps == "Residential") %>% 
-  mutate(percent_residential = Total_EAV / muni_EAV) 
-
-
-table_ResidentialEAV <- land_use %>% 
-  filter(ResidentialProps == "Residential" ) %>% 
-  left_join(perc_residential) %>%
-  select(agency_name,  Total_EAV, Exempt_EAV, percent_residential, tax_rate_current, taxrate_new, taxrate_change, 
-         -c(agency_num, ResidentialProps, nonTIF_EAV, TIF_increment_EAV, taxrev_from_proptype)) %>% 
-  rename("Residential EAV" = Total_EAV,
-         "Exempt EAV" = Exempt_EAV,
-         Municipality = agency_name) 
-
-table_ResidentialEAV %>%
-  mutate(percent_residential = scales::percent(percent_residential, accuracy = 0.01),
-         tax_rate_current = scales::percent(tax_rate_current, accuracy = 0.01),
-         taxrate_new = scales::percent(taxrate_new, accuracy = 0.01),
-         taxrate_change = scales::percent(taxrate_change, accuracy = 0.01)) %>% arrange(desc(taxrate_change))
-
-#lowest % of eav from residential property types
-perc_residential %>%
-  arrange(percent_residential) %>% head()
-
-#highest % of eav from residential property types
-perc_residential %>% 
-  arrange(percent_residential) %>% tail()
-
-
-perc_residential %>%
-  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
-  ggplot(aes(fill = percent_residential)) + 
-  geom_sf(aes(geometry = geometry), color = "black") + theme_void()+ 
-  labs(title = "Residential EAV /  Total EAV") +
-    theme_classic() + 
-  theme(axis.ticks = element_blank(), axis.text = element_blank())+
-   scale_fill_gradientn(colors = c("white", "darkblue"), 
-                    #   limits = c(0,.6),
-                       n = 5,
-                        name = "% Residential", label = scales::percent)
-```
-
 # Composite Tax Rate Change
 
 The tax rate shown is the composite tax rate for the Municipality. The composite tax rate is the aggregate of the tax rate for each taxing agency X the EAV within the taxing jurisdiction. This was calculated at a tax code level first and then added together for all taxcodes taxed by a municipal taxing agency.
-
-```{r eval=FALSE, include=FALSE}
-TC_bills_noexemps <- read_csv("TC_bills_noexemps.csv") %>% mutate(tax_code = as.character(tax_code))
-# noexemps_rev<- taxcodes_noexemps  %>%   
-#   left_join(muni_agency_names) %>%
-#   select(tax_code, major_class_code, major_class_type, final_tax_to_dist, agency_name) %>% 
-#   rename(final_tax_to_dist_noexemps = final_tax_to_dist)
-
-taxcodes_noexemps <- left_join(TC_bills_noexemps, muni_tax_codes, 
-                      by = c("tax_code" = "tax_code_num"))  %>%
-    left_join(muni_agency_names) %>%
-  left_join(nicknames) %>%
-           mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) 
-
-
-
-noexemps_munisummary <- taxcodes_noexemps %>% 
-  group_by(clean_name, agency_name) %>% 
-  summarize(MuniLevy = sum(final_tax_to_dist, na.rm = TRUE), #amount billed by muni within cook county
-            nonTIF_EAV = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE), # within cook county
-           final_tax_to_dist = sum(final_tax_to_dist, na.rm=TRUE),
-     TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),  # within cook county
-            Exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE), # within cook county
-            Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE)) %>%
-
-  mutate(taxrate_noexemps = MuniLevy/nonTIF_EAV,
-        # nonTIF_EAV= nonTIF_EAV + Exempt_EAV,
-       ) 
- # select(agency_name, tax_rate_noexemps, everything()) %>% 
-#  arrange(desc(tax_rate_noexemps))
-
-
-noexemps_munisummary
-
-```
 
 6 Highest and 6 lowest tax rates. View the extremes on both sides
 
@@ -712,16 +804,21 @@ sd(Current_Taxrates$tax_rate_current)
 
 # Map of Tax Rate Change
 
-```{r eval=FALSE, include=FALSE}
+Mostly ignore the map below. It is a tester formatting colors and legend.
+
+```{r include = FALSE}
+
+sd(Current_Taxrates$tax_rate_current) # 5.7%
+
 burden_shift %>% 
     mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
-    # mutate(currentrate_quantile = ordered(case_when
-    #      (#tax_rate_current  0.0673 ~ "",
-    #        tax_rate_current < 0.1002 ~ "0-25%",
-    #        tax_rate_current < 0.11 ~ "25-49%",
-    #      tax_rate_current < 0.14 ~ "50%",
-    #        tax_rate_current < 0.1500 ~ "51-75%",
-    #        tax_rate_current <= 0.5 ~ "75-100%"))) %>%
+    mutate(currentrate_quantile = ordered(case_when
+         (#tax_rate_current  0.0673 ~ "",
+           tax_rate_current < 0.1002 ~ "0-25%",
+           tax_rate_current < 0.11 ~ "25-49%",
+         tax_rate_current < 0.14 ~ "50%",
+           tax_rate_current < 0.1500 ~ "51-75%",
+           tax_rate_current <= 0.5 ~ "75-100%"))) %>%
 
   # mutate(currentrate_quantile = ordered(
   #   case_when
@@ -764,10 +861,37 @@ burden_shift %>%
        Legend indicates the ranking of Munis. (Bottom quarter, etc.)")
 ```
 
-```{r}
+```{r include = FALSE}
 quantile(Current_Taxrates$tax_rate_current)
+#breaks = quantile(Current_Taxrates$tax_rate_current, )
+colors = c("#420420","maroon", "beige", "#b0e0e6", "#008080")
 
-Current_Taxrates %>% 
+
+variable = Current_Taxrates$tax_rate_current
+
+breaks_sd = c(
+  (median(variable)-2.5*sd(variable)),
+  (median(variable)-1.5*sd(variable)), 
+  median(variable)-.5*sd(variable), 
+ #median(variable),
+  median(variable)+.5*sd(variable), 
+  median(variable)+1.5*sd(variable),
+  median(variable)+2.5*sd(variable))
+
+
+breaks_3 = c(0, 
+  (median(variable)-3*sd(variable)),
+  (median(variable)-2*sd(variable)), 
+  median(variable)-sd(variable), 
+  median(variable)+sd(variable), 
+  median(variable)+2*sd(variable),
+  median(variable)+3*sd(variable),
+     1)
+```
+
+
+```{r}
+Current_rate_image <- Current_Taxrates %>% 
     mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) 
     ) %>%
   #  filter(major_class_code == 2) %>% # all property types have same composite tax rate
@@ -775,21 +899,31 @@ Current_Taxrates %>%
 
     ggplot(aes(fill = tax_rate_current)) +
     geom_sf(aes(geometry = geometry), color = "black") + 
-      theme_classic() + 
+      theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
-scale_fill_steps2(
-      midpoint = 0.123, limits = c(0,.45),
-
+scale_fill_steps2(#colors = colors,
+    high = "#420420", low = "black",
+   #high = "#00e304" , low = "#00cfd4",
+     midpoint = 0.123, 
+#breaks = breaks_sd,
+#limits = c(0,.45),
+guide = "legend",
                    show.limits=TRUE,
   nice.breaks=FALSE,
-                  #   n =6,
+                    n =6,
                        name = "Tax Rate",
-                 label = scales::percent)+
+#labels= c("6-12.5%", "", "12.5-18.3%", "24%", "30%", "35%+")              
+label = scales::percent
+)+
  
   labs(title = "Current composite tax rates" ,    
          caption = "The current median composite tax rate is 12.3%. 
          Highest composite tax rate is in Park Forest (41.4%.)
        Lowest composite tax rate is in Chicago (6.7%).")
+
+Current_rate_image
+
+save.image("Current_rate_image.png")
 ```
 
 ```{r}
@@ -804,26 +938,39 @@ burden_shift %>% filter(major_class_code == 2) %>%
 ```
 
 ```{r}
+variable =Current_Taxrates$tax_rate_current
+breaks_sd = c(
+  (median(variable)-2.5*sd(variable)),
+  (median(variable)-1.5*sd(variable)), 
+  median(variable)-.5*sd(variable), 
+  median(variable)+.5*sd(variable), 
+  median(variable)+1.5*sd(variable),
+  (median(variable)+2.5*sd(variable))
 
+  )
 
 Current_Taxrates %>% 
       mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) 
     ) %>%
   left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
   ggplot(aes(fill = taxrate_new)) + 
-      theme_classic() + 
+      theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
-     scale_fill_steps2(#colors = c("white", "#76C3D6", "#1A5E7D"),
-                      limits = c(0,.30),
+     scale_fill_steps2(# high = "#00e304" , low = "#00cfd4",
+      high = "#420420", low = "#008080",#colors = c("white", "#76C3D6", "#1A5E7D"),
+                      limits = c(0,.45),
                       midpoint = .1052,
-                     #  n.breaks = 5, 
+                     #breaks = breaks_sd, 
+                   #  na.value = NA,
                      nice.breaks=FALSE,
                       show.limits=TRUE,
+     guide = "legend",
+                   n=6,
                         name = "Tax Rate", label = scales::percent)+
   geom_sf(aes(geometry = geometry), color = "black") +  
   labs(title = "New composite tax rates if exemptions were eliminated" ,    
-         caption = "The new median composite tax rate woudl be approximately 10.5% 
-       if exemptions were removed")
+         caption = "The new median composite tax rate would be approximately 10.5% 
+       if exemptions were removed.")
 ```
 
 ```{r}
@@ -833,46 +980,54 @@ Current_Taxrates %>%
     mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
  # filter(clean_name != "Park Forest") %>%
   left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
-  ggplot(aes(fill = taxrate_change*100)) + 
+  ggplot(aes(fill = taxrate_change)) + 
   geom_sf(aes(geometry = geometry), color = "black") +  
       theme_classic() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
   
-    scale_fill_steps2(#colors = c("#ffffcc","#a1dab4" ,"#41b6c4","#2c7fb8", "#253494"),
-  low = "darkorange", high = "#253494",
-#  space = "Lab",
-midpoint = 1.388, show.limits=TRUE,
+    scale_fill_steps2(
+      
+     #  high = "#00e304" , low = "#00cfd4",
+       high = "#420420", low = "#008080"
+       ,#colors = c("#ffffcc","#a1dab4" ,"#41b6c4","#2c7fb8", "#253494"),
+ # low = "darkorange", high = "#253494",
+#  space = "Lab", 
+guide = "legend",
+n=6,
+midpoint = 0.01388, 
+show.limits=TRUE,
 nice.breaks=FALSE,
+labels = scales::percent,
                         name = "Percentage Point Difference")+
   labs(title = "Change in Composite Tax Rate if Exemptions are Removed",
        caption = "The median change in composite tax rate is 1.38 percentage points")
 ```
 
 
-```{r quantile-composite-taxrates}
+```{r quantile-composite-taxrates, include = FALSE}
 
 
-Current_Taxrates %>% 
-    mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
-    # mutate(currentrate_quantile = case_when
-    #      (
-    #        tax_rate_current < 0.1002 ~ "Lowest 25%",
-    #        tax_rate_current < 0.1226 ~ "25-50%",
-    #        tax_rate_current == 0.1226 ~ "Median Rate",
-    #        tax_rate_current > 0.1500 ~ "50-75%",
-    #        tax_rate_current <= 0.4136 ~ "Highest 25%")) %>%
-  left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
-  ggplot(aes(fill = taxrate_change*100)) + 
-  geom_sf(aes(geometry = geometry), color = "black") +  
-      theme_classic() + 
-  theme(axis.ticks = element_blank(), axis.text = element_blank())+
-  
-    scale_fill_stepsn(colors = c("darkorange", "#ffffcc","#a1dab4" ,"#41b6c4","#2c7fb8", "#253494"),
- # low = "#ffffcc", mid = "#41b6c4", high = "#253494",
-#  space = "Lab",
-                       n.breaks = 6, show.limits=TRUE,
-                        name = "Percentage Point Difference")+
-  labs(title = "Change in Composite Tax Rate if Exemptions are Removed")
+# Current_Taxrates %>% 
+#     mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
+#     # mutate(currentrate_quantile = case_when
+#     #      (
+#     #        tax_rate_current < 0.1002 ~ "Lowest 25%",
+#     #        tax_rate_current < 0.1226 ~ "25-50%",
+#     #        tax_rate_current == 0.1226 ~ "Median Rate",
+#     #        tax_rate_current > 0.1500 ~ "50-75%",
+#     #        tax_rate_current <= 0.4136 ~ "Highest 25%")) %>%
+#   left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+#   ggplot(aes(fill = taxrate_change*100)) + 
+#   geom_sf(aes(geometry = geometry), color = "black") +  
+#       theme_classic() + 
+#   theme(axis.ticks = element_blank(), axis.text = element_blank())+
+#   
+#     scale_fill_stepsn(colors = c("darkorange", "#ffffcc","#a1dab4" ,"#41b6c4","#2c7fb8", "#253494"),
+#  # low = "#ffffcc", mid = "#41b6c4", high = "#253494",
+# #  space = "Lab",
+#                        n.breaks = 6, show.limits=TRUE,
+#                         name = "Percentage Point Difference")+
+#   labs(title = "Change in Composite Tax Rate if Exemptions are Removed")
 
     #    scale_fill_stepsn(colors = c("white", "#76C3D6", "#1A5E7D"),
                   #    limits = c(0,.35),
@@ -886,10 +1041,10 @@ Current_Taxrates %>%
       theme_classic() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
   
-    scale_fill_stepsn(colors = c("#ffffcc","#a1dab4" ,"#41b6c4","#2c7fb8", "#253494"),
+    scale_fill_stepsn(colors = c( "#41b6c4","#a1dab4","#ffffcc","#2c7fb8", "#253494"),
  # low = "#ffffcc", mid = "#41b6c4", high = "#253494",
 #  space = "Lab",
-                       n.breaks = 5, show.limits=TRUE,
+                       n.breaks = 9, show.limits=TRUE,
                         name = "Percentage Point Difference")+
   labs(title = "Change in Composite Tax Rate if Exemptions are Removed")
 ```
@@ -1024,15 +1179,23 @@ burden_shift %>%
   theme_classic() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
    scale_fill_steps2(
-     high = "#253494" , low = "#a1dab4",
+   # high = "#00e304" , low = "#00cfd4",
+     high = "#420420", low = "#008080",
+   #  high = "#00a8ff" , low = "#ff4800",
      nice.breaks=FALSE,
-                        show.limits=TRUE, n.breaks = 4,
+                        show.limits=TRUE, 
+   n.breaks = 6,
                      midpoint = 0.65,
-                        name = "Burden with \nExemptions", labels = scales::percent
+   guide = "legend",
+                        name = "Current Burden \n(with Exemptions)", labels = scales::percent
                     )+
-  labs(title = "Current share of property tax burden", subtitle = "for Class = 2 Property Types", caption = "The median municipality gets 65% of its property tax revenue from Single-Family properties.")
+  labs(title = "Current share of property tax burden", 
+       subtitle = "for Class = 2 Property Types", 
+       caption = "The median municipality gets 65% of its property tax revenue from Single-Family properties.")
+```
 
 
+```{r}
 burden_shift %>% 
     mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
       filter(major_class_code == 2) %>%
@@ -1041,25 +1204,26 @@ burden_shift %>%
 
   ggplot(aes(fill = burden_noexemps)) + 
   geom_sf(aes(geometry = geometry), color = "black") +     
-  theme_classic() + 
+  theme_classic( ) + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
-   #scale_fill_gradientn(
-    # scale_fill_binned(
-     #colors = c("#f0f9e8", "#0868ac"),
-   #  colors = c('#a6611a','#018571'),
-                       #limits = c(0,.6),
-           #            n = 6,
-   #   name = "Burden w/o \nExemptions", label = scales::percent)+
+
      scale_fill_steps2(
-     high = "#253494" , low = "#a1dab4",
+      #  high = "#00e304" , low = "#00cfd4",
+     # colors = c("#ffffcc","#a1dab4" ,"#41b6c4","#2c7fb8", "#253494"),
+      high = "#420420", low = "#008080",
+  #   high = "#253494" , low = "#3b3c36" ,
      nice.breaks=FALSE,
-                        show.limits=TRUE, n.breaks = 4,
+                        #show.limits=TRUE, 
+  guide = "legend",
+   n.breaks = 6,
                      midpoint = 0.69,
-                        name = "Burden without \nExemptions", labels = scales::percent)+
- labs(title = "New share of property tax burden", subtitle = "for Class = 2 Property Types")
+                        name = "Burden without \nExemptions", labels = scales::percent) +
+ labs(title = "New share of property tax burden", subtitle = "for Class = 2 Property Types", caption =
+      "Without exemptions, municipalities would get a larger share of 
+      their revenue from single-family properties.")
 ```
 
-```{r}
+```{r burdenchange-map}
 burden_shift %>% #filter(clean_name != "Phoenix") %>%
   filter(major_class_code == 2) %>%
     mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
@@ -1074,11 +1238,14 @@ burden_shift %>% #filter(clean_name != "Phoenix") %>%
     theme_classic() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
    scale_fill_steps2(
-     high = "darkblue" , low = "orange",
+     # high = "#00e304" , low = "#00cfd4",
+     high = "#420420", low = "#008080",
+    # high = "darkblue" , low = "orange",
      nice.breaks=FALSE,
+   guide="legend",
                         show.limits=TRUE,# n.breaks = 5,
-                     midpoint = 4.56,
-                        name = "Burden with \nExemptions")
+                     midpoint = 4.6, # median(burden_shift$burden_change*100),
+                        name = "Change in Burden \n Pct Points")
 
 ```
 
@@ -1291,9 +1458,69 @@ proptypes3_burdenchange
 
 ```
 
-# Exporting data to Excel file
+# Cook County "Cost" Values
+
+
+__"Multiplies the EAV exempted for all Cook County municipalities by their consolidated tax rates in each municipality"__
+
+> Do this by taxcode and actual tax code tax rate. Much more accurate.
 
 ```{r}
+taxcodes_current %>% 
+  summarize(forgone_rev = sum(tax_amt_exe, na.rm = TRUE),
+            exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm = TRUE)
+  )
+```
+- There is $15,770,910,176 of EAV that is exempt from property taxes.  
+
+- \$1.5 Billion of potential revenue is transferred to other taxpayers due to current exemptions. 
+
+
+__"Takes the median tax rate increase as a result of exemptions (1.4%) and multiplies that by the total residential EAV in Cook County"__
+
+```{r}
+taxcodes_current %>%
+  filter(year == 2021) %>%
+  group_by(major_class_type, major_class_code) %>%
+  summarize(eav = sum(tax_amt_pre_exe/(tax_code_rate/100), na.rm=TRUE)) %>% arrange(desc(eav))
+
+120944941944 * 0.01388 # 1693229187
+```
+
+- There is $120,944,941,944 of Residential EAV in Cook County.  
+
+- $1,678,715,794 is Residential EAV * average increase in municipal taxrate. 
+ 
+__"And then we should [show] how/why if levy is fixed, exemptions increase the tax rate and/or shift the tax burden."__
+
+- .... Because of... math?   
+- Once the amount of money that is needed is determined, then the tax rate is determined based off of that.   
+  - Levy doesn't change, so if you are decreasing the amount of taxable EAV, then the tax rate must go up to collect the same amount of money.  
+  - maybe draw a diagram for a municipality as an example on a slide   
+
+__"We might also want to take a closer look at either our 6 case study municipalities or those municipalities most affected by exemptions (Park Forest, Phoenix, Calumet Park, Riverdale) to get some effects for the owner of the average or median value home."__
+
+```{r}
+
+```
+
+Locations with the highest percent of their potentially taxable EAV (non-TIF increment EAV) that is tax-exempt: 
+
+Phoenix	
+Park Forest	
+Markham	
+Calumet Park	
+Thornton	
+Harvey	
+Burnham	
+Dolton
+
+Almost exact same list of locations as largest tax rate change. 
+
+
+# Exporting data to Excel file
+
+```{r eval=FALSE}
 library(openxlsx)
 
 dataset_names <- list(
