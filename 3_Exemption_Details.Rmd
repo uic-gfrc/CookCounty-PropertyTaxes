@@ -1,0 +1,419 @@
+---
+title: "Calculate all Pin Bills for 2021"
+author: "Alea Wilbur"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    df_print: paged
+    code_folding: hide
+    code_download: true
+---
+
+# Get Pin and Tax Bill Data
+
+Run file `1_Get_All_Pin_Bills.Rmd` to replicate pulling the 2021 bills.
+
+
+Run file `2_....Rmd` to get summed values to various levels of analysis (parcel, taxcode--class, taxcode--majorclass, etc.)  
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+
+library(tidyverse)
+library(DBI)
+library(data.table)
+library(ggspatial)
+library(gstat)
+library(here)
+library(httr)
+library(jsonlite)
+library(ptaxsim)
+library(sf)
+library(stars)
+library(glue)
+
+# Create the DB connection with the default name expected by PTAXSIM functions
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
+
+
+options(digits=4, scipen = 999)
+
+library(sf)
+library(jsonlite)
+library(httr)
+
+# link to the API output as a JSON file
+#muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/politicalBoundary/MapServer/2/query?outFields=*&where=1%3D1&f=geojson")
+
+#muni_shp <- read_json("muni_shp.json")
+nicknames <- readxl::read_excel("muni_shortnames.xlsx")
+
+class_dict <- read_csv("class_dict.csv")
+
+
+
+```
+
+
+```{r agency-dt}
+# has EAV values, extensions by agency_num
+agency_dt <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT *
+  FROM agency
+  WHERE year = 2021
+  "
+)
+
+# grabs all unique muni names & numbs
+# don't forget Cicero
+muni_agency_names <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT DISTINCT agency_num, agency_name, minor_type
+  FROM agency_info
+  WHERE minor_type = 'MUNI'
+  OR agency_num = '020060000'  
+
+  "
+)
+
+muni_agency_names <- muni_agency_names %>% 
+    mutate(first6 = str_sub(agency_num,1,6),
+         first5 = str_sub(agency_num,1,5)) %>% 
+  select(-minor_type)
+
+
+
+#Makes a list of ALL taxing agencies, including TIFs, SSAs, etc.
+
+# all agency names, numbers, and types
+# includes TIF and non-TIF agencies
+all_taxing_agencies <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT agency_num, agency_name, major_type, minor_type
+  FROM agency_info
+  "
+) %>% mutate(first6 = str_sub(agency_num,1,6),
+         first5 = str_sub(agency_num,1,5))
+
+
+muni_agency_nums<- all_taxing_agencies %>% 
+  filter(minor_type %in% c("MUNI") | 
+           agency_num == "020060000") %>%
+   select(agency_num)
+
+
+# list of all taxcodes in municipalities. 
+# This does NOT include unincorporated tax codes!!
+muni_tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT*
+  FROM tax_code
+  WHERE agency_num IN ({muni_agency_names$agency_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+)# %>% select(-agency_rate)
+
+# Agency number and agency name for all TIFs
+TIF_agencies <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT DISTINCT agency_num, agency_name, major_type, minor_type
+  FROM agency_info
+  WHERE minor_type = 'TIF'
+  "
+)
+
+unique_tif_taxcodes <- DBI::dbGetQuery(
+  ptaxsim_db_conn, 
+  glue_sql("
+  SELECT DISTINCT tax_code_num
+  FROM tax_code
+  WHERE agency_num IN ({TIF_agencies$agency_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+)
+
+
+tif_distrib <- DBI::dbGetQuery(
+  ptaxsim_db_conn, 
+  glue_sql("
+  SELECT *
+  FROM tif_distribution
+  WHERE tax_code_num IN ({muni_tax_codes$tax_code_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+) %>% mutate(tax_code_num = as.character(tax_code_num))
+
+
+
+all_taxing_agencies <- all_taxing_agencies %>% 
+  left_join(muni_agency_names, by = c("first5", "first6")) %>% 
+  rename(muni_name =  agency_name.y,
+        muni_num = agency_num.y,
+        agency_name = agency_name.x,
+        agency_num = agency_num.x)
+
+
+# combine taxing agency names and agency type to data table that has eav and extension values
+agency_data <- right_join(agency_dt, all_taxing_agencies) %>% 
+  # get rid of unneeded columns to make table outputs smaller
+  select(-c(cty_dupage_eav:cty_livingston_eav)) %>% # drop some of the unused variables
+  arrange(agency_num)
+```
+
+
+
+```{r}
+# there are 1,825,816 pins within incorporated municipalities
+muni_pins <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql(
+  "SELECT DISTINCT pin, class, tax_code_num
+  FROM pin
+  WHERE tax_code_num IN ({muni_tax_codes$tax_code_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+))
+```
+
+
+```{r eval=FALSE}
+# There are 1,864,594 pins taxed by Cook County in 2021.
+cook_pins <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql(
+  "SELECT DISTINCT pin, class, tax_code_num
+  FROM pin
+  WHERE tax_code_num IN ({cook_tax_codes$tax_code_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+))
+
+
+# finds all pins within a municipality
+pin_data <- lookup_pin(2021, cook_pins$pin) %>%
+  left_join(cook_pins, by = c("pin", "class"))
+
+
+# change variable type to character so the join works.
+class_dict$class_code <- as.character(class_dict$class_code)
+
+
+
+# use the property class to make the major property types
+# joins the class_dict file to the pin_data classes
+pin_data <- class_dict %>%
+  select(-c(assessment_level:reporting_group, class_desc:max_size)) %>%
+  right_join(pin_data, by = c("class_code" = "class"))
+
+write_csv(pin_data, "all_cook_pins_2021.csv")
+
+
+
+
+## summarize pin level data to the tax code level
+exemptions_inCook_perTC <- pin_data %>%
+  group_by(tax_code_num, major_class_code, major_class_type) %>%
+  summarize(eav=sum(eav, na.rm=TRUE),
+            exe_homeowner = sum(exe_homeowner, na.rm=TRUE),
+            exe_senior = sum(exe_senior, na.rm=TRUE),
+            exe_freeze = sum(exe_freeze, na.rm=TRUE),
+            exe_longtime_homeowner = sum(exe_longtime_homeowner, na.rm=TRUE),
+            exe_disabled = sum(exe_disabled, na.rm=TRUE),
+            exe_vet_returning = sum(exe_vet_returning, na.rm=TRUE),
+            exe_vet_dis = sum(exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70, na.rm=TRUE),
+            exe_abate = sum(exe_abate, na.rm=TRUE),
+            pin_count = n() # number of pins within each tax code and property combo
+
+)
+
+# grouped by taxcode and property classes.
+# has amount of each type of exemption in each tax code
+write_csv(exemptions_inCook_perTC, "all_exemptions_inCook_byTaxcode.csv")
+```
+
+
+```{r}
+owner_occupied <- c("299", "202","203", "204", "205",
+                    "206", "207", "208","209",
+                    "210","234", "278", "295")
+
+rental <- c("399", "300", "301", "313", "314",  
+            "315", "318", "391", "396", "397",
+            "901", "913", "914", "915", "918", 
+            "959", "991", "996", "997", "211", "212", "225")
+```
+
+
+```{r}
+# finds all pins within a municipality
+pin_data <- lookup_pin(2021, muni_pins$pin) %>%
+  left_join(muni_pins, by = c("pin", "class"))
+
+
+# use the property class to make the major property types
+# joins the class_dict file to the pin_data classes
+pin_data <- class_dict %>%
+  mutate(class_code = as.character(class_code))%>%
+#  select(-c(assessment_level:reporting_group)) %>%
+  right_join(pin_data, by = c("class_code" = "class"))
+
+# write_csv(pin_data, "all_muni_pins_2021.csv")
+
+
+head(pin_data)
+
+
+# There are 1,385,803 parcels with exemptions
+
+exemptions_per_parcel <- pin_data %>%
+  mutate(pin10 = str_sub(pin,1,10))%>%
+  group_by(tax_code_num, pin10, class_code, class_desc) %>%
+  summarize(av = sum(av),
+            eav=sum(eav),
+            exe_homeowner = sum(exe_homeowner, na.rm=TRUE),
+            exe_senior = sum(exe_senior, na.rm=TRUE),
+            exe_freeze = sum(exe_freeze, na.rm=TRUE),
+            exe_longtime_homeowner = sum(exe_longtime_homeowner, na.rm=TRUE),
+            exe_disabled = sum(exe_disabled, na.rm=TRUE),
+            exe_vet_returning = sum(exe_vet_returning, na.rm=TRUE),
+            exe_vet_dis = sum(exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70, na.rm=TRUE),
+            exe_abate = sum(exe_abate, na.rm=TRUE),
+            pin_count = n() # number of pins within each tax code and property combo
+            
+)
+
+write_csv(exemptions_per_parcel, "3_Exemptions_Details_output-ParcelExemps.csv")
+
+
+exemptions_per_ClassTaxcode <- pin_data %>%
+  group_by(tax_code_num, class_code, major_class_code, major_class_type, Alea_cats) %>%
+  summarize(av = sum(av),
+            eav=sum(eav),
+            exe_homeowner = sum(exe_homeowner, na.rm=TRUE),
+            exe_senior = sum(exe_senior, na.rm=TRUE),
+            exe_freeze = sum(exe_freeze, na.rm=TRUE),
+            exe_longtime_homeowner = sum(exe_longtime_homeowner, na.rm=TRUE),
+            exe_disabled = sum(exe_disabled, na.rm=TRUE),
+            exe_vet_returning = sum(exe_vet_returning, na.rm=TRUE),
+            exe_vet_dis = sum(exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70, na.rm=TRUE),
+            exe_abate = sum(exe_abate, na.rm=TRUE),
+            pin_count = n() # number of pins within each tax code and property combo
+            
+) %>% mutate(Alea_cats = ifelse(Alea_cats != "Owner Occupied" & Alea_cats != "Rental", 
+                                "Nonresidential", Alea_cats))
+
+write_csv(exemptions_per_ClassTaxcode, "3_Exemptions_Details_output-ClassTaxcodeExemps.csv")
+
+```
+
+```{r}
+
+# use exemptions in tax codes to summarize EAV. 
+# More accurate that calculating it from revenue collected.tax rate in tax bill data
+
+exemptions_by_class_per_TC <- exemptions_per_ClassTaxcode %>%
+  #read_csv("all_exemptions_by_TC.csv") %>%
+  mutate(tax_code_num = as.character(tax_code_num)) %>%
+  left_join(muni_tax_codes) %>%
+  full_join(muni_agency_names) %>%
+  left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
+  # merge with TIF distrib table to calculate the percent of the EAV that goes to the TIF vs the district
+  left_join(tif_distrib, by=c("tax_code_num", "year", "tax_code_rate")) %>%
+  mutate(exempt_EAV = (exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+         exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate) ,
+         in_TIF = ifelse(tax_code_num %in% unique_tif_taxcodes$tax_code_num, 1, 0),
+        tax_base_current = ifelse(in_TIF==1, (eav-exempt_EAV)*(1-tax_code_distribution_pct/100), eav-exempt_EAV),
+        tax_base_noexemps = ifelse(in_TIF==1, (eav)*(1-tax_code_distribution_pct/100), eav),
+        
+        ResidentialProps = ifelse(major_class_code %in% c("2", "3", "9"), "Residential", "Non-Residential"),
+        #  
+        #  PropType = ifelse(class %in% c("299", "202","203", "204", "205", "206", "207", "208","209", "210","234", "278", "295"), 
+        #                     "Owner Occupied", NA),
+        # 
+        # PropType = ifelse(class %in% c("399", "300", "301", "313", "314","315", "318", "391", "396", "397", "901", "913", " 914", "915", "918", "959", "991", "996", "997", "211", "212", "225"), 
+        #                    "Rental", PropType),
+        # 
+        # PropType = ifelse(major_class_code %in% c("2","3","9") & PropType == "",  "Other Residential", PropType),
+        # Proptype = ifelse(is.na(PropType), "Non-Residential", Proptype))
+  )
+```
+
+```{r}
+
+muni_totals <-  exemptions_by_class_per_TC %>% 
+  group_by(clean_name) %>%
+  summarize(muni_av = sum(av),
+            muni_eav = sum(eav))
+
+table<-exemptions_by_class_per_TC %>% 
+    filter(Alea_cats == "Rental" | Alea_cats == "Owner Occupied") %>%
+
+  group_by(clean_name, Alea_cats) %>%
+  summarize(av = sum(av),
+            eav = sum(eav)) %>% 
+  ungroup() %>%
+  left_join(muni_totals) %>%
+  mutate(perc_rental = ifelse(Alea_cats == "Rental", eav/muni_eav, 0),
+         perc_owned = ifelse(Alea_cats == "Owner Occupied", eav/muni_eav, 0)) 
+
+perc_residential <- table %>% ungroup() %>%
+  group_by(clean_name) %>%
+  summarize(residential_eav = sum(eav),
+            residential_av = sum(av),
+            perc_residential = sum(perc_owned + perc_rental, na.rm=TRUE)) %>%
+  arrange(desc(perc_residential)) %>% right_join(table) 
+perc_residential
+
+write_csv(perc_residential, "residential_percent_july28.csv")
+```
+
+
+__Exemptions within each municipality:__
+
+
+Percent Residential is the Residential EAV outside of TIFs / Municipality EAV outside of TIFs.
+
+
+```{r}
+grouped_exemptions <- exemptions_by_class_per_TC %>% 
+   # group_by(agency_name, major_class_code, major_class_type, ResidentialProps, PropType) %>%
+  group_by(clean_name, ResidentialProps, agency_name, agency_num.x) %>%
+  summarize(eav = sum(eav),
+           exempt_EAV = sum(exempt_EAV, exe_abate, na.rm=TRUE),
+         tax_base_current = sum(tax_base_current, na.rm=TRUE),
+         tax_base_noexemps = sum(tax_base_noexemps, na.rm=TRUE)) %>% ungroup() %>% select(clean_name, eav, exempt_EAV, everything())
+  
+grouped_exemptions 
+
+# calculate totals with ONLY EAV outside of TIFs
+muni_eav <- grouped_exemptions %>%  
+  group_by(clean_name, agency_name, agency_num.x) %>% 
+  summarize(muni_EAV_includesTIF = sum(eav), # all EAV in the municipality that exists
+            muni_tax_base_current=sum(tax_base_current), # taxable EAV based on current exemptions
+            muni_tax_base_noexemps = sum(tax_base_noexemps)) %>%  # taxable EAV pre-exemptions
+  ungroup() 
+
+perc_residential <- full_join(grouped_exemptions, muni_eav) %>% 
+  filter(ResidentialProps == "Residential") %>% 
+  mutate(percent_residential = eav / muni_EAV_includesTIF)# %>% select()
+
+
+# in this stage, Bensenville, East Dundee, and Homer Glen were dropped. This is fine because I was going to drop them later anyways. They don't have residential EAV within Cook County.
+
+perc_residential %>% arrange(desc(percent_residential))
+
+```
+
