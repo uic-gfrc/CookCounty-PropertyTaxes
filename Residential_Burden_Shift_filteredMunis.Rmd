@@ -349,7 +349,7 @@ class2_perc %>%
   left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
   ggplot(aes(fill = perc_class2_totalEAV)) + 
   geom_sf(aes(geometry = geometry), color = "black") + 
-  labs(title = "Single-Family Property EAV /  Total EAV in Municipality", 
+  labs(title = "Class 2 Property EAV /  Total EAV in Municipality", 
   caption = "") +
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
@@ -741,18 +741,19 @@ Current_Taxrates %>%
 Current_Taxrates %>% 
   mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
   # filter(clean_name != "Park Forest") %>%
-  left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
   ggplot(aes(fill = taxrate_change)) + 
   geom_sf(aes(geometry = geometry), color = "black") +  
-  theme_classic() + 
+  theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
   
-  scale_fill_steps2(high = "black", low = "darkblue",
+  scale_fill_steps2(high = "blue", low = "black",
     n=6, midpoint = 0.01388, 
     show.limits=TRUE,
     nice.breaks=FALSE,
+    na.value = "lightgray",
     labels = scales::percent,
-    name = "Percentage Point Difference")+
+    name = "Percentage Point \nDifference")+
   labs(title = "Change in Composite Tax Rate if Exemptions are Removed",
        caption = "The median change in composite tax rate is 1.38 percentage points")
 ```
@@ -812,12 +813,13 @@ order <- burden_shift %>%
             taxrate_new = mean(taxrate_new),
             taxrate_change = mean(taxrate_change)) %>%
   arrange(taxrate_change)
-median(order$taxrate_change) # median rate change is 1.4 percentage points
-head(order)
+median(order$taxrate_change) # median rate change is 1.388 percentage points
+#head(order)
+#tail(order)
 
 burden_shift %>%  
-  filter(taxrate_change < 0.002 |taxrate_change > 0.055  |
-           taxrate_change < (median(taxrate_change))+0.00059 & taxrate_change > (median(taxrate_change))-0.00059
+  filter(taxrate_change < 0.0027 |taxrate_change > 0.06  |
+           taxrate_change < (median(taxrate_change))+0.0007 & taxrate_change > (median(taxrate_change))-0.00075
          ) %>% 
   filter(PropType == "Single-Family") %>%
   ungroup() %>% 
@@ -828,19 +830,24 @@ burden_shift %>%
   ggplot(aes(x = tax_rate*100, y= reorder(clean_name, taxrate_change)))+
   geom_line(aes(group = clean_name))+ 
    geom_point(aes(color=type), size=3 )+
-  geom_hline(yintercept = 7.5, linetype =2)+
-    geom_hline(yintercept = 4.5, linetype =2)+
+  geom_hline(yintercept = 10.5, linetype =2)+
+    geom_hline(yintercept = 5.5, linetype =2)+
   theme_minimal() + 
   theme( 
     legend.title = element_blank(),
                plot.title.position = "plot",
+    legend.position = "none",
      #   panel.background = element_rect(fill='transparent'), #transparent panel bg
     plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
    )+
         scale_color_brewer(palette="Paired", labels = c("Exemptions", "No Exemptions"), direction = 1)+
 
-  labs(title = "Difference in Composite Tax Rate if there were No Exemptions", subtitle = "Ordered by Change in Tax Rate: Highest, Median, and Smallest Differences",
+  labs(title = "Difference in Composite Tax Rate if there were No Exemptions", 
+       subtitle = "Ordered by Change in Tax Rate: Highest, Median, and Smallest Differences",
+       caption = "Median change is 1.38 percentage points",
        x = "Composite Tax Rate (%)", y = "" )
+
+ggsave("Composite_Rate_Change.png", width = 6, height = 4, units = "in")
 ```
 
 # Single-Family (Class 2) Burden Shift
@@ -960,7 +967,7 @@ order <- burden_shift %>%
 
 burden_shift %>% 
   filter(PropType == "Single-Family") %>%
-  filter(burden_current > 0.9 |burden_current < .3 |
+  filter(burden_current > 0.938 |burden_current < .17 |
            ( (burden_current < median(burden_current) + 0.01 )& (burden_current > median(burden_current) - 0.01)) )%>% 
   ungroup() %>% 
   select(agency_name, clean_name, burden_current, burden_noexemps,  burden_change) %>% 
@@ -975,9 +982,10 @@ burden_shift %>%
   # y= reorder(clean_name, burden_current)))+
   geom_vline(xintercept = 65.5, linetype = 3)+
   geom_line(aes(group = clean_name))+ 
-  geom_hline(yintercept = 8.5, linetype = 2)+
-  geom_hline(yintercept = 16.5, linetype = 2)+
+  geom_hline(yintercept = 5.5, linetype = 2)+
+  geom_hline(yintercept = 13.5, linetype = 2)+
   geom_point(aes(color=type), size=3 )+
+
   theme_minimal() + 
   theme(#legend.position = "none", 
     legend.title = element_blank(),
@@ -986,13 +994,20 @@ burden_shift %>%
     plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
   )+
   scale_color_brewer(palette="Paired", labels = c("Current Burden", "Burden if \nNo Exemptions" ), direction = 1)+
+
   
-  labs(title = "Change in Single-family Residential Tax Burden", 
+  labs(title = "Change in Class 2 Residential Tax Burden", 
        subtitle = "Ordered by Current Tax Burden",
   x = "Share of Levy (%)", y = "" , 
-  caption = "Residential Tax Burden is the Share of the property tax collected that was paid for by 
-     single-family home owners in property classes 2.
-  Dotted line represents median Class 2 burden (65.5% of the levy)") #+
+  caption = "Residential Tax Burden is the share of the property tax collected that was paid for by 
+     property owners with Class 2 properties.
+  Dotted line represents median Class 2 burden (65.5% of the levy)") +
+    geom_label(label = "Class 2 pays small share of \nlevy; very little residential", x=35, y = 3, label.size = 1, size = 3)+
+    geom_label(label = "Class 2 pays median share of \nlevy (65%), mix of land use", x=42, y = 9.5, label.size = 1, size = 3) +
+    geom_label(label = "Class 2 pays nearly all of levy, \nhighly residential", x=65, y = 16, label.size = 1,size = 3)
+
+
+#+
 # scale_x_continuous(label = scales::percent)
 ```
 
@@ -1058,6 +1073,45 @@ burden_shift %>%
   caption = "Residential Tax Burden is the Share of the property tax collected that was paid for by 
      single-family home owners in property classes 2.")
 ```
+
+```{r}
+burden_shift %>% ungroup() %>% filter(PropType == "Single-Family") %>%
+arrange(burden_change) %>% head()
+
+
+burden_shift %>%    
+  ungroup() %>% 
+    filter(PropType == "Single-Family") %>%
+  filter(clean_name != "Phoenix") %>%
+  filter(clean_name %in% c("Schaumburg", "Elk Grove Village", "Westchester", "Palos Hills", "Orland Hills") |
+ # filter(clean_name %in% c("Hometown", "Burbank", "Schaumburg", "Elk Grove Village", "Westchester") | 
+           burden_change > 0.112 |burden_change < .0029 ) %>%
+         #|  ( (burden_change < median(burden_change) + 0.001 )& (burden_change > median(burden_change) - 0.001)) ) %>% 
+  select(agency_name, clean_name, burden_current, burden_noexemps,
+         burden_change) %>% 
+  pivot_longer(c("burden_current", "burden_noexemps"),
+               names_to = "type", values_to = "pct_burden") %>%
+  inner_join(order) %>%
+  ggplot(aes(x = pct_burden, y= reorder(clean_name, burden_change)))+
+  geom_line(aes(group = clean_name))+ 
+    geom_hline(yintercept = 5.5, linetype = 2)+
+  geom_hline(yintercept = 10.5, linetype = 2)+
+   geom_point(aes(color=type), size=3 )+
+  theme_minimal() + 
+  theme(legend.position = "none", 
+    legend.title = element_blank(),
+               plot.title.position = "plot",
+     #   panel.background = element_rect(fill='transparent'), #transparent panel bg
+    plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
+   )+
+        scale_color_brewer(palette="Paired", labels = c( "Current Burden","Burden if \nNo Exemptions"), direction = 1)+
+
+  labs(title = "Change in Residential Tax Burden (Class 2 Only)", 
+  x = "Share of Levy (%)", y = "" )
+
+ggsave("residential_tax_burden_change.png", width = 6, height = 4, units = "in")
+```
+
 
 # Summary table of Burden Shift: 3 Property Categories
 
@@ -1187,8 +1241,8 @@ Current_Taxrates %>%
   left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
 
     ggplot(aes(fill = transfered_taxes)) +
-    geom_sf(aes(geometry = geometry), color = "black") + 
-      theme_void() + 
+    geom_sf(aes(geometry = geometry), color = "black") +
+  theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
 scale_fill_steps2(
     high = "#420420", low = "black",
@@ -1200,9 +1254,52 @@ scale_fill_steps2(
          labels = scales::dollar
 )+
  
-  labs(title = "Dollars passed from Single-Family properties to others \ndue to current exemptions",    
+  labs(title = "Dollars passed from Class 2 Residential properties to others \ndue to current exemptions",    
          caption = "Ignores Chicago (over $460K) to highlight other municipalities")
+ggsave("cook_nochicago.png")
 ```
+
+```{r include=FALSE}
+chicago <- Current_Taxrates %>% 
+  filter(clean_name == "Chicago") %>%
+  mutate(transfered_taxes = tax_rate_current*Exempt_EAV) %>% 
+    mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) 
+    ) %>%
+  left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+
+    ggplot(aes(fill = transfered_taxes), ) +
+    geom_sf(aes(geometry = geometry), fill ="#1A5E7D", color = "black") + 
+      theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank(), legend.position  = "none")
+
+chicago
+ggsave("chicago.png")
+
+Current_Taxrates %>% 
+  filter(clean_name != "Chicago") %>%
+  mutate(transfered_taxes = tax_rate_current*Exempt_EAV) %>% 
+    mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) 
+    ) %>%
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+
+    ggplot(aes(fill = transfered_taxes)) +
+    geom_sf(aes(geometry = geometry), color = "black") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+scale_fill_steps2(
+    high = "#420420", low = "black",
+  # midpoint = median(transfered_taxes),
+                   show.limits=TRUE,
+  nice.breaks=FALSE,
+  na.value = "darkblue",
+                    n =6,
+                       name = "",
+         labels = scales::dollar
+)
+
+ggsave("cook_nochicago.png")
+```
+
 
 
 ```{r fig.show='hold', out.width="50%"}

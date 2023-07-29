@@ -1,0 +1,221 @@
+---
+title: "Calculate all Pin Bills for 2021"
+author: "Alea Wilbur"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    df_print: paged
+    code_folding: hide
+    code_download: true
+---
+
+# Get Pin and Tax Bill Data
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+
+library(tidyverse)
+library(DBI)
+library(data.table)
+library(ggspatial)
+library(gstat)
+library(here)
+library(httr)
+library(jsonlite)
+library(ptaxsim)
+library(sf)
+library(stars)
+library(glue)
+
+# Create the DB connection with the default name expected by PTAXSIM functions
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
+
+
+options(digits=4, scipen = 999)
+
+library(sf)
+library(jsonlite)
+library(httr)
+
+# link to the API output as a JSON file
+#muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/politicalBoundary/MapServer/2/query?outFields=*&where=1%3D1&f=geojson")
+
+#muni_shp <- read_json("muni_shp.json")
+nicknames <- readxl::read_excel("muni_shortnames.xlsx")
+
+
+
+```
+
+**Data Prep**
+
+Pull all agency names that exist, then use agency numbers associated with MUNI types to pull only the `muni_agency_names` object.
+
+There are 946 unique taxing agencies that existed in 2021.
+
+```{r agency-dt}
+# has EAV values, extensions by agency_num
+agency_dt <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT *
+  FROM agency
+  WHERE year = 2021
+  "
+)
+
+# grabs all unique muni names & numbs
+# don't forget Cicero
+muni_agency_names <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT DISTINCT agency_num, agency_name, minor_type
+  FROM agency_info
+  WHERE minor_type = 'MUNI'
+  OR agency_num = '020060000'  
+
+  "
+)
+
+muni_agency_names <- muni_agency_names %>% 
+    mutate(first6 = str_sub(agency_num,1,6),
+         first5 = str_sub(agency_num,1,5)) %>% 
+  select(-minor_type)
+
+
+
+#Makes a list of ALL taxing agencies, including TIFs, SSAs, etc.
+
+# all agency names, numbers, and types
+# includes TIF and non-TIF agencies
+all_taxing_agencies <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT agency_num, agency_name, major_type, minor_type
+  FROM agency_info
+  "
+) %>% mutate(first6 = str_sub(agency_num,1,6),
+         first5 = str_sub(agency_num,1,5))
+
+
+muni_agency_nums<- all_taxing_agencies %>% 
+  filter(minor_type %in% c("MUNI") | 
+           agency_num == "020060000") %>%
+   select(agency_num)
+
+
+# list of all taxcodes in municipalities. 
+# This does NOT include unincorporated tax codes!!
+muni_tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT*
+  FROM tax_code
+  WHERE agency_num IN ({muni_agency_names$agency_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+)# %>% select(-agency_rate)
+
+# Agency number and agency name for all TIFs
+TIF_agencies <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT DISTINCT agency_num, agency_name, major_type, minor_type
+  FROM agency_info
+  WHERE minor_type = 'TIF'
+  "
+)
+
+unique_tif_taxcodes <- DBI::dbGetQuery(
+  ptaxsim_db_conn, 
+  glue_sql("
+  SELECT DISTINCT tax_code_num
+  FROM tax_code
+  WHERE agency_num IN ({TIF_agencies$agency_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+)
+
+
+tif_distrib <- DBI::dbGetQuery(
+  ptaxsim_db_conn, 
+  glue_sql("
+  SELECT *
+  FROM tif_distribution
+  WHERE tax_code_num IN ({muni_tax_codes$tax_code_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+) %>% mutate(tax_code_num = as.character(tax_code_num))
+
+
+
+all_taxing_agencies <- all_taxing_agencies %>% 
+  left_join(muni_agency_names, by = c("first5", "first6")) %>% 
+  rename(muni_name =  agency_name.y,
+        muni_num = agency_num.y,
+        agency_name = agency_name.x,
+        agency_num = agency_num.x)
+
+
+# combine taxing agency names and agency type to data table that has eav and extension values
+agency_data <- right_join(agency_dt, all_taxing_agencies) %>% 
+  # get rid of unneeded columns to make table outputs smaller
+  select(-c(cty_dupage_eav:cty_livingston_eav)) %>% # drop some of the unused variables
+  arrange(agency_num)
+```
+
+
+`agency_dt` has all taxing agencies (but not TIFs) that existed each year and includes their total taxable base (cty_cook_eav), their levy, taxing rate, binary variables for if a municipality is home rule or not, as well as many other variables. tax_bill() uses this table for the taxable EAV that is used to  calculate the tax rates in the tax bills. For simulations, you must alter the taxable EAV or levy or other variables and then tell tax_bill() function to use the modified agency data table for simulated tax bills.
+
+There are 1,878 taxing agencies. When grouped by minor_type, there are 134 muni agencies, 639 tif agencies, 30 townships, etc.
+
+
+Using the agency numbers for each municipality, I pull all tax codes that have an agency_num included in the muni_agency_names object. By narrowing the agencies down to just Municipality types, this prevents duplicate tax_codes from being pulled.
+
+There are 3774 tax codes within Cook County that are taxed by Municipalities. There are 4228 unique tax codes in Cook County in 2021.
+
+
+using the pin data from ptaxsim, I calculate the eav of all properties, exempt EAV, the current tax base, and tax base if there were not exemptions
+
+-   exempt EAV (summed from all exemption types)
+
+-   current taxbase (using the `tif_distrib` table and percent of taxcode rev that goes to the tif). If a taxcode is a TIF taxcode, then do (EAV-exempt EAV) \* (1-%rev that goes to TIF). If the tax code is not a TIF tax code, then use the EAV-exempt EAV.
+
+-   tax base without exemptions: If a taxcode is a TIF taxcode, then do EAV \* (1-%rev that goes to TIF). If the tax code is not a TIF tax code, then use the eav
+
+```{r}
+# Create list of all pins in Cook County
+muni_pins <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql(
+  "SELECT DISTINCT pin, class, tax_code_num
+  FROM pin
+  WHERE tax_code_num IN ({muni_tax_codes$tax_code_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+))
+
+
+
+# Normal output from lookup_pin() command. Includes all types of exemptions
+exe_dt <- lookup_pin(2021, muni_pins$pin) %>%
+  setDT(key = c("year", "pin"))
+
+
+taxbills_current <- tax_bill(2021, 
+                  muni_pins$pin, 
+                  pin_dt = exe_dt, # default option
+                  simplify = FALSE)
+
+taxbills_current %>% write_csv("Get_All_Pins-AllPinTaxbills_2021_Actual.csv")
+
+head(taxbills_current)
+
+```
+
