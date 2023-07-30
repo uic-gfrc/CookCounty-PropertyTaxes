@@ -34,6 +34,88 @@ library(glue)
 ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
 
 
+
+```
+
+
+There are 4228 unique tax codes in Cook County in 2021.   
+
+```{r agency_info}
+
+
+cook_agency_names <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT DISTINCT agency_num, agency_name
+  FROM agency_info
+  "
+)
+
+# has all tax codes and the taxing agency that taxes them. Tax code rates and agency rates. 
+cook_tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT*
+  FROM tax_code
+  WHERE agency_num IN ({cook_agency_names$agency_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+)  
+  
+```
+
+
+
+```{r cook-pins}
+# There are 1,864,594 pins taxed by Cook County in 2021.
+cook_pins <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql(
+  "SELECT DISTINCT pin, class, tax_code_num
+  FROM pin
+  WHERE tax_code_num IN ({cook_tax_codes$tax_code_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+))
+```
+
+
+There are 1,865,694 pins in cook county and  22,972,902 partial tax bills (i.e. the amount charged by each taxing agency to each pin) when using the tax_bill() command for 2021 data.
+
+File 2 sums pin level bill totals, parcel level bill totals, and class and tax code sums. 
+ 
+```{r cook-taxbills}
+# # Normal output from lookup_pin() command. 
+# # Includes all types of exemptions
+
+# exe_dt <- lookup_pin(2021, muni_pins$pin) %>%
+#   setDT(key = c("year", "pin"))
+
+
+
+taxbills_current <- tax_bill(2021,  
+                  cook_pins$pin, 
+                #  pin_dt = exe_dt, # default option, change for "no exemption" simulation
+                  simplify = FALSE)
+
+taxbills_current %>% write_csv("1_Get_All_Pins-CookPinTaxbills_2021_Actual.csv")
+
+head(taxbills_current)
+
+```
+## Pulling incorporated area taxbills only
+
+The code below is what we used originally to grab only pins that were taxed by municipalities. 
+
+Going forward, I am pulling all pins for Cook, summing totals based on property classes and tax codes, and then I will filter out the tax codes being taxed by the taxing agency of interest. (First focus was municipalities and next is probably schools.)
+
+
+
+
+```{r muni-only-pins, eval=FALSE}
+
 options(digits=4, scipen = 999)
 
 library(sf)
@@ -47,24 +129,12 @@ library(httr)
 nicknames <- readxl::read_excel("muni_shortnames.xlsx")
 
 
-
-```
-
-**Data Prep**
-
-Pull all agency names that exist, then use agency numbers associated with MUNI types to pull only the `muni_agency_names` object.
-
-There are 946 unique taxing agencies that existed in 2021.
-
-```{r agency-dt}
-# has EAV values, extensions by agency_num
-agency_dt <- DBI::dbGetQuery(
-  ptaxsim_db_conn,
-  "SELECT *
-  FROM agency
-  WHERE year = 2021
-  "
-)
+# Pull all agency names that exist, then use agency numbers associated with MUNI types to pull only the `muni_agency_names` object.
+# 
+# There are 1,878 taxing agencies. When grouped by minor_type, there are 134 muni agencies, 639 tif agencies, 30 townships, etc.
+# 
+# 
+# Using the agency numbers for each municipality, I pull all tax codes that have an agency_num included in the muni_agency_names object. By narrowing the agencies down to just Municipality types, this prevents duplicate tax_codes from being pulled.
 
 # grabs all unique muni names & numbs
 # don't forget Cicero
@@ -104,6 +174,9 @@ muni_agency_nums<- all_taxing_agencies %>%
    select(agency_num)
 
 
+
+# There are 3774 tax codes within Cook County that are taxed by Municipalities.  
+
 # list of all taxcodes in municipalities. 
 # This does NOT include unincorporated tax codes!!
 muni_tax_codes <- DBI::dbGetQuery(
@@ -116,7 +189,22 @@ muni_tax_codes <- DBI::dbGetQuery(
   ",
   .con = ptaxsim_db_conn
   )
-)# %>% select(-agency_rate)
+)
+```
+
+
+```{r notused_code, eval=FALSE, include = FALSE}
+
+# has EAV values, extensions by agency_num
+agency_dt <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT *
+  FROM agency
+  WHERE year = 2021
+  "
+)
+
+
 
 # Agency number and agency name for all TIFs
 TIF_agencies <- DBI::dbGetQuery(
@@ -170,25 +258,7 @@ agency_data <- right_join(agency_dt, all_taxing_agencies) %>%
 ```
 
 
-`agency_dt` has all taxing agencies (but not TIFs) that existed each year and includes their total taxable base (cty_cook_eav), their levy, taxing rate, binary variables for if a municipality is home rule or not, as well as many other variables. tax_bill() uses this table for the taxable EAV that is used to  calculate the tax rates in the tax bills. For simulations, you must alter the taxable EAV or levy or other variables and then tell tax_bill() function to use the modified agency data table for simulated tax bills.
-
-There are 1,878 taxing agencies. When grouped by minor_type, there are 134 muni agencies, 639 tif agencies, 30 townships, etc.
-
-
-Using the agency numbers for each municipality, I pull all tax codes that have an agency_num included in the muni_agency_names object. By narrowing the agencies down to just Municipality types, this prevents duplicate tax_codes from being pulled.
-
-There are 3774 tax codes within Cook County that are taxed by Municipalities. There are 4228 unique tax codes in Cook County in 2021.
-
-
-using the pin data from ptaxsim, I calculate the eav of all properties, exempt EAV, the current tax base, and tax base if there were not exemptions
-
--   exempt EAV (summed from all exemption types)
-
--   current taxbase (using the `tif_distrib` table and percent of taxcode rev that goes to the tif). If a taxcode is a TIF taxcode, then do (EAV-exempt EAV) \* (1-%rev that goes to TIF). If the tax code is not a TIF tax code, then use the EAV-exempt EAV.
-
--   tax base without exemptions: If a taxcode is a TIF taxcode, then do EAV \* (1-%rev that goes to TIF). If the tax code is not a TIF tax code, then use the eav
-
-```{r}
+```{r muni-taxbills, eval=FALSE}
 # Create list of all pins in Cook County
 muni_pins <- DBI::dbGetQuery(
   ptaxsim_db_conn,
@@ -213,7 +283,7 @@ taxbills_current <- tax_bill(2021,
                   pin_dt = exe_dt, # default option
                   simplify = FALSE)
 
-taxbills_current %>% write_csv("Get_All_Pins-AllPinTaxbills_2021_Actual.csv")
+taxbills_current %>% write_csv("1_Get_All_Pins-MuniPinTaxbills_2021_Actual.csv")
 
 head(taxbills_current)
 
