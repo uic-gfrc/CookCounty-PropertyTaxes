@@ -51,7 +51,8 @@ muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/poli
 #muni_shp <- read_json("muni_shp.json")
 nicknames <- readxl::read_excel("muni_shortnames.xlsx")
 
-class_dict <- read_csv("class_dict.csv")
+class_dict <- read_csv("class_dict_expanded.csv") %>% 
+  mutate(class_code = as.character(class_code))
 
 
 
@@ -243,14 +244,14 @@ Now add additional variables!
 
 
 ```{r}
-owner_occupied <- c("299", "202","203", "204", "205",
-                    "206", "207", "208","209",
-                    "210","234", "278", "295")
-
-rental <- c("399", "300", "301", "313", "314",  
-            "315", "318", "391", "396", "397",
-            "901", "913", "914", "915", "918", 
-            "959", "991", "996", "997", "211", "212", "225")
+# owner_occupied <- c("299", "202","203", "204", "205",
+#                     "206", "207", "208","209",
+#                     "210","234", "278", "295")
+# 
+# rental <- c("399", "300", "301", "313", "314",  
+#             "315", "318", "391", "396", "397",
+#             "901", "913", "914", "915", "918", 
+#             "959", "991", "996", "997", "211", "212", "225")
 
 muni_agency_names <- DBI::dbGetQuery(
   ptaxsim_db_conn,
@@ -273,34 +274,121 @@ Using the pin data from ptaxsim, I calculate the eav of all properties, exempt E
 -   tax base without exemptions: If a taxcode is a TIF taxcode, then do EAV \* (1-%rev that goes to TIF). If the tax code is not a TIF tax code, then use the eav
 
 
-```{r}
+
+
+
+# Class 2 Residential vs Other Property Types
+
+```{r echo=FALSE}
+exemptions_by_class_per_TC <- read_csv("3_Exemption_Details_output-Cook_Exemps_byClassandTaxcode.csv") 
+
+exemptions_by_class_per_TC %>% 
+  summarize(av = sum(av, na.rm = TRUE),
+            eav=sum(eav, na.rm=TRUE),
+                        pin_count = n())
+
+exemptions_by_class_per_TC %>% 
+  summarize(exe_homeowner = sum(exe_homeowner, na.rm=TRUE),
+            exe_senior = sum(exe_senior, na.rm=TRUE),
+            exe_freeze = sum(exe_freeze, na.rm=TRUE),
+            exe_longtime_homeowner = sum(exe_longtime_homeowner, na.rm=TRUE),
+            exe_disabled = sum(exe_disabled, na.rm=TRUE),
+            exe_vet_returning = sum(exe_vet_returning, na.rm=TRUE),
+            exe_vet_dis = sum(exe_vet_dis),
+            exe_abate = sum(exe_abate, na.rm=TRUE)) %>%
+  pivot_longer(cols = exe_homeowner:exe_abate, names_to = "exemption_type", values_to = "amount")
+
+exemptions_by_class_per_TC %>% 
+  summarize(
+            exe_homeowner = sum(exe_homeowner, na.rm=TRUE),
+            exe_senior = sum(exe_senior, na.rm=TRUE),
+            exe_freeze = sum(exe_freeze, na.rm=TRUE),
+            exe_longtime_homeowner = sum(exe_longtime_homeowner, na.rm=TRUE),
+            exe_disabled = sum(exe_disabled, na.rm=TRUE),
+            exe_vet_returning = sum(exe_vet_returning, na.rm=TRUE),
+            exe_vet_dis = sum(exe_vet_dis),
+            exe_abate = sum(exe_abate, na.rm=TRUE),
+            ) %>%
+  pivot_longer(cols = exe_homeowner:exe_abate, names_to = "exemption_type", values_to = "amount") %>%
+  ggplot() +
+  geom_bar(aes(x=amount, y=exemption_type), stat = "identity") + theme_classic()
+
+
+exemptions_by_class_per_TC %>% 
+  mutate(class_code = as.character(class_code)) %>%
+    left_join(class_dict, by = "class_code") %>%
+  group_by(Alea_cat) %>%
+  summarize(av = sum(av, na.rm = TRUE),
+            eav=sum(eav, na.rm=TRUE),
+            exe_homeowner = sum(exe_homeowner, na.rm=TRUE),
+            exe_senior = sum(exe_senior, na.rm=TRUE),
+            exe_freeze = sum(exe_freeze, na.rm=TRUE),
+            exe_longtime_homeowner = sum(exe_longtime_homeowner, na.rm=TRUE),
+            exe_disabled = sum(exe_disabled, na.rm=TRUE),
+            exe_vet_returning = sum(exe_vet_returning, na.rm=TRUE),
+            exe_vet_dis = sum(exe_vet_dis),
+            exe_abate = sum(exe_abate, na.rm=TRUE),
+            pin_count = n()) %>%
+  pivot_longer(cols = exe_homeowner:exe_abate, names_to = "exemption_type", values_to = "amount") %>%
+  ggplot() +
+  geom_bar(aes(x=amount, y=exemption_type, fill = Alea_cat), stat = "identity") + theme_classic()
+
+
+
+
+exemptions_by_class_per_TC %>% 
+  mutate(class_code = as.character(class_code)) %>%
+    left_join(class_dict, by = "class_code") %>%
+  group_by(major_class_type) %>%
+  summarize(av = sum(av, na.rm = TRUE),
+            eav=sum(eav, na.rm=TRUE),
+            exe_homeowner = sum(exe_homeowner, na.rm=TRUE),
+            exe_senior = sum(exe_senior, na.rm=TRUE),
+            exe_freeze = sum(exe_freeze, na.rm=TRUE),
+            exe_longtime_homeowner = sum(exe_longtime_homeowner, na.rm=TRUE),
+            exe_disabled = sum(exe_disabled, na.rm=TRUE),
+            exe_vet_returning = sum(exe_vet_returning, na.rm=TRUE),
+            exe_vet_dis = sum(exe_vet_dis),
+            exe_abate = sum(exe_abate, na.rm=TRUE),
+            pin_count = n()) %>%
+  pivot_longer(cols = exe_homeowner:exe_abate, names_to = "class_type", values_to = "amount") %>%
+  ggplot() +
+  geom_bar(aes(x=amount, y = major_class_type, fill = class_type), stat = "identity") + theme_classic()
+```
+
+
+```{r echo=FALSE}
 # use exemptions in tax codes to summarize EAV. 
 # More accurate that calculating it from revenue collected.tax rate in tax bill data
 
 exemptions_by_class_per_TC <- read_csv("3_Exemption_Details_output-Cook_Exemps_byClassandTaxcode.csv") %>%
   # exemptions_inCook_perTC %>%
   mutate(tax_code_num = as.character(tax_code_num),
-         class_2dig = str_sub(class_code, 1,1)) %>%
+         class_code = as.character(class_code),
+       #  class_1dig = str_sub(class_code, 1,1)
+         ) %>%
   left_join(cook_tax_codes) %>%
+  left_join(class_dict, by = "class_code") %>%
+  
+  # drops all Class 0 properties (Railroad property, tax exempt)
+  filter(class_code != "0") %>%
+  
   left_join(muni_agency_names) %>%
   left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
   # merge with TIF distrib table to calculate the percent of the EAV that goes to the TIF vs the district
   left_join(tif_distrib, by=c("tax_code_num", "year", "tax_code_rate")) %>%
+  
   mutate(exempt_EAV = (exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
          exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate) ,
          in_TIF = ifelse(tax_code_num %in% unique_tif_taxcodes$tax_code_num, 1, 0),
         tax_base_current = ifelse(in_TIF==1, (eav-exempt_EAV)*(1-tax_code_distribution_pct/100), eav-exempt_EAV),
         tax_base_noexemps = ifelse(in_TIF==1, (eav)*(1-tax_code_distribution_pct/100), eav),
         
-        ResidentialProps = ifelse(class_2dig %in% c("2", "3", "9"), "Residential", "Non-Residential"),
-        PropType = case_when(
-           class_code %in% owner_occupied~"Owner Occupied",
-             #c("299", "202","203", "204", "205", "206", "207", "208","209", "210","234", "278", "295") ~ "Owner Occupied",
-           class_code %in% rental ~ "Rental",
-             #c("399", "300", "301", "313", "314","315", "318", "391", "396", "397", "901",
-                            # "913", " 914", "915", "918", "959", "991", "996", "997", "211", "212", "225") ~ "Rental",
-           class_2dig %in% c("2","3","9") ~  "Other Residential",
-           TRUE ~ "Non-Residential"))
+        ResidentialProps = ifelse(class_1dig %in% c("2"), "Class 2", "Other Classes"),
+        grouped_classes = ifelse(class_1dig %in% c("2"), "Class 2", NA),
+        grouped_classes = ifelse(class_1dig %in% c("3"), "Class 3", grouped_classes),
+        grouped_classes = ifelse(is.na(grouped_classes), "Other Classes", grouped_classes)
+        )
 
 
 
@@ -309,45 +397,74 @@ muni_totals <-  exemptions_by_class_per_TC %>%
   summarize(muni_av = sum(av),
             muni_eav = sum(eav))
 
-table<-exemptions_by_class_per_TC %>% 
-  group_by(clean_name, agency_name, PropType, ResidentialProps) %>%
+table2<-exemptions_by_class_per_TC %>% 
+ # rename(PropType = Alea_cat)%>%
+  group_by(clean_name, agency_name, grouped_classes, ResidentialProps) %>%
   summarize(av = sum(av),
             eav = sum(eav)) %>% 
   ungroup() %>%
   left_join(muni_totals) %>%
-  mutate(perc_rental = ifelse(PropType == "Rental", eav/muni_eav, 0),
-         perc_owned = ifelse(PropType == "Owner Occupied", eav/muni_eav, 0),
-         perc_otherres = ifelse(PropType == "Other Residential", eav/muni_eav, 0),
-         perc_nonres = ifelse(PropType == "Non-Residential", eav/muni_eav, 0)) %>%
+  mutate(perc_class2 = ifelse(grouped_classes == "Class 2", eav/muni_eav, 0),
+         perc_class3 = ifelse(grouped_classes == "Class 3", eav/muni_eav, 0),
+         perc_other = ifelse(grouped_classes == "Other Classes", eav/muni_eav, 0)) %>%
   group_by(clean_name, agency_name) %>%
   mutate(
-         perc_res = perc_rental + perc_owned + perc_otherres) # Includes 'Other Residential'
+         perc_res = perc_class2 + perc_class3)
 
 
-table
+table2
 
+table2 <- table2 %>% filter(!is.na(grouped_classes))
 
 
 tif_table <-exemptions_by_class_per_TC %>% 
-  group_by(clean_name, agency_name, in_TIF, PropType) %>%
+  group_by(clean_name, agency_name, in_TIF, grouped_classes) %>%
   summarize(av = sum(av),
             eav = sum(eav)) %>% 
   ungroup() %>%
   left_join(muni_totals) %>% 
-  pivot_wider(id_cols = c(clean_name, agency_name, muni_av, muni_eav), names_from = c(in_TIF,PropType), values_from = eav)
+  pivot_wider(id_cols = c(clean_name, agency_name, muni_av, muni_eav), 
+              names_from = c(in_TIF, grouped_classes), values_from = eav)
+tif_table
+```
+
+
+```{r}
+tif_table <- exemptions_by_class_per_TC %>% 
+  group_by(clean_name, agency_name, in_TIF, ResidentialProps) %>%
+  summarize(av = sum(av),
+            eav = sum(eav)) %>% 
+  ungroup() %>%
+  left_join(muni_totals) %>% 
+  pivot_wider(id_cols = c(clean_name, agency_name, muni_av, muni_eav), 
+              names_from = c(in_TIF, ResidentialProps), 
+              values_from = eav)
 tif_table
 
-tif_table %>% select(clean_name:muni_eav, `1_Non-Residential`, `0_Non-Residential`) %>% 
-  rename(nonres_inTIF = `1_Non-Residential`, 
-         nonres_outsideTIF = `0_Non-Residential`) %>%
+tif_table %>% 
+  select(clean_name:muni_eav, `1_Other Classes`, `0_Other Classes`) %>% 
+  rename(nonres_inTIF = `1_Other Classes`, 
+         nonres_outsideTIF = `0_Other Classes`) %>%
   mutate(pct_nonres_inTIF = round(nonres_inTIF/muni_eav, digit=6),
          pct_nonres_outsideTIF = round(nonres_outsideTIF/muni_eav, digit=6),
          pct_nonres_inTIF = ifelse(is.na(pct_nonres_inTIF), 0, pct_nonres_inTIF),
          pct_nonres_outsideTIF = ifelse(is.na(pct_nonres_outsideTIF), 0, pct_nonres_outsideTIF))
+```
 
 
-tif_table %>% mutate(Residential_inTIF = `1_Rental`+`1_Owner Occupied`+`1_Other Residential`,
-                     Residential_outsideTIF = `0_Rental`+`0_Owner Occupied`+`0_Other Residential`,
+```{r eval=FALSE}
+
+tif_table <-exemptions_by_class_per_TC %>% 
+  group_by(clean_name, agency_name, in_TIF, Alea_cat) %>%
+  summarize(av = sum(av),
+            eav = sum(eav)) %>% 
+  ungroup() %>%
+  left_join(muni_totals) %>% 
+  pivot_wider(id_cols = c(clean_name, agency_name, muni_av, muni_eav), names_from = c(in_TIF, Alea_cat), values_from = eav)
+tif_table
+
+tif_table %>% mutate(Residential_inTIF = `1_Rental`+`1_Owner Occupied`,
+                     Residential_outsideTIF = `0_Rental`+`0_Owner Occupied`,
                      Residential_inTIF = ifelse(is.na(Residential_inTIF),0,Residential_inTIF),
                      Residential_outsideTIF = ifelse(is.na(Residential_outsideTIF),0,Residential_outsideTIF)) %>%
   select(clean_name:muni_eav, Residential_inTIF, Residential_outsideTIF) %>% 
@@ -364,23 +481,29 @@ tif_table %>% mutate(Residential_inTIF = `1_Rental`+`1_Owner Occupied`+`1_Other 
 Out of all of Chicago's EAV, 12.3% of its EAV is residential properties inside of TIFs. 48.6% of Chicago's total EAV comes from Residential properties outside of TIFs.
 
 ```{r}
-pivottable <- table %>% 
-  pivot_wider(id_cols = c(clean_name, agency_name, muni_av, muni_eav), names_from = PropType, values_from = c(eav)) %>%   
+pivottable <- table2 %>% 
+  pivot_wider(id_cols = c(clean_name, agency_name, muni_av, muni_eav), 
+              names_from = grouped_classes, values_from = eav) %>%   
   mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) )
 
 pivottable
 
 pivot_table <- pivottable %>%   
-  mutate(perc_rental = `Rental`/muni_eav,
-         perc_owned = `Owner Occupied`/muni_eav,
-         perc_nonres = `Non-Residential`/muni_eav,
-         perc_residential = 1-perc_nonres) %>% 
+  mutate(perc_class2 = `Class 2`/muni_eav,
+         perc_class3 = `Class 3`/muni_eav,
+         perc_other = `Other Classes`/muni_eav,
+
+         perc_nonres = (perc_class3 + perc_other),
+         perc_residential = perc_class2) %>% 
   mutate_all( ~coalesce(.,0))
 
 pivot_table %>% arrange(desc(perc_residential))
-pivot_table %>% arrange(desc(perc_rental))
 
-write_csv(pivot_table, "3_exemption_details_output-residential_percent.csv")
+pivot_table %>% arrange(desc(perc_class2))
+
+pivot_table %>% arrange(desc(perc_class3))
+
+#write_csv(pivot_table, "3_exemption_details_output-residential_percent_August5.csv")
 
 ```
 
@@ -388,44 +511,47 @@ write_csv(pivot_table, "3_exemption_details_output-residential_percent.csv")
 > File `3_exemption_details_output-residential_percent.csv` has the percent of EAV before exemptions but does NOT alter EAV that is in TIFs. TIFs are essentially ignored in this file. This amount of Taxable Residential EAV vs Residential EAV is quite different for some municipalities. 
 
 
-```{r}
+```{r echo=FALSE}
 pivot_table %>%
   full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>% 
 
-  ggplot(aes(fill = (perc_nonres))) + 
+  ggplot(aes(fill = (perc_other))) + 
   geom_sf(aes(geometry = geometry), color = "black") + 
-  labs(title = "Non-Residential Property EAV /  Total EAV in Municipality", 
-  caption = "") +
+  labs(title = "Non-Class 2 or 3 Property EAV /  Total EAV in Municipality", 
+  caption = "33.7% of EAV is from classes besides 2 & 3 in the median municipality") +
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
   scale_fill_steps2(
     high = "red", low = "darkgreen",
-   midpoint = median(pivot_table$perc_nonres, na.rm = TRUE),
+   midpoint = median(pivot_table$perc_other, na.rm = TRUE),
     nice.breaks = FALSE,
     show.limits=TRUE,
   na.value = "gray",
-    name = "% Non-Residential",
+    name = "% Non-Class 2 or 3",
     labels = scales::percent
   )
-mean(pivot_table$perc_residential, na.rm=TRUE) #= 66% residential
+
 
 
 pivot_table %>%
+    filter(clean_name != "University Park") %>%
+
   full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>% 
-  filter(clean_name != "University Park") %>%
-  ggplot(aes(fill = perc_rental)) + 
+  ggplot(aes(fill = perc_class3)) + 
   geom_sf(aes(geometry = geometry), color = "black") + 
-  labs(title = "Rental Properties EAV / Muni EAV", 
-  caption = "") +
+  labs(title = "Class 3 Properties EAV / Muni EAV", 
+  caption = "1.9% of EAV is from Class 3 properties in the median municipality. 
+  Municipalities have a wide range of Class 3 percent makeup.") +
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
   scale_fill_steps2(
     high = "darkblue", low = "orange",
-    midpoint = median(pivot_table$perc_rental, na.rm = TRUE),
+    midpoint = 
+      median(pivot_table$perc_class3, na.rm = TRUE),
    nice.breaks = FALSE,
     show.limits=TRUE,
   na.value = "gray",
-    name = "% Rental",
+    name = "% Class 3",
     labels = scales::percent
   )
 
@@ -433,57 +559,41 @@ pivot_table %>%
 pivot_table %>%
   full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>% 
 
-  ggplot(aes(fill = perc_owned)) + 
+  ggplot(aes(fill = perc_class2)) + 
   geom_sf(aes(geometry = geometry), color = "black") + 
-  labs(title = "Owner Occupied Properties EAV / Muni EAV", 
-  caption = "") +
-  theme_void() + 
-  theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
-  scale_fill_steps2(
-    high = "orange", low = "darkblue",
-    midpoint = median(pivot_table$perc_owned, na.rm = TRUE),
-
-   nice.breaks = FALSE,
-    show.limits=TRUE,
-  na.value = "gray",
-    name = "% Owner Occupied",
-    labels = scales::percent
-  )
-
-
-pivot_table %>%
-  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>% 
-
-  ggplot(aes(fill = perc_residential)) + 
-  geom_sf(aes(geometry = geometry), color = "black") + 
-  labs(title = "Residential Property EAV / Muni EAV", 
-  caption = "") +
+  labs(title = "Class 2 Properties EAV / Muni EAV", 
+  caption = "67.6 % of EAV is from Class 2 Properties in the median municipality") +
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
   scale_fill_steps2(
     high = "darkgreen", low = "red",
-    midpoint = median(pivot_table$perc_residential, na.rm = TRUE),
+    midpoint = median(pivot_table$perc_class2, na.rm = TRUE),
 
    nice.breaks = FALSE,
     show.limits=TRUE,
   na.value = "gray",
-    name = "% Residential",
+    name = "% Class 2",
     labels = scales::percent
   )
+
+
+
 ```
+
 On average, Municipalities have 65% of their EAV from residential properties (Class 2, 3, and 9). 
 
-On average, Municipalities have `r mean(pivot_table$perc_rental, na.rm=TRUE)` of their EAV from rental Properties.
+On average, Municipalities have `r mean(pivot_table$perc_class3, na.rm=TRUE)` of their EAV from Class 3 Multi-Family Properties.
 
-On average, Municipalities have `r mean(pivot_table$perc_owned, na.rm=TRUE)` of their EAV from owner occupied properties. This includes single-family homes and condos. 
+On average, Municipalities have `r mean(pivot_table$perc_class2, na.rm=TRUE)` of their EAV from Class 2 Residential properties. This property class includes single-family homes, condos, and residential apartments. 
 
 
+Now examine the taxable base for each Muni. The Taxable Base is the EAV that is taxable for the municipality and has TIF increments and exemptions subtracted from the original residential EAV.
 
 ```{r}
 
 grouped_exemptions <- exemptions_by_class_per_TC %>% 
    # group_by(agency_name, major_class_code, major_class_type, ResidentialProps, PropType) %>%
-  group_by(clean_name, ResidentialProps, PropType, agency_name) %>%
+  group_by(clean_name, ResidentialProps, grouped_classes, agency_name) %>%
   summarize(eav = sum(eav),
            exempt_EAV = sum(exempt_EAV, exe_abate, na.rm=TRUE),
          tax_base_current = sum(tax_base_current, na.rm=TRUE),
@@ -553,7 +663,7 @@ pct_property_types
 Original method of pulling only pins located in Municipalities (based on if they were taxed by a municipality). Includes all pins in incorporated areas within Cook County. 
 
 
-```{r muni-pins, eval=FALSE}
+```{r majorclass-categories, eval=FALSE}
 
 # grabs all unique muni names & numbs
 # don't forget Cicero
@@ -708,4 +818,356 @@ perc_residential <- full_join(grouped_exemptions, muni_eav) %>%
 perc_residential %>% arrange(desc(percent_residential))
 
 ```
+
+
+
+# Owner-occupied vs Rental categories 
+
+
+The way Alea wanted it to be coded.  Class 2 and 3 coded based on if it is owner occupied or a rental unit. 
+
+
+```{r}
+# use exemptions in tax codes to summarize EAV. 
+# More accurate that calculating it from revenue collected.tax rate in tax bill data
+class_dict <- class_dict %>% mutate(class_1dig = as.character(class_1dig))
+exemptions_by_class_per_TC <- read_csv("3_Exemption_Details_output-Cook_Exemps_byClassandTaxcode.csv") %>%
+  # exemptions_inCook_perTC %>%
+  mutate(tax_code_num = as.character(tax_code_num),
+         class_code = as.character(class_code),
+         class_1dig = str_sub(class_code, 1,1)) %>%
+  left_join(cook_tax_codes) %>%
+  left_join(class_dict) %>%
+  
+  # drops all Class 0 properties (Railroad property, tax exempt)
+  filter(class_code != "0") %>%
+  
+  left_join(muni_agency_names) %>%
+  left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
+  # merge with TIF distrib table to calculate the percent of the EAV that goes to the TIF vs the district
+  left_join(tif_distrib, by=c("tax_code_num", "year", "tax_code_rate")) %>%
+  
+  mutate(exempt_EAV = (exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+         exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate) ,
+         in_TIF = ifelse(tax_code_num %in% unique_tif_taxcodes$tax_code_num, 1, 0),
+        tax_base_current = ifelse(in_TIF==1, (eav-exempt_EAV)*(1-tax_code_distribution_pct/100), eav-exempt_EAV),
+        tax_base_noexemps = ifelse(in_TIF==1, (eav)*(1-tax_code_distribution_pct/100), eav),
+        
+        ResidentialProps = ifelse(class_1dig %in% c("2", "3", "9"), "Residential", "Non-Residential"),
+        # PropType = case_when(
+        #    class_code %in% owner_occupied~"Owner Occupied",
+        #      #c("299", "202","203", "204", "205", "206", "207", "208","209", "210","234", "278", "295") ~ "Owner Occupied",
+        #    class_code %in% rental ~ "Rental",
+        #      #c("399", "300", "301", "313", "314","315", "318", "391", "396", "397", "901",
+        #                     # "913", " 914", "915", "918", "959", "991", "996", "997", "211", "212", "225") ~ "Rental",
+        #    class_2dig %in% c("2","3","9") ~  "Other Residential",
+        #    TRUE ~ "Non-Residential")
+        )
+
+
+
+muni_totals <-  exemptions_by_class_per_TC %>% 
+  group_by(clean_name, agency_name) %>%
+  summarize(muni_av = sum(av),
+            muni_eav = sum(eav))
+
+table1<-exemptions_by_class_per_TC %>% 
+  rename(PropType = Alea_cat)%>%
+  group_by(clean_name, agency_name, PropType, ResidentialProps) %>%
+  summarize(av = sum(av),
+            eav = sum(eav)) %>% 
+  ungroup() %>%
+  left_join(muni_totals) %>%
+  mutate(perc_rental = ifelse(PropType == "Rental", eav/muni_eav, 0),
+         perc_owned = ifelse(PropType == "Owner Occupied", eav/muni_eav, 0),
+         perc_otherres = ifelse(PropType == "Other Residential", eav/muni_eav, 0),
+         perc_indust = ifelse(PropType == "Industrial", eav/muni_eav, 0),
+         perc_commercial = ifelse(PropType == "Commercial", eav/muni_eav, 0),
+         perc_nonres = ifelse(PropType == "Non-Residential", eav/muni_eav, 0)) %>%
+  group_by(clean_name, agency_name) %>%
+  mutate(
+         perc_res = perc_rental + perc_owned + perc_otherres) # Includes 'Other Residential'
+
+
+table1
+
+table1 <- table1 %>% filter(!is.na(PropType))
+
+
+tif_table <-exemptions_by_class_per_TC %>% 
+  group_by(clean_name, agency_name, in_TIF, Alea_cat) %>%
+  summarize(av = sum(av),
+            eav = sum(eav)) %>% 
+  ungroup() %>%
+  left_join(muni_totals) %>% 
+  pivot_wider(id_cols = c(clean_name, agency_name, muni_av, muni_eav), 
+              names_from = c(in_TIF, Alea_cat), values_from = eav)
+tif_table
+```
+
+
+```{r}
+tif_table <-exemptions_by_class_per_TC %>% 
+  group_by(clean_name, agency_name, in_TIF, ResidentialProps) %>%
+  summarize(av = sum(av),
+            eav = sum(eav)) %>% 
+  ungroup() %>%
+  left_join(muni_totals) %>% 
+  pivot_wider(id_cols = c(clean_name, agency_name, muni_av, muni_eav), names_from = c(in_TIF, ResidentialProps), values_from = eav)
+tif_table
+
+tif_table %>% 
+  select(clean_name:muni_eav, `1_Non-Residential`, `0_Non-Residential`) %>% 
+  rename(nonres_inTIF = `1_Non-Residential`, 
+         nonres_outsideTIF = `0_Non-Residential`) %>%
+  mutate(pct_nonres_inTIF = round(nonres_inTIF/muni_eav, digit=6),
+         pct_nonres_outsideTIF = round(nonres_outsideTIF/muni_eav, digit=6),
+         pct_nonres_inTIF = ifelse(is.na(pct_nonres_inTIF), 0, pct_nonres_inTIF),
+         pct_nonres_outsideTIF = ifelse(is.na(pct_nonres_outsideTIF), 0, pct_nonres_outsideTIF))
+```
+
+
+```{r}
+
+tif_table <-exemptions_by_class_per_TC %>% 
+  group_by(clean_name, agency_name, in_TIF, Alea_cat) %>%
+  summarize(av = sum(av),
+            eav = sum(eav)) %>% 
+  ungroup() %>%
+  left_join(muni_totals) %>% 
+  pivot_wider(id_cols = c(clean_name, agency_name, muni_av, muni_eav), names_from = c(in_TIF, Alea_cat), values_from = eav)
+tif_table
+
+tif_table %>% mutate(Residential_inTIF = `1_Rental`+`1_Owner Occupied`,
+                     Residential_outsideTIF = `0_Rental`+`0_Owner Occupied`,
+                     Residential_inTIF = ifelse(is.na(Residential_inTIF),0,Residential_inTIF),
+                     Residential_outsideTIF = ifelse(is.na(Residential_outsideTIF),0,Residential_outsideTIF)) %>%
+  select(clean_name:muni_eav, Residential_inTIF, Residential_outsideTIF) %>% 
+ mutate(pct_res_inTIF = round(Residential_inTIF/muni_eav, digit=6),
+         pct_res_outsideTIF = round(Residential_outsideTIF/muni_eav, digit=6),
+         pct_res_inTIF = ifelse(is.na(pct_res_inTIF), 0, pct_res_inTIF),
+         pct_res_outsideTIF = ifelse(is.na(pct_res_outsideTIF), 0, pct_res_outsideTIF))
+
+
+
+```
+
+
+Out of all of Chicago's EAV, 12.3% of its EAV is residential properties inside of TIFs. 48.6% of Chicago's total EAV comes from Residential properties outside of TIFs.
+
+```{r}
+pivottable <- table1 %>% 
+  pivot_wider(id_cols = c(clean_name, agency_name, muni_av, muni_eav), 
+              names_from = PropType, values_from = eav) %>%   
+  mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) )
+
+pivottable
+
+pivot_table <- pivottable %>%   
+  mutate(perc_rental = `Rental`/muni_eav,
+         perc_owned = `Owner Occupied`/muni_eav,
+         perc_commercial = `Commercial`/muni_eav,
+         perc_industrial = `Industrial`/muni_eav,
+      
+         perc_nonres = (perc_commercial + perc_industrial),
+         perc_residential = perc_rental+perc_owned) %>% 
+  mutate_all( ~coalesce(.,0))
+
+pivot_table %>% arrange(desc(perc_residential))
+
+pivot_table %>% arrange(desc(perc_owned))
+
+pivot_table %>% arrange(desc(perc_rental))
+
+#write_csv(pivot_table, "3_exemption_details_output-residential_percent_August5.csv")
+
+```
+
+
+> File `3_exemption_details_output-residential_percent.csv` has the percent of EAV before exemptions but does NOT alter EAV that is in TIFs. TIFs are essentially ignored in this file. This amount of Taxable Residential EAV vs Residential EAV is quite different for some municipalities. 
+
+
+```{r}
+pivot_table %>%
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>% 
+
+  ggplot(aes(fill = (perc_nonres))) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  labs(title = "Non-Residential Property EAV /  Total EAV in Municipality", 
+  caption = "") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
+  scale_fill_steps2(
+    high = "red", low = "darkgreen",
+   midpoint = median(pivot_table$perc_nonres, na.rm = TRUE),
+    nice.breaks = FALSE,
+    show.limits=TRUE,
+  na.value = "gray",
+    name = "% Non-Residential",
+    labels = scales::percent
+  )
+mean(pivot_table$perc_residential, na.rm=TRUE) #= 66% residential
+
+
+pivot_table %>%
+    filter(clean_name != "University Park") %>%
+
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>% 
+  ggplot(aes(fill = perc_rental)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  labs(title = "Rental Properties EAV / Muni EAV", 
+  caption = "") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
+  scale_fill_steps2(
+    high = "darkblue", low = "orange",
+    midpoint = median(pivot_table$perc_rental, na.rm = TRUE),
+   nice.breaks = FALSE,
+    show.limits=TRUE,
+  na.value = "gray",
+    name = "% Rental",
+    labels = scales::percent
+  )
+
+
+pivot_table %>%
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>% 
+
+  ggplot(aes(fill = perc_owned)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  labs(title = "Owner Occupied Properties EAV / Muni EAV", 
+  caption = "") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
+  scale_fill_steps2(
+    high = "darkgreen", low = "red",
+    midpoint = median(pivot_table$perc_owned, na.rm = TRUE),
+
+   nice.breaks = FALSE,
+    show.limits=TRUE,
+  na.value = "gray",
+    name = "% Owner Occupied",
+    labels = scales::percent
+  )
+
+
+pivot_table %>%
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>% 
+
+  ggplot(aes(fill = perc_residential)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  labs(title = "Residential Property EAV / Muni EAV", 
+  caption = "") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
+  scale_fill_steps2(
+    high = "darkgreen", low = "red",
+    midpoint = median(pivot_table$perc_residential, na.rm = TRUE),
+
+   nice.breaks = FALSE,
+    show.limits=TRUE,
+  na.value = "gray",
+    name = "% Residential",
+    labels = scales::percent
+  )
+
+
+pivot_table %>%
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>% 
+  ggplot(aes(fill = perc_owned)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  labs(title = "Owner Occupied Properties EAV / Muni EAV", 
+  caption = "") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
+  scale_fill_steps2(
+    high = "darkgreen", low = "red",
+    midpoint = median(pivot_table$perc_owned, na.rm = TRUE),
+
+   nice.breaks = FALSE,
+    show.limits=TRUE,
+  na.value = "gray",
+    name = "% Owner Occupied",
+    labels = scales::percent
+  )
+
+```
+
+On average, Municipalities have 65% of their EAV from residential properties (Class 2, 3, and 9). 
+
+On average, Municipalities have `r mean(pivot_table$perc_rental, na.rm=TRUE)` of their EAV from rental Properties.
+
+On average, Municipalities have `r mean(pivot_table$perc_owned, na.rm=TRUE)` of their EAV from owner occupied properties. This includes single-family homes and condos. 
+
+
+Now examine the taxable base for each Muni. The Taxable Base is the EAV that is taxable for the municipality and has TIF increments and exemptions subtracted from the original residential EAV.
+
+```{r}
+
+grouped_exemptions <- exemptions_by_class_per_TC %>% 
+   # group_by(agency_name, major_class_code, major_class_type, ResidentialProps, PropType) %>%
+  group_by(clean_name, ResidentialProps, agency_name) %>%
+  summarize(eav = sum(eav),
+           exempt_EAV = sum(exempt_EAV, exe_abate, na.rm=TRUE),
+         tax_base_current = sum(tax_base_current, na.rm=TRUE),
+         tax_base_noexemps = sum(tax_base_noexemps, na.rm=TRUE)) %>% ungroup()
+  
+
+# calculate totals with ONLY EAV outside of TIFs
+muni_eav <- grouped_exemptions %>%  
+  group_by(clean_name, agency_name) %>% 
+  summarize(muni_EAV_includesTIF = sum(eav), # all EAV in the municipality that exists
+            muni_tax_base_current=sum(tax_base_current), # taxable EAV based on current exemptions
+            muni_tax_base_noexemps = sum(tax_base_noexemps)) %>%  # taxable EAV pre-exemptions
+  ungroup() 
+
+pct_property_types <- left_join(grouped_exemptions, muni_eav) %>% 
+  #filter(ResidentialProps == "Residential") %>% 
+  mutate(pct_PropType = eav / muni_EAV_includesTIF)# %>% select()
+
+pct_property_types
+
+
+
+# taxcodes_current <- full_join(TC_bills_current, cook_tax_codes, 
+#                       by = c("tax_code" = "tax_code_num")) 
+# 
+# Current_Taxrates <- taxcodes_current %>% 
+#   left_join(muni_agency_names) %>%
+#   left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
+#   filter(!agency_num %in% cross_county_lines) %>%
+#   group_by(clean_name, agency_name) %>% 
+#   summarize(MuniLevy = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by munis with current exemptions in place
+#             nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
+#             TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),  
+#             Exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE), 
+#             Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE)) %>%
+# 
+#   mutate(tax_rate_current = MuniLevy/nonTIF_EAV_post_exemps,
+#          nonTIF_EAV_pre_exemps = nonTIF_EAV_post_exemps + Exempt_EAV,
+#          taxrate_new = MuniLevy/nonTIF_EAV_pre_exemps,
+#          taxrate_change = tax_rate_current-taxrate_new) %>% 
+#   select(clean_name, taxrate_change, tax_rate_current, taxrate_new, everything()) %>% 
+#   arrange(desc(tax_rate_current))
+# 
+# 
+# 
+# burden_table <- pct_property_types %>% 
+#   left_join(Current_Taxrates, by = c("agency_name", "clean_name")) %>%
+#   mutate(rev_collected_current = tax_base_current * tax_rate_current,
+#          rev_collected_new = tax_base_noexemps*taxrate_new,
+#          burden_current = rev_collected_current/MuniLevy,
+#          burden_noexemps = rev_collected_new/MuniLevy, 
+#          burden_change = burden_noexemps- burden_current,
+#          burden_noexemps = ifelse(burden_noexemps >1, 1, burden_noexemps)) %>%
+#   mutate(burden_current = ifelse(is.na(burden_current), 0, burden_current),
+#          burden_noexemps = ifelse(is.na(burden_noexemps), 0, burden_noexemps)) %>%
+#   mutate(burden_noexemps = ifelse(burden_noexemps>1, 1, burden_noexemps),
+#          burden_current = ifelse(burden_current>1, 1, burden_current)) %>%
+#   mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) )
+# 
+# 
+# burden_shift <- burden_table # only to not change code below in graphs. 
+```
+
 
