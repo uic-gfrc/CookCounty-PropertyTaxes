@@ -1,0 +1,128 @@
+---
+title: 'Hypothetical Taxbills: Remove all Exemptions'
+author: "Alea Wilbur"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+    code_folding: hide
+    code_download: yes
+---
+
+
+```{r setup, warning=FALSE, message=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+
+library(tidyverse)
+library(data.table)
+library(gstat)
+library(ptaxsim)
+
+
+```
+
+
+```{r}
+
+taxcode_taxrates <- read_csv("taxcode_taxrates.csv")
+
+pin_eav <- read_csv("3_Exemption_Details_output-all_cook_pin_exemptions_2021_actual.csv") %>%
+  mutate(exempt_EAV = exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+        exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 + exe_abate)
+
+pin_eav <- left_join(pin_eav, taxcode_taxrates, by = c("tax_code_num" = "tax_code"))
+
+
+tax_bill_change <- pin_eav %>% 
+  mutate(taxbase_current = eav-exempt_EAV,
+         taxbase_new = eav,
+    bill_current = tax_rate_current * (eav-exempt_EAV),
+         bill_noexemps =  taxrate_new * eav) %>%
+  select(pin, av, eav, tax_code_num, class_code, bill_current, bill_noexemps, clean_name, taxrate_change, taxbase_current, taxbase_new, taxrate_new, tax_rate_current, major_class_code, eav, exempt_EAV)
+
+
+# not useful measurement of median. Includes all property types within the muni 
+# muni_stats <- tax_bill_change %>% 
+#   group_by(clean_name) %>% 
+#   arrange(taxbase_new) %>%
+#   summarise(
+#     muni_av = sum(av, na.rm=TRUE),
+#     muni_eav = sum(av, na.rm=TRUE),
+#     median_bill_current = median(bill_current, na.rm=TRUE),
+#     median_bill = median(bill_noexemps, na.rm=TRUE),
+#     median_AV = median(av, na.rm=TRUE),
+#     eav = median(eav, na.rm=TRUE)) %>%
+#   mutate(bill_change = median_bill_current - median_bill)
+
+
+muni_class_stats <- tax_bill_change %>% 
+  filter(class_code !=0) %>%
+  group_by(clean_name, class_code) %>% 
+  arrange(taxbase_new)%>%
+  summarise(
+    median_bill_current = median(bill_current, na.rm=TRUE),
+    median_bill_noexemps = median(bill_noexemps, na.rm=TRUE),
+    median_AV = median(av, na.rm=TRUE),
+    median_eav = median(eav, na.rm=TRUE),
+    pin_count = n(),
+        group_eav = sum(taxbase_current, na.rm = TRUE),
+    group_eav_new = sum(taxbase_new,na.rm=TRUE),
+    group_av = sum(av, na.rm=TRUE) ) %>% 
+  mutate(bill_change = median_bill_noexemps - median_bill_current) %>%
+  mutate_at(vars(bill_change, median_bill_current:group_av), funs(round(., 0)))
+
+
+write_csv(muni_class_stats, "taxbill_change_foreachPropClass_perMuni.csv")
+
+muni_class_stats %>% select(clean_name,class_code, bill_change, everything())
+
+
+
+muni_majorclass_stats <- tax_bill_change %>% 
+  filter(class_code !=0) %>%
+    arrange(taxbase_new)%>%
+
+  group_by(clean_name, major_class_code) %>% 
+  summarise(
+    median_bill_current = median(bill_current, na.rm=TRUE),
+    median_bill_noexemps = median(bill_noexemps, na.rm=TRUE),
+    median_AV = median(av, na.rm=TRUE),
+    median_eav = median(eav, na.rm=TRUE),
+    pin_count = n(),
+    group_eav_current = sum(taxbase_current, na.rm = TRUE),
+    group_eav_new = sum(taxbase_new,na.rm=TRUE),
+    group_av = sum(av, na.rm=TRUE) ) %>% 
+  mutate(bill_change =median_bill_noexemps -  median_bill_current ) %>%
+  mutate_at(vars(bill_change, median_bill_current:group_av), funs(round(., 0)))
+
+
+muni_majorclass_stats %>% select(clean_name, major_class = major_class_code, bill_change, everything())
+
+muni_rachelgroups_stats <- tax_bill_change %>% ungroup() %>%
+  mutate(grouped_classes = ifelse(major_class_code  == "2", "Class 2", NA),
+        grouped_classes = ifelse(major_class_code == "3", "Class 3", grouped_classes),
+        grouped_classes = ifelse(is.na(grouped_classes), "Other Classes", grouped_classes)
+       ) %>%
+  group_by(clean_name, grouped_classes) %>%
+  
+   summarise(
+    median_bill_current = median(bill_current, na.rm=TRUE),
+    median_bill_noexemps = median(bill_noexemps, na.rm=TRUE),
+    median_AV = median(av, na.rm=TRUE),
+    median_eav = median(eav, na.rm=TRUE),
+    pin_count = n(),
+    group_eav_current = sum(taxbase_current, na.rm = TRUE),
+    group_eav_new = sum(taxbase_new,na.rm=TRUE),
+    group_av = sum(av, na.rm=TRUE) ) %>% 
+  mutate(bill_change =  median_bill_noexemps - median_bill_current) %>% 
+  mutate_at(vars(bill_change, median_bill_current:group_av), funs(round(., 0)))
+
+muni_rachelgroups_stats %>% select(clean_name,  grouped_classes, bill_change, everything())
+
+write_csv(muni_rachelgroups_stats, "taxbill_change_20230814.csv")
+```
+
+Class 2 bills in Chicago would only change $28 for the median Class 2 property.
+
