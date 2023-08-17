@@ -44,6 +44,8 @@ library(httr)
 # link to the API output as a JSON file
 muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/politicalBoundary/MapServer/2/query?outFields=*&where=1%3D1&f=geojson")
 
+cook_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/plss/MapServer/1/query?outFields=*&where=1%3D1&f=geojson")
+
 #muni_shp <- read_json("muni_shp.json")
 nicknames <- readxl::read_excel("muni_shortnames.xlsx")
 
@@ -216,7 +218,8 @@ cross_county_lines <- c("030440000",
 # Frankfort, Homer Glenn, Oak Brook are below 1% in Cook County
 # East Dundee, University Park, Bensenville, Hinsdale, Roeelle, Deerfield are below 15% in Cook County
 
-# If below 50%, Elgin, buffalo grove, bertlette, burr ridge, hanover park, steger, barrington hills and barrington, and park forest are
+# Above 50%:  buffalo grove, bertlette, burr ridge, hanover park, steger, 
+# tinley park, barrington hills and barrington, and park forest 
 
 # ALL border crossers:
 #cross_county_lines <- c("030030000", "030040000", "030050000", "030080000","030150000","030180000", "030280000", "030320000","030340000", "030440000","030500000", "030560000", "030585000", "030890000",  "031000000","031120000","031210000","031270000", "031280000")
@@ -247,7 +250,7 @@ cross_county_lines <- c("030440000",
 
 # Proportion of Residential Land in Municipalities {.tabset .tabset-pills}
 
-using the pin data from ptaxsim, I calculate the eav of all properties, exempt EAV, the current taxbase, and taxbase if there were not exemptios
+using the pin data from ptaxsim, I calculate the eav of all properties, exempt EAV, the current taxbase, and taxbase if there were not exemptions
 
 -   exempt EAV (summed from all exemption types)
 
@@ -258,12 +261,14 @@ using the pin data from ptaxsim, I calculate the eav of all properties, exempt E
 > Joining problem: in `muni_agency_names`, Cicero is called "TOWN CICERO", in map shapefile it is called "CITY OF CICERO".
 
 ```{r}
-class_dict <- read_csv("class_dict.csv")
+class_dict <- read_csv("class_dict_expanded.csv")
 
 # use exemptions in tax codes to summarize EAV. 
 # More accurate that calculating it from revenue collected.tax rate in tax bill data
-exemptions_by_class_per_TC <- read_csv("all_exemptions_by_TC.csv") %>% 
-  mutate(tax_code_num = as.character(tax_code_num),) %>%
+exemptions_by_class_per_TC <- read_csv("3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>% 
+  filter(class_code != "0") %>%
+  left_join(class_dict) %>%
+  mutate(tax_code_num = as.character(tax_code_num)) %>%
   left_join(muni_tax_codes) %>%
   full_join(muni_agency_names) %>%
   left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
@@ -276,12 +281,14 @@ exemptions_by_class_per_TC <- read_csv("all_exemptions_by_TC.csv") %>%
          in_TIF = ifelse(tax_code_num %in% unique_tif_taxcodes$tax_code_num, 1, 0),
          tax_base_current = ifelse(in_TIF==1, (eav-exempt_EAV)*(1-tax_code_distribution_pct/100), eav-exempt_EAV),
          tax_base_noexemps = ifelse(in_TIF==1, (eav)*(1-tax_code_distribution_pct/100), eav),
-         ResidentialProps = ifelse(major_class_code %in% c("2", "3", "9"), "Residential", "Commercial"),
+         ResidentialProps = ifelse(major_class_code %in% c("2", "3", "9"), "Residential", "Commercial")) 
+#,
+         # 
+         # PropType = case_when(
+         #   major_class_code %in% c("3","9") ~ "Multi-Family",
+         #   major_class_code == "2" ~ "Single-Family",
+         #   TRUE~ "Commercial-Industrial")
          
-         PropType = case_when(
-           major_class_code %in% c("3","9") ~ "Multi-Family",
-           major_class_code == "2" ~ "Single-Family",
-           TRUE~ "Commercial-Industrial"))
 ```
 
 __Exemptions within each municipality:__
@@ -311,6 +318,7 @@ muni_eav <- grouped_exemptions %>%
 
 perc_residential <- full_join(grouped_exemptions, muni_eav) %>% 
   filter(ResidentialProps == "Residential") %>% 
+  
   mutate(percent_residential = eav / muni_EAV_includesTIF)# %>% select()
 
 
@@ -320,17 +328,20 @@ perc_residential
 
 ```
 
+```{r}
+library(ggpattern)
+```
 
 
-## Residential (Only Class 2 - Single-family)
+## Residential (Only Class 2)
 
 ```{r include = FALSE}
 cook_eav <- exemptions_by_class_per_TC %>% filter(major_class_code == 2) %>% summarize(eav = sum(eav,na.rm=TRUE))
 ```
 
-In Cook County there is `r scales::dollar(cook_eav$eav)` in Single-Family Property EAV.
+In Cook County there is `r scales::dollar(cook_eav$eav)` in Class 2 Residential Property EAV. Note: Class 2 properties include single-family detached homes, condos, and some rental buildings. 
 
-```{r fig.cap="The median municipality has 66.84% of its EAV from Residential Class 2 Properties for Single-Family homes. Total EAV includes frozen EAV & TIF increments, and all exempt EAV."}
+```{r fig.cap="The median municipality has 66.84% of its EAV from Residential Class 2 Properties. Total EAV includes frozen EAV & TIF increments, and all exempt EAV."}
 
 
 # Class 2 only
@@ -345,8 +356,10 @@ class2_perc <- exemptions_by_class_per_TC %>%
   mutate(perc_class2_totalEAV = eav / muni_EAV_includesTIF) %>%    
   mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) )
 
+
+
 class2_perc %>%
-  left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
   ggplot(aes(fill = perc_class2_totalEAV)) + 
   geom_sf(aes(geometry = geometry), color = "black") + 
   labs(title = "Class 2 Property EAV /  Total EAV in Municipality", 
@@ -356,13 +369,45 @@ class2_perc %>%
   scale_fill_steps2(
     high = "darkblue", low = "black",
     midpoint = median(class2_perc$perc_class2_totalEAV),
-  #  breaks = breaks_sd,  # tried to do breaks based on standard deviation but map does that in an easier way by setting the midpoint. 
+  #  breaks = breaks_sd,  # tried to do breaks based on standard deviation but map does that in an easier way by setting the midpoint.
+  na.value = "white",
     nice.breaks = FALSE,
     show.limits=TRUE,
     name = "% Residential",
     labels = scales::percent)
 ```
 
+
+
+```{r}
+Cook_layer <- ggplot(data = cook_shp,aes(geometry = geometry)) + 
+  geom_sf_pattern() + theme_void()
+
+
+class2_perc %>%
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+  ggplot() + 
+  geom_sf_pattern(data = cook_shp, aes(geometry = geometry),  pattern_alpha = 0.1, 
+                 pattern_scale = .5, 
+                  pattern_angle = 45, pattern_fill = NA, 
+              #pattern_density = .5, 
+              pattern_spacing = .02
+                  ) + 
+  geom_sf(aes(geometry = geometry, fill = perc_class2_totalEAV), color = "black") + 
+  labs(title = "Class 2 Property EAV /  Total EAV in Municipality", 
+  caption = "") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
+  scale_fill_steps2(
+    high = "darkblue", low = "maroon",
+    midpoint = median(class2_perc$perc_class2_totalEAV),
+  #  breaks = breaks_sd,  # tried to do breaks based on standard deviation but map does that in an easier way by setting the midpoint.
+  na.value = NA,
+    nice.breaks = FALSE,
+    show.limits=TRUE,
+    name = "% Residential",
+    labels = scales::percent)
+```
 
 __Percent of Class 2 EAV that is tax exempt: Exempt EAV / Residential EAV__
 
@@ -536,13 +581,163 @@ exemptions_to_resEAV_ratios %>% arrange(desc(nontif_ratio))
 ```
 
 
+## Residential (Owner Occupied)
+
+Municipality total EAV excludes TIF increment EAV. Frozen base EAV is included.
+
+```{r}
+grouped_exemptions <- exemptions_by_class_per_TC %>% 
+left_join(class_dict) %>%
+  group_by(clean_name, Alea_cat, agency_name, agency_num.x) %>%
+  summarize(eav = sum(eav),
+           exempt_EAV = sum(exempt_EAV, exe_abate, na.rm=TRUE),
+         tax_base_current = sum(tax_base_current, na.rm=TRUE),
+         tax_base_noexemps = sum(tax_base_noexemps, na.rm=TRUE)) %>% ungroup() %>% 
+  select(clean_name, eav, exempt_EAV, everything())
+  
+grouped_exemptions 
+
+# calculate totals with ONLY EAV outside of TIFs
+muni_eav <- grouped_exemptions %>%  
+  group_by(clean_name, agency_name, agency_num.x) %>% 
+  summarize(muni_EAV_includesTIF = sum(eav), # all EAV in the municipality that exists
+            muni_tax_base_current=sum(tax_base_current), # taxable EAV based on current exemptions
+            muni_tax_base_noexemps = sum(tax_base_noexemps)) %>%  # taxable EAV pre-exemptions
+  ungroup() 
+
+perc_residential <- full_join(grouped_exemptions, muni_eav) %>% 
+ # filter(ResidentialProps == "Residential") %>% 
+  filter(Alea_cat == "Owner Occupied") %>% 
+  mutate(percent_owned = eav / muni_EAV_includesTIF)# %>% select()
+
+
+# in this stage, Bensenville, East Dundee, and Homer Glen were dropped. This is fine because I was going to drop them later anyways. They don't have residential EAV within Cook County.
+
+perc_residential
+
+```
+
+
+The median municipality has `r scales::percent(median(perc_residential$percent_owned))` of their EAV in the form of owner occupied properties.
+
+While this is very similar to the percentage calculated using only Class 2 residential properties. There are some municipalities that experience large changes due to the change in categorization of Owner occupied vs rental compared to Class 2 or multi-family vs single-family properties.
+
+
+```{r}
+variable <- perc_residential$percent_owned
+
+breaks_sd = c(
+  (median(variable)-2.5*sd(variable)),
+  (median(variable)-1.5*sd(variable)),
+  median(variable)-.5*sd(variable),
+  median(variable),
+  median(variable)+.5*sd(variable),
+  median(variable)+1.5*sd(variable),
+  median(variable)+2.5*sd(variable))
+
+
+
+perc_residential %>% 
+  filter(Alea_cat == "Owner Occupied")%>%
+  mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+  ggplot(aes(fill = percent_owned)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  labs(title = "Owner Occupied EAV /  Total EAV", 
+      # caption = "The median municipality has 70.4% of its EAV from Residential Class 2, 3, & 9 Properties"
+       ) +
+    theme_classic() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+    scale_fill_steps2(
+    high = "darkblue", low = "black",  #  guide = "legend",
+    midpoint = median(perc_residential$percent_owned, na.rm = TRUE),
+                      #breaks = breaks_sd,
+  #                      n.breaks = 6,
+  show.limits=TRUE,
+                        name = "% Owner Occupied",
+  na.value = "beige",
+  labels = scales::percent
+  )
+```
+
+```{r}
+exemptions_to_resEAV_ratios <- grouped_exemptions %>% 
+  mutate(ResidentialProps = ifelse(Alea_cat %in% c("Rental", "Owner Occupied", "Other Residential"), "Residential", "Non-residential")) %>%
+  filter(ResidentialProps == "Residential") %>% 
+  mutate(exemptEAV_pctof_resEAV = exempt_EAV/eav,
+         nontif_ratio = exempt_EAV / tax_base_noexemps) %>% 
+  select(agency_name, clean_name, exemptEAV_pctof_resEAV, nontif_ratio) %>% 
+  arrange(nontif_ratio)
+
+exemptions_to_resEAV_ratios %>%
+    mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
+ left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+  ggplot(aes(fill = exemptEAV_pctof_resEAV)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + theme_void()+ 
+  labs(title = "Exemptions / Residential EAV (in and out of TIFs)") +
+    theme_classic() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+   scale_fill_steps2(high = "maroon", low = "black", 
+                       n.breaks = 7, show.limits=TRUE,
+                    nice.breaks = FALSE,
+                    midpoint = median(exemptions_to_resEAV_ratios$exemptEAV_pctof_resEAV),
+                        name = "% Residential EAV \nthat is exempt", label = scales::percent) + labs(caption = "Median value is 19.18%. 
+                                                                                                     Nearly 19.2% of Owner Occuppied EAV is tax exempt in the median municipality. ")
+```
+
+
+```{r include=FALSE}
+exemptions_to_resEAV_ratios %>%
+    mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
+  left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+  ggplot(aes(fill = nontif_ratio)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + theme_void()+ 
+  labs(title = "Non-TIF EAV only: Homestead Exemptions / Residential EAV", caption = "Village of Phoenix skews graph. Dropped in map below") +
+    theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+   scale_fill_steps2(high = "maroon", low = "black",
+     #colors = c("white", "darkblue"), 
+                       limits = c(0,.8),
+                    midpoint = median(exemptions_to_resEAV_ratios$nontif_ratio),
+                       n.breaks = 7, show.limits=TRUE,
+                        name = "% of EAV from Owner Occupied Properties \nthat is tax exempt", label = scales::percent) + labs( caption = "Median value is 19.29%. TIF increment EAV excluded from calculations.")
+```
+
+
+```{r }
+exemptions_to_resEAV_ratios %>% 
+  filter(nontif_ratio<.5) %>%
+    mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
+  left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+  ggplot(aes(fill = nontif_ratio)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + theme_void()+ 
+  labs(title = "Percent of Owner Occupied EAV that is Tax Exempt", 
+  subtitle = "% of Non-TIF Owner Occupied EAV only: \nHomestead Exemptions / Residential EAV", 
+  caption = "Drops Village of Phoenix because it skews map colors (78% of their residential EAV is tax exempt). 
+  Median municipality can not get tax revenue from 19.29% of their residential EAV due to exemptions.") +
+    theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+   scale_fill_steps2(high = "maroon", low = "black",
+   midpoint = median(exemptions_to_resEAV_ratios$nontif_ratio),
+   show.limits=TRUE,
+                        name = "% Owner Occupied EAV \nthat is exempt", label = scales::percent)
+```
+
+```{r}
+exemptions_to_resEAV_ratios %>% arrange(desc(nontif_ratio))
+```
+
+
+
 # Taxable Base and Muni Land Use
 
 Tax base in the tables above are the total EAV outside of TIF areas.
 
 ```{r}
-TC_bills_current <- read_csv("TC_bills_current.csv") %>% 
-  mutate(tax_code = as.character(tax_code))
+TC_bills_current <- read_csv("2_Summed_Bills_by_Taxcode_and_Class.csv") %>% 
+  filter(class != "0") %>% 
+  mutate(tax_code = as.character(tax_code),
+         class = as.character(class))
 
 class_dict$class_code <- as.character(class_dict$class_code)
  
@@ -554,7 +749,7 @@ Current_Taxrates <- taxcodes_current %>%
   left_join(muni_agency_names) %>%
   left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
   filter(!agency_num %in% cross_county_lines) %>%
-  group_by(clean_name, agency_name) %>% 
+  group_by(clean_name, agency_name) %>%
   summarize(MuniLevy = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by munis with current exemptions in place
             nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
             TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),  
@@ -571,12 +766,15 @@ Current_Taxrates <- taxcodes_current %>%
 land_use <- taxcodes_current %>% 
   left_join(muni_agency_names) %>% 
   left_join(Current_Taxrates) %>%
-  mutate(ResidentialProps = ifelse(major_class_code %in% c("2", "3", "9"), "Residential", "Commercial"),
-         PropType = case_when(
-           major_class_code %in% c("3","9") ~ "Multi-Family",
-           major_class_code == "2" ~ "Single-Family",
-           TRUE ~ "Commercial-Industrial")) %>%
-  group_by(clean_name,  ResidentialProps, agency_num, tax_rate_current, taxrate_new, taxrate_change, agency_name,) %>% 
+    left_join(class_dict, by = c("class" = "class_code")) %>%
+
+  mutate(class_1dig = str_sub(class, 1, 1),
+    ResidentialProps = ifelse(class_1dig %in% c("2", "3", "9"), "Residential", "Non-Residential")) %>%
+  #        PropType = case_when(
+  #          major_class_code %in% c("3","9") ~ "Multi-Family",
+  #          major_class_code == "2" ~ "Single-Family",
+  #          TRUE ~ "Commercial-Industrial")) %>%
+  group_by(clean_name, Alea_cat, agency_num, tax_rate_current, taxrate_new, taxrate_change, agency_name) %>% 
   
   # All of the values calculated below are AFTER exemptions have been removed
   summarize(taxrev_from_proptype = sum(final_tax_to_dist, na.rm = TRUE),
@@ -596,7 +794,7 @@ Below: Take EAV values within each property type, join it with muni level EAV va
 
 grouped_exemptions <- exemptions_by_class_per_TC %>% 
    # group_by(agency_name, major_class_code, major_class_type, ResidentialProps, PropType) %>%
-  group_by(clean_name, major_class_type, ResidentialProps, PropType, major_class_code, agency_name) %>%
+  group_by(clean_name, Alea_cat, agency_name) %>%
   summarize(eav = sum(eav),
            exempt_EAV = sum(exempt_EAV, exe_abate, na.rm=TRUE),
          tax_base_current = sum(tax_base_current, na.rm=TRUE),
@@ -612,7 +810,7 @@ muni_eav <- grouped_exemptions %>%
   ungroup() 
 
 pct_property_types <- left_join(grouped_exemptions, muni_eav) %>% 
-  #filter(ResidentialProps == "Residential") %>% 
+ # filter(ResidentialProps == "Alea_cat") %>% 
   mutate(pct_PropType = eav / muni_EAV_includesTIF)# %>% select()
 
 pct_property_types
@@ -630,21 +828,12 @@ burden_table <- pct_property_types %>%
          burden_noexemps = ifelse(is.na(burden_noexemps), 0, burden_noexemps)) %>%
   mutate(burden_noexemps = ifelse(burden_noexemps>1, 1, burden_noexemps),
          burden_current = ifelse(burden_current>1, 1, burden_current)) %>%
-  filter(!is.na(major_class_code))%>%
   mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) )
 
 
 burden_shift <- burden_table # only to not change code below in graphs. 
 ```
 
-Compare to 6 municipalities calculated by JD:
-
-Only class 2 property types in output below. Looks good! Yay.
-
-```{r}
-burden_table %>%  filter(agency_name %in% c("CITY OF CHICAGO", "VILLAGE OF BRIDGEVIEW", "VILLAGE OF DOLTON", "VILLAGE OF HOFFMAN ESTATES","VILLAGE OF MIDLOTHIAN","VILLAGE OF OAK PARK", "CITY OF CICERO") & major_class_code == 2) %>% select(-c(ResidentialProps, major_class_type, PropType)) %>%
-  select(clean_name, muni_EAV_includesTIF, MuniLevy, exempt_EAV,burden_current, burden_noexemps)
-```
 
 # Composite Tax Rate Change
 
@@ -668,7 +857,7 @@ Current_Taxrates %>%  filter( tax_rate_current < 0.08)  %>%   select( -agency_na
 
 ```
 
-The median composite tax rate for municipalities is `r scales::percent(median(Current_Taxrates$tax_rate_current ))`
+The current composite tax rate for the median municipality is `r scales::percent(median(Current_Taxrates$tax_rate_current ))`
 
 
 ```{r}
@@ -702,7 +891,20 @@ Current_Taxrates %>%
 
 ```{r}
 # median 
-burden_shift %>% filter(major_class_code == 2) %>%
+burden_shift %>% 
+  filter(Alea_cat == "Owner Occupied") %>%
+  #filter(major_class_code == 2) %>%
+  summarize(median_currentburden = median(burden_current),
+            median_new_burden = median(burden_noexemps),
+            median_burdenchange = median(burden_change),
+            median_currenttaxrate = median(tax_rate_current),
+            median_taxratechange = median(taxrate_change),
+            median_taxratenew = median(taxrate_new)) %>% 
+  pivot_longer(cols = everything(), names_to = "Stat", values_to = "Value")
+
+burden_shift %>% 
+  filter(Alea_cat == "Rental") %>%
+  #filter(major_class_code == 2) %>%
   summarize(median_currentburden = median(burden_current),
             median_new_burden = median(burden_noexemps),
             median_burdenchange = median(burden_change),
@@ -755,7 +957,7 @@ Current_Taxrates %>%
     labels = scales::percent,
     name = "Percentage Point \nDifference")+
   labs(title = "Change in Composite Tax Rate if Exemptions are Removed",
-       caption = "The median change in composite tax rate is 1.38 percentage points")
+       caption = "The median change in composite tax rate is 1.43 percentage points")
 ```
 
 ```{r}
@@ -774,10 +976,11 @@ head(order)
 
 # look at ones that changed the most
 burden_shift %>% 
-  filter(tax_rate_current < (median(tax_rate_current))+0.002 & tax_rate_current > (median(tax_rate_current))-0.002 |
-   (tax_rate_current > 0.25 | tax_rate_current < 0.08 )) %>%
+  # filter(tax_rate_current < (median(tax_rate_current))+0.002 & tax_rate_current > (median(tax_rate_current))-0.002 |
+  #  (tax_rate_current > 0.25 | tax_rate_current < 0.08 )) %>%
   #          (tax_rate_current < (median(tax_rate_current))+0.005 & tax_rate_current > (median(tax_rate_current))-0.005 )) %>% 
-  filter(PropType == "Single-Family") %>%
+  #filter(PropType == "Single-Family") %>%
+  filter(Alea_cat == "Owner Occupied") %>%
   ungroup() %>% 
   select(clean_name, tax_rate_current, taxrate_new, agency_name) %>% 
   pivot_longer(c("tax_rate_current", "taxrate_new"), 
@@ -799,7 +1002,8 @@ burden_shift %>%
         scale_color_brewer(palette="Paired", labels = c("Exemptions", "No Exemptions"), direction = 1)+
 
   labs(title = "Difference in Composite Tax Rate if there were No Exemptions",
-       subtitle = "Ordered by Current Composite Tax Rate", x = "Composite Tax Rate (%)", y = "" , caption = "For the highest, median, and lowest municipality composite tax rates ")
+       subtitle = "Ordered by Current Composite Tax Rate", x = "Composite Tax Rate (%)", y = "" , 
+       caption = "For the highest, median, and lowest municipality composite tax rates ")
 ```
 
 ```{r}
@@ -809,10 +1013,11 @@ burden_shift %>%
 order <- burden_shift %>% 
   as_tibble() %>%
   group_by(agency_name, clean_name) %>%
-    summarize(tax_rate_current = mean(tax_rate_current), 
-            taxrate_new = mean(taxrate_new),
-            taxrate_change = mean(taxrate_change)) %>%
+    summarize(tax_rate_current = median(tax_rate_current), 
+            taxrate_new = median(taxrate_new),
+            taxrate_change = median(taxrate_change)) %>%
   arrange(taxrate_change)
+
 median(order$taxrate_change) # median rate change is 1.388 percentage points
 #head(order)
 #tail(order)
@@ -821,7 +1026,9 @@ burden_shift %>%
   filter(taxrate_change < 0.0027 |taxrate_change > 0.06  |
            taxrate_change < (median(taxrate_change))+0.0007 & taxrate_change > (median(taxrate_change))-0.00075
          ) %>% 
-  filter(PropType == "Single-Family") %>%
+    filter(Alea_cat == "Owner Occupied") %>%
+
+ # filter(PropType == "Single-Family") %>%
   ungroup() %>% 
   select(clean_name, tax_rate_current, taxrate_new, agency_name) %>% 
   pivot_longer(c("tax_rate_current", "taxrate_new"), 
@@ -850,15 +1057,16 @@ burden_shift %>%
 ggsave("Composite_Rate_Change.png", width = 6, height = 4, units = "in")
 ```
 
-# Single-Family (Class 2) Burden Shift
 
-Change in Tax Burden for Class 2 Properties:
+# Owner Occupied Properties Burden Shift
+
+Change in Tax Burden for Owner Occupied Propertes. Includes class 2 properties that are not rental properties.:
 
 ```{r fig.show='hold', out.width="50%"}
 burden_shift %>%
       mutate(burden_current = ifelse(burden_current>1, 1, burden_current)) %>%
-
-      filter(major_class_code == 2) %>%
+  filter(Alea_cat == "Owner Occupied") %>%
+      #filter(major_class_code == 2) %>%
   mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
   left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
 
@@ -873,17 +1081,19 @@ burden_shift %>%
      nice.breaks=FALSE,
                         show.limits=TRUE, 
    n.breaks = 6,
-                     midpoint = 0.65,
-   guide = "legend",
+                     midpoint = 0.597,
+  # guide = "legend",
                         name = "Current Burden \n(with Exemptions)", labels = scales::percent
                     )+
   labs(title = "Current share of property tax burden", 
-       subtitle = "for Class = 2 Property Types", 
-       caption = "The median municipality gets 65% of its property tax revenue from Single-Family properties.")
+       subtitle = "for  Owner Occupied Property Types", 
+       caption = "The median municipality gets 59.7% of its property tax revenue 
+       from Class 2 properties that are owner occupied in the current tax system.")
 
 burden_shift %>% 
     mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
-      filter(major_class_code == 2) %>%
+    #  filter(major_class_code == 2) %>%
+  filter(Alea_cat == "Owner Occupied") %>%
 
   left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
 
@@ -898,56 +1108,61 @@ burden_shift %>%
       high = "#420420", low = "#008080",
   #   high = "#253494" , low = "#3b3c36" ,
      nice.breaks=FALSE,
-                        #show.limits=TRUE, 
-  guide = "legend",
+                        show.limits=TRUE, 
    n.breaks = 6,
-                     midpoint = 0.69,
+                     midpoint = 0.65,
                         name = "Burden without \nExemptions", labels = scales::percent) +
- labs(title = "New share of property tax burden", subtitle = "for Class = 2 Property Types", caption =
+ labs(title = "New share of property tax burden", subtitle = "for Owner occupied properties", caption =
       "Without exemptions, municipalities would get a larger share of 
-      their revenue from single-family properties.")
+      their revenue from owner occupied properties.
+      Owner occupied properties includes condos and single-family homes.")
 ```
 
-```{r burdenchange-map}
+```{r}
 burden_shift %>% #filter(clean_name != "Phoenix") %>%
-  filter(major_class_code == 2) %>%
+    filter(Alea_cat == "Owner Occupied") %>%
+
+ # filter(major_class_code == 2) %>%
     mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
   mutate(burden_change = ifelse(burden_change<0,0, burden_change))%>%
      #    burden_change = ifelse(burden_change>1,1, burden_change))%>%
   left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
   ggplot(aes(fill = (burden_change*100)) )+ 
   geom_sf(aes(geometry = geometry), color = "black") + theme_void()+ 
-  labs(title = "Change in Residential Share of Tax Burden", 
-       caption = "The median shift from single-family properties to other property types
+  labs(title = "Change in Tax Burden: Owner occupied properties", 
+       caption = "The median shift from owner occupied properties to other property types
        due to current exemptions is worth approximately 4.5% of a municipality's levy.") +
     theme_classic() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
    scale_fill_steps2(
-     # high = "#00e304" , low = "#00cfd4",
      high = "#420420", low = "#008080",
-    # high = "darkblue" , low = "orange",
      nice.breaks=FALSE,
-   guide="legend",
-                        show.limits=TRUE,# n.breaks = 5,
-                     midpoint = 4.6, # median(burden_shift$burden_change*100),
+     show.limits=TRUE,# n.breaks = 5,
+                     midpoint = 4.7, # median(burden_shift$burden_change*100),
                         name = "Change in Burden \n Pct Points")
 
 ```
 
+> Change median vertical line and the horizontal lines. Refilter the top, medium, and lowest values
+
 ```{r}
 
 
-burden_shift %>% filter(PropType == "Single-Family")%>%
-summarize(median_change = median(burden_change),
-          median_current = median(burden_current),
-          median_noexemps = median(burden_noexemps)) # 0.0442
+burden_shift %>% #filter(PropType == "Single-Family")%>%
+    filter(Alea_cat == "Owner Occupied") %>%
+
+summarize(median_change = median(burden_change), # 4.74 percentage points.
+          median_current = median(burden_current), #60%
+          median_noexemps = median(burden_noexemps)) # 66%
 # as a dot graph ## 
 
 
 order <- burden_shift %>% 
   ungroup %>% as_tibble() %>%
   #  filter(ResidentialProps == "Residential") %>%
-  filter(PropType == "Single-Family") %>%
+#  filter(PropType == "Single-Family") %>%
+    filter(Alea_cat == "Owner Occupied") %>%
+
   select(agency_name, clean_name, burden_current, burden_change)
 
 
@@ -961,14 +1176,14 @@ order <- burden_shift %>%
 
 # look at ones that changed the most
 
-
-# median burden c hange is 0.45
-# current median burden is 65.5% of the levy
+burden_shift %>%     filter(Alea_cat == "Owner Occupied") %>%
+ arrange(burden_current)
 
 burden_shift %>% 
-  filter(PropType == "Single-Family") %>%
-  filter(burden_current > 0.938 |burden_current < .17 |
-           ( (burden_current < median(burden_current) + 0.01 )& (burden_current > median(burden_current) - 0.01)) )%>% 
+    filter(Alea_cat == "Owner Occupied") %>%
+  filter(clean_name != "Hoffman Estates") %>% # only because 6 were between the median range and I only wanted 5 in the graph
+   filter(burden_current > 0.931 |burden_current < .17 |
+            ( (burden_current < median(burden_current) + 0.01 )& (burden_current > median(burden_current) - 0.01)) )%>% 
   ungroup() %>% 
   select(agency_name, clean_name, burden_current, burden_noexemps,  burden_change) %>% 
   arrange(burden_change) %>%
@@ -978,12 +1193,12 @@ burden_shift %>%
                names_to = "type", values_to = "pct_burden") %>% 
   inner_join(order) %>%
   ggplot(aes(x = pct_burden*100, 
-             y= reorder(clean_name, burden_current)))+
+             y= reorder(clean_name, -burden_current)))+
   # y= reorder(clean_name, burden_current)))+
-  geom_vline(xintercept = 65.5, linetype = 3)+
+  geom_vline(xintercept = 59.7, linetype = 3)+
   geom_line(aes(group = clean_name))+ 
   geom_hline(yintercept = 5.5, linetype = 2)+
-  geom_hline(yintercept = 13.5, linetype = 2)+
+  geom_hline(yintercept = 10.5, linetype = 2)+
   geom_point(aes(color=type), size=3 )+
 
   theme_minimal() + 
@@ -996,26 +1211,25 @@ burden_shift %>%
   scale_color_brewer(palette="Paired", labels = c("Current Burden", "Burden if \nNo Exemptions" ), direction = 1)+
 
   
-  labs(title = "Change in Class 2 Residential Tax Burden", 
+  labs(title = "Change in Owner Occupied Tax Burden", 
        subtitle = "Ordered by Current Tax Burden",
   x = "Share of Levy (%)", y = "" , 
-  caption = "Residential Tax Burden is the share of the property tax collected that was paid for by 
-     property owners with Class 2 properties.
-  Dotted line represents median Class 2 burden (65.5% of the levy)") +
-    geom_label(label = "Class 2 pays small share of \nlevy; very little residential", x=35, y = 3, label.size = 1, size = 3)+
-    geom_label(label = "Class 2 pays median share of \nlevy (65%), mix of land use", x=42, y = 9.5, label.size = 1, size = 3) +
-    geom_label(label = "Class 2 pays nearly all of levy, \nhighly residential", x=65, y = 16, label.size = 1,size = 3)
+  caption = "Dotted line represents current tax burden (59.7% of the municpality's levy) in the median municipality. 
+  Residential Tax Burden is the share of the property tax collected that was paid for by residential 
+  property owners. Includes condos and detached homes. Does not include classes described as 'rentals'.") +
+    geom_label(label = "Home owners pay small share of \nlevy; very little residential", x=35, y = 12.5, label.size = 1, size = 3)+
+    geom_label(label = "Home owners pay median share of \nlevy (59.7%), mix of land use", x=30, y = 7.5, label.size = 1, size = 3) +
+    geom_label(label = "Home owners pay nearly all of levy, \nhighly residential", x=70, y = 3, label.size = 1,size = 3)
 
-
-#+
-# scale_x_continuous(label = scales::percent)
 ```
 
 ```{r}
 ### Change in Burden
 burden_shift %>%    
   ungroup() %>% 
-    filter(PropType == "Single-Family") %>%
+    filter(Alea_cat == "Owner Occupied") %>%
+
+   # filter(PropType == "Single-Family") %>%
    # filter(burden_change > 0.3 | burden_change < .01) %>% 
 
   select(agency_name, clean_name, burden_current, burden_noexemps,
@@ -1025,7 +1239,7 @@ burden_shift %>%
   pivot_longer(c("burden_current", "burden_noexemps"),
                names_to = "type", values_to = "pct_burden") %>%
   inner_join(order) %>%
-  ggplot(aes(x = pct_burden, y= reorder(clean_name, burden_current)))+
+  ggplot(aes(x = pct_burden, y= reorder(clean_name, -burden_current)))+
   geom_line(aes(group = clean_name))+ 
    geom_point(aes(color=type), size=3 )+
   theme_minimal() + 
@@ -1037,16 +1251,18 @@ burden_shift %>%
    )+
         scale_color_brewer(palette="Paired", labels = c("Current Burden","Burden if \nNo Exemptions"), direction = 1)+
 
-  labs(title = "Change in Single-family Residential Tax Burden", 
+  labs(title = "Change in Owner Occupied Property Tax Burden", 
   x = "Share of Levy (%)", y = "" , 
-  caption = "Residential Tax Burden is the Share of the property tax collected that was paid for by 
-     single-family home owners in property classes 2.")
+  caption = "Tax Burden is the Share of the property tax collected that was paid for by 
+     home owners in property classes 2.")
 
 
 
 burden_shift %>%    
   ungroup() %>% 
-    filter(PropType == "Single-Family") %>%
+    filter(Alea_cat == "Owner Occupied") %>%
+
+  #  filter(PropType == "Single-Family") %>%
     filter(burden_noexemps > 0.2 | burden_noexemps < .001) %>% 
 
   select(agency_name, clean_name, burden_current, burden_noexemps,
@@ -1068,31 +1284,35 @@ burden_shift %>%
    )+
         scale_color_brewer(palette="Paired", labels = c( "Current Burden","Burden if \nNo Exemptions"), direction = 1)+
 
-  labs(title = "Change in Single-family Residential Tax Burden", 
+  labs(title = "Change in Owner Occupied Class 2 Residential Tax Burden", 
   x = "Share of Levy (%)", y = "" , 
-  caption = "Residential Tax Burden is the Share of the property tax collected that was paid for by 
-     single-family home owners in property classes 2.")
+  caption = "Tax Burden is the Share of the property tax collected that was paid for by 
+    home owners in property classes 2.")
 ```
 
 ```{r}
-burden_shift %>% ungroup() %>% filter(PropType == "Single-Family") %>%
+burden_shift %>% ungroup() %>% #filter(PropType == "Single-Family") %>%
+    filter(Alea_cat == "Owner Occupied") %>%
+
 arrange(burden_change) %>% head()
 
 
 burden_shift %>%    
   ungroup() %>% 
-    filter(PropType == "Single-Family") %>%
+    filter(Alea_cat == "Owner Occupied") %>%
+
+   # filter(PropType == "Single-Family") %>%
   filter(clean_name != "Phoenix") %>%
   filter(clean_name %in% c("Schaumburg", "Elk Grove Village", "Westchester", "Palos Hills", "Orland Hills") |
  # filter(clean_name %in% c("Hometown", "Burbank", "Schaumburg", "Elk Grove Village", "Westchester") | 
-           burden_change > 0.112 |burden_change < .0029 ) %>%
+           burden_change > 0.11 |burden_change < .003 ) %>%
          #|  ( (burden_change < median(burden_change) + 0.001 )& (burden_change > median(burden_change) - 0.001)) ) %>% 
   select(agency_name, clean_name, burden_current, burden_noexemps,
          burden_change) %>% 
   pivot_longer(c("burden_current", "burden_noexemps"),
                names_to = "type", values_to = "pct_burden") %>%
   inner_join(order) %>%
-  ggplot(aes(x = pct_burden, y= reorder(clean_name, burden_change)))+
+  ggplot(aes(x = pct_burden*100, y= reorder(clean_name, burden_change*100)))+
   geom_line(aes(group = clean_name))+ 
     geom_hline(yintercept = 5.5, linetype = 2)+
   geom_hline(yintercept = 10.5, linetype = 2)+
@@ -1106,20 +1326,25 @@ burden_shift %>%
    )+
         scale_color_brewer(palette="Paired", labels = c( "Current Burden","Burden if \nNo Exemptions"), direction = 1)+
 
-  labs(title = "Change in Residential Tax Burden (Class 2 Only)", 
+  labs(title = "Change in Residential Tax Burden (Owner Occupied only)", 
   x = "Share of Levy (%)", y = "" )
 
 ggsave("residential_tax_burden_change.png", width = 6, height = 4, units = "in")
 ```
 
 
-# Summary table of Burden Shift: 3 Property Categories
 
-Same data that is used above but property types are combined into 3 categories:
 
-Single-family (Class 2),\
-Multi-Family (Class 3 & 9),\
-and Commercial-Industrial (all other Classes: 1,4, 5, 6, 7, 8, 9)
+# Summary table of Burden Shift: Grouped Property Categories
+
+Same data that is used above but property types are combined into 4 categories:
+
+- Owner Occupied  (Most of Class 2 Properties. Classes with "rental" in the description were included with Renter properties.)    
+- Renters (Class 3 & 9 and some of Class 2)  
+- Commercial (splits class 5, 6, 7, and 8. Commercial/Industrial, incentive and nonprofit classes based on property class descriptions)
+- Industrial (splits class 5, 6, 7, and 8. Commercial/Industrial, incentive and nonprofit classes based on property class descriptions)
+- Other?: Vacant Land.
+  - Railroad land is dropped from calculations and tables. Not taxed.   
 
 ```{r}
 # Current Burden:
@@ -1128,7 +1353,7 @@ munis_3property_types <- burden_shift %>%# mutate(
      #       burden_noexemps = ifelse(is.na(burden_noexemps), 0, burden_noexemps)) %>%
   #    mutate(burden_current = ifelse(burden_current>1, 1, burden_current)) %>%
   ungroup() %>% 
-  group_by(agency_name, clean_name, PropType) %>%
+  group_by(agency_name, clean_name, Alea_cat) %>%
   summarize(#final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE),
             burden_current = sum(burden_current, na.rm = TRUE),
             burden_noexemps = sum(burden_noexemps, na.rm = TRUE),
@@ -1136,12 +1361,11 @@ munis_3property_types <- burden_shift %>%# mutate(
 
 #write.csv(munis_3property_types, "1_usemetable.csv")
 
-proptypes3_current <- munis_3property_types %>% 
+proptypes3_current <- burden_shift %>% 
     mutate(burden_current = ifelse(is.na(burden_current), 0, burden_current)) %>%
 
-  pivot_wider( id_cols = clean_name , names_from = "PropType", values_from = "burden_current",names_prefix="Current - ", values_fill = 0 ) %>% 
-  select(clean_name, `Current - Single-Family`, everything()) %>%
-  arrange(-`Current - Single-Family`)
+  pivot_wider( id_cols = clean_name , names_from = "Alea_cat", values_from = "burden_current",names_prefix="Current - ", values_fill = 0 ) %>% 
+  select(clean_name,  everything()) 
 
 proptypes3_current[2:4] <- sapply(proptypes3_current[2:4], function(x) scales::percent(x, accuracy=.01) )
                                    
@@ -1151,9 +1375,9 @@ proptypes3_current
 ```{r}
 # __Tax Burden if there were no exemptions:__
 
-proptypes3_noexemps <- munis_3property_types %>% 
+proptypes3_noexemps <- burden_shift %>% 
   mutate(burden_noexemps = ifelse(is.na(burden_noexemps), 0, burden_noexemps)) %>%
-  pivot_wider( id_cols = clean_name , names_from = "PropType", values_from = "burden_noexemps", names_prefix = "W/O Exemptions - ", values_fill = 0)  
+  pivot_wider( id_cols = clean_name , names_from = "Alea_cat", values_from = "burden_noexemps", names_prefix = "W/O Exemptions - ", values_fill = 0)  
 proptypes3_noexemps[2:4] <- sapply(proptypes3_noexemps[2:4], function(x) scales::percent(x, accuracy=.01))
 proptypes3_noexemps
 ```
@@ -1167,29 +1391,34 @@ proptypes3_noexemps
 #             current_burden = sum(current_burden),
 #             no_exemptions_burden = sum(no_exemptions_burden)) 
 
-props_wide <- munis_3property_types %>%
+props_wide <- burden_shift %>%
+  filter(!is.na(Alea_cat))%>%
   pivot_wider(id_cols = clean_name , 
-               names_from = "PropType", 
-               values_from = "burden_change", values_fill = 0) %>% select(clean_name, `Single-Family`, everything()) %>%
-  arrange(desc(`Single-Family`) )
+               names_from = "Alea_cat", 
+               values_from = "burden_change", values_fill = 0) %>% 
+  select(clean_name, everything()) %>%
+  arrange(desc(`Owner Occupied`) )
 
-props_wide[2:4] <- sapply(props_wide[2:4], function(x) scales::percent(x, accuracy=.001))
+props_wide[2:7] <- sapply(props_wide[2:7], function(x) scales::percent(x, accuracy=.001))
 props_wide
 
 
-proptypes3_comparisontable<- left_join(proptypes3_current, proptypes3_noexemps, by = "clean_name")
+proptypes3_comparisontable<- left_join(proptypes3_current, proptypes3_noexemps, by = "clean_name") 
 proptypes3_comparisontable
 
 ```
 
 ```{r}
-proptypes3_burdenchange <- munis_3property_types %>% 
+proptypes3_burdenchange <- burden_shift %>% 
+  filter(!is.na(Alea_cat))%>%
   mutate(burden_noexemps = ifelse(is.na(burden_change), 0, burden_change)) %>%
-  pivot_wider( id_cols = agency_name , names_from = "PropType", values_from = "burden_change", values_fill = 0) %>%
-  arrange(desc(`Single-Family`))
+  pivot_wider( id_cols = clean_name , names_from = "Alea_cat", values_from = "burden_change", values_fill = 0) %>%
+  arrange(desc(`Owner Occupied`))
 
 proptypes3_burdenchange[2:4] <- sapply(proptypes3_burdenchange[2:4], function(x) scales::percent(x, accuracy=.01))
 proptypes3_burdenchange
+
+#proptypes3_burdenchange %>% write_csv("burden_change_august6.csv")
 
 ```
 
@@ -1231,7 +1460,7 @@ Current_Taxrates %>%
     labels = scales::dollar
   )+
   
-  labs(title = "Dollars passed from Single-Family properties to others \ndue to current exemptions")
+  labs(title = "Dollars passed from Class 2 properties to others \ndue to current exemptions")
 
 Current_Taxrates %>% 
   filter(clean_name != "Chicago") %>%
@@ -1391,7 +1620,7 @@ Current_Taxrates%>%
 
 **"Takes the median tax rate increase as a result of exemptions (1.4%) and multiplies that by the total residential EAV in Cook County"**
 
-```{r}
+```{r eval=FALSE}
 taxcodes_current %>%
   filter(year == 2021) %>%
   group_by(major_class_type, major_class_code) %>%
