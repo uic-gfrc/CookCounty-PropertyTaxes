@@ -133,7 +133,7 @@ write_csv(muni_rachelgroups_stats, "4_Taxbill_Hypotheticals-taxbill_change_20230
 ```{r, fig.show='hold', out.width="50%"}
 tax_bill_change %>% ungroup() %>%
   filter(major_class_code == 2 & bill_current < 30000 & clean_name == "Dolton") %>% ggplot() +
-  geom_histogram(aes(x= bill_noexemps, bins = 100))+
+  geom_histogram(aes(x= bill_current, bins = 100))+
     geom_vline(aes(xintercept=median(bill_current, na.rm=TRUE), color = "red")) +
     theme_classic()+theme(legend.position = "none") + 
 
@@ -151,7 +151,7 @@ tax_bill_change %>% ungroup() %>%
 
 ```{r, fig.show='hold', out.width="50%"}
 tax_bill_change %>% ungroup() %>%
-  filter(major_class_code == 2 & bill_current < 30000 & clean_name == "Dolton") %>% ggplot() +
+  filter(major_class_code == 2 & bill_current < 30000 & clean_name == "Chicago") %>% ggplot() +
   geom_histogram(aes(x= bill_current, bins = 100))+
     geom_vline(aes(xintercept=median(bill_current, na.rm=TRUE), color = "red")) +
     theme_classic()+theme(legend.position = "none") + 
@@ -160,7 +160,7 @@ tax_bill_change %>% ungroup() %>%
 
 
 tax_bill_change %>% ungroup() %>%
-  filter(major_class_code == 2 & bill_noexemps < 30000 & clean_name == "Dolton") %>% ggplot() +
+  filter(major_class_code == 2 & bill_noexemps < 30000 & clean_name == "Chicago") %>% ggplot() +
   geom_histogram(aes(x= bill_noexemps, bins = 100)) +
   theme_classic() +
   geom_vline(aes(xintercept=median(bill_noexemps, na.rm=TRUE), color = "red")) + theme(legend.position = "none") +
@@ -315,7 +315,6 @@ nicknames <- readxl::read_excel("muni_shortnames.xlsx")
 
 tax_bill_change %>% 
     filter(tax_code_num %in% muni_tax_codes$tax_code_num) %>%
-
     filter(class_code !=0) %>%
   mutate(class_code = as.character(class_code)) %>%
   left_join(nicknames) %>%
@@ -324,7 +323,7 @@ tax_bill_change %>%
   summarize(cost = sum(bill_change, na.rm=TRUE))
 ```
 
-Covering all changes in tax bills in the South triad would cost $211 million? CHECK 
+Covering all changes in tax bills in the South triad would cost $211 million.  
 
 ```{r}
 tax_bill_change %>% 
@@ -343,7 +342,8 @@ tax_bill_change %>%
 
 tax_bill_change %>% 
   filter(tax_code_num %in% muni_tax_codes$tax_code_num) %>%
-  filter(major_class_code == 2) %>% 
+#  filter(major_class_code == 2) %>% 
+  filter(class_code >= 200 & class_code <=299)%>%
   filter(bill_current== 0) %>% 
   arrange(bill_current) %>%
     summarize(cost = sum(bill_change, na.rm=TRUE))
@@ -362,3 +362,13 @@ tax_bill_change %>%
 
 
 Check this -> Paying for all tax bills that experienced a 15% increase from the elimination of exemptions or had a \$0 taxbill would cost $825,963,411.
+
+```{r}
+tax_bill_change %>% filter(clean_name == "Dolton") %>% # 8783
+  filter(class_code >=200 & class_code <=299) %>%
+  mutate(shittyvariable = median(bill_current, na.rm=TRUE),
+         shittyvariable2 = median(bill_current)) %>% 
+  select(shittyvariable, shittyvariable2, everything())
+  
+```
+
