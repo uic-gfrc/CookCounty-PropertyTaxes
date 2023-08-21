@@ -1,0 +1,1573 @@
+---
+title: "UIC-CMAP Property Tax Exemptions Report"
+author: "Alea Wilbur"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    df_print: paged
+    code_folding: hide
+    code_download: true
+---
+
+**Replication Steps: Get Pin and Tax Bill Data**
+
+1.  Run file `1_Get_All_Pin_Bills.Rmd` to replicate pulling the 2021 bills.
+2.  Run file `2_....Rmd` to get summed values to various levels of analysis (parcel, taxcode--class, taxcode--majorclass, etc.). This file also creates the current composite tax rates for each tax code.
+3.  Run file `3_Exemption_Details.rmd` to pull all exemption (and amount per type of exemption) for every pin in Cook County.
+    -   Using the pin data from ptaxsim, I calculate the eav of all properties, exempt EAV, the current tax base, and tax base if there were not exemptions
+        -   exempt EAV (summed from all exemption types)
+
+        -   current taxbase (using the `tif_distrib` table and percent of taxcode rev that goes to the tif). If a taxcode is a TIF taxcode, then do (EAV-exempt EAV) \* (1-%rev that goes to TIF). If the tax code is not a TIF tax code, then use the EAV-exempt EAV.
+
+        -   tax base without exemptions: If a taxcode is a TIF taxcode, then do EAV \* (1-%rev that goes to TIF). If the tax code is not a TIF tax code, then use the eav
+4.  Run file `4_Taxbill_Hypotheticals.rmd` to ....
+
+Necessary files for replication code include:
+
+-   a property class table with major property classes and other property class variables. [Download from Github here](https://github.com/AleaWM/CookCounty-PropertyTaxes/blob/main/class_dict_expanded.csv)
+-   file of Municipality names formatted in various ways (all caps, sentence case, shortened, etc.) to match different files when joining. [Download from Github here](https://github.com/AleaWM/CookCounty-PropertyTaxes/blob/main/class_dict_expanded.csv).
+
+```{r setup, echo = FALSE, warning = FALSE, message = FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+
+library(tidyverse)
+library(DBI)
+library(data.table)
+library(ggspatial)
+library(gstat)
+library(here)
+library(httr)
+library(jsonlite)
+library(ptaxsim)
+library(sf)
+library(stars)
+library(glue)
+library(ggpattern)
+
+# Create the DB connection with the default name expected by PTAXSIM functions
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
+
+
+options(digits=4, scipen = 999)
+
+library(sf)
+library(jsonlite)
+library(httr)
+library(NatParksPalettes)
+
+# link to the API output as a JSON file
+muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/politicalBoundary/MapServer/2/query?outFields=*&where=1%3D1&f=geojson")
+
+cook_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/plss/MapServer/1/query?outFields=*&where=1%3D1&f=geojson")
+
+
+
+#muni_shp <- read_json("muni_shp.json")
+nicknames <- readxl::read_excel("muni_shortnames.xlsx")
+
+class_dict <- read_csv("class_dict_expanded.csv") %>% 
+  mutate(class_code = as.character(class_code))
+
+
+cross_county_lines <- c("030440000", "030585000", "030890000", "030320000", "031280000","030080000", "030560000", "031120000", "030280000", "030340000","030150000","030050000", "030180000","030500000","031210000")
+```
+
+```{r echo=FALSE}
+
+
+
+# `agency_dt` has all taxing agencies (but not TIFs) that existed each year and includes their total taxable base (cty_cook_eav), their levy, taxing rate, binary variables for if a municipality is home rule or not, as well as many other variables. tax_bill() uses this table for the taxable EAV that is used to  calculate the tax rates in the tax bills. For simulations, you must alter the taxable EAV or levy or other variables and then tell tax_bill() function to use the modified agency data table for simulated tax bills.
+# 
+
+
+
+# has EAV values, extensions by agency_num
+agency_dt <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT *
+  FROM agency
+  WHERE year = 2021
+  "
+)
+
+
+cook_agency_names <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT DISTINCT agency_num, agency_name
+  FROM agency_info
+  "
+)
+
+ 
+
+
+# has all tax codes and the taxing agency that taxes them. Tax code rates and agency rates. 
+cook_tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT*
+  FROM tax_code
+  WHERE agency_num IN ({cook_agency_names$agency_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+)
+
+
+muni_agency_names <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT DISTINCT agency_num, agency_name, minor_type
+  FROM agency_info
+  WHERE minor_type = 'MUNI'
+  OR agency_num = '020060000'  
+
+  "
+)
+
+muni_tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT*
+  FROM tax_code
+  WHERE agency_num IN ({muni_agency_names$agency_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+)  
+  
+
+# Agency number and agency name for all TIFs
+TIF_agencies <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT DISTINCT agency_num, agency_name, major_type, minor_type
+  FROM agency_info
+  WHERE minor_type = 'TIF'
+  "
+)
+
+unique_tif_taxcodes <- DBI::dbGetQuery(
+  ptaxsim_db_conn, 
+  glue_sql("
+  SELECT DISTINCT tax_code_num
+  FROM tax_code
+  WHERE agency_num IN ({TIF_agencies$agency_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+)
+
+
+tif_distrib <- DBI::dbGetQuery(
+  ptaxsim_db_conn, 
+  glue_sql("
+  SELECT *
+  FROM tif_distribution
+  WHERE tax_code_num IN ({cook_tax_codes$tax_code_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+) %>% mutate(tax_code_num = as.character(tax_code_num))
+
+
+```
+
+There are 1,864,594 pins in Cook County in 2021. There are 1,825,816 in incorporated areas within Cook County (referred to as "Municipalities" in this document).
+
+
+# Exemptions per Property Class in Municipalities
+
+```{r cooktotals, echo=FALSE}
+exemptions_by_class_per_TC <- read_csv("3_Exemption_Details_output-Cook_Exemps_byClassandTaxcode.csv") 
+
+
+cooktotals <- exemptions_by_class_per_TC %>% 
+  summarize(av = sum(av, na.rm = TRUE),
+            eav=sum(eav, na.rm=TRUE),
+            total_exempt_eav = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+                         exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
+            homeowners_exemption = sum(exe_homeowner),
+            senior_exemption = sum(exe_senior),
+            freeze_exemption = sum(exe_freeze),
+                        pin_count = n()) %>%
+  pivot_longer(cols = av:pin_count, names_to = "Variables", values_to = "Cook County Totals")
+
+munitotals <- exemptions_by_class_per_TC %>% 
+  filter(tax_code_num %in% muni_tax_codes$tax_code_num)%>%
+  summarize(av = sum(av, na.rm = TRUE),
+            eav=sum(eav, na.rm=TRUE),
+            total_exempt_eav = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+                         exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
+            homeowners_exemption = sum(exe_homeowner),
+            senior_exemption = sum(exe_senior),
+            freeze_exemption = sum(exe_freeze),
+                        pin_count = n()) %>%
+  pivot_longer(cols = av:pin_count, names_to = "Variables", values_to = "Municipality Totals")
+
+
+total_exemptions <- left_join(cooktotals, munitotals)
+total_exemptions
+```
+
+
+```{r graphs, echo=FALSE}
+exemptions_by_class_per_TC %>%
+  summarize(exe_homeowner = sum(exe_homeowner, na.rm=TRUE),
+            exe_senior = sum(exe_senior, na.rm=TRUE),
+            exe_freeze = sum(exe_freeze, na.rm=TRUE),
+            exe_longtime_homeowner = sum(exe_longtime_homeowner, na.rm=TRUE),
+            exe_disabled = sum(exe_disabled, na.rm=TRUE),
+            exe_vet_returning = sum(exe_vet_returning, na.rm=TRUE),
+            exe_vet_dis = sum(exe_vet_dis),
+            exe_abate = sum(exe_abate, na.rm=TRUE)) %>%
+  pivot_longer(cols = exe_homeowner:exe_abate, names_to = "exemption_type", values_to = "amount")
+
+
+
+
+# exemptions_by_class_per_TC %>% 
+#   summarize(
+#             exe_homeowner = sum(exe_homeowner, na.rm=TRUE),
+#             exe_senior = sum(exe_senior, na.rm=TRUE),
+#             exe_freeze = sum(exe_freeze, na.rm=TRUE),
+#             exe_longtime_homeowner = sum(exe_longtime_homeowner, na.rm=TRUE),
+#             exe_disabled = sum(exe_disabled, na.rm=TRUE),
+#             exe_vet_returning = sum(exe_vet_returning, na.rm=TRUE),
+#             exe_vet_dis = sum(exe_vet_dis),
+#             exe_abate = sum(exe_abate, na.rm=TRUE),
+#             ) %>%
+#   pivot_longer(cols = exe_homeowner:exe_abate, names_to = "exemption_type", values_to = "amount") %>%
+#   ggplot() +
+#   geom_bar(aes(x=amount, y=exemption_type), stat = "identity") + theme_classic() +
+#   theme(legend.position = "bottom")+
+#   labs(y="",x="", title = "Amount of Exempt EAV due to each Exemption Type")+
+#     scale_x_continuous(labels = scales::dollar)
+
+
+
+exemptions_by_class_per_TC %>% 
+  mutate(class_code = as.character(class_code)) %>%
+    left_join(class_dict, by = "class_code") %>%
+  group_by(Alea_cat) %>%
+  summarize(av = sum(av, na.rm = TRUE),
+            eav=sum(eav, na.rm=TRUE),
+            exe_homeowner = sum(exe_homeowner, na.rm=TRUE),
+            exe_senior = sum(exe_senior, na.rm=TRUE),
+            exe_freeze = sum(exe_freeze, na.rm=TRUE),
+            exe_longtime_homeowner = sum(exe_longtime_homeowner, na.rm=TRUE),
+            exe_disabled = sum(exe_disabled, na.rm=TRUE),
+            exe_vet_returning = sum(exe_vet_returning, na.rm=TRUE),
+            exe_vet_dis = sum(exe_vet_dis),
+            exe_abate = sum(exe_abate, na.rm=TRUE),
+            pin_count = n()) %>%
+  pivot_longer(cols = exe_homeowner:exe_abate, names_to = "exemption_type", values_to = "amount") %>%
+  ggplot() +
+  geom_bar(aes(x=amount, y=exemption_type, fill = Alea_cat), stat = "identity") + theme_classic() + 
+    theme(legend.position = "bottom")+
+labs(y="",x="", title = "Amount of Exempt EAV due to each Exemption Type", subtitle = "Alea's categories")+
+  scale_x_continuous(labels = scales::dollar)
+
+
+exemptions_by_class_per_TC %>% 
+  mutate(class_code = as.character(class_code)) %>%
+    left_join(class_dict, by = "class_code") %>%
+  group_by(Alea_cat) %>%
+  summarize(av = sum(av, na.rm = TRUE),
+            eav=sum(eav, na.rm=TRUE),
+            exe_homeowner = sum(exe_homeowner, na.rm=TRUE),
+            exe_senior = sum(exe_senior, na.rm=TRUE),
+            exe_freeze = sum(exe_freeze, na.rm=TRUE),
+            exe_longtime_homeowner = sum(exe_longtime_homeowner, na.rm=TRUE),
+            exe_disabled = sum(exe_disabled, na.rm=TRUE),
+            exe_vet_returning = sum(exe_vet_returning, na.rm=TRUE),
+            exe_vet_dis = sum(exe_vet_dis),
+            exe_abate = sum(exe_abate, na.rm=TRUE),
+            pin_count = n()) %>%
+  pivot_longer(cols = exe_homeowner:exe_abate, names_to = "class_type", values_to = "amount") %>%
+  ggplot() +
+  geom_bar(aes(x=amount, y=Alea_cat, fill = class_type), stat = "identity") + theme_classic() + 
+    theme(legend.position = "bottom")+
+labs(y="",x="", title = "Amount of Exempt EAV due to each Exemption Type", subtitle = "Alea's categories")+
+  scale_x_continuous(labels = scales::dollar)
+
+exemptions_by_class_per_TC %>% 
+  mutate(class_code = as.character(class_code)) %>%
+    left_join(class_dict, by = "class_code") %>%
+  group_by(major_class_type) %>%
+ #   filter(major_class_type == "Residential") %>%
+
+  summarize(av = sum(av, na.rm = TRUE),
+            eav=sum(eav, na.rm=TRUE),
+            exe_homeowner = sum(exe_homeowner, na.rm=TRUE),
+            exe_senior = sum(exe_senior, na.rm=TRUE),
+            exe_freeze = sum(exe_freeze, na.rm=TRUE),
+            exe_longtime_homeowner = sum(exe_longtime_homeowner, na.rm=TRUE),
+            exe_disabled = sum(exe_disabled, na.rm=TRUE),
+            exe_vet_returning = sum(exe_vet_returning, na.rm=TRUE),
+            exe_vet_dis = sum(exe_vet_dis),
+            exe_abate = sum(exe_abate, na.rm=TRUE),
+            pin_count = n()) %>%
+  pivot_longer(cols = exe_homeowner:exe_abate, names_to = "class_type", values_to = "amount") %>%
+  ggplot() +
+  geom_bar(aes(x=amount, y = major_class_type, fill = class_type), stat = "identity") + theme_classic() +
+  labs( y = "", title = "Exempt EAV within each Major Property Class", subtitle = "Major Class Types") +   theme(legend.position = "bottom")+
+  scale_x_continuous(labels = scales::dollar)
+```
+
+
+```{r}
+# use exemptions in tax codes to summarize EAV. 
+# exemption values came from `pin` data table in ptaxsim.
+# More accurate that calculating it from revenue collected.tax rate in tax bill data
+
+exemptions_by_class_per_TC <- read_csv("3_Exemption_Details_output-Cook_Exemps_byClassandTaxcode.csv") %>%
+  mutate(tax_code_num = as.character(tax_code_num),
+         class_code = as.character(class_code)) %>%
+  
+  left_join(class_dict, by = "class_code") %>%
+  left_join(muni_tax_codes, by = c("tax_code_num") ) %>%
+  
+  # drops all Class 0 properties (Railroad property, tax exempt)
+  filter(class_code != "0") %>%
+  
+  left_join(muni_agency_names) %>%
+  left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
+  # merge with TIF distrib table to calculate the percent of the EAV that goes to the TIF vs the district
+  left_join(tif_distrib, by=c("tax_code_num", "year", "tax_code_rate")) %>%
+  
+  mutate(exempt_EAV = (exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+                         exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate) ,
+         in_TIF = ifelse(tax_code_num %in% unique_tif_taxcodes$tax_code_num, 1, 0),
+         tax_base_current = ifelse(in_TIF==1, (eav-exempt_EAV)*(1-tax_code_distribution_pct/100), eav-exempt_EAV),
+         tax_base_noexemps = ifelse(in_TIF==1, (eav)*(1-tax_code_distribution_pct/100), eav),
+         grouped_classes = ifelse(class_1dig %in% c("2"), "Class 2", NA),
+         grouped_classes = ifelse(class_1dig %in% c("3", "9"), "Class 3", grouped_classes),
+         grouped_classes = ifelse(is.na(grouped_classes), "Other Classes", grouped_classes)
+  )
+
+
+
+muni_totals <-  exemptions_by_class_per_TC %>% 
+  group_by(clean_name, agency_name) %>% 
+ #  filter(!is.na(clean_name)) %>%
+  summarize(muni_av = sum(av),
+            muni_eav = sum(eav))
+
+table2 <- exemptions_by_class_per_TC %>% 
+  group_by(clean_name, agency_name, grouped_classes) %>%
+  summarize(av = sum(av),
+            eav = sum(eav)) %>% 
+  ungroup() %>%
+  left_join(muni_totals) %>%
+  filter(!is.na(clean_name))%>%
+  mutate(perc_class2 = ifelse(grouped_classes == "Class 2", eav/muni_eav, 0),
+         perc_class3 = ifelse(grouped_classes == "Class 3", eav/muni_eav, 0),
+         perc_other = ifelse(grouped_classes == "Other Classes", eav/muni_eav, 0)) %>%
+  group_by(clean_name, agency_name) %>%
+  mutate(
+         perc_res = perc_class2 + perc_class3)
+
+
+table2 %>% ungroup() %>% select(-c(agency_name, muni_av, muni_eav))
+```
+
+> Fix  table below later! 
+
+```{r}
+munitotals <- exemptions_by_class_per_TC %>% 
+  mutate(is_chicago = ifelse(clean_name == "Chicago", 1, 0)) %>%
+  filter(tax_code_num %in% muni_tax_codes$tax_code_num)%>%
+  group_by(is_chicago) %>%
+  summarize(av = sum(av, na.rm = TRUE),
+            eav=sum(eav, na.rm=TRUE),
+            total_exempt_eav = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+                         exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
+            homeowners_exemption = sum(exe_homeowner, na.rm=TRUE),
+            senior_exemption = sum(exe_senior, na.rm=TRUE),
+            freeze_exemption = sum(exe_freeze, na.rm=TRUE),
+                        pin_count = n()) %>%
+  pivot_longer(cols = av:pin_count, names_to = "Variables", values_to = "Municipality Totals")
+
+## only unincorporated aareas
+cooktotals<-exemptions_by_class_per_TC %>% 
+  mutate(is_chicago = ifelse(clean_name == "Chicago", 1, 0)) %>%
+  filter(tax_code_num %in% cook_tax_codes$tax_code_num)%>%
+  group_by(is_chicago) %>%
+  summarize(av = sum(av, na.rm = TRUE),
+            eav=sum(eav, na.rm=TRUE),
+            total_exempt_eav = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+                         exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
+            homeowners_exemption = sum(exe_homeowner, na.rm=TRUE),
+            senior_exemption = sum(exe_senior, na.rm=TRUE),
+            freeze_exemption = sum(exe_freeze, na.rm=TRUE),
+                        pin_count = n()) %>%
+  pivot_longer(cols = av:pin_count, names_to = "Variables", values_to = "Cook County Totals") %>%
+  mutate(is_chicago = ifelse(is.na(is_chicago), 0, is_chicago))
+
+unincorporatedareas<-exemptions_by_class_per_TC %>% 
+  mutate(is_chicago = ifelse(clean_name == "Chicago", 1, 0)) %>%
+ filter(!tax_code_num %in% muni_tax_codes$tax_code_num)%>%
+  group_by(is_chicago) %>%
+  summarize(av = sum(av, na.rm = TRUE),
+            eav=sum(eav, na.rm=TRUE),
+            total_exempt_eav = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+                         exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
+            homeowners_exemption = sum(exe_homeowner, na.rm=TRUE),
+            senior_exemption = sum(exe_senior, na.rm=TRUE),
+            freeze_exemption = sum(exe_freeze, na.rm=TRUE),
+                        pin_count = n()) %>%
+  pivot_longer(cols = av:pin_count, names_to = "Variables", values_to = "Unincorporated Totals") %>%
+  mutate(is_chicago = ifelse(is.na(is_chicago), 0, is_chicago))
+
+
+cookandmunitotals <- left_join(cooktotals, munitotals) 
+cookandmunitotals %>% left_join(unincorporatedareas)
+```
+
+There was `r scales::dollar(sum(table2$eav))` EAV in Cook County during 2021 when including all property types.
+
+```{r}
+tif_table <- exemptions_by_class_per_TC %>% 
+  group_by(clean_name, agency_name, in_TIF, grouped_classes) %>%
+  summarize(av = sum(av),
+            eav = sum(eav)) %>% 
+  ungroup() %>%
+  left_join(muni_totals) %>% 
+  pivot_wider(id_cols = c(clean_name, agency_name, muni_av, muni_eav), 
+              names_from = c(in_TIF, grouped_classes), 
+              values_from = eav)
+
+# tif_table %>% 
+#   select(clean_name:muni_eav, `1_Other Classes`, `0_Other Classes`) %>% 
+#   rename(nonres_inTIF = `1_Other Classes`, 
+#          nonres_outsideTIF = `0_Other Classes`) %>%
+#   mutate(pct_nonres_inTIF = round(nonres_inTIF/muni_eav, digit=6),
+#          pct_nonres_outsideTIF = round(nonres_outsideTIF/muni_eav, digit=6),
+#          pct_nonres_inTIF = ifelse(is.na(pct_nonres_inTIF), 0, pct_nonres_inTIF),
+#          pct_nonres_outsideTIF = ifelse(is.na(pct_nonres_outsideTIF), 0, pct_nonres_outsideTIF))
+
+tif_table %>% 
+  select(clean_name:muni_eav, `1_Class 2`, `0_Class 2`) %>% 
+  rename(res_inTIF = `1_Class 2`, 
+         res_outsideTIF = `0_Class 2`) %>%
+  mutate(pct_res_inTIF = round(res_inTIF/muni_eav, digit=6),
+         pct_res_outsideTIF = round(res_outsideTIF/muni_eav, digit=6),
+         pct_res_inTIF = ifelse(is.na(pct_res_inTIF), 0, pct_res_inTIF),
+         pct_res_outsideTIF = ifelse(is.na(pct_res_outsideTIF), 0, pct_res_outsideTIF)) %>% select(-agency_name) %>% filter(clean_name %in% c("Park Forest", "Dolton","Hillside", "Riverside","Chicago", "Westchester", "Markham", "Winnetka", "Rosemont"))
+
+```
+
+Muni EAV represents all EAV in the municipality and includes TIF increments and tax exempt property. It is the summed eav of all pins from the `pin` PTAXSIM data table.
+
+
+Out of all of Chicago's EAV, 9.9% of its EAV is residential properties inside of TIFs. 42.8% of Chicago's total EAV comes from Residential properties outside of TIFs.
+
+Winnetka has all of its residential EAV outside of a TIF and nearly all of their EAV is from residential properties. 
+
+```{r}
+pivottable <- table2 %>% 
+  pivot_wider(id_cols = c(clean_name, agency_name, muni_av, muni_eav), 
+              names_from = grouped_classes, values_from = eav) %>%   
+  mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) )
+
+pivottable %>% select(-agency_name)
+
+pivot_table <- pivottable %>%   
+  mutate(perc_class2 = `Class 2`/muni_eav,
+         perc_class3 = `Class 3`/muni_eav,
+         perc_other = `Other Classes`/muni_eav,
+
+         perc_nonres = (perc_class3 + perc_other),
+         perc_residential = perc_class2) %>% 
+  mutate_all( ~coalesce(.,0))
+
+#pivot_table %>% ungroup() %>% select(-agency_name) %>% arrange(desc(perc_residential)) %>% select(clean_name, perc_residential, everything())
+
+pivot_table %>% ungroup()  %>% select(-agency_name) %>% select(clean_name, perc_class2, perc_class3, perc_residential, everything())%>% arrange(desc(perc_class2))
+
+#pivot_table %>% ungroup()  %>% select(-agency_name)%>% arrange(desc(perc_class3)) %>% select(clean_name, perc_class3, everything())
+
+#write_csv(pivot_table, "3_exemption_details_output-residential_percent_August14.csv")
+
+pivot_table %>% filter(clean_name %in% c("Park Forest","Markham",  "Dolton", "Hillside", "Riverside", "Chicago", "Westchester", "Winnetka", "Rosemont")) %>% ungroup() %>% select(-agency_name) %>% select(clean_name, `Class 2`:perc_residential, muni_eav, muni_av)
+```
+
+```{r}
+# sum of all Class 2 property EAV
+class2_EAV <- table2 %>% ungroup() %>% filter(grouped_classes == "Class 2") %>% summarize(residential_eav = sum(eav))
+
+```
+
+There is `r scales::dollar(as.numeric(class2_EAV))` in Class 2 Residential EAV in Cook County
+
+> File `3_exemption_details_output-residential_percent.csv` has the percent of EAV before exemptions but does NOT alter EAV that is in TIFs. TIFs are essentially ignored in this file. This amount of Taxable Residential EAV vs Residential EAV is quite different for some municipalities.
+
+
+```{r echo=FALSE}
+
+Cook_layer <- ggplot(data = cook_shp, aes(geometry = geometry)) + 
+  geom_sf_pattern() + theme_void()
+
+
+pivot_table %>%
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>% 
+
+  ggplot(aes(fill = perc_class2)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  labs(title = "Class 2 Properties EAV / Muni EAV", 
+  caption = "67.6 % of EAV is from Class 2 Properties in the median municipality") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
+  scale_fill_steps2(
+     high =   "#2EEA8C", low = "#20223E", mid = "#F9ECE8",
+
+ #   high = "darkgreen", low = "red",
+    midpoint = median(pivot_table$perc_class2, na.rm = TRUE),
+
+   nice.breaks = FALSE,
+  #  show.limits=TRUE,
+  na.value = "white",
+    name = "% Class 2",
+    labels = scales::percent
+  )
+
+pivot_table %>%
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>% 
+  ggplot(aes(fill = (perc_other))) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+    labs(title = "Non-residential Property EAV /  Total EAV in Municipality", 
+  caption = "Nonresidential includes all proeprty classes besides 2 & 3. 
+  33.7% of EAV is from classes besides 2 & 3 in the median municipality.") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+  scale_fill_steps2(
+  #  high =  "#E88C23", low = "#426737", mid ="#FAF3CE",
+ low =   "#2EEA8C", high = "#20223E", mid = "#F9ECE8",
+   midpoint = median(pivot_table$perc_other, na.rm = TRUE),
+    nice.breaks = FALSE,
+    show.limits=TRUE,
+  na.value = NA,
+    name = "% Non-Class 2 or 3",
+    labels = scales::percent
+  )
+
+
+
+pivot_table %>%
+    filter(clean_name != "University Park") %>%
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>% 
+  ggplot(aes(fill = perc_class3)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  labs(title = "Class 3 Properties EAV / Muni EAV", 
+  caption = "1.9% of EAV is from Class 3 properties in the median municipality. 
+  Municipalities have a wide range of Class 3 percent makeup.") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
+  scale_fill_steps2(
+    #high = "darkblue", low = "orange",
+     high =   "#2EEA8C", low = "#20223E",   mid = "#F9ECE8",
+    midpoint = 
+      median(pivot_table$perc_class3, na.rm = TRUE),
+   #nice.breaks = FALSE,
+   # show.limits=TRUE,
+  na.value =  NA,
+    name = "% Class 3",
+    labels = scales::percent
+  )
+```
+
+On average, Municipalities have `r scales::percent(mean(pivot_table$perc_class3, na.rm=TRUE))` of their EAV from Class 3 Multi-Family Properties.
+
+On average, Municipalities have `r scales::percent(mean(pivot_table$perc_class2, na.rm=TRUE))` of their EAV from Class 2 Residential properties. This property class includes single-family homes, condos, and residential apartments.
+
+Now examine the taxable base for each Muni. The Taxable Base is the EAV that is taxable for the municipality and has TIF increments and exemptions subtracted from the original residential EAV.
+
+```{r}
+
+grouped_exemptions <- exemptions_by_class_per_TC %>% 
+   # group_by(agency_name, major_class_code, major_class_type, ResidentialProps, PropType) %>%
+  group_by(clean_name, grouped_classes, agency_name) %>%
+  summarize(eav = sum(eav),
+           exempt_EAV = sum(exempt_EAV, exe_abate, na.rm=TRUE),
+         tax_base_current = sum(tax_base_current, na.rm=TRUE),
+         tax_base_noexemps = sum(tax_base_noexemps, na.rm=TRUE)) %>% ungroup()
+  
+
+# calculate totals with ONLY EAV outside of TIFs
+muni_eav <- grouped_exemptions %>%  
+  group_by(clean_name, agency_name) %>% 
+  summarize(muni_EAV_includesTIF = sum(eav), # all EAV in the municipality that exists
+            muni_tax_base_current=sum(tax_base_current), # taxable EAV based on current exemptions
+            muni_tax_base_noexemps = sum(tax_base_noexemps)) %>%  # taxable EAV pre-exemptions
+  ungroup() 
+
+pct_property_types <- left_join(grouped_exemptions, muni_eav) %>% 
+  #filter(ResidentialProps == "Residential") %>% 
+  mutate(pct_PropType = eav / muni_EAV_includesTIF)# %>% select()
+
+pct_property_types %>% ungroup() %>% select(-agency_name) %>% select(Municipality = clean_name, PropertyClass = grouped_classes, pct_PropType, everything())
+
+pct_property_types %>% ungroup() %>% select(-agency_name)  %>% filter(clean_name %in% c("Park Forest", "Dolton","Hillside", "Riverside","Chicago", "Westchester", "Markham", "Winnetka", "Rosemont"))
+
+```
+```{r eval=FALSE,include=FALSE}
+grouped_exemptions2 <- exemptions_by_class_per_TC %>% 
+   # group_by(agency_name, major_class_code, major_class_type, ResidentialProps, PropType) %>%
+  group_by(clean_name, grouped_classes, major_class_code, agency_name) %>%
+  summarize(eav = sum(eav),
+           exempt_EAV = sum(exempt_EAV, exe_abate, na.rm=TRUE),
+         tax_base_current = sum(tax_base_current, na.rm=TRUE),
+         tax_base_noexemps = sum(tax_base_noexemps, na.rm=TRUE)) %>% ungroup()
+  
+
+# calculate totals with ONLY EAV outside of TIFs
+muni_eav <- grouped_exemptions %>%  
+  group_by(clean_name, agency_name) %>% 
+  summarize(muni_EAV_includesTIF = sum(eav), # all EAV in the municipality that exists
+            muni_tax_base_current=sum(tax_base_current), # taxable EAV based on current exemptions
+            muni_tax_base_noexemps = sum(tax_base_noexemps)) %>%  # taxable EAV pre-exemptions
+  ungroup() 
+
+pct_property_types2 <- left_join(grouped_exemptions, muni_eav) %>% 
+  #filter(ResidentialProps == "Residential") %>% 
+  mutate(pct_PropType = eav / muni_EAV_includesTIF)
+pct_property_types2
+```
+
+Percent Residential is the Residential EAV (Class 2 properties) outside of TIFs / Municipality EAV outside of TIFs.
+
+```{r}
+grouped_exemptions <- exemptions_by_class_per_TC %>% 
+   group_by(clean_name, major_class_code, major_class_type, agency_name) %>%
+  #group_by(clean_name, ResidentialProps, agency_name, agency_num.x) %>%
+  summarize(eav = sum(eav),
+           exempt_EAV = sum(exempt_EAV, exe_abate, na.rm=TRUE),
+         tax_base_current = sum(tax_base_current, na.rm=TRUE),
+         tax_base_noexemps = sum(tax_base_noexemps, na.rm=TRUE)) %>% 
+  ungroup() %>% 
+  select(clean_name, eav, exempt_EAV, everything())
+  
+
+# calculate totals with ONLY EAV outside of TIFs
+muni_eav <- grouped_exemptions %>%  
+  group_by(clean_name, agency_name) %>%
+  summarize(muni_EAV_includesTIF = sum(eav), # all EAV in the municipality that exists
+            muni_tax_base_current=sum(tax_base_current), # taxable EAV based on current exemptions
+            muni_tax_base_noexemps = sum(tax_base_noexemps)) %>%  # taxable EAV pre-exemptions
+  ungroup() 
+
+
+
+## Percent Residential is the same as percent that is Class == 2. 
+## Percent residential does not include Multi-family property class 3 or 9.
+perc_residential <- left_join(grouped_exemptions, muni_eav) %>% 
+  filter(major_class_code == "2") %>% 
+  mutate(percent_residential = eav / muni_EAV_includesTIF)# %>% select()
+# 119 municipalities remain. Some munis do not have residential eav and are dropped.
+
+# in this stage, Bensenville, East Dundee, and Homer Glen were dropped. This is fine because I was going to drop them later anyways. They don't have residential EAV within Cook County.
+
+perc_residential %>% arrange(desc(percent_residential)) %>% 
+  select(-c(major_class_code, major_class_type, agency_name)) %>%  # drop these and reorder
+  select(clean_name, percent_residential, everything())
+
+
+perc_residential %>% 
+ # group_by(ResidentialProps)%>%
+    mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+  ggplot(aes(fill = percent_residential)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  labs(title = "Residential EAV /  Total EAV", 
+  caption = "Residential Property includes 200 level property classes.
+       The median municipality has 67% of its EAV from Class 2 Properties.") +
+    theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
+    scale_fill_steps2(
+    high = "darkblue", low = "black", 
+    mid = "beige", #  guide = "legend",
+      midpoint = median(perc_residential$percent_residential),
+           na.value = NA,   
+                       n.breaks = 6,
+  show.limits=TRUE,
+                        name = "% Residential",
+  labels = scales::percent)
+```
+
+# Taxable Base & Land Use
+
+```{r}
+TC_bills_current <- read_csv("2_Summed_Bills_by_Taxcode_and_Class.csv") %>% 
+  filter(class != "0") %>% 
+  mutate(tax_code = as.character(tax_code),
+         class = as.character(class))
+
+class_dict$class_code <- as.character(class_dict$class_code)
+ 
+
+taxcodes_current <- full_join(TC_bills_current, muni_tax_codes, 
+                      by = c("tax_code" = "tax_code_num"))   %>% filter(!agency_num %in% cross_county_lines)
+
+
+
+taxcodes_current %>% 
+  left_join(muni_agency_names) %>%
+  left_join(nicknames, by = c("agency_name" = "agency_name")) %>% 
+  filter(clean_name %in% c("Park Forest","Markham",  "Dolton", "Hillside", "Riverside", "Chicago", "Westchester", "Winnetka")) %>% ungroup() %>% select(-c(agency_name, Column1, `Most recent reassessed`, shpfile_name, short_name,agency_number,))
+```
+```{r muniswithclass8, include = FALSE, eval=FALSE}
+
+taxcodes_current %>% 
+  left_join(muni_agency_names) %>%
+  left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
+  #filter(!agency_num %in% cross_county_lines) %>%
+  group_by(clean_name, agency_name) %>% filter(class >= 800 &  class <= 900) %>% 
+  group_by(clean_name) %>% distinct(clean_name)
+```
+
+## Composite Tax Rates
+
+```{r}
+Current_Taxrates <- taxcodes_current %>% 
+  filter(!agency_num %in% cross_county_lines) %>%
+  left_join(muni_agency_names) %>%
+  left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
+  #filter(!agency_num %in% cross_county_lines) %>%
+  group_by(clean_name, agency_name) %>%
+  summarize(MuniLevy = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by munis with current exemptions in place
+            nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
+            TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),  
+            Exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE), 
+            Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE)) %>%
+
+  mutate(tax_rate_current = MuniLevy/nonTIF_EAV_post_exemps,
+         nonTIF_EAV_pre_exemps = nonTIF_EAV_post_exemps + Exempt_EAV,
+         taxrate_new = MuniLevy/nonTIF_EAV_pre_exemps,
+         taxrate_change = tax_rate_current-taxrate_new) %>% 
+  select(clean_name, taxrate_change, tax_rate_current, taxrate_new, everything()) %>% 
+  arrange(desc(tax_rate_current))
+
+Current_Taxrates %>%  filter(clean_name %in% c("Park Forest","Markham",  "Dolton", "Hillside", "Riverside", "Chicago", "Westchester", "Winnetka", "Rosemont")) %>% select(-agency_name)
+
+
+land_use <- taxcodes_current %>% 
+  left_join(muni_agency_names) %>% 
+  left_join(Current_Taxrates) %>%
+  left_join(class_dict, by = c("class" = "class_code")) %>%
+  
+#  mutate(class_1dig = str_sub(class, 1, 1),
+#    ResidentialProps = ifelse(class_1dig %in% c("2", "3", "9"), "Residential", "Non-Residential")) %>%
+  #        PropType = case_when(
+  #          major_class_code %in% c("3","9") ~ "Multi-Family",
+  #          major_class_code == "2" ~ "Single-Family",
+  #          TRUE ~ "Commercial-Industrial")) %>%
+  group_by(clean_name, major_class_code, agency_num, tax_rate_current, taxrate_new, taxrate_change, agency_name) %>% 
+  
+  # All of the values calculated below are AFTER exemptions have been removed
+  summarize(taxrev_from_proptype = sum(final_tax_to_dist, na.rm = TRUE),
+            nonTIF_EAV = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
+            TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),
+            Exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE),
+            Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE) ) %>% ungroup()
+
+land_use %>% filter(clean_name %in% c( "Dolton", "Chicago", "Winnetka")) %>% select(-agency_name)
+
+
+```
+
+
+```{r Figure-AWM1}
+# made in Excel originally
+
+Current_Taxrates %>%  filter(clean_name %in% c("Park Forest","Dolton", "Hillside", "Riverside", "Chicago", "Winnetka", "Rosemont")) %>% select(clean_name, tax_rate_current, taxrate_new) %>% pivot_longer(cols = c(tax_rate_current,taxrate_new), names_to = "names", values_to = "values")  %>%
+  ggplot(aes(x = clean_name, y = values, fill = names)) +
+  geom_col(position = "dodge" ) + theme_classic() + labs(x="", y = "Composite Tax Rate")
+
+
+Current_Taxrates %>%  filter(clean_name %in% c("Markham", "Chicago", "Westchester", "Winnetka")) %>% select(clean_name, tax_rate_current, taxrate_new) %>% pivot_longer(cols = c(tax_rate_current,taxrate_new), names_to = "names", values_to = "values")  %>%
+  ggplot(aes(x = clean_name, y = values, fill = names)) +
+  geom_col(position = "dodge" ) + theme_classic() + labs(x="", y = "Composite Tax Rate")
+
+```
+
+```{r results='hold', out.width= "50%", echo=FALSE}
+# 
+# burden_shift %>% 
+#   filter(major_class_code == 2) %>%
+#   summarize(median_currentburden = median(burden_current),
+#             median_new_burden = median(burden_noexemps),
+#             median_burdenchange = median(burden_change),
+#             median_currenttaxrate = median(tax_rate_current),
+#             median_taxratechange = median(taxrate_change),
+#             median_taxratenew = median(taxrate_new)) %>% 
+#   pivot_longer(cols = everything(), names_to = "Variable", values_to = "Median Value")
+
+
+Current_Taxrates %>% 
+    mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) 
+    ) %>%
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+  
+  ggplot(aes(fill = tax_rate_current)) +
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+  scale_fill_steps2(#colors = colors,
+    high = "plum4", low = "#008080",# mid = "lavenderblush2",
+    midpoint = median(Current_Taxrates$tax_rate_current), #  midpoint = 0.123,
+    #breaks = breaks_sd,
+    limits = c(0,.45),
+    show.limits=TRUE,
+    na.value = NA,
+    nice.breaks=FALSE,
+    n =6,
+    name = "Tax Rate",
+    label = scales::percent )+
+  
+  labs(title = "Current composite tax rates" ,    
+       caption = "The current median composite tax rate is 12.1%. 
+         Highest composite tax rate is in Park Forest (41.4%.)
+       Lowest composite tax rate is in Chicago (6.7%).")
+
+Current_Taxrates %>% 
+      mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) 
+    ) %>%
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+  ggplot(aes(fill = taxrate_new)) + 
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+  scale_fill_steps2(
+    high = "plum4", low = "#008080",
+    limits = c(0,.45),
+    midpoint = median(Current_Taxrates$taxrate_new),  # midpoint = .1052,
+    nice.breaks=FALSE,
+    show.limits=TRUE,
+    na.value=NA,
+    n=6,
+    name = "Tax Rate", label = scales::percent)+
+  geom_sf(aes(geometry = geometry), color = "black") +  
+  labs(title = "New composite tax rates if exemptions were eliminated" ,    
+       caption = "The new median composite tax rate would be approximately 10.5% 
+       if exemptions were removed.")
+```
+
+```{r Figure-AWM2, echo=FALSE}
+Current_Taxrates %>% 
+  mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
+  # filter(clean_name != "Park Forest") %>%
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+  ggplot(aes(fill = taxrate_change)) + 
+  geom_sf(aes(geometry = geometry), color = "black") +  
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+  
+  scale_fill_steps2(high = "blue", low = "black",
+    n=6, #midpoint = 0.01388, 
+    show.limits=TRUE,
+    nice.breaks=FALSE,
+    na.value = NA,
+    labels = scales::percent,
+    name = "Percentage Point \nDifference")+
+  labs(title = "Change in Composite Tax Rate if Exemptions are Removed",
+       caption = "The median change in composite tax rate is 1.43 percentage points")
+```
+
+## Percent of Residential EAV that is tax exempt
+
+For this document, residential EAV includes Class 2 properties only. Residential property can be in and outside of a TIF. Any EAV greater than the frozen EAV within a TIF becomes TIF revenue when it is taxed.  We try to only include the frozen EAV and non-TIF EAV in our residential calculations. 
+
+```{r}
+exemptions_to_class2EAV_ratios <- perc_residential %>% 
+  mutate(exemptEAV_pctof_resEAV = exempt_EAV/eav,
+         exemptEAV_pctof_totalEAV = exempt_EAV / muni_EAV_includesTIF,
+         exemptEAV_pctof_taxbase_current = exempt_EAV / tax_base_current,
+         exemptEAV_pctof_taxbase_noexemps = exempt_EAV / tax_base_noexemps,
+         nontif_ratio = exempt_EAV / tax_base_noexemps) %>% 
+  select(agency_name, clean_name, exemptEAV_pctof_resEAV, nontif_ratio, everything()) %>% 
+  arrange(nontif_ratio)
+
+exemptions_to_class2EAV_ratios %>%
+    mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
+ full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+  ggplot(aes(fill = exemptEAV_pctof_resEAV)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + theme_void()+ 
+  labs(title = "Exemptions / Residential EAV (in and out of TIFs)") +
+    theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+   scale_fill_steps2(high = "darkblue", low = "black",  mid = "beige",
+                      # limits = c(0,.8),
+                       n.breaks = 7, show.limits=TRUE,
+                       na.value = NA,
+                    nice.breaks = FALSE,
+                    midpoint = median(exemptions_to_class2EAV_ratios$exemptEAV_pctof_resEAV),
+                        name = "% Residential EAV \nthat is exempt", label = scales::percent)
+```
+
+```{r, fig.show='hold', out.width="50%"}
+exemptions_to_class2EAV_ratios %>%
+  mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+  ggplot(aes(fill = nontif_ratio)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + theme_void()+ 
+  labs(title = "Non-TIF EAV only: Homestead Exemptions / Residential EAV", caption = "Village of Phoenix skews graph. Dropped in map below") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+  scale_fill_steps2(high = "darkblue", low = "black", mid="beige",
+                    #colors = c("white", "darkblue"), 
+                    # limits = c(0),
+                    midpoint = median(exemptions_to_class2EAV_ratios$nontif_ratio),
+                    n.breaks = 5, 
+                    na.value = NA,
+                    show.limits=TRUE,
+                    name = "% Residential EAV \nthat is exempt", label = scales::percent) + 
+  labs( caption = "Median value is 20.0% ")
+
+
+exemptions_to_class2EAV_ratios %>%
+  mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+  ggplot(aes(fill = nontif_ratio)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + theme_void()+ 
+  labs(title = "Non-TIF EAV only: Homestead Exemptions / Residential EAV", caption = "Village of Phoenix skews graph. Dropped in map below") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+  scale_fill_steps2(high = "darkblue", low = "black",mid ="beige",
+                    #colors = c("white", "darkblue"), 
+                    # limits = c(0),
+                    midpoint = median(exemptions_to_class2EAV_ratios$nontif_ratio),
+                    n.breaks = 7, 
+                    na.value = NA,
+                    show.limits=TRUE,
+                    name = "% Residential EAV \nthat is exempt", label = scales::percent) + 
+  labs( caption = "Median value is 20.0% ")
+```
+
+```{r , fig.show='hold', out.width="50%"}
+exemptions_to_class2EAV_ratios %>%  filter(nontif_ratio<.6) %>%
+    mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+  ggplot(aes(fill = nontif_ratio)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + theme_void()+ 
+  labs(title = "Percent of Residential EAV that is Tax Exempt", 
+       subtitle = "% of Non-TIF Residential EAV only: \nHomestead Exemptions / Residential EAV", 
+       caption = "") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+  scale_fill_steps2(high = "darkblue", low = "black",mid ="beige",
+                    #  colors = c("white", "darkblue"), 
+                    limits = c(0,.4),
+                    na.value = NA,
+                    midpoint = median(exemptions_to_class2EAV_ratios$nontif_ratio),
+                    n.breaks = 5, show.limits=TRUE,
+                    name = "% Residential EAV \nthat is tax exempt", label = scales::percent)
+
+
+exemptions_to_class2EAV_ratios %>%  filter(nontif_ratio<.6) %>%
+  mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+  ggplot(aes(fill = nontif_ratio)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + theme_void()+ 
+  labs(title = "Percent of Residential EAV that is Tax Exempt", 
+       subtitle = "% of Non-TIF Residential EAV only: \nHomestead Exemptions / Residential EAV", 
+       caption = "") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+  scale_fill_steps2(high = "darkblue", low = "black",mid ="beige",
+                    #  colors = c("white", "darkblue"), 
+                    limits = c(0,.4),
+                    na.value = NA,
+                    midpoint = median(exemptions_to_class2EAV_ratios$nontif_ratio),
+                    n.breaks = 7, show.limits=TRUE,
+                    name = "% Residential EAV \nthat is tax exempt", label = scales::percent)
+```
+
+Drops Village of Phoenix because it skews map colors (78% of their residential EAV is tax exempt). Median municipality can not get tax revenue from 1/5th of their residential EAV due to exemptions. 20.85% of Single-family home EAV is not taxed and transferred to other tax payers.
+
+In Cook County there is `r scales::dollar(sum(perc_residential$tax_base_current))` in Class 2 Residential Property EAV.
+
+There is `r scales::dollar(sum(perc_residential$tax_base_noexemps))` in Class 2 Residential Property EAV before all exemptions.
+
+The Total EAV for Cook County `r scales::dollar(sum(perc_residential$muni_EAV_includesTIF))`. Total EAV includes TIF increment and exempt EAV.
+
+The current taxable EAV for Cook County `r scales::dollar(sum(perc_residential$muni_tax_base_current))`.
+
+The hypothetical taxable EAV for Cook County `r scales::dollar(sum(perc_residential$muni_tax_base_noexemps))`.
+
+
+# Burden Shift
+
+```{r}
+burden_table <- pct_property_types %>%
+  filter(!is.na(clean_name)) %>%
+  left_join(Current_Taxrates, by = c("agency_name", "clean_name")) %>%
+  mutate(rev_collected_current = tax_base_current * tax_rate_current,
+         rev_collected_new = tax_base_noexemps*taxrate_new,
+         burden_current = rev_collected_current/MuniLevy,
+         burden_noexemps = rev_collected_new/MuniLevy,
+         burden_change = burden_noexemps- burden_current,
+         burden_noexemps = ifelse(burden_noexemps >1, 1, burden_noexemps)) %>%
+  mutate(burden_current = ifelse(is.na(burden_current), 0, burden_current),
+         burden_noexemps = ifelse(is.na(burden_noexemps), 0, burden_noexemps)) %>%
+  mutate(burden_noexemps = ifelse(burden_noexemps>1, 1, burden_noexemps),
+         burden_current = ifelse(burden_current>1, 1, burden_current)) %>%
+  mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) )
+
+
+burden_shift <- burden_table # only to not change code below in graphs.
+
+
+burden_table %>% 
+  arrange(desc(burden_change)) %>% 
+  select(clean_name, burden_change, everything()) %>%
+  mutate(burden_change = round(burden_change*100, digits = 2)) %>%
+  select(-agency_name)
+
+# Current Burden:
+
+munis_3property_types <- burden_shift %>%
+    filter(!agency_name %in% cross_county_lines) %>%
+# mutate(
+     #       burden_noexemps = ifelse(is.na(burden_noexemps), 0, burden_noexemps)) %>%
+  #    mutate(burden_current = ifelse(burden_current>1, 1, burden_current)) %>%
+  ungroup() %>% 
+  group_by(agency_name, clean_name, grouped_classes) %>%
+  summarize(#final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE),
+            burden_current = sum(burden_current, na.rm = TRUE),
+            burden_noexemps = sum(burden_noexemps, na.rm = TRUE),
+            burden_change = sum(burden_change, na.rm = TRUE)) 
+
+#write.csv(munis_3property_types, "1_usemetable.csv")
+
+proptypes3_current <- munis_3property_types %>% 
+    mutate(burden_current = ifelse(is.na(burden_current), 0, burden_current)) %>%
+
+  pivot_wider( id_cols = clean_name , names_from = "grouped_classes", values_from = "burden_current", names_prefix="Current - ", values_fill = 0 ) %>% 
+  select(clean_name, `Current - Class 2`, everything()) %>%
+  arrange(-`Current - Class 2`)
+
+proptypes3_current[2:4] <- sapply(proptypes3_current[2:4], function(x) scales::percent(x, accuracy=.01) )
+                                   
+#proptypes3_current
+
+
+# __Tax Burden if there were no exemptions:__
+
+proptypes3_noexemps <- munis_3property_types %>% 
+  mutate(burden_noexemps = ifelse(is.na(burden_noexemps), 0, burden_noexemps)) %>%
+  pivot_wider( id_cols = clean_name , names_from = "grouped_classes", values_from = "burden_noexemps", 
+               names_prefix = "W/O Exemptions - ", values_fill = 0)  
+proptypes3_noexemps[2:4] <- sapply(proptypes3_noexemps[2:4], function(x) scales::percent(x, accuracy=.01))
+#proptypes3_noexemps
+
+burden_3groups_currentandhypothetial<- left_join(proptypes3_current, proptypes3_noexemps)
+burden_3groups_currentandhypothetial
+
+props_wide <- munis_3property_types %>%
+  pivot_wider(id_cols = clean_name , 
+               names_from = "grouped_classes", 
+               values_from = "burden_change", values_fill = 0) %>% 
+  select(clean_name, `Class 2`, everything()) %>%
+  arrange(desc(`Class 2`) )
+
+props_wide[2:4] <- sapply(props_wide[2:4], function(x) scales::percent(x, accuracy=.01))
+props_wide
+```
+
+
+
+```{r Figure-AWM-directindirect}
+props_wide %>%  filter(clean_name %in% c("Markham", "Chicago", "Westchester", "Winnetka"))
+burden_table  %>%  filter(clean_name %in% c("Markham", "Chicago", "Westchester", "Winnetka"))%>% select(clean_name, burden_current:burden_change) %>% pivot_longer(cols = c(burden_current, burden_noexemps), names_to = "names", values_to = "values")  %>%
+  ggplot(aes(x = clean_name, y = values, fill = names)) +
+  geom_col(position = "dodge" ) + theme_classic() + labs(x="", y="Share of Levy Paid by Class 2", title = "Current and Hypothetial Tax Burden")
+```
+
+```{r Figure-AWM3-taxburden-dotgraph}
+# as a dot graph ## 
+
+cross_county_lines <- c("030440000",
+"030585000", "030890000", "030320000", "031280000","030080000", "030560000", "031120000", "030280000", "030340000","030150000","030050000", "030180000","030500000","031210000")
+
+cross_county_lines <- muni_agency_names %>% filter(agency_num %in%cross_county_lines) %>% left_join(nicknames, by = "agency_name")
+
+order <- burden_shift %>% 
+  ungroup %>% as_tibble() %>%
+  #  filter(ResidentialProps == "Residential") %>%
+  filter(grouped_classes == "Class 2") %>%
+  select(agency_name, clean_name, burden_current, burden_change)
+
+
+
+# burder_shift_ordered <-  burden_shift %>% 
+#   ungroup() %>% 
+#   select(agency_name, current_burden, no_exemptions_burden) %>%    
+#   pivot_longer(c("current_burden", "no_exemptions_burden"), 
+#                names_to = "type", values_to = "pct_burden") %>% 
+#   left_join(order)
+
+# look at ones that changed the most
+
+
+# median burden c hange is 0.45
+# current median burden is 65.5% of the levy
+
+burden_shift %>% 
+  filter(!clean_name %in% cross_county_lines$clean_name)%>%
+  filter(grouped_classes == "Class 2") %>%
+  filter(burden_current > 0.938 |burden_current < .17 |
+           ( (burden_current < median(burden_current) + 0.01 )& (burden_current > median(burden_current) - 0.01)) )%>% 
+  ungroup() %>% 
+  select(agency_name, clean_name, burden_current, burden_noexemps,  burden_change) %>% 
+  arrange(burden_change) %>%
+  mutate( 
+    burden_noexemps = ifelse(burden_noexemps > 1, 1, burden_noexemps)) %>%
+  pivot_longer(c("burden_current", "burden_noexemps"), 
+               names_to = "type", values_to = "pct_burden") %>% 
+  inner_join(order) %>%
+  ggplot(aes(x = pct_burden*100, 
+             y= reorder(clean_name, -burden_current)))+
+  # y= reorder(clean_name, burden_current)))+
+  geom_vline(xintercept = 65.5, linetype = 3)+
+  geom_line(aes(group = clean_name))+ 
+  geom_hline(yintercept = 5.5, linetype = 2)+
+  geom_hline(yintercept = 13.5, linetype = 2)+
+  geom_point(aes(color=type), size=3 )+
+
+  theme_minimal() + 
+  theme(#legend.position = "none", 
+    legend.title = element_blank(),
+    plot.title.position = "plot",
+    #   panel.background = element_rect(fill='transparent'), #transparent panel bg
+    plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
+  )+
+  scale_color_brewer(palette="Paired", labels = c("Current Burden", "Burden if \nNo Exemptions" ), direction = 1)+
+
+  
+  labs(title = "Change in Class 2 Residential Tax Burden", 
+       subtitle = "Ordered by Current Tax Burden",
+  x = "Share of Levy (%)", y = "" , 
+  caption = "Dotted line represents median Class 2 burden (65.5% of the levy). Residential Tax Burden is the 
+  share of the property tax collected that was paid for by property owners with Class 2 properties.") +
+    geom_label(label = "Class 2 pays small share of \nlevy; very little residential", x=32, y = 16, label.size = 1, size = 3)+
+    geom_label(label = "Class 2 pays median share of \nlevy (65%), mix of land use", x=42, y = 9.5, label.size = 1, size = 3) +
+    geom_label(label = "Class 2 pays nearly all of levy, \nhighly residential", x=70, y = 3, label.size = 1,size = 3)
+```
+
+
+# Hypothetical Median Tax Bill without Exemptions
+
+```{r}
+bill_change_3groups <- read_csv( "4_Taxbill_Hypotheticals-taxbill_change_20230814.csv")
+
+bill_change_3groups %>% select(Municipality = clean_name, bill_change, everything()) 
+
+
+tax_bill_change <- read_csv("4_Taxbill_Hypotheticals-taxbill_change_foreachPropClass_perMuni.csv")
+
+```
+
+
+## Composite Tax Rates
+
+```{r}
+Current_Taxrates %>% 
+  mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
+  # filter(clean_name != "Park Forest") %>%
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+  ggplot(aes(fill = taxrate_change*100)) + 
+  geom_sf(aes(geometry = geometry), color = "black") +  
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+  
+  scale_fill_steps2(high = "darkblue", low = "black", mid = "lightblue",
+                    n=7, 
+                    midpoint = median(Current_Taxrates$taxrate_change*100),
+                 #   midpoint = 0.01388, 
+                 guide = "legend",
+                    show.limits=TRUE,
+                    nice.breaks=TRUE,
+                    na.value = NA,
+                   # labels = scales::percent,
+                    name = "Percentage Point \nDifference")+
+  labs(title = "Change in Composite Tax Rate if all Exemptions are Eliminated")
+
+ggsave("AWM_compositetaxrate_change.png", limitsize = FALSE, width = 8, height = 4, units = "in")
+```
+
+```{r include = FALSE}
+# # all of unincorporated cook totals: includes all land in cook county
+# taxcodes_current %>% 
+#   left_join(muni_agency_names, by = "agency_num") %>%
+#   left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
+#   #filter(!agency_num %in% cross_county_lines) %>%
+#  # group_by(clean_name, agency_name) %>%
+#   summarize(MuniLevy = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by munis with current exemptions in place
+#             nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
+#             TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),  
+#             Exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE), 
+#             Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE)) %>%
+# 
+#   mutate(tax_rate_current = MuniLevy/nonTIF_EAV_post_exemps,
+#          nonTIF_EAV_pre_exemps = nonTIF_EAV_post_exemps + Exempt_EAV,
+#          taxrate_new = MuniLevy/nonTIF_EAV_pre_exemps,
+#          taxrate_change = tax_rate_current-taxrate_new) %>% 
+#  # select(clean_name, taxrate_change, tax_rate_current, taxrate_new, everything()) %>% 
+#   arrange(desc(tax_rate_current)) %>%
+#   pivot_longer(cols = MuniLevy:taxrate_change) %>%
+#   mutate(value = round(value, digits = 0))
+
+
+# all of incorporated cook totals; Munis only
+taxcodes_current %>% 
+  left_join(muni_agency_names, by = "agency_num") %>%
+  left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
+  filter(!agency_num %in% cross_county_lines) %>%
+ # group_by(clean_name, agency_name) %>%
+  summarize(MuniLevy = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by munis with current exemptions in place
+            nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
+            TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),  
+            Exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE), 
+            Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE)) %>%
+
+  mutate(tax_rate_current = round(MuniLevy/nonTIF_EAV_post_exemps,2),
+         nonTIF_EAV_pre_exemps = round(nonTIF_EAV_post_exemps + Exempt_EAV),
+         taxrate_new = round(MuniLevy/nonTIF_EAV_pre_exemps,2),
+         taxrate_change = round(tax_rate_current-taxrate_new, 2) )%>% 
+ # select(clean_name, taxrate_change, tax_rate_current, taxrate_new, everything()) %>% 
+  arrange(desc(tax_rate_current)) %>%
+  pivot_longer(cols = MuniLevy:taxrate_change) %>%
+  mutate(value = value)
+```
+
+
+```{r }
+Current_Taxrates_perTC <- taxcodes_current %>% 
+  left_join(muni_agency_names, by = "agency_num") %>%
+  left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
+  filter(!agency_num %in% cross_county_lines) %>%
+  group_by(clean_name, agency_name, tax_code, pins_in_class) %>%
+  
+  summarize(MuniLevy = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by munis with current exemptions in place
+            nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
+            TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),  
+            Exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE), 
+            Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE)) %>%
+
+  mutate(tax_rate_current = MuniLevy/nonTIF_EAV_post_exemps,
+         nonTIF_EAV_pre_exemps = nonTIF_EAV_post_exemps + Exempt_EAV,
+         taxrate_new = MuniLevy/nonTIF_EAV_pre_exemps,
+         taxrate_change = tax_rate_current-taxrate_new) %>% 
+ select(clean_name, taxrate_change, tax_rate_current, taxrate_new, tax_code, everything()) %>% 
+  arrange(desc(tax_rate_current))
+
+Current_Taxrates_perTC
+
+```
+```{r}
+Current_Taxrates_perTC %>% left_join(nicknames) %>%
+  group_by(Triad) %>% 
+  filter( Triad == "South") %>% summarize(taxrate_new = mean(taxrate_new, na.rm=TRUE),
+                                          taxrate_current = mean(tax_rate_current, na.rm=TRUE)) %>%
+  mutate(taxrate_change = taxrate_new-taxrate_current)
+
+Current_Taxrates_perTC %>% left_join(nicknames) %>% group_by(Triad) %>% 
+  filter( Triad == "North") %>% summarize(taxrate_change = mean(taxrate_change, na.rm=TRUE))
+```
+
+```{r include=FALSE}
+
+Current_Taxrates_perTC %>% 
+  mutate(is_chicago = ifelse(clean_name == "Chicago", 1,0)) %>%
+  group_by(is_chicago) %>%
+  summarize(average_taxableEAV_current = mean(nonTIF_EAV_post_exemps/pins_in_class, na.rm=TRUE),
+         average_taxableEAV_hyp = mean(nonTIF_EAV_pre_exemps/pins_in_class, na.rm=TRUE),
+         average_taxableEAV_hyp_noTIFS = mean(Total_EAV/pins_in_class, na.rm=TRUE),
+         average_taxbill_current = mean(tax_rate_current*average_taxableEAV_current, na.rm=TRUE),
+         average_taxbill_hyp = mean(taxrate_new*average_taxableEAV_hyp, na.rm=TRUE)) %>%
+  pivot_longer(cols = average_taxableEAV_current:average_taxbill_hyp)
+
+Current_Taxrates_perTC %>% 
+  mutate(is_chicago = ifelse(clean_name == "Chicago", 1,0)) %>%
+  group_by(is_chicago) %>%
+  summarize(rev_billed = sum(MuniLevy, na.rm=TRUE)) #%>% # made from final_tax_to_dist variable
+         # average_taxableEAV_hyp = mean(nonTIF_EAV_pre_exemps/pins_in_class, na.rm=TRUE),
+         # average_taxableEAV_hyp_noTIFS = mean(Total_EAV/pins_in_class, na.rm=TRUE),
+         # average_taxbill_current = mean(tax_rate_current*average_taxableEAV_current, na.rm=TRUE),
+         # average_taxbill_hyp = mean(taxrate_new*average_taxableEAV_hyp, na.rm=TRUE)) %>%
+  #pivot_longer(cols = average_taxableEAV_current:average_taxbill_hyp)
+
+
+
+Current_Taxrates_perTC %>% 
+mutate(is_chicago = ifelse(clean_name == "Chicago", 1,0)) %>%
+  group_by(is_chicago) %>%
+  summarize(tif_rev = sum(tax_rate_current * TIF_increment_EAV, na.rm=TRUE),
+            rev_billed = sum(tax_rate_current * nonTIF_EAV_post_exemps, na.rm=TRUE),
+            all_rev = sum(tax_rate_current* (nonTIF_EAV_post_exemps + TIF_increment_EAV), na.rm=TRUE))
+# 14,990,945,440 Revenue Collected (does not include TIF revenue) 
+# 16,539,762,290 Revenue Collected (including TIF revenue)
+```
+
+Bring in the composite tax rates for all tax codes.
+
+```{r }
+Current_Taxrates2 <- read_csv("2_taxcode_taxrates.csv") %>% 
+  mutate(tax_code = as.character(tax_code))
+
+land_use2 <- taxcodes_current %>% 
+  left_join(muni_agency_names) %>% 
+  left_join(Current_Taxrates) %>%
+  left_join(class_dict, by = c("class" = "class_code")) %>%
+  
+#  mutate(class_1dig = str_sub(class, 1, 1),
+#    ResidentialProps = ifelse(class_1dig %in% c("2", "3", "9"), "Residential", "Non-Residential")) %>%
+  #        PropType = case_when(
+  #          major_class_code %in% c("3","9") ~ "Multi-Family",
+  #          major_class_code == "2" ~ "Single-Family",
+  #          TRUE ~ "Commercial-Industrial")) %>%
+  group_by(clean_name, major_class_code, agency_num, tax_rate_current, taxrate_new, taxrate_change, agency_name) %>% 
+  
+  # All of the values calculated below are AFTER exemptions have been removed
+  summarize(taxrev_from_proptype = sum(final_tax_to_dist, na.rm = TRUE),
+            nonTIF_EAV = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
+            TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),
+            Exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE),
+            Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE) ) %>% ungroup()
+
+land_use2
+
+
+```
+
+
+
+# "Cost" of Exemptions
+
+
+```{r}
+# TC_bills_current has the summed taxbill information that comes from the tax_bill() command in ptaxsim
+TC_bills_current <- read_csv("2_Summed_Bills_by_Taxcode_and_Class.csv") %>% 
+  #filter(class == "205") %>%
+  mutate(tax_code = as.character(tax_code),
+         class = as.character(class))
+
+class_dict$class_code <- as.character(class_dict$class_code)
+ 
+#muni_tax_codes %>% select(tax_code_num, tax_code_rate, agency_num)
+TC_bills_current <- left_join(TC_bills_current, muni_tax_codes,
+                      by = c("tax_code" = "tax_code_num")) 
+
+TC_bills_current <- TC_bills_current %>% left_join(muni_agency_names) %>% left_join(nicknames) %>% select(-c(shpfile_name, Column1, `Most recent reassessed`, short_name, minor_type, agency_name, agency_number))
+
+TC_bills_current
+```
+
+
+```{r eval=FALSE, include=FALSE}
+
+TC_bills_current %>%  
+ # left_join(muni_agency_names, by = "agency_num") %>%
+ # left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
+  filter(!agency_num %in% cross_county_lines) %>%
+ # group_by(clean_name, agency_name) %>%
+  summarize(MuniLevy = round(sum(final_tax_to_dist, na.rm = TRUE), digits = 0), # amount billed by munis with current exemptions in place
+            nonTIF_EAV_post_exemps = round(sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE), 0),
+            TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),  
+            Exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE), 
+            Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE)) %>%
+
+  mutate(tax_rate_current = round(MuniLevy/nonTIF_EAV_post_exemps,4),
+         nonTIF_EAV_pre_exemps = round(nonTIF_EAV_post_exemps + Exempt_EAV),
+         taxrate_new = round(MuniLevy/nonTIF_EAV_pre_exemps,4),
+         taxrate_change = round(tax_rate_current-taxrate_new, 4) )%>% 
+ # select(clean_name, taxrate_change, tax_rate_current, taxrate_new, everything()) %>% 
+  arrange(desc(tax_rate_current)) %>%
+  pivot_longer(cols = MuniLevy:taxrate_change) %>%
+  mutate(value = value)
+
+```
+
+
+```{r}
+Current_Taxrates %>% 
+  filter(clean_name != "Chicago") %>%
+  mutate(transfered_taxes = tax_rate_current*Exempt_EAV) %>% 
+    mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) 
+    ) %>%
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+
+    ggplot(aes(fill = transfered_taxes)) +
+    geom_sf(aes(geometry = geometry), color = "black") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+scale_fill_steps2(
+    high = "#420420", low = "black",
+  # midpoint = median(transfered_taxes),
+                   show.limits=TRUE,
+  nice.breaks=FALSE,
+  na.value=NA,
+                    n =6,
+                       name = "Revenue Shifted \nfrom Exemptions",
+         labels = scales::dollar
+)+
+ 
+  labs(title = "Dollars passed from Class 2 Residential properties to others \ndue to current exemptions",    
+         caption = "There was $460 million in exempt EAV in Chicago.")
+
+ggsave("cook_nochicago.png")
+```
+
+```{r eval = FALSE}
+# Class 2 only
+class2_perc <- exemptions_by_class_per_TC %>% 
+  filter(class_code >=200 & class_code <=299) %>%
+  group_by(clean_name, major_class_code, agency_name, agency_num.x) %>%
+  summarize(eav = sum(eav),
+           exempt_EAV = sum(exempt_EAV, exe_abate, na.rm=TRUE),
+         tax_base_current = sum(tax_base_current, na.rm=TRUE),
+         tax_base_noexemps = sum(tax_base_noexemps, na.rm=TRUE)) %>% 
+  left_join(muni_eav) %>%
+  mutate(perc_class2_totalEAV = eav / muni_EAV_includesTIF) %>%    
+  mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) )
+
+
+
+
+class2_perc <- class2_perc %>%   mutate(percent_exempt = exempt_EAV/muni_tax_base_noexemps) 
+
+
+class2_perc %>% 
+    mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) 
+    ) %>%
+  left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+
+    ggplot(aes(fill = percent_exempt)) +
+    geom_sf(aes(geometry = geometry), color = "black") + 
+      theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+scale_fill_steps2(
+    high = "#420420", low = "black",
+   midpoint = median(class2_perc$percent_exempt),
+                   show.limits=TRUE,
+  nice.breaks=FALSE,
+                    n =6,
+                       name = "Percent Exempt",
+         labels = scales::percent
+)#+
+ 
+#  labs(title = "Percent of pre-exemption taxable base that is tax exempt",    
+ #        caption = "Total EAV includes the pre-exemption Taxable Base. 
+ #      TIF increment EAV is not included in the total EAV in this image.
+ #      Median value is 12.43%")
+```
+
+```{r eval=FALSE}
+class2_perc <- class2_perc %>%  mutate(percent_exempt = exempt_EAV/muni_EAV_includesTIF) 
+
+class2_perc%>%
+    mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) 
+    ) %>%
+  left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+
+    ggplot(aes(fill = percent_exempt)) +
+    geom_sf(aes(geometry = geometry), color = "black") + 
+      theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+scale_fill_steps2(
+    high = "#420420", low = "black",
+ midpoint = median(class2_perc$percent_exempt),
+                   show.limits=TRUE,
+  nice.breaks=FALSE,
+                    n =6,
+                       name = "Percent Exempt",
+         labels = scales::percent
+)+
+ 
+  labs(title = "Percent Exempt:  Exempt EAV / All EAV in Municipality")
+```
+
+```{r}
+
+tax_bill_change %>% 
+ # filter(major_class_code == "2") %>% 
+  filter(class_code >=200 & class_code <= 299) %>%
+  filter(class_code != "0") %>%
+   mutate(class_code = as.character(class_code)) %>%
+  left_join(nicknames) %>%
+  filter(Triad == "South") %>%
+  summarize(cost_increasedbills = sum(bill_change, na.rm=TRUE))
+
+
+TC_bills_current %>%  filter(class != "0") %>%
+ summarize(cost_exemps = scales::dollar(sum(tax_amt_exe)),
+                               composite_rate = mean(tax_code_rate)) 
+
+
+TC_bills_current  %>% 
+  filter(class != "0") %>%
+  group_by(Triad) %>% 
+  summarize(cost_exemps = scales::dollar(sum(tax_amt_exe)),
+            composite_rate = mean(tax_code_rate)
+                                                    ) 
+
+# TC_bills_current %>% group_by(Triad) %>% 
+```
+
+~~Covering all changes in tax bills in the South triad would cost \$218,678,328.~~
+
+~~Paying for all tax bills that experienced a 15% increase from the elimination of exemptions or had a \$0 taxbill would cost \$825,963,411.~~
+
+```{r}
+tax_bill_change %>% ungroup() %>%
+  filter(class_code == "203") %>%
+   mutate(class_code = as.character(class_code)) %>%
+  left_join(nicknames)
+
+
+tax_bill_change %>% ungroup() %>%
+  filter(class_code == "203") %>%
+    filter(clean_name %in% c("Park Forest","Markham",  "Dolton", "Hillside", "Riverside", "Chicago", "Westchester", "Winnetka")) %>%
+   mutate(class_code = as.character(class_code)) %>%
+  left_join(nicknames)%>%
+group_by(Triad, clean_name)
+```
+
+# Appendix: All code for this report.
+
+## Exporting data into Excel 
+
+```{r}
+library(openxlsx)
+
+dataset_names <- list('Cook County Totals' = total_exemptions,
+                      'Muni Exemption Totals' = muni_totals,
+                      'EAV in and out of TIF' = tif_table,
+                      'Percent Residential' = perc_residential,
+                      'Tax Base by Class' = grouped_exemptions,
+                      'CurrentandHyp Tax Burden'= munis_3property_types,
+                      'Burden Shift, 3 PropClasses' = props_wide,
+                      'Full Burden Shift Table'= burden_shift, # has essentially all variables used to make the smaller, more specific tables
+                      'Exemps by Class, All Tax Codes' = exemptions_by_class_per_TC,
+                      'Exempt Residential EAV' = exemptions_to_class2EAV_ratios,
+                      'Tax Code Tax Rates'= taxcodes_current,
+                      'Tax Bill Change, All PropClass' = tax_bill_change, # uses the actual median value for the statistic. Not my favorite way to calculate this statistic
+                      'Tax Bill Change, 3 MajorClasses' = bill_change_3groups, # uses the actual median value for the statistic. Not my favorite way to calculate this statistic
+
+                      'Muni TaxCodeXClass Bill Sums' = TC_bills_current, # uses the actual median value for the statistic. Not my favorite way to calculate this statistic
+                      'Composite tax rates' = Current_Taxrates
+)
+
+write.xlsx(dataset_names, file = 'UIC_CMAP_exemptionWhitepaper.xlsx')
+```
+
+
+
+```{r ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE}
+
+```
