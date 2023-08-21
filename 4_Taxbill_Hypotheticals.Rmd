@@ -23,6 +23,15 @@ library(ptaxsim)
 
 ```
 
+# Bring in data
+
+The tax code taxrates were made in file `2_...rmd` and the exemptions file were created in file `3_.....rmd`
+
+## Finding the "Median Property"
+
+The median assessed value is used to determine the `median property` for various groups (e.g. the municipality, the 1-digit major property class, and 3-digit property class). 
+
+The assessed value and original equalized assessed values come from the `pin` data table within PTAXSIM. This table also has every type of exemption that the property received and the amount of EAV that was exempt due to the exemption. 
 
 ```{r}
 taxcode_taxrates <- read_csv("2_taxcode_taxrates.csv")
@@ -218,7 +227,7 @@ muni_rachelgroups_stats2 %>% select(clean_name,  grouped_classes, bill_change, e
 ```
 
 
-# Alternate Property Categories
+### Alternate Property Categories
 
 Uses owner, renter, commercial and industrial.
 
@@ -370,5 +379,188 @@ tax_bill_change %>% filter(clean_name == "Dolton") %>% # 8783
          shittyvariable2 = median(bill_current)) %>% 
   select(shittyvariable, shittyvariable2, everything())
   
+```
+
+# Finding Similar Properties and their Taxbills
+
+```{r}
+library(glue)
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
+
+# has EAV values, extensions by agency_num
+agency_dt <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT *
+  FROM agency
+  WHERE year = 2021
+  "
+)
+
+# grabs all unique muni names & numbs
+# don't forget Cicero
+muni_agency_names <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT DISTINCT agency_num, agency_name, minor_type
+  FROM agency_info
+  WHERE minor_type = 'MUNI'
+  OR agency_num = '020060000'  
+
+  "
+)
+
+
+# list of all taxcodes in municipalities. 
+# This does NOT include unincorporated tax codes!!
+doltchi_tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT*
+  FROM tax_code
+  WHERE (agency_num = '030210000' OR agency_num = '030310000')
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+) %>% mutate(tax_code = as.character(tax_code_num))
+
+```
+
+```{r eval=FALSE}
+taxbills_current <- read_csv("1_Get_All_Pins-CookPinTaxbills_2021_Actual.csv")
+# 22,453,875 tax bills in 2021 in municipalities (incorporated areas). 
+# 22,972,902 tax bills in all of Cook County in 2021 (incorporated and unincorporated)
+# DOES INCLUDE unincorporated tax bills based on how we pulled the data in Step 1.
+
+
+
+# 1,825,816 billed properties with 14-digit PINs  for incorporated areras
+# 1,864,594 billed properties in Cook county (incorporated and unincorporated)
+# 
+pin14_bills_current <- taxbills_current %>%
+  group_by(tax_code, class, pin) %>%
+  
+  mutate(total_bill = final_tax_to_dist + final_tax_to_tif) %>% # from each taxing agency
+  
+  summarize(total_billed = sum(total_bill, na.rm = TRUE), # total on someone's property tax bill
+            av = first(av),
+            eav = first(eav),
+            pin_count_in_parcel = n(),
+            final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE),
+            final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+            tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), # revenue lost due to exemptions
+            tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), # total rev before all exemptions
+            tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE), # total rev after all exemptions
+            rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE), # not used
+            rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE), # not used
+            rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE), # not used
+            tif_share = mean(tif_share, na.rm=TRUE), # not used
+  )  %>% 
+  mutate(propclass_1dig = str_sub(class, 1, 1))
+
+head(pin14_bills_current)
+
+
+DoltonChicago <- pin14_bills_current %>% 
+  filter(tax_code %in% doltchi_tax_codes$tax_code_num) %>%
+  filter(class != "0")
+
+
+DoltonChicago <- DoltonChicago %>% 
+  mutate(tax_code = as.character(tax_code))%>%
+  left_join(doltchi_tax_codes) %>% 
+  group_by(agency_num, class) %>% arrange(av)
+```
+
+
+```{r}
+DoltonChicago <- read_csv("Cholton_taxbills.csv")
+nicknames <- readxl::read_excel("muni_shortnames.xlsx")
+
+class_dict <- read_csv("class_dict.csv")
+
+
+DoltonChicago %>% 
+  filter(class == "203") %>% 
+  group_by(agency_num, class) %>%
+  summarize(medianbilll = median(total_billed),
+            meanbill = mean(total_billed))
+
+
+## Dolton ##
+DoltonChicago %>% filter(agency_num == "030210000" & class == "203" & between(total_billed,3150,3152))
+# av - 19000, eav = 57000
+# had $670 "exempt" on their bill
+
+
+DoltonChicago %>% filter(agency_num == "030210000" & class == "203" & between(total_billed,3150,3152)) %>%
+  summarize(av = mean(av),
+            eav = mean(eav),
+            tax_amt_post_exe = mean(tax_amt_post_exe),
+            tax_amt_exe = mean(tax_amt_exe),
+            tax_amt_pre_exe = mean(tax_amt_pre_exe),
+            pin_count = n())
+
+
+## Chicago ## 
+
+# Chicago only has 2 pins that are similar to Dolton's median pin (which had a lot of matches)
+DoltonChicago %>% filter(agency_num == "030310000" & class == "203" & between(total_billed,3140,3160))
+
+DoltonChicago %>% filter(agency_num == "030310000" & class == "203" & between(total_billed,3140,3160)) %>%
+  summarize(av = mean(av),
+            eav = mean(eav),
+            tax_amt_post_exe = mean(tax_amt_post_exe),
+            tax_amt_exe = mean(tax_amt_exe),
+            tax_amt_pre_exe = mean(tax_amt_pre_exe),
+            pin_count = n()
+  )
+
+# av = 
+#exempt eav = 
+```
+
+```{r}
+DoltonChicago %>% 
+  filter(agency_num == "030210000" & class == "203" & between(av,9990,10000)) %>%
+  summarize(
+          tax_amt_post_exe = mean(tax_amt_post_exe),
+      tax_amt_exe = mean(tax_amt_exe),
+            tax_amt_pre_exe = mean(tax_amt_pre_exe),
+            pin_count = n()
+  )
+
+# Chicago only has 2 pins that are similar to Dolton's median pin (which had a lot of matches)
+DoltonChicago %>% 
+  filter(agency_num == "030310000" & class == "203" & between(av,9990,10000)) %>%
+    summarize(              
+      tax_amt_post_exe = mean(tax_amt_post_exe),
+      tax_amt_exe = mean(tax_amt_exe),
+            tax_amt_pre_exe = mean(tax_amt_pre_exe),
+            pin_count = n())
+```
+
+```{r}
+DoltonChicago %>% 
+  filter(agency_num == "030210000" & class == "203" & between(tax_amt_post_exe,3500,3600)) %>%
+  summarize(
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe),
+    pin_count = n(),
+    av = mean(av),
+    eav = mean(eav)
+  )
+
+# Chicago only has 2 pins that are similar to Dolton's median pin (which had a lot of matches)
+DoltonChicago %>% 
+  filter(agency_num == "030310000" & class == "203" & between(tax_amt_post_exe,3500,3600)) %>%
+  summarize(
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe),
+    pin_count = n(),
+    av = mean(av),
+    eav = mean(eav)
+  )
 ```
 
