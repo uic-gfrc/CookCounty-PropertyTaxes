@@ -123,15 +123,65 @@ taxcode_taxrates <- read_csv("2_taxcode_taxrates.csv")
 
 DoltonChicago <- read_csv("Cholton_taxbills.csv") %>% 
   arrange(av) %>%     
-  left_join(taxcode_taxrates)
+  left_join(taxcode_taxrates) %>%
+    mutate(propclass_1dig = str_sub(class, 1, 1))
+
 
 
 ```
 
 
+> Max composite tax rate in a tax code in Chicago is 9.1% and minimum composite tax rate is 6.7%. Chicago has 665 tax codes. 
+
+> Max composite tax rate in a tax code in Dolton is 27.9% and minimum composite tax rate is 22.9%. Dolton has 13 tax codes. 
+
+
+
 ```{r}
+# DoltonChicago %>% 
+#   group_by(agency_num, tax_code) %>% 
+#   summarize(max_comprate = max(tax_rate_current),
+#             min_comprate = min(tax_rate_current)) %>% arrange(-max_comprate)
+
+DoltonChicago %>% group_by(agency_num) %>% 
+  summarize(max_comprate = max(tax_rate_current, na.rm=TRUE),
+            mean_comprate = mean(tax_rate_current, na.rm=TRUE),
+            min_comprate = min(tax_rate_current, na.rm=TRUE)) %>% arrange(-mean_comprate)
+
+DoltonChicago %>% filter(agency_num == "030310000") %>%
+  group_by(agency_num, class) %>% 
+  summarize(max_comprate = max(tax_rate_current, na.rm=TRUE),
+            mean_comprate = mean(tax_rate_current, na.rm=TRUE),
+            min_comprate = min(tax_rate_current, na.rm=TRUE),
+            pin_count = n(),
+            av = mean(av),
+            eav = mean(eav),
+            tax_amt_post_exe = mean(tax_amt_post_exe),
+            tax_amt_exe = mean(tax_amt_exe),
+            tax_amt_pre_exe = mean(tax_amt_pre_exe)) %>% 
+  arrange(-pin_count) %>% head() %>% kbl()
+
+DoltonChicago %>% filter(agency_num == "030210000") %>%
+  group_by(agency_num, class) %>% 
+  summarize(max_comprate = max(tax_rate_current, na.rm=TRUE),
+            mean_comprate = mean(tax_rate_current, na.rm=TRUE),
+            min_comprate = min(tax_rate_current, na.rm=TRUE),
+            pin_count = n(),
+            av = mean(av),
+            eav = mean(eav),
+            tax_amt_post_exe = mean(tax_amt_post_exe),
+            tax_amt_exe = mean(tax_amt_exe),
+            tax_amt_pre_exe = mean(tax_amt_pre_exe)) %>% 
+  arrange(-pin_count) %>% head() %>% kbl()
+``` 
+
+
+
+```{r}
+
 DoltonChicago %>% 
   filter(class == "203") %>% 
+  arrange(av)%>%
   group_by(agency_num, class) %>%
   summarize(medianbill = median(total_billed),
             meanbill = mean(total_billed),
@@ -144,37 +194,570 @@ DoltonChicago %>%
 
 
 
+DoltonChicago %>% 
+  filter(class == "205") %>% 
+  group_by(agency_num, class) %>%
+  summarize(medianbill = median(total_billed),
+            meanbill = mean(total_billed),
+            medianAV = median(av),
+            meanAV = mean(av),
+            )%>% 
+ # pivot_longer(medianbill:meanAV, names_to = "Stats", values_to = "Values")  %>%
+  kbl(caption= "Chicago and Dolton, Class 205, Measures of the Middle", digits=0, booktabs = T) %>%   
+  kable_styling(full_width = T)
 
-## Dolton ##
-#DoltonChicago %>% filter(agency_num == "030210000" & class == "203" & between(total_billed,3150,3152))
-# av - 19000, eav = 57000
-# had $670 "exempt" on their bill
+DoltonChicago %>% 
+  filter(class == "211") %>% 
+  group_by(agency_num, class) %>%
+  summarize(medianbill = median(total_billed),
+            meanbill = mean(total_billed),
+            medianAV = median(av),
+            meanAV = mean(av),
+            )%>% 
+ # pivot_longer(medianbill:meanAV, names_to = "Stats", values_to = "Values")  %>%
+  kbl(caption= "Chicago and Dolton, Class 211, Measures of the Middle", digits=0, booktabs = T) %>%   
+  kable_styling(full_width = T)
+
+DoltonChicago %>% 
+  filter(class == "234") %>% 
+  group_by(agency_num, class) %>%
+  summarize(medianbill = median(total_billed),
+            meanbill = mean(total_billed),
+            medianAV = median(av),
+            meanAV = mean(av),
+            )%>% 
+ # pivot_longer(medianbill:meanAV, names_to = "Stats", values_to = "Values")  %>%
+  kbl(caption= "Chicago and Dolton, Class 234, Measures of the Middle", digits=0, booktabs = T) %>%   
+  kable_styling(full_width = T)
 
 
-Chi1 <- DoltonChicago %>% filter(agency_num == "030210000" & class == "203" & between(total_billed,3150,3152)) %>%
-  summarize(av = mean(av),
-            eav = mean(eav),
-            tax_amt_post_exe = mean(tax_amt_post_exe),
-            tax_amt_exe = mean(tax_amt_exe),
-            tax_amt_pre_exe = mean(tax_amt_pre_exe),
-            pin_count = n() ) %>% 
-   pivot_longer(av:pin_count, names_to = "Stats", values_to = "Values") 
+```
+
+## Using similarily Assessed Value properties 
+
+Chicago has 655 tax codes in its borders and Dolton has 13 tax codes in its borders. 
+
+
+
+### Class 203
+
+One story residence, any age, 1,000 to 1,800 sq. ft.
+
+
+```{r}
+DoltonChicago %>% 
+  filter(agency_num == "030210000" ) %>% #& class == "203" & between(av,9950,10050)) %>% 
+  group_by(tax_code) %>% 
+  summarize(count = n(),            
+            avg_current_comprate = mean(tax_rate_current, na.rm=TRUE)
+  ) %>% arrange(-avg_current_comprate) %>% head()
+
+DoltonChicago %>% 
+  filter(agency_num == "030310000") %>% # & class == "203" & between(av, 9950, 10050)) %>%
+  group_by(tax_code) %>%
+  summarize(count = n(),
+            avg_current_comprate = mean(tax_rate_current, na.rm=TRUE)
+  ) %>% arrange(-avg_current_comprate) %>% head()
+```
+
+
+If holding the levy constant and acknowledging the change in tax rates that would occur from having additional taxable EAV within the taxing jurisdictions....
+
+For property class 203 PINs with assessed values between \$9,000 and \$11,000, the average change in tax bill would be \$75 more in Chicago and \$205 more in Dolton compared to their current tax bills (\$1475 and $4312 respectively). 
+
+The "average" property tax payer would think they are saving \$624 in Chicago and $2708 in Dolton due to exemptions. This number appears on their taxbill and calculated by the full EAV * current tax rate and does NOT consider the change in tax rate that would occur if levies are held constant and all EAV became taxable. 
+
+
+```{r}
+Chi3 <- DoltonChicago %>% 
+  filter(agency_num == "030210000" & class == "203" & between(av,9000,11000)) %>%
+    summarize(              
+    comp_taxrate = mean(tax_code_rate, na.rm=TRUE),
+    bill_current = mean(tax_amt_post_exe, na.rm=TRUE),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+  ) %>% 
+  pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
+
+Dol3 <- DoltonChicago %>% 
+  filter(agency_num == "030310000" & class == "203" & between(av, 9000, 11000)) %>%
+    summarize(              
+    comp_taxrate = mean(tax_code_rate, na.rm=TRUE),
+    bill_current = mean(tax_amt_post_exe, na.rm=TRUE),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe, na.rm=TRUE),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe, na.rm=TRUE),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+  ) %>% 
+    pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
+
+both_dt <- cbind(Chi3, Dol3)
+
+
+kbl(both_dt, booktabs = T, digits = 0, 
+    caption = "Property Class 203 Comparison, AV ~ $10,000 (9000-11000 range)") %>%
+  kable_styling(full_width = T)%>%
+add_header_above(c("Chicago" = 2, "Dolton" = 2))
+```
+
+
+> Changing the range of PINs included in the calculation alters the "Median Property Statistic" 
+
+If holding the levy constant and acknowledging the change in tax rates that would occur from having additional taxable EAV within the taxing jurisdictions....
+
+For property class 203 PINs with assessed values between \$8,000 and \$12,000, the average change in tax bill would be \$98 more in Chicago and \$55 more in Dolton compared to their current tax bills (\$1513 and $4342 respectively). 
+
+```{r}
+Chi3 <- DoltonChicago %>% 
+  filter(agency_num == "030210000" & class == "203" & between(av,8000,12000)) %>%
+    summarize(              
+    comp_taxrate = mean(tax_code_rate, na.rm=TRUE),
+    bill_current = mean(tax_amt_post_exe, na.rm=TRUE),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe, na.rm=TRUE),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe, na.rm=TRUE),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+  ) %>% 
+  pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
+
+# Chicago only has 2 pins that are similar to Dolton's median pin (which had a lot of matches)
+Dol3 <- DoltonChicago %>% 
+  filter(agency_num == "030310000" & class == "203" & between(av, 8000, 12000)) %>%
+    summarize(              
+    comp_taxrate = mean(tax_code_rate, na.rm=TRUE),
+    bill_current = mean(tax_amt_post_exe, na.rm=TRUE),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe, na.rm=TRUE),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe, na.rm=TRUE),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+  ) %>% 
+    pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
+
+both_dt <- cbind(Chi3, Dol3)
+
+
+kbl(both_dt, booktabs = T, digits = 0, 
+    caption = "Property Major Class 2 Comparison, AV ~ $10,000 (AV range $8000-$12000)") %>%
+  kable_styling(full_width = T)%>%
+add_header_above(c("Chicago Class 203, 8K-12K Property Stats" = 2, "Dolton Class 203, 8L-12K AV Property Stats" = 2))
+```
+
+
+
+### Major Class 2
+
+Average and median tax bills and assessed values are calculated below for ALL property class types within the the broader "Residential" property class type (property classes that have the first digit "2", or Major Class Type 2)
+
+The median AV  is used to select a range of pins (based on their AV) to calculate the average current bill, hypothetical bill, and hypothetical change in tax bill for a "median property". 
+
+This is done because some properties receive multiple exemptions while others receive none. Using the literal median pin can skew the summary statistics of that specific pin receives no exemptions or multiple exemptions. The average for the range of "median PINs" is created to smooth out the variation within the observations. 
+
+```{r}
+DoltonChicago %>% 
+  filter(propclass_1dig == "2") %>% 
+  arrange(av) %>%
+  group_by(agency_num) %>%
+  summarize(medianbill = median(total_billed),
+            meanbill = mean(total_billed),
+            medianAV = median(av),
+            meanAV = mean(av),
+            pin_count = n()
+            )%>% 
+ # pivot_longer(medianbill:meanAV, names_to = "Stats", values_to = "Values")  %>%
+  kbl(caption= "Chicago and Dolton, Major Class 2, Measures of the Middle", digits=0, booktabs = T) %>%   
+  kable_styling(full_width = T)
+
+# 
+# DoltonChicago %>% 
+#   filter(propclass_1dig == "3") %>% 
+#   arrange(av) %>%
+#   group_by(agency_num) %>%
+#   summarize(medianbill = median(total_billed),
+#             meanbill = mean(total_billed),
+#             medianAV = median(av),
+#             meanAV = mean(av),
+#             pin_count = n()
+#             )%>% 
+#  # pivot_longer(medianbill:meanAV, names_to = "Stats", values_to = "Values")  %>%
+#   kbl(caption= "Chicago and Dolton, Major Class 3, Measures of the Middle", digits=0, booktabs = T) %>%   
+#   kable_styling(full_width = T)
+```
+
+If holding the levy constant and acknowledging the change in tax rates that would occur from having additional taxable EAV within the taxing jurisdictions, Chicago's hypothetical tax bill would be \$1570 (an \$14 increase from \$1556) and Dolton's would be \$4610 (a \$30 increase from $4580).   
+
+On average, residents would think they "saved" \$501 in Chicago and \$2588 in Dolton (based on tax_amt_exe which also shows up on their tax bill based on the "naive" pre-tax exemption tax bill amount on the tax bill). The amount saved per person will depend on how many exemptions they qualified for in the first place. This is a rough average for all types of exemptions and includes those that received no exemptions and multiiple exemptions. 
+
+Values were calculated by selecting pins with AVs between \$9000 and $11,000 and then calculating the average current bill, change in bill, and other statistics seen in the table. Pin count tells you the number of pins that were included in the AV range used for the "median property."
+
+```{r}
+Chi3 <- DoltonChicago %>% 
+  filter(agency_num == "030210000" & propclass_1dig == "2" & between(av,9000,11000)) %>%
+    summarize(              
+    comp_taxrate = mean(tax_code_rate, na.rm=TRUE),
+    bill_current = mean(tax_amt_post_exe, na.rm=TRUE),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe, na.rm=TRUE),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe, na.rm=TRUE),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+  ) %>% 
+  pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
+
+# Chicago only has 2 pins that are similar to Dolton's median pin (which had a lot of matches)
+Dol3 <- DoltonChicago %>% 
+  filter(agency_num == "030310000" & propclass_1dig == "2" & between(av, 9000, 11000)) %>%
+    summarize(              
+    comp_taxrate = mean(tax_code_rate, na.rm=TRUE),
+    bill_current = mean(tax_amt_post_exe, na.rm=TRUE),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe, na.rm=TRUE),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe, na.rm=TRUE),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+  ) %>% 
+    pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
+
+both_dt <- cbind(Chi3, Dol3)
+
+
+kbl(both_dt, booktabs = T, digits = 0, 
+    caption = "Property Major Class 2 Comparison, AV ~ $10,000 (AV range $9000-$11000)") %>%
+  kable_styling(full_width = T)%>%
+add_header_above(c("Chicago" = 2, "Dolton" = 2))
+```
+
+
+```{r}
+Chi3 <- DoltonChicago %>% 
+  filter(agency_num == "030210000" & propclass_1dig == "2" & between(av,8000,12000)) %>%
+    summarize(              
+    comp_taxrate = mean(tax_code_rate, na.rm=TRUE),
+    bill_current = mean(tax_amt_post_exe, na.rm=TRUE),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe, na.rm=TRUE),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe, na.rm=TRUE),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+  ) %>% 
+  pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
+
+# Chicago only has 2 pins that are similar to Dolton's median pin (which had a lot of matches)
+Dol3 <- DoltonChicago %>% 
+  filter(agency_num == "030310000" & propclass_1dig == "2" & between(av, 8000, 12000)) %>%
+    summarize(              
+    comp_taxrate = mean(tax_code_rate, na.rm=TRUE),
+    bill_current = mean(tax_amt_post_exe, na.rm=TRUE),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe, na.rm=TRUE),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe, na.rm=TRUE),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+  ) %>% 
+    pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
+
+both_dt <- cbind(Chi3, Dol3)
+
+
+kbl(both_dt, booktabs = T, digits = 0, 
+    caption = "Property Major Class 2 Comparison, AV ~ $10,000 (AV range $8000-$12000)") %>%
+  kable_styling(full_width = T)%>%
+add_header_above(c("Chicago" = 2, "Dolton" = 2))
+```
+If holding the levy constant and acknowledging the change in tax rates that would occur from having additional taxable EAV within the taxing jurisdictions, Chicago's hypothetical tax bill would be \$1592 (an \$13 increase from \$1579) and Dolton's would be \$4598 (a \$99 DECREASE from $4596).   
+
+Values were calculated by selecting pins with AVs between \$8000 and $12,000 and then calculating the average current bill, change in bill, and other statistics seen in the table. Pin count tells you the number of pins that were included in the AV range used for the "median property."
+
+
+> Increasing the number of pins included in the measurement of "average bill" and "average bill change" completely changed the results for Dolton. Using the "median" value must be done super carefully. 
+
+> If we "removed" only homeowners exemptions or only senior exemptions, then the median statistic would be more reliable... potentially. 
+
+
+
+### Class 205
+
+Two or more story residence, over 62 years, up to 2,200 sq. ft
+
+
+```{r}
+Chi3 <- DoltonChicago %>% 
+  filter(agency_num == "030210000" & class == "205" & between(av,8000,12000)) %>%
+    summarize(              
+    comp_taxrate = mean(tax_code_rate, na.rm=TRUE),
+    bill_current = mean(tax_amt_post_exe, na.rm=TRUE),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe, na.rm=TRUE),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe, na.rm=TRUE),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+  ) %>% 
+  pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
+
+
+Dol3 <- DoltonChicago %>% 
+  filter(agency_num == "030310000" & class == "205" & between(av, 8000, 12000)) %>%
+    summarize(              
+    comp_taxrate = mean(tax_code_rate, na.rm=TRUE),
+    bill_current = mean(tax_amt_post_exe, na.rm=TRUE),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe, na.rm=TRUE),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe, na.rm=TRUE),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+  )  %>% 
+    pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
+
+both_dt <- cbind(Chi3, Dol3)
+
+
+kbl(both_dt, booktabs = T, digits = 0, 
+    caption = "Property Class 205 Comparison, AV ~ $10,000 (8000 to 12000 AV range)") %>%
+  kable_styling(full_width = T)%>%
+add_header_above(c("Chicago" = 2, "Dolton" = 2))
+```
+
+
+### Class 211
+
+Two to six residential apartments, any age.
+
+
+```{r}
+Chi3 <- DoltonChicago %>% 
+  filter(agency_num == "030210000" & class == "211" & between(av,17000,19000)) %>%
+    summarize(              
+    comp_taxrate = mean(tax_code_rate, na.rm=TRUE),
+    bill_current = mean(tax_amt_post_exe, na.rm=TRUE),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe, na.rm=TRUE),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe, na.rm=TRUE),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+  ) %>% 
+  pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
+
+
+Dol3 <- DoltonChicago %>% 
+  filter(agency_num == "030310000" & class == "211" & between(av, 17000, 19000)) %>%
+    summarize(              
+    comp_taxrate = mean(tax_code_rate, na.rm=TRUE),
+    bill_current = mean(tax_amt_post_exe, na.rm=TRUE),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe, na.rm=TRUE),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe, na.rm=TRUE),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+  ) %>% 
+    pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
+
+both_dt <- cbind(Chi3, Dol3)
+
+
+kbl(both_dt, booktabs = T, digits = 0, 
+    caption = "Property Class 211 Comparison, AV ~ $18,000") %>%
+  kable_styling(full_width = T)%>%
+add_header_above(c("Chicago" = 2, "Dolton" = 2))
+```
+
+
+
+### Class 234
+
+Split level residence, with a lower level below grade, all ages, all sizes
+
+
+```{r}
+Chi3 <- DoltonChicago %>% 
+  filter(agency_num == "030210000" & class == "234" & between(av,12000,13000)) %>%
+    summarize(              
+    comp_taxrate = mean(tax_code_rate, na.rm=TRUE),
+    bill_current = mean(tax_amt_post_exe, na.rm=TRUE),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe, na.rm=TRUE),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe, na.rm=TRUE),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+  ) %>% 
+  pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
+
+
+Dol3 <- DoltonChicago %>% 
+  filter(agency_num == "030310000" & class == "234" & between(av, 12450, 12750)) %>%
+    summarize(              
+    comp_taxrate = mean(tax_code_rate, na.rm=TRUE),
+    bill_current = mean(tax_amt_post_exe, na.rm=TRUE),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe, na.rm=TRUE),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe, na.rm=TRUE),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)) %>% 
+    pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
+
+both_dt <- cbind(Chi3, Dol3)
+
+
+kbl(both_dt, booktabs = T, digits = 0, 
+    caption = "Property Class 234 Comparison, AV ~ $12,500") %>%
+  kable_styling(full_width = T)%>%
+add_header_above(c("Chicago" = 2, "Dolton" = 2))
+```
+
+
+# Other ways to compare locations (that I don't like as much)
+
+## Median Chicago AV vs Median Dolton AV
+
+```{r}
+
+
+## Chicago #
+
+Chi1 <- DoltonChicago %>% 
+  arrange(av)%>%
+  filter(agency_num == "030210000" & class == "203" & between(av,18000,22000)) %>%
+  summarize(
+    comp_taxrate = mean(tax_code_rate),
+    hypothetical_taxrate = mean(taxrate_new, na.rm=TRUE),
+    bill_current = mean(tax_amt_post_exe),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+  ) %>% 
+  pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
   # kbl(caption= "Chicago, Class 203, Tax Bill ~$3150", digits=0, booktabs = T)
 
 
-## Chicago ## 
+## Dolton ## 
 
-# Chicago only has 2 pins that are similar to Dolton's median pin (which had a lot of matches)
-#DoltonChicago %>% filter(agency_num == "030310000" & class == "203" & between(total_billed,3140,3160))
+Dol1<- DoltonChicago %>% 
+  arrange(av) %>%
+  filter(agency_num == "030310000" & class == "203" & between(av,8000,12000)) %>%
+  summarize(
+    comp_taxrate = mean(tax_code_rate),
+    hypothetical_taxrate = mean(taxrate_new, na.rm=TRUE),
 
-Dol1<- DoltonChicago %>% filter(agency_num == "030310000" & class == "203" & between(total_billed,3140,3160)) %>%
-  summarize(av = mean(av),
-            eav = mean(eav),
-            tax_amt_post_exe = mean(tax_amt_post_exe),
-            tax_amt_exe = mean(tax_amt_exe),
-            tax_amt_pre_exe = mean(tax_amt_pre_exe),
-            pin_count = n()) %>% 
-   pivot_longer(av:pin_count, names_to = "Stats", values_to = "Values") #%>% 
+    bill_current = mean(tax_amt_post_exe),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+  ) %>% 
+  pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
+
+
+both_dt <- cbind(Chi1, Dol1)
+
+
+kbl(both_dt, booktabs = T, digits = 0, caption = "Property Class 203 Comparison, Chicago Median AV vs Dolton Median AV") %>%
+  kable_styling(full_width = T) %>%
+add_header_above(c("Chicago Median AV 203 Property" = 2, "Dolton Median AV 203 Property" = 2))
+
+
+```
+
+
+## Median Chicago Taxbill vs Median Dolton Taxbill
+
+
+```{r}
+
+
+## Chicago #
+
+Chi1 <- DoltonChicago %>% 
+  arrange(av)%>%
+  filter(agency_num == "030210000" & class == "203" & between(total_billed,3100,3300)) %>%
+  summarize(
+    comp_taxrate = mean(tax_code_rate),
+    bill_current = mean(tax_amt_post_exe),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+  ) %>% 
+  pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
+  # kbl(caption= "Chicago, Class 203, Tax Bill ~$3150", digits=0, booktabs = T)
+
+
+## Dolton ## 
+
+Dol1<- DoltonChicago %>% 
+  arrange(av) %>%
+  filter(agency_num == "030310000" & class == "203" & between(total_billed,3100,3300)) %>%
+  summarize(
+    comp_taxrate = mean(tax_code_rate),
+    bill_current = mean(tax_amt_post_exe),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+  ) %>% 
+  pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values") #%>% 
   # kbl(caption= "Dolton, Class 203, Tax Bill ~ $3150", digits=0, booktabs = T)
 
 
@@ -193,14 +776,21 @@ add_header_above(c("Chicago" = 2, "Dolton" = 2))
 
 
 Chi1a <- DoltonChicago %>% filter(agency_num == "030210000" & class == "203" & between(total_billed,4100,4200)) %>%
-  summarize(av = mean(av),
-            eav = mean(eav),
-            tax_amt_post_exe = mean(tax_amt_post_exe),
-            tax_amt_exe = mean(tax_amt_exe),
-            tax_amt_pre_exe = mean(tax_amt_pre_exe),
-            pin_count = n() ) %>% 
-   pivot_longer(av:pin_count, names_to = "Stats", values_to = "Values") 
-  # kbl(caption= "Chicago, Class 203, Tax Bill ~$3150", digits=0, booktabs = T)
+  arrange(av)%>%
+  summarize(
+    comp_taxrate = mean(tax_code_rate),
+    bill_current = mean(tax_amt_post_exe),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+                ) %>% 
+  pivot_longer(comp_taxrate:eav, names_to = "Stats", values_to = "Values") 
+# kbl(caption= "Chicago, Class 203, Tax Bill ~$3150", digits=0, booktabs = T)
 
 
 ## Chicago ## 
@@ -208,15 +798,20 @@ Chi1a <- DoltonChicago %>% filter(agency_num == "030210000" & class == "203" & b
 # Chicago only has 2 pins that are similar to Dolton's median pin (which had a lot of matches)
 #DoltonChicago %>% filter(agency_num == "030310000" & class == "203" & between(total_billed,3140,3160))
 
-Dol1a<- DoltonChicago %>% filter(agency_num == "030310000" & class == "203" & between(total_billed,4100,4200)) %>%
-  summarize(av = mean(av),
-            eav = mean(eav),
-            tax_amt_post_exe = mean(tax_amt_post_exe),
-            tax_amt_exe = mean(tax_amt_exe),
-            tax_amt_pre_exe = mean(tax_amt_pre_exe),
-            pin_count = n()) %>% 
-   pivot_longer(av:pin_count, names_to = "Stats", values_to = "Values") #%>% 
-  # kbl(caption= "Dolton, Class 203, Tax Bill ~ $3150", digits=0, booktabs = T)
+Dol1a <- DoltonChicago %>% filter(agency_num == "030310000" & class == "203" & between(total_billed,4100,4200)) %>%
+  summarize(
+    comp_taxrate = mean(tax_code_rate),
+    bill_current = mean(tax_amt_post_exe),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)) %>% 
+  pivot_longer(comp_taxrate:eav, names_to = "Stats", values_to = "Values") #%>% 
+# kbl(caption= "Dolton, Class 203, Tax Bill ~ $3150", digits=0, booktabs = T)
 
 
 # av = 
@@ -227,188 +822,18 @@ both_dt <- cbind(Chi1a, Dol1a)
 
 
 kbl(both_dt, booktabs = T, digits = 0, caption = "Property Class 203 Comparison, Tax Bill ~ $4150 (Dolton's median current bill)") %>%
-  kable_styling(full_width = T)%>%
+  kable_styling(full_width = T) %>%
 add_header_above(c("Chicago" = 2, "Dolton" = 2))
-```
 
 
+both_dt <- cbind(Chi1, Dol1a)
 
 
-## Using similarily Assessed Value properties 
-
-
-
-```{r eval = FALSE, include = FALSE}
-DoltonChicago %>% 
-  filter(agency_num == "030210000" & class == "203" & between(av,9990,10000)) %>%
-  summarize(
-    comp_taxrate = mean(tax_code_rate),
-    bill_current = mean(tax_amt_post_exe),
-    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
-    bill_change = bill_hyp - bill_current,
-    tax_amt_post_exe = mean(tax_amt_post_exe),
-    tax_amt_exe = mean(tax_amt_exe),
-    tax_amt_pre_exe = mean(tax_amt_pre_exe),
-    pin_count = n(),
-    av = mean(av), 
-    eav = mean(eav)
-  ) %>% 
-  pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")%>%
-  kbl(caption= "Chicago, Class 203, AV ~ $9,990", digits=0)
-
-# Chicago only has 2 pins that are similar to Dolton's median pin (which had a lot of matches)
-DoltonChicago %>% 
-  filter(agency_num == "030310000" & class == "203" & between(av, 9990, 10000)) %>%
-    summarize(              
-    comp_taxrate = mean(tax_code_rate),
-    bill_current = mean(tax_amt_post_exe),
-    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
-    bill_change = bill_hyp - bill_current,
-    tax_amt_post_exe = mean(tax_amt_post_exe),
-    tax_amt_exe = mean(tax_amt_exe),
-    tax_amt_pre_exe = mean(tax_amt_pre_exe),
-    pin_count = n(),
-    av = mean(av), 
-    eav = mean(eav)) %>% 
-    pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")%>%
-  kbl(caption= "Dolton, Class 203, AV ~ $9,990", digits=0)
-
-
-
-```
-
-```{r include = FALSE, eval=FALSE}
-
-#If comparing properties with AVs around 10,000 in Chicago and Dolton:
-
-#If holding the levy constant and acknowledging the change in tax rates that would occur from having additional taxable EAV within the taxing jurisdictions, Chicago's hypothetical tax bill would be \$1493 (an \$75 increase from \$1418) and Dolton's would be \$4452 (a \$340 DECREASE from $4792).
-
-#### Dolton only had 7 pins included in mean calculations. Skewed results. Increased range of AV used in next chunk below
-
-Chi2 <- DoltonChicago %>% 
-  filter(agency_num == "030210000" & class == "203" & between(av,9990,10000)) %>%
-  summarize(
-    comp_taxrate = mean(tax_code_rate),
-    bill_current = mean(tax_amt_post_exe),
-    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
-    bill_change = bill_hyp - bill_current,
-    tax_amt_post_exe = mean(tax_amt_post_exe),
-    tax_amt_exe = mean(tax_amt_exe),
-    tax_amt_pre_exe = mean(tax_amt_pre_exe),
-    pin_count = n(),
-    av = mean(av), 
-    eav = mean(eav)
-  ) %>% 
-  pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")#%>%
- # kbl(caption= "Chicago, Class 203, AV ~ $9,990", digits=0)
-
-# Chicago only has 2 pins that are similar to Dolton's median pin (which had a lot of matches)
-Dol2<- DoltonChicago %>% 
-  filter(agency_num == "030310000" & class == "203" & between(av, 9990, 10000)) %>%
-    summarize(              
-    comp_taxrate = mean(tax_code_rate),
-    bill_current = mean(tax_amt_post_exe),
-    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
-    bill_change = bill_hyp - bill_current,
-    tax_amt_post_exe = mean(tax_amt_post_exe),
-    tax_amt_exe = mean(tax_amt_exe),
-    tax_amt_pre_exe = mean(tax_amt_pre_exe),
-    pin_count = n(),
-    av = mean(av), 
-    eav = mean(eav)) %>% 
-    pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values") #%>%
- # kbl(caption= "Dolton, Class 203, AV ~ $9,990", digits=0)
-
-
-both_dt <- cbind(Chi2, Dol2)
-
-
-kbl(both_dt, booktabs = T, digits = 0, caption = "Property Class 203 Comparison, AV ~ $10,000") %>%
+kbl(both_dt, booktabs = T, digits = 0, caption = "Property Class 203 Comparison, Median Dolton vs Median Chicago") %>%
   kable_styling(full_width = T)%>%
-add_header_above(c("Chicago" = 2, "Dolton" = 2))
+add_header_above(c("Chicago Median 203 Property" = 2, "Dolton Median 203 Property" = 2))
 ```
 
-
-
-If holding the levy constant and acknowledging the change in tax rates that would occur from having additional taxable EAV within the taxing jurisdictions, Chicago's hypothetical tax bill would be \$1494 (an \$70 increase from \$1423) and Dolton's would be \$4503 (a \$180 increase from $4322).    
-
-```{r eval = FALSE, include = FALSE}
-DoltonChicago %>% 
-  filter(agency_num == "030210000" & class == "203" & between(av,9950,10050)) %>%
-  summarize(
-    comp_taxrate = mean(tax_code_rate),
-    bill_current = mean(tax_amt_post_exe),
-    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
-    bill_change = bill_hyp - bill_current,
-    tax_amt_post_exe = mean(tax_amt_post_exe),
-    tax_amt_exe = mean(tax_amt_exe),
-    tax_amt_pre_exe = mean(tax_amt_pre_exe),
-    pin_count = n(),
-    av = mean(av), 
-    eav = mean(eav)
-  ) %>% 
-  pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")%>%
-  kbl(caption= "Chicago, Class 203, AV ~ $10,000", digits=0)
-
-# Chicago only has 2 pins that are similar to Dolton's median pin (which had a lot of matches)
-DoltonChicago %>% 
-  filter(agency_num == "030310000" & class == "203" & between(av, 9950, 10050)) %>%
-    summarize(              
-    comp_taxrate = mean(tax_code_rate),
-    bill_current = mean(tax_amt_post_exe),
-    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
-    bill_change = bill_hyp - bill_current,
-    tax_amt_post_exe = mean(tax_amt_post_exe),
-    tax_amt_exe = mean(tax_amt_exe),
-    tax_amt_pre_exe = mean(tax_amt_pre_exe),
-    pin_count = n(),
-    av = mean(av), 
-    eav = mean(eav)) %>% 
-    pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")%>%
-  kbl(caption= "Dolton, Class 203, AV ~ $10,000", digits=0)
-```
-
-```{r}
-Chi3 <- DoltonChicago %>% 
-  filter(agency_num == "030210000" & class == "203" & between(av,9950,10050)) %>%
-  summarize(
-    comp_taxrate = mean(tax_code_rate),
-    bill_current = mean(tax_amt_post_exe),
-    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
-    bill_change = bill_hyp - bill_current,
-    tax_amt_post_exe = mean(tax_amt_post_exe),
-    tax_amt_exe = mean(tax_amt_exe),
-    tax_amt_pre_exe = mean(tax_amt_pre_exe),
-    pin_count = n(),
-    av = mean(av), 
-    eav = mean(eav)
-  ) %>% 
-  pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
-
-# Chicago only has 2 pins that are similar to Dolton's median pin (which had a lot of matches)
-Dol3 <- DoltonChicago %>% 
-  filter(agency_num == "030310000" & class == "203" & between(av, 9950, 10050)) %>%
-    summarize(              
-    comp_taxrate = mean(tax_code_rate),
-    bill_current = mean(tax_amt_post_exe),
-    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
-    bill_change = bill_hyp - bill_current,
-    tax_amt_post_exe = mean(tax_amt_post_exe),
-    tax_amt_exe = mean(tax_amt_exe),
-    tax_amt_pre_exe = mean(tax_amt_pre_exe),
-    pin_count = n(),
-    av = mean(av), 
-    eav = mean(eav)) %>% 
-    pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
-
-both_dt <- cbind(Chi3, Dol3)
-
-
-kbl(both_dt, booktabs = T, digits = 0, 
-    caption = "Property Class 203 Comparison, AV ~ $10,000") %>%
-  kable_styling(full_width = T)%>%
-add_header_above(c("Chicago" = 2, "Dolton" = 2))
-```
 
 ## Using a current tax bill ~$3500:
 
@@ -457,7 +882,7 @@ DoltonChicago %>%
 
 Value was chosen randomly as roughly between the median property AV in Dolton and Chicago. 
 
-For post-exemption bills around \$3700: Chicago has $26,448 AV and \$79,420 in EAV. Chicago's Composite tax rate for the properties examined is 6.7%. Dolton has an AV of \$7,631 and \$22,914 in EAV. Dolton's average composite tax rate for the properties examiend was 24.2%.
+For post-exemption bills around \$3700: Chicago has $26,448 AV and \$79,420 in EAV. Chicago's Composite tax rate for the properties examined is 6.7%. Dolton has an AV of \$7,631 and \$22,914 in EAV. Dolton's average composite tax rate for the properties examined was 24.2%.
 
 If holding the levy constant and acknowledging the change in tax rates that would occur from having additional taxable EAV within the taxing jurisdictions, Chicago's hypothetical tax bill would be \$4503 (an \$802 increase from \$3700) and Dolton's would be \$3479 (a \$220 DECREASE from $3700). 
 
@@ -478,7 +903,7 @@ DoltonChicago %>%
     eav = mean(eav)
   )  %>% 
     pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")%>%
-  kbl(caption= "Chicago, Class 203, Current Bill ~$3,700", digits=0)
+  kbl(caption= "Chicago NOT ENOGUH PINS, Class 203, Current Bill ~$3,700", digits=0)
 
 # Chicago only has 2 pins that are similar to Dolton's median pin (which had a lot of matches)
 
@@ -496,14 +921,18 @@ DoltonChicago %>%
     eav = mean(eav)
   ) %>% 
     pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")%>%
-  kbl(caption= "Dolton, Class 203, Current Bill ~ $3,700", digits=0)
+  kbl(caption= "Dolton NOT ENOUGH PINS, Class 203, Current Bill ~ $3,700" , digits=0)
 ```
 
-Expanded taxbill range:
+
+
+> Expanded taxbill range:
+
+
 ```{r}
 ## Chicago ## 
 DoltonChicago %>% 
-  filter(agency_num == "030210000" & class == "203" & between(tax_amt_post_exe, 3650, 3750)) %>%
+  filter(agency_num == "030210000" & class == "203" & between(tax_amt_post_exe, 3600, 3800)) %>%
   summarize(
     comp_taxrate = mean(tax_code_rate),
     bill_current = mean(tax_amt_post_exe),
@@ -523,7 +952,7 @@ DoltonChicago %>%
 
 ## Dolton ## 
 DoltonChicago %>% 
-  filter(agency_num == "030310000" & class == "203" & between(tax_amt_post_exe,3650,3750)) %>%
+  filter(agency_num == "030310000" & class == "203" & between(tax_amt_post_exe,3600,3800)) %>%
   summarize(
     comp_taxrate = mean(tax_code_rate),
     bill_current = mean(tax_amt_post_exe),
@@ -553,11 +982,12 @@ For pre exemption tax bills around \$3700 in Dolton, average AV is \$5,235, EAV 
 
 If holding the levy constant and acknowledging the change in tax rates that would occur from having additional taxable EAV within the taxing jurisdictions, Chicago's hypothetical tax bill would be \$2990 (an \$89 increase from \$2901) and Dolton's would be \$2377 (a \$667 DECREASE from $3044). 
 
+Uses a tax bill range of 3600 to 3800 to increase "median pins" used for summary stats. 
 
 ```{r}
 ## Chicago ## 
 DoltonChicago %>% 
-  filter(agency_num == "030210000" & class == "203" & between(tax_amt_pre_exe, 3695, 3705)) %>%
+  filter(agency_num == "030210000" & class == "203" & between(tax_amt_pre_exe, 3600, 3800)) %>%
   summarize(
     comp_taxrate = mean(tax_code_rate),
     bill_current = mean(tax_amt_post_exe),
@@ -576,7 +1006,7 @@ DoltonChicago %>%
 
 ## Dolton ##
 DoltonChicago %>% 
-  filter(agency_num == "030310000" & class == "203" & between(tax_amt_pre_exe,3680,3715)) %>%
+  filter(agency_num == "030310000" & class == "203" & between(tax_amt_pre_exe,3600,3800)) %>%
   summarize(
     comp_taxrate = mean(tax_code_rate),
     bill_current = mean(tax_amt_post_exe),
