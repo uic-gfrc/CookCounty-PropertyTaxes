@@ -144,12 +144,14 @@ unique_tif_taxcodes <- DBI::dbGetQuery(
 
 ## Read in summarized tax code level data for exemptions and taxbills.
 
-taxbills_by_Class_per_TC <- read_csv("taxbills_inMunis_perTC.csv")  %>% 
+taxbills_by_Class_per_TC <- #read_csv("taxbills_inMunis_perTC.csv")  %>% 
+  read_csv("2_Summed_Bills_by_Taxcode_and_Class.csv") %>%
   mutate(tax_code = as.character(tax_code)) 
 
 
 # get rid of rpm variables, tax_amt_exe,pre and post exemption variables,
-exemptions_by_class_per_TC <- read_csv("all_exemptions_by_TC.csv") %>%
+exemptions_by_class_per_TC <- #read_csv("all_exemptions_by_TC.csv") %>%
+  read_csv("3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>%
     mutate(tax_code_num = as.character(tax_code_num))
 
 tif_distrib <- DBI::dbGetQuery(
@@ -763,13 +765,15 @@ Current_Taxrates <- taxcodes_current %>%
   select(clean_name, taxrate_change, tax_rate_current, taxrate_new, everything()) %>% 
   arrange(desc(tax_rate_current))
 
+
+
 land_use <- taxcodes_current %>% 
   left_join(muni_agency_names) %>% 
   left_join(Current_Taxrates) %>%
-    left_join(class_dict, by = c("class" = "class_code")) %>%
-
+  left_join(class_dict, by = c("class" = "class_code")) %>%
+  
   mutate(class_1dig = str_sub(class, 1, 1),
-    ResidentialProps = ifelse(class_1dig %in% c("2", "3", "9"), "Residential", "Non-Residential")) %>%
+         ResidentialProps = ifelse(class_1dig %in% c("2", "3", "9"), "Residential", "Non-Residential")) %>%
   #        PropType = case_when(
   #          major_class_code %in% c("3","9") ~ "Multi-Family",
   #          major_class_code == "2" ~ "Single-Family",
@@ -793,13 +797,13 @@ Below: Take EAV values within each property type, join it with muni level EAV va
 ```{r}
 
 grouped_exemptions <- exemptions_by_class_per_TC %>% 
-   # group_by(agency_name, major_class_code, major_class_type, ResidentialProps, PropType) %>%
+  # group_by(agency_name, major_class_code, major_class_type, ResidentialProps, PropType) %>%
   group_by(clean_name, Alea_cat, agency_name) %>%
   summarize(eav = sum(eav),
-           exempt_EAV = sum(exempt_EAV, exe_abate, na.rm=TRUE),
-         tax_base_current = sum(tax_base_current, na.rm=TRUE),
-         tax_base_noexemps = sum(tax_base_noexemps, na.rm=TRUE)) %>% ungroup()
-  
+            exempt_EAV = sum(exempt_EAV, exe_abate, na.rm=TRUE),
+            tax_base_current = sum(tax_base_current, na.rm=TRUE),
+            tax_base_noexemps = sum(tax_base_noexemps, na.rm=TRUE)) %>% ungroup()
+
 
 # calculate totals with ONLY EAV outside of TIFs
 muni_eav <- grouped_exemptions %>%  
@@ -815,6 +819,7 @@ pct_property_types <- left_join(grouped_exemptions, muni_eav) %>%
 
 pct_property_types
 
+write_csv(pct_property_types, "landuse_proportions_Aleacats.csv")
 
 burden_table <- pct_property_types %>% 
   left_join(Current_Taxrates, by = c("agency_name", "clean_name")) %>%
@@ -1060,7 +1065,7 @@ ggsave("Composite_Rate_Change.png", width = 6, height = 4, units = "in")
 
 # Owner Occupied Properties Burden Shift
 
-Change in Tax Burden for Owner Occupied Propertes. Includes class 2 properties that are not rental properties.:
+Change in Tax Burden for Owner Occupied Properties. Includes class 2 properties that are not rental properties:
 
 ```{r fig.show='hold', out.width="50%"}
 burden_shift %>%
@@ -1405,6 +1410,8 @@ props_wide
 
 proptypes3_comparisontable<- left_join(proptypes3_current, proptypes3_noexemps, by = "clean_name") 
 proptypes3_comparisontable
+
+write_csv(proptypes3_comparisontable, "OwnerOccupied_ComparisonTable.csv")
 
 ```
 
