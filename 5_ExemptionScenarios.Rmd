@@ -411,12 +411,13 @@ merged <- munitotals %>%
         # pct_pins_w_exemps = pin_count_hasexemptions / pin_count,
         pct_ofallpins_w_exe = PC_has_exe / PC_allPINs_muni, #       pins with exemptions / all pins in a muni
 
+        pct_EAV_is_C2 = muni_residential_eav_original / muni_eav_original,
          pct_C2_w_exemps = PC_C2_has_exe / PC_C2_muni, # 
          #pct_singfam_pins_w_exemps = pin_count_hasexemptions / pin_count_singfam_residential,
       #   pct_singfam_pins_w_exemps = pin_count_has_homeownerexemptions / pin_count_singfam_residential
     ) %>%
   
-  select(clean_name, pct_ofSF_pins_w_HOexe, pct_ofallpins_w_exe, pct_C2_w_exemps, 
+  select(clean_name, pct_EAV_is_C2, pct_ofSF_pins_w_HOexe, pct_ofallpins_w_exe, pct_C2_w_exemps, 
          PC_has_exe, PC_C2_muni, PC_allPINs_muni, everything())
 
 merged
@@ -458,11 +459,17 @@ taxcodes_current %>% summarize(tax_amt_exe=sum(tax_amt_exe))
 
 > CHECK CODE LOGIC in CHUNK BELOW 
 
+- Switched scenario 1 and 2 EAV calculations August 29th
+
 
 ```{r}
+
+# scenario 1 : Find "cost" of homeowners exemptions
+# scenario 2 :  "Find Cost of Senior Exemptions
 scenario_taxrates <- merged %>% 
-  mutate(scenario1_taxable_eav = Total_EAV - TIF_increment_EAV - homeowners_exemption,
-         scenario2_taxable_eav = Total_EAV - TIF_increment_EAV - (senior_exemption + freeze_exemption )) %>%
+  mutate(scenario1_taxable_eav = Total_EAV - TIF_increment_EAV - Exempt_EAV + homeowners_exemption,
+         scenario2_taxable_eav = Total_EAV - TIF_increment_EAV - Exempt_EAV + (senior_exemption + freeze_exemption ),
+         scenario_noexemptions_taxable_eav = Total_EAV - Exempt_EAV) %>%
   mutate(taxrate_scen1 = MuniLevy / scenario1_taxable_eav,
          taxrate_scen2 = MuniLevy / scenario2_taxable_eav,
          tax_rate_current = MuniLevy/nonTIF_EAV_post_exemps,
@@ -475,9 +482,12 @@ scenario_taxrates
 
 
 merged %>% 
-  filter(clean_name %in% c("Park Forest","Markham",  "Dolton", "Hillside", "Riverside", "Chicago", "Westchester", "Winnetka", "Rosemont")) %>%
-  mutate(scenario1_taxable_eav = Total_EAV - TIF_increment_EAV - homeowners_exemption,
-         scenario2_taxable_eav = Total_EAV - TIF_increment_EAV - (senior_exemption + freeze_exemption ),
+  filter(clean_name %in% c("Park Forest", #"Markham",  
+                           "Dolton", #"Hillside", "Riverside", 
+                           "Chicago"# # "Westchester", "Winnetka", "Rosemont"
+                           )) %>%
+  mutate(scenario1_taxable_eav = Total_EAV - TIF_increment_EAV - Exempt_EAV + homeowners_exemption,
+         scenario2_taxable_eav = Total_EAV - TIF_increment_EAV - Exempt_EAV + (senior_exemption + freeze_exemption ),
          scenario_noexemptions_taxable_eav = Total_EAV - Exempt_EAV) %>%
   mutate(taxrate_scen1 = MuniLevy / scenario1_taxable_eav,
          taxrate_scen2 = MuniLevy / scenario2_taxable_eav,
@@ -505,6 +515,7 @@ Burden Share  = Taxable EAV within Property Class * Composite tax rate
 Composite Tax Rate = (Municipal Levy / Taxable EAV )
 
 
+> Scen 1 and Scen 2 were also switched to exclude the inverse of what we wanted. Switched August 29. 
 
 ```{r}
 Class2_EAV_scenarios <- exemptions %>% 
@@ -533,20 +544,21 @@ Class2_TIF_EAV <-  taxcodes_current %>%
             Class2_nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
             Class2_TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),  
             Class2_Exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE), 
-            Class2_Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE))
+            Class2_Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE) )
 
 Class2_TIF_EAV
 
 
 Class2_merged <- Class2_TIF_EAV %>% 
   left_join(Class2_EAV_scenarios) %>%
-  left_join(MuniLevy)
+  left_join(MuniLevy) %>% 
+  mutate(pct_EAV_is_C2 = Class2_Total_EAV / Total_EAV) # pct of all EAV in 2021 that is Class 200 level properties
 
 
 Class2_Scenario_burdenshift <- Class2_merged %>% 
   left_join(scenario_taxrates) %>%
-  mutate(Class2_scenario1_taxable_eav = Class2_Total_EAV - Class2_TIF_increment_EAV - Class2_homeowners_exemption,
-        Class2_scenario2_taxable_eav = Class2_Total_EAV - Class2_TIF_increment_EAV - (Class2_senior_exemption + Class2_freeze_exemption )) %>%
+  mutate(Class2_scenario1_taxable_eav = Class2_Total_EAV - Class2_TIF_increment_EAV - Class2_Exempt_EAV + Class2_homeowners_exemption,
+        Class2_scenario2_taxable_eav = Class2_Total_EAV - Class2_TIF_increment_EAV - Class2_Exempt_EAV + (Class2_senior_exemption + Class2_freeze_exemption )) %>%
   
   mutate(burden_C2_scen1 = (Class2_scenario1_taxable_eav * taxrate_scen1)/ MuniLevy,
          burden_C2_scen2 = (Class2_scenario2_taxable_eav * taxrate_scen2) / MuniLevy,
@@ -557,8 +569,11 @@ Class2_Scenario_burdenshift <- Class2_merged %>%
  # select(clean_name, MuniLevy, taxrate_scen1, taxrate_scen2, tax_rate_current, taxrate_noexemps, scenario1_taxable_eav, scenario2_taxable_eav)
 
 Class2_Scenario_burdenshift %>% 
-  select(clean_name, burden_C2_scen1:burden_C2_noTIFs)  %>% 
-  filter(clean_name %in% c("Park Forest","Markham",  "Dolton", "Hillside", "Riverside", "Chicago", "Westchester", "Winnetka", "Rosemont"))
+  select(clean_name, pct_EAV_is_C2, burden_C2_scen1:burden_C2_noTIFs)  %>% 
+  filter(clean_name %in% c("Park Forest", #"Markham",  
+                           "Dolton", #"Hillside", "Riverside", 
+                           "Chicago"#, "Westchester", "Winnetka", "Rosemont"
+                           ))
 ```
 
 
@@ -603,4 +618,9 @@ cost_table %>%
 It would cost around $1.4 billion to hold the levy constant for all taxing agencies and prevent tax bills from increasing and offset the negative impacts of all exemptions currently used in the tax system.
 
 
-532 million for only offsetting impacts of general homeowners exemption and 
+
+- $930 million to offset impacts of general homestead exemption (the main exemption type)   
+
+- $523 million for only offsetting impacts of senior and senior freeze exemption.   
+
+
