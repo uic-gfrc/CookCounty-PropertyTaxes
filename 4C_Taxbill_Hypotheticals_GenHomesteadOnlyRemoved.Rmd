@@ -1,0 +1,870 @@
+---
+title: 'Hypothetical Taxbills: Remove all Exemptions'
+author: "Alea Wilbur"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+    code_download: yes
+---
+
+```{r setup, warning=FALSE, message=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+
+library(tidyverse)
+library(data.table)
+library(gstat)
+library(ptaxsim)
+library(glue)
+
+
+
+```
+
+# Bring in data
+
+The tax code taxrates were made in file `2_...rmd` and the exemptions file were created in file `3_.....rmd`
+
+```{r}
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
+
+
+muni_agency_names <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT DISTINCT agency_num, agency_name, minor_type
+  FROM agency_info
+  WHERE minor_type = 'MUNI'
+  OR agency_num = '020060000'  
+
+  "
+)
+
+muni_tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT DISTINCT agency_num, tax_code_num
+  FROM tax_code
+  WHERE agency_num IN ({muni_agency_names$agency_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+) %>% 
+  mutate(tax_code_num = as.numeric(tax_code_num))
+
+tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT DISTINCT tax_code_num, tax_code_rate
+  FROM tax_code
+  WHERE year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+) %>% mutate(tax_code_num = as.numeric(tax_code_num))
+```
+
+```{r eval = FALSE}
+taxbills_current <- read_csv("1_Get_All_Pins-CookPinTaxbills_2021_Actual.csv")
+# 22,453,875 tax bills in 2021 in municipalities. 
+# DOES NOT INCLUDE unincorporated tax bills based on how we pulled the data in Step 1.
+
+sapply(taxbills_current, function(x) sum(is.na(x)))
+
+
+# 1,825,816 billed properties with 14-digit PINs in incororated areas
+# 1,864,594 in incorported and unincorporated areas.
+pin14_bills_current <- taxbills_current %>%
+  group_by(tax_code, class, pin) %>%
+  
+  mutate(total_bill = final_tax_to_dist + final_tax_to_tif) %>% # from each taxing agency
+  
+  summarize(
+    total_billed = sum(total_bill, na.rm = TRUE), # total on someone's property tax bill
+    av = first(av),
+    eav = first(eav),
+    # pin_count_in_parcel = n(),
+    final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE),
+    final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+    tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), # revenue lost due to exemptions
+    tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), # total rev before all exemptions
+    tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE), # total rev after all exemptions
+    rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE), # not used
+    rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE), # not used
+    rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE), # not used
+    tif_share = mean(tif_share, na.rm=TRUE), # not used
+  )  %>% 
+  mutate(propclass_1dig = str_sub(class, 1, 1))
+
+head(pin14_bills_current)
+
+sapply(pin14_bills_current, function(x) sum(is.na(x)))
+
+
+# Now group again and sum values for tax code and each property class!
+
+# There are 28,381 property class - tax code group combinations in incorporated areas.
+# There are 28,534 property class - tax code group combos in incorporated + unincorporated areas
+
+rm(taxbills_current)
+```
+
+# Add exemption types to pin level tax bills
+
+Need to merge PIN level data of tax bills and exemptions per PIN if the goal is to calculate new tax rates for different scenarios AND view individual level tax bill changes. (i.e. if we want to look at the "median taxpayer" then need to use this method).
+
+Note: The EAV from the exemption table is the original EAV (AV \* equalizer) without consider TIFs or exemptions.
+
+```{reval = FALSE}
+pin_eav <- read_csv("3_Exemption_Details_output-all_cook_pin_exemptions_2021_actual.csv") %>%
+  #filter(class_code !=0) %>%
+  
+  mutate(all_exemptions = exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+           exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 + exe_abate) %>%
+  mutate(zero_bill = ifelse(eav <= all_exemptions, 1, 0),
+         has_HO_exemp = ifelse(exe_homeowner > 0, 1, 0)) %>%
+  rename(equalized_AV = eav,
+         pin_AV = av)# %>% mutate(class_code = as.numeric(class_code))
+# table(pin_eav$zero_bill)
+
+table(pin_eav$major_class_code, pin_eav$zero_bill)
+
+# table(pin_eav$major_class_code, pin_eav$has_HO_exemp)
+
+
+pin_data <- left_join(pin14_bills_current, pin_eav, by = c("pin", "class" = "class_code" ))
+
+pin_data <- left_join(pin_data, tax_codes, by = c("tax_code" = "tax_code_num"))
+
+```
+
+
+
+
+```{r}
+pin_data <- read_csv("4C_joined_PINs_bills_and_exemptions.csv")
+
+head(pin_data)
+dim(pin_data)
+```
+
+## Calculate new tax rates
+
+```{r}
+# taxcodes_by_class_current <- pin_data %>% 
+#   group_by(tax_code, class)  %>%
+#   
+#   summarize(
+#     av = sum(av),
+#     eav = sum(eav),
+#     equalized_AV = sum(equalized_AV),
+#     pins_in_class = n(),
+#     current_exemptions = sum(all_exemptions),
+#     HO_exemps = sum(exe_homeowner),
+#     tax_code_rate = first(tax_code_rate),
+#     final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # used as LEVY amount!! 
+#     final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+#     tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), 
+#     tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), 
+#     tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE),
+#     rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE), # not used
+#     rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE), # not used
+#     rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE), # not used
+#     tif_share = mean(tif_share, na.rm=TRUE), # not used
+#   ) %>%
+#   
+#   mutate(total_bill_current = final_tax_to_dist + final_tax_to_tif) %>%
+#   rename(cur_comp_TC_rate = tax_code_rate) %>%
+#   mutate(current_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100),
+#          new_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100) + HO_exemps) %>%
+#   mutate(new_comp_TC_rate = (final_tax_to_dist / new_taxable_eav)*100) %>%
+#   mutate(new_comp_TC_rate = ifelse(is.nan(new_comp_TC_rate), cur_comp_TC_rate, new_comp_TC_rate)) %>%
+#   select(tax_code, class, cur_comp_TC_rate, new_comp_TC_rate, current_taxable_eav, new_taxable_eav, everything())
+# 
+# 
+# head(taxcodes_by_class_current) 
+
+
+taxcodes_by_TC_current <- pin_data %>% 
+  group_by(tax_code)  %>%
+  
+  summarize(
+    av = sum(av),
+    eav = sum(eav),
+    equalized_AV = sum(equalized_AV),
+    pins_in_class = n(),
+    current_exemptions = sum(all_exemptions),
+    HO_exemps = sum(exe_homeowner),
+    tax_code_rate = first(tax_code_rate),
+    final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # used as LEVY amount!! 
+    final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+    tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), 
+    tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), 
+    tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE),
+    rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE), # not used
+    rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE), # not used
+    rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE), # not used
+    tif_share = mean(tif_share, na.rm=TRUE), # not used
+  ) %>%
+  
+  mutate(total_bill_current = final_tax_to_dist + final_tax_to_tif) %>%
+  rename(cur_comp_TC_rate = tax_code_rate) %>%
+  mutate(current_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100),
+         new_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100) + HO_exemps) %>%
+  mutate(new_comp_TC_rate = (final_tax_to_dist / new_taxable_eav)*100) %>%
+  mutate(new_comp_TC_rate = ifelse(is.nan(new_comp_TC_rate), cur_comp_TC_rate, new_comp_TC_rate)) %>%
+  select(tax_code, cur_comp_TC_rate, new_comp_TC_rate, current_taxable_eav, new_taxable_eav, everything())
+
+
+head(taxcodes_by_TC_current) 
+
+
+taxcode_taxrates <- taxcodes_by_TC_current %>% 
+  select(tax_code, cur_comp_TC_rate, new_comp_TC_rate, current_exemptions, HO_exemps)
+
+taxcode_taxrates %>% right_join(muni_tax_codes, by = c("tax_code" = "tax_code_num")) %>% group_by(agency_num) %>% summarize(cur_comp_TC_rate = mean(cur_comp_TC_rate, na.rm=TRUE),
+                                                                                                                          new_comp_TC_rate = mean(new_comp_TC_rate, na.rm = TRUE)) %>% right_join(muni_agency_names) %>%
+  arrange(agency_name)# %>% write_csv("4c_taxrates.csv")
+
+
+
+```
+
+# Finding the "Median Property" or "Average Taxpayer"
+
+The median assessed value is used to determine the `median property` for various groups (e.g. the municipality, the 1-digit major property class, and 3-digit property class).
+
+The assessed value and original equalized assessed values come from the `pin` data table within PTAXSIM. This table also has every type of exemption that the property received and the amount of EAV that was exempt due to the exemption.
+
+```{r eval=FALSE, include=FALSE}
+pin_data2 <- left_join(pin_data, taxcode_taxrates, by = c("tax_code" = "tax_code"))
+
+
+pin_data2 <- pin_data2 %>% left_join(muni_tax_codes) 
+
+pin_data2 <- pin_data2 %>% left_join(muni_agency_names)
+
+
+head(pin_data2)
+
+write_csv(pin_data2, "4C_joined_PINs_bills_and_exemptions.csv")
+```
+
+
+```{r}
+
+pin_data2 <- read_csv("4C_joined_PINs_bills_and_exemptions.csv")
+
+pin_data2 <- pin_data2 %>% 
+  mutate(
+    bill_current = (final_tax_to_dist + final_tax_to_tif),
+    bill_noexemps = new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
+    bill_change = bill_noexemps - bill_current)
+
+
+muni_taxrates <- pin_data2 %>% 
+  group_by(agency_name)  %>%
+  
+  summarize(
+    av = sum(av),
+    eav = sum(eav),
+    equalized_AV = sum(equalized_AV),
+    pins_in_class = n(),
+    current_exemptions = sum(all_exemptions),
+    HO_exemps = sum(exe_homeowner),
+    tax_code_rate = first(tax_code_rate),
+    final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # used as LEVY amount!! 
+    final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+    tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), 
+    tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), 
+    tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE),
+    rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE), # not used
+    rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE), # not used
+    rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE), # not used
+    tif_share = mean(tif_share, na.rm=TRUE), # not used
+  ) %>%
+  
+  mutate(total_bill_current = final_tax_to_dist + final_tax_to_tif) %>%
+  rename(cur_comp_TC_rate = tax_code_rate) %>%
+  mutate(current_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100),
+         new_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100) + HO_exemps) %>%
+  mutate(new_comp_TC_rate = (final_tax_to_dist / new_taxable_eav)*100) %>%
+  mutate(new_comp_TC_rate = ifelse(is.nan(new_comp_TC_rate), cur_comp_TC_rate, new_comp_TC_rate)) %>%
+  select(agency_name, cur_comp_TC_rate, new_comp_TC_rate, current_taxable_eav, new_taxable_eav, everything())
+
+muni_taxrates 
+
+muni_taxrates %>% write_csv("4C_muni_taxrates.csv")
+```
+
+## Bill Distributions 
+
+```{r, fig.show='hold', out.width="50%"}
+pin_data2 %>%
+  filter(major_class_code == 2 & bill_current < 30000 & agency_name == "VILLAGE OF DOLTON") %>% ggplot() +
+  geom_histogram(aes(x= bill_current, bins = 100))+
+    geom_vline(aes(xintercept=median(bill_current, na.rm=TRUE), color = "red")) +
+    theme_classic()+theme(legend.position = "none") + 
+
+  scale_x_continuous(limits = c(-5,20000)) +
+  scale_y_continuous(limits = c(0, 1500))+
+  labs(x="Dolton's Actual Tax Bills With Current Exemptions", y = "Number of Tax Bills")
+
+pin_data2 %>%
+  filter(major_class_code == 2 & bill_noexemps < 30000 & agency_name == "VILLAGE OF DOLTON") %>% ggplot() +
+  geom_histogram(aes(x= bill_noexemps, bins = 100))+
+    geom_vline(aes(xintercept=median(bill_noexemps, na.rm=TRUE), color = "red")) +
+    theme_classic()+theme(legend.position = "none") + 
+
+  scale_x_continuous(limits = c(-5,20000)) + 
+    scale_y_continuous(limits = c(0, 1500))+
+
+  labs(x="Dolton's Tax Bills Without General Homestead Exemptions", y = "Number of Tax Bills")
+
+
+
+```
+
+
+```{r, fig.show='hold', out.width="50%"}
+
+pin_data2 %>%
+  filter(major_class_code == 2 & agency_name == "VILLAGE OF GLENCOE") %>% ggplot() +
+  geom_histogram(aes(x= bill_current, bins = 100))+
+    geom_vline(aes(xintercept=median(bill_current, na.rm=TRUE), color = "red")) +
+    theme_classic()+theme(legend.position = "none") + 
+
+  scale_x_continuous(limits = c(-5,60000)) + 
+#    scale_y_continuous(limits = c(0, 1500))+
+
+  labs(title="Glencoe's Current Tax Bill Distribution", x = "Dollars", y = "Number of Tax Bills")
+
+pin_data2 %>%
+  filter(major_class_code == 2 & agency_name == "VILLAGE OF GLENCOE") %>% ggplot() +
+  geom_histogram(aes(x= bill_noexemps, bins = 100))+
+    geom_vline(aes(xintercept=median(bill_noexemps, na.rm=TRUE), color = "red")) +
+    theme_classic()+theme(legend.position = "none") + 
+
+  scale_x_continuous(limits = c(-5,60000)) + 
+#    scale_y_continuous(limits = c(0, 1500))+
+
+  labs(title="Glencoe's Tax Bills Without General Homestead Exemptions", y = "Number of Tax Bills")
+
+
+
+```
+
+```{r, fig.show='hold', out.width="50%"}
+pin_data2 %>%
+  filter(major_class_code == 2 & bill_current < 30000 & agency_name == "CITY OF CHICAGO") %>% ggplot() +
+  geom_histogram(aes(x= bill_current, bins = 100))+
+    geom_vline(aes(xintercept=median(bill_current, na.rm=TRUE), color = "red")) +
+    theme_classic()+theme(legend.position = "none") + 
+
+  scale_x_continuous(limits = c(-5,20000)) +
+  scale_y_continuous(limits = c(0, 80000)) +
+  labs(title="Chicago's Actual Tax Bills With Current Exemptions", x= "Dollars", y = "Number of Tax Bills")
+
+pin_data2 %>%
+  filter(major_class_code == 2  & agency_name == "CITY OF CHICAGO") %>% ggplot() +
+  geom_histogram(aes(x= bill_noexemps, bins = 100))+
+    geom_vline(aes(xintercept=median(bill_noexemps, na.rm=TRUE), color = "red")) +
+    theme_classic()+theme(legend.position = "none") + 
+
+  scale_x_continuous(limits = c(-5,20000)) + 
+  scale_y_continuous(limits = c(0, 80000)) +
+
+  labs(title="Chicago's Tax Bills Without General Homestead Exemptions", x="Dollars", y = "Number of Tax Bills")
+
+
+
+```
+
+```{r bill-change}
+pin_data2 %>%
+  filter(major_class_code == 2 & agency_name == "VILLAGE OF DOLTON") %>% 
+  ggplot() +
+  geom_histogram(aes(x= bill_change, bins = 100))+
+    geom_vline(aes(xintercept=median(bill_change, na.rm=TRUE), color = "red")) +
+    theme_classic()+
+  theme(legend.position = "none") + 
+
+  scale_x_continuous(limits = c(-2800,2800)) +
+  scale_y_continuous(limits = c(0, 2000))+
+  labs(title="Dolton's Change in Tax Bills", subtitle =  "Hypothetical with no General Homestead Exemptions", x = "Change in Tax Bill ($)", y = "Number of Tax Bills")
+
+pin_data2 %>%
+  filter(major_class_code == 2 & agency_name == "CITY OF CHICAGO") %>% ggplot() +
+  geom_histogram(aes(x= bill_change, bins = 100))+
+    geom_vline(aes(xintercept=median(bill_change, na.rm=TRUE), color = "red")) +
+    theme_classic()+ theme(legend.position = "none") + 
+
+  scale_x_continuous(limits = c(-2800,2800)) + 
+  scale_y_continuous(limits = c(0, 200000))+
+
+  labs(title ="Chicago's Change in Tax Bills", subtitle = "Hypothetical with no General Homestead Exemptions", x = "Change in Tax Bill ($)", y = "Number of Tax Bills")
+
+pin_data2 %>%
+  filter(major_class_code == 2 & agency_name == "VILLAGE OF GLENCOE") %>% ggplot() +
+  geom_histogram(aes(x= bill_change, bins = 100))+
+    geom_vline(aes(xintercept=median(bill_change, na.rm=TRUE), color = "red")) +
+    theme_classic()+theme(legend.position = "none") + 
+
+#  scale_x_continuous(limits = c(-5,20000)) + 
+#    scale_y_continuous(limits = c(0, 1500))+
+
+  labs(title="Glencoe's Change in Tax Bills Without General Homestead Exemptions", y = "Number of Tax Bills", x = "Dollars")
+```
+
+
+```{r}
+
+pin_data2 %>% 
+filter(pin_AV > 0) %>% 
+  filter(agency_name %in% c("CITY OF CHICAGO", "VILLAGE OF DOLTON", "VILLAGE OF GLENCOE")) %>%
+  filter(class >199 & class < 300) %>% 
+  arrange(av) %>%
+ # group_by(agency_name, has_HO_exemp) %>% 
+  mutate(#taxable_eav = final_tax_to_dist / tax_code_rate,
+    # current bill = current tax rate * portion of levy billed
+         bill_current = (final_tax_to_dist + final_tax_to_tif),
+         bill_noexemps =  new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
+         bill_change = bill_noexemps - bill_current) %>%
+  group_by(agency_name, zero_bill, has_HO_exemp) %>% 
+  summarize(median_AV = median(av),
+            median_EAV = median(eav),
+            mean_bill_cur = mean(bill_current, na.rm=TRUE),
+            median_bill_cur = median(bill_current),
+            mean_bill_new = mean(bill_noexemps, na.rm=TRUE),
+            median_bill_new = median(bill_noexemps),
+            mean_change = mean(bill_change, na.rm=TRUE),
+            median_change = median(bill_change),
+            perceived_savings = median(tax_amt_exe),
+            cur_comp_TC_rate = mean(cur_comp_TC_rate),
+            new_comp_TC_rate = mean(new_comp_TC_rate),
+            pincount=n()
+)
+
+
+pin_data2 %>% 
+filter(pin_AV > 0) %>% 
+  filter(agency_name %in% c("CITY OF CHICAGO", "VILLAGE OF DOLTON", "VILLAGE OF GLENCOE")) %>%
+  filter(class >199 & class < 300) %>% 
+  arrange(av) %>%
+ # group_by(agency_name, has_HO_exemp) %>% 
+  mutate(#taxable_eav = final_tax_to_dist / tax_code_rate,
+    # current bill = current tax rate * portion of levy billed
+         bill_current = (final_tax_to_dist + final_tax_to_tif),
+         bill_noexemps =  new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
+         bill_change = bill_noexemps - bill_current) %>%
+  group_by(agency_name, has_HO_exemp) %>% 
+  summarize(median_AV = median(av),
+            median_EAV = median(eav),
+            mean_bill_cur = mean(bill_current, na.rm=TRUE),
+            median_bill_cur = median(bill_current),
+            mean_bill_new = mean(bill_noexemps, na.rm=TRUE),
+            median_bill_new = median(bill_noexemps),
+            mean_change = mean(bill_change, na.rm=TRUE),
+            median_change = median(bill_change),
+            perceived_savings = median(tax_amt_exe),
+            cur_comp_TC_rate = mean(cur_comp_TC_rate),
+            new_comp_TC_rate = mean(new_comp_TC_rate),
+            pincount=n()
+)
+
+
+pin_data2 %>% 
+filter(pin_AV > 0) %>% 
+  filter(agency_name %in% c("CITY OF CHICAGO", "VILLAGE OF DOLTON", "VILLAGE OF GLENCOE")) %>%
+  filter(class >199 & class < 300) %>% 
+  arrange(av) %>%
+ # group_by(agency_name, has_HO_exemp) %>% 
+  mutate(#taxable_eav = final_tax_to_dist / tax_code_rate,
+    # current bill = current tax rate * portion of levy billed
+         bill_current = (final_tax_to_dist + final_tax_to_tif),
+         bill_noexemps =  new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
+         bill_change = bill_noexemps - bill_current) %>%
+  group_by(agency_name) %>% 
+  summarize(median_AV = median(av),
+            median_EAV = median(eav),
+            mean_bill_cur = mean(bill_current, na.rm=TRUE),
+            median_bill_cur = median(bill_current),
+            mean_bill_new = mean(bill_noexemps, na.rm=TRUE),
+            median_bill_new = median(bill_noexemps),
+            mean_change = mean(bill_change, na.rm=TRUE),
+            median_change = median(bill_change),
+            perceived_savings = median(tax_amt_exe),
+            cur_comp_TC_rate = mean(cur_comp_TC_rate),
+            new_comp_TC_rate = mean(new_comp_TC_rate),
+            pincount=n()
+)
+
+
+```
+
+For all Class 2 Properties:
+
+In Chicago: If they didn't claim an exemption (n = 331,492), median bill decreases by \$168. If they do currently claim an exemption (n = 401,450), the median bill increases \$330 (BUT they think they are saving \$671 due to exempt EAV \* higher tax rate amount that shows up on their tax bills!)
+
+In Dolton: If they didn't claim an exemption (n = 2,633), median bill decreases by \$1241. If they do currently claim an exemption (n = 5,639), the median bill increases \$1090 (BUT they think they are saving \$2791 due to exempt EAV \* higher tax rate amount that shows up on their tax bills!)
+
++---------+--------------+-----------------+-----------------+---------------+-----------+--------------------+
+|         | has_HO exemp | median bill_cur | median bill_new | median change | pin count | perceived savings  |
++:========+=============:+================:+================:+==============:+==========:+===================:+
+| Chicago | 0            | 3389.3          | 3043.7          | -168.2        | 331492    | 0.0                |
++---------+--------------+-----------------+-----------------+---------------+-----------+--------------------+
+| Chicago | 1            | 3757.1          | 4029.7          | 330.5         | 401450    | 671.6              |
++---------+--------------+-----------------+-----------------+---------------+-----------+--------------------+
+| Dolton  | 0            | 6051.9          | 4792.4          | -1241.1       | 2633      | 0.0                |
++---------+--------------+-----------------+-----------------+---------------+-----------+--------------------+
+| Dolton  | 1            | 3802.3          | 4868.6          | 1090.4        | 5639      | 2791.5             |
++---------+--------------+-----------------+-----------------+---------------+-----------+--------------------+
+
+If we do not care whether they do or do not currently receive the general homestead exemption, then the median change is a decrease of \$3 in Chicago (732,942 pins) and an increase of \$769 in Dolton (8,272 pins).
+
++-----------+---------------------+-----------------+---------------+-----------+-------------------+
+|           | median bill_current | median bill_new | median change | pincount  | perceived savings |
++===========+=====================+================:+==============:+==========:+==================:+
+| Chicago   | 3619                | 3642.87         | -2.90         | 732942    | 669.7             |
++-----------+---------------------+-----------------+---------------+-----------+-------------------+
+| Dolton    | 4305                | 4846.94         | 769.12        | 8272      | 2293.7            |
++-----------+---------------------+-----------------+---------------+-----------+-------------------+
+
+The median Class 2 tax payer thinks they are saving \$670 when they really are saving no money due to current exemptions within Chicago and the median taxpayer in Dolton thinks they are saving \\\$2,294 but are only saving \$770 due to the higher tax rates that result from the decrease in taxable EAV that occurs from those that claim the general homested exemption.
+
+```{r}
+tax_bill_change_HO <- pin_data2 %>% 
+filter(pin_AV > 0) %>% 
+  filter(agency_name %in% c("CITY OF CHICAGO", "VILLAGE OF DOLTON", "VILLAGE OF GLENCOE")) %>%
+  filter(class == 203) %>% 
+  arrange(av) %>%
+    mutate(bill_current = (final_tax_to_dist + final_tax_to_tif),
+         bill_noexemps =  new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
+         bill_change = bill_noexemps - bill_current) %>%
+  group_by(agency_name, has_HO_exemp) %>% 
+  summarize(median_AV = median(av),
+            median_EAV = median(eav),
+            median_bill_cur = round(median(bill_current)),
+            median_bill_new = round(median(bill_noexemps)),
+            median_change = round(median(bill_change)),
+            pincount=n(),
+            perceived_savings = median(tax_amt_exe))
+
+tax_bill_change_HO
+
+pin_data2 %>% 
+filter(pin_AV > 0) %>% 
+  filter(agency_name %in% c("CITY OF CHICAGO", "VILLAGE OF DOLTON", "VILLAGE OF GLENCOE")) %>%
+  filter(class == 203) %>% 
+  arrange(av) %>%
+    mutate(bill_current = (final_tax_to_dist + final_tax_to_tif),
+         bill_noexemps =  new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
+         bill_change = bill_noexemps - bill_current) %>%
+  group_by(agency_name) %>% 
+  summarize(median_AV = median(av),
+            median_EAV = median(eav),
+            median_bill_cur = round(median(bill_current)),
+            median_bill_new = round(median(bill_noexemps)),
+            median_change = round(median(bill_change)),
+            pincount=n(),
+            perceived_savings = median(tax_amt_exe))
+
+pin_data2 %>% 
+filter(pin_AV > 0) %>% 
+  filter(agency_name %in% c("CITY OF CHICAGO", "VILLAGE OF DOLTON", "VILLAGE OF GLENCOE")) %>%
+  filter(class == 203) %>% 
+  arrange(av) %>%
+    mutate(bill_current = (final_tax_to_dist + final_tax_to_tif),
+         bill_noexemps =  new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
+         bill_change = bill_noexemps - bill_current) %>%
+  group_by(agency_name, zero_bill, has_HO_exemp) %>% 
+  summarize(median_AV = median(av),
+            median_EAV = median(eav),
+            median_bill_cur = round(median(bill_current)),
+            median_bill_new = round(median(bill_noexemps)),
+            median_change = round(median(bill_change)),
+            pincount=n(),
+            perceived_savings = median(tax_amt_exe))
+
+```
+
++-------------------+--------------+-----------------+-----------------+---------------+----------+-------------------+
+|                   | has_HO_exemp | median_bill_cur | median_bill_new | median_change | pincount | perceived_savings |
+|                   |              |                 |                 |               |          |                   |
+|                   | \<dbl\>      | \<dbl\>         | \<dbl\>         | \<dbl\>       | \<int\>  | \<dbl\>           |
++:==================+=============:+================:+================:+==============:+=========:+==================:+
+| CITY OF CHICAGO   | 0            | 3418            | 2970            | -369          | 32128    | 0.0               |
++-------------------+--------------+-----------------+-----------------+---------------+----------+-------------------+
+| CITY OF CHICAGO   | 1            | 3151            | 3268            | 269           | 102677   | 6712              |
++-------------------+--------------+-----------------+-----------------+---------------+----------+-------------------+
+| VILLAGE OF DOLTON | 0            | 6298            | 5006            | -1295         | 1103     | 0.0               |
++-------------------+--------------+-----------------+-----------------+---------------+----------+-------------------+
+| VILLAGE OF DOLTON | 1            | 3441            | 4629            | 1186          | 2506     | 2792              |
++-------------------+--------------+-----------------+-----------------+---------------+----------+-------------------+
+
+If only "removing"/"refunding" the general homestead exemption:
+
+For Chicago class 213 properties, the median tax bill would go down \$370 for those who don't currently have a general homestead exemption and would increase \$270 for people who do currently claim the general homestead exemption. 32K people don't claim the exemption and 102K people do.
+
+Dolton class 213 median properties have a decrease of \$1295 if they didn't claim homestead exemptions currently and increased \$1186 f they did already claim the general homestead exemption. 1100 people do not claim the exemption and 2500 people do claim the general homestead exemption.
+
++----------------------+-----------------+-----------------+---------------+----------+-------------------+
+| Class 213 Properties | median bill_cur | median bill_new | median change | pincount | perceived savings |
++:=====================+================:+================:+==============:+=========:+==================:+
+| Chicago              | 3151            | 3258            | 175           | 134805   | 670               |
++----------------------+-----------------+-----------------+---------------+----------+-------------------+
+| Dolton               | 4152            | 4770            | 1009          | 3609     | 2294              |
++----------------------+-----------------+-----------------+---------------+----------+-------------------+
+
+# Compare AV=10,000
+
+```{r}
+pin_data2 %>% 
+filter(pin_AV > 0) %>% 
+  filter(agency_name %in% c("CITY OF CHICAGO", "VILLAGE OF DOLTON", "VILLAGE OF GLENCOE")) %>%
+  filter(class > 199 & class < 300) %>% 
+  arrange(av) %>%
+    filter(av > 9500 & av < 10500) %>%
+
+ # group_by(agency_name, has_HO_exemp) %>% 
+  mutate(#taxable_eav = final_tax_to_dist / tax_code_rate,
+    # current bill = current tax rate * portion of levy billed
+         bill_current = (final_tax_to_dist + final_tax_to_tif),
+         bill_noexemps =  new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
+         bill_change = bill_noexemps - bill_current) %>%
+  group_by(agency_name, zero_bill, has_HO_exemp) %>% 
+  summarize(median_AV = median(av),
+            median_EAV = median(eav),
+            median_bill_cur = median(bill_current),
+            median_bill_new = median(bill_noexemps),
+            median_change = median(bill_change),
+            perceived_savings = median(tax_amt_exe),
+            cur_comp_TC_rate = mean(cur_comp_TC_rate),
+            new_comp_TC_rate = mean(new_comp_TC_rate),
+            pincount=n()
+)
+
+
+pin_data2 %>% 
+filter(pin_AV > 0) %>% 
+  filter(agency_name %in% c("CITY OF CHICAGO", "VILLAGE OF DOLTON", "VILLAGE OF GLENCOE")) %>%
+  filter(class >199 & class < 300) %>% 
+  arrange(av) %>%
+    filter(av > 9500 & av < 10500) %>%
+
+ # group_by(agency_name, has_HO_exemp) %>% 
+  mutate(#taxable_eav = final_tax_to_dist / tax_code_rate,
+    # current bill = current tax rate * portion of levy billed
+         bill_current = (final_tax_to_dist + final_tax_to_tif),
+         bill_noexemps =  new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
+         bill_change = bill_noexemps - bill_current) %>%
+  group_by(agency_name, has_HO_exemp) %>% 
+    summarize(median_AV = median(av),
+            median_equalizedAV =  median(equalized_AV),
+            median_EAV = median(eav),
+            median_bill_cur = median(bill_current),
+            median_bill_new = median(bill_noexemps),
+            median_change = median(bill_change),
+            perceived_savings = median(tax_amt_exe),
+            cur_comp_TC_rate = mean(cur_comp_TC_rate),
+            new_comp_TC_rate = mean(new_comp_TC_rate),
+            pincount=n()
+)
+
+
+pin_data2 %>% 
+filter(pin_AV > 0) %>% 
+  filter(agency_name %in% c("CITY OF CHICAGO", "VILLAGE OF DOLTON", "VILLAGE OF GLENCOE")) %>%
+  filter(class >199 & class < 300) %>% 
+  arrange(av) %>%
+  filter(av > 9500 & av < 10500) %>%
+ # group_by(agency_name, has_HO_exemp) %>% 
+  mutate(#taxable_eav = final_tax_to_dist / tax_code_rate,
+    # current bill = current tax rate * portion of levy billed
+         bill_current = (final_tax_to_dist + final_tax_to_tif),
+         bill_noexemps =  new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
+         bill_change = bill_noexemps - bill_current) %>%
+  group_by(agency_name) %>% 
+    summarize(median_AV = median(av),
+            median_equalizedAV =  median(equalized_AV),
+            median_EAV = median(eav),
+            median_bill_cur = median(bill_current),
+            median_bill_new = median(bill_noexemps),
+            median_change = median(bill_change),
+            perceived_savings = median(tax_amt_exe),
+            cur_comp_TC_rate = mean(cur_comp_TC_rate),
+            new_comp_TC_rate = mean(new_comp_TC_rate),
+            pincount=n()
+)
+
+
+
+pin_data2 %>% 
+filter(pin_AV > 0) %>% 
+  filter(agency_name %in% c("CITY OF CHICAGO", "VILLAGE OF DOLTON", "VILLAGE OF GLENCOE")) %>%
+  filter(class ==203) %>% 
+  arrange(av) %>%
+  filter(av > 9500 & av < 10500) %>%
+ # group_by(agency_name, has_HO_exemp) %>% 
+  mutate(#taxable_eav = final_tax_to_dist / tax_code_rate,
+    # current bill = current tax rate * portion of levy billed
+         bill_current = (final_tax_to_dist + final_tax_to_tif),
+         bill_noexemps =  new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
+         bill_change = bill_noexemps - bill_current) %>%
+  group_by(agency_name)
+
+
+pin_data2 %>% 
+filter(pin_AV > 0) %>% 
+  filter(agency_name %in% c("CITY OF CHICAGO", "VILLAGE OF DOLTON", "VILLAGE OF GLENCOE")) %>%
+  filter(class == 203) %>% 
+  arrange(av) %>%
+  filter(av > 9500 & av < 10500) %>%
+ # group_by(agency_name, has_HO_exemp) %>% 
+  mutate(#taxable_eav = final_tax_to_dist / tax_code_rate,
+    # current bill = current tax rate * portion of levy billed
+         bill_current = (final_tax_to_dist + final_tax_to_tif),
+         bill_noexemps =  new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
+         bill_change = bill_noexemps - bill_current) %>%
+  group_by(agency_name) %>%
+    summarize(median_AV = median(av),
+            median_equalizedAV =  median(equalized_AV),
+            median_EAV = median(eav),
+            median_bill_cur = median(bill_current),
+            median_bill_new = median(bill_noexemps),
+            median_change = median(bill_change),
+            perceived_savings = median(tax_amt_exe),
+            cur_comp_TC_rate = mean(cur_comp_TC_rate),
+            new_comp_TC_rate = mean(new_comp_TC_rate),
+            pincount=n()
+)
+
+pin_data2 %>% 
+filter(pin_AV > 0) %>% 
+  filter(agency_name %in% c("CITY OF CHICAGO", "VILLAGE OF DOLTON", "VILLAGE OF GLENCOE")) %>%
+  filter(class == 203) %>% 
+  arrange(av) %>%
+  filter(av > 9500 & av < 10500) %>%
+ # group_by(agency_name, has_HO_exemp) %>% 
+  mutate(#taxable_eav = final_tax_to_dist / tax_code_rate,
+    # current bill = current tax rate * portion of levy billed
+         bill_current = (final_tax_to_dist + final_tax_to_tif),
+         bill_noexemps =  new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
+         bill_change = bill_noexemps - bill_current) %>%
+  group_by(agency_name, has_HO_exemp) %>%
+    summarize(median_AV = median(av),
+            median_equalizedAV =  median(equalized_AV),
+            median_EAV = median(eav),
+            median_bill_cur = median(bill_current),
+            median_bill_new = median(bill_noexemps),
+            median_change = median(bill_change),
+            perceived_savings = median(tax_amt_exe),
+            cur_comp_TC_rate = mean(cur_comp_TC_rate),
+            new_comp_TC_rate = mean(new_comp_TC_rate),
+            pincount=n()
+)
+```
+
+## compare AV of 15K
+
+Glencoe doesn't have PINs that are in the 10,000 AV range...
+So same format as tables above but uses AV value = $15,000 +/- 500
+
+
+```{r}
+pin_data2 %>% 
+filter(pin_AV > 0) %>% 
+  filter(agency_name %in% c("CITY OF CHICAGO", "VILLAGE OF DOLTON", "VILLAGE OF GLENCOE")) %>%
+#  filter(class == 203) %>% 
+    filter(class >199 & class < 300) %>% 
+
+  arrange(av) %>%
+  filter(av > 14500 & av < 15500) %>%
+ # group_by(agency_name, has_HO_exemp) %>% 
+  mutate(#taxable_eav = final_tax_to_dist / tax_code_rate,
+    # current bill = current tax rate * portion of levy billed
+         bill_current = (final_tax_to_dist + final_tax_to_tif),
+         bill_noexemps =  new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
+         bill_change = bill_noexemps - bill_current) %>%
+  group_by(agency_name, has_HO_exemp) %>%
+    summarize(median_AV = median(av),
+            median_equalizedAV =  median(equalized_AV),
+            taxable_eav = mean(equalized_AV-all_exemptions+exe_homeowner),
+            median_bill_cur = median(bill_current),
+            median_bill_new = median(bill_noexemps),
+            median_change = median(bill_change),
+            perceived_savings = median(tax_amt_exe),
+            cur_comp_TC_rate = mean(cur_comp_TC_rate),
+            new_comp_TC_rate = mean(new_comp_TC_rate),
+            pincount=n()
+)
+```
+
+```{r}
+pin_data2 %>% 
+filter(pin_AV > 0) %>% 
+  filter(agency_name %in% c("CITY OF CHICAGO", "VILLAGE OF DOLTON", "VILLAGE OF GLENCOE")) %>%
+#  filter(class == 203) %>% 
+    filter(class >199 & class < 300) %>% 
+
+  arrange(av) %>%
+  filter(av > 14500 & av < 15500) %>%
+ # group_by(agency_name, has_HO_exemp) %>% 
+  mutate(#taxable_eav = final_tax_to_dist / tax_code_rate,
+    # current bill = current tax rate * portion of levy billed
+         bill_current = (final_tax_to_dist + final_tax_to_tif),
+         bill_noexemps =  new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
+         bill_change = bill_noexemps - bill_current) %>%
+  group_by(agency_name) %>%
+    summarize(median_AV = median(av),
+            median_equalizedAV =  median(equalized_AV),
+            taxable_eav = mean(equalized_AV-all_exemptions+exe_homeowner),
+            median_bill_cur = median(bill_current),
+            median_bill_new = median(bill_noexemps),
+            median_change = median(bill_change),
+            perceived_savings = median(tax_amt_exe),
+            cur_comp_TC_rate = mean(cur_comp_TC_rate),
+            new_comp_TC_rate = mean(new_comp_TC_rate),
+            pincount=n()
+)
+```
+
+
+### Class 300 & All Other Classes
+
+
+```{r}
+pin_data2 %>% 
+  filter(agency_name %in% c("CITY OF CHICAGO", "VILLAGE OF DOLTON", "VILLAGE OF GLENCOE")) %>%
+  filter(class >299 & class < 400) %>% 
+  arrange(av) %>%
+    mutate(bill_current = (final_tax_to_dist + final_tax_to_tif),
+         bill_noexemps =  new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
+         bill_change = bill_noexemps - bill_current) %>%
+  group_by(agency_name) %>% 
+  summarize(median_AV = median(av),
+            median_EAV = median(eav),
+            median_bill_cur = round(median(bill_current)),
+            median_bill_new = round(median(bill_noexemps)),
+            median_change = round(median(bill_change)),
+            pincount=n(),
+            perceived_savings = median(tax_amt_exe))
+
+pin_data2 %>% 
+  filter(agency_name %in% c("CITY OF CHICAGO", "VILLAGE OF DOLTON", "VILLAGE OF GLENCOE")) %>%
+  filter(class>399) %>% 
+  arrange(av) %>%
+    mutate(bill_current = (final_tax_to_dist + final_tax_to_tif),
+         bill_noexemps =  new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
+         bill_change = bill_noexemps - bill_current) %>%
+  group_by(agency_name) %>% 
+  summarize(median_AV = median(av),
+            median_EAV = median(eav),
+            median_bill_cur = round(median(bill_current)),
+            median_bill_new = round(median(bill_noexemps)),
+            median_change = round(median(bill_change)),
+            pincount=n(),
+            perceived_savings = median(tax_amt_exe))
+```
