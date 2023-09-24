@@ -47,7 +47,7 @@ muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/poli
 cook_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/plss/MapServer/1/query?outFields=*&where=1%3D1&f=geojson")
 
 #muni_shp <- read_json("muni_shp.json")
-nicknames <- readxl::read_excel("muni_shortnames.xlsx")
+nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
 
 
 
@@ -145,13 +145,13 @@ unique_tif_taxcodes <- DBI::dbGetQuery(
 ## Read in summarized tax code level data for exemptions and taxbills.
 
 taxbills_by_Class_per_TC <- #read_csv("taxbills_inMunis_perTC.csv")  %>% 
-  read_csv("2_Summed_Bills_by_Taxcode_and_Class.csv") %>%
+  read_csv("./Output/2_Summed_Bills_by_Taxcode_and_Class.csv") %>%
   mutate(tax_code = as.character(tax_code)) 
 
 
 # get rid of rpm variables, tax_amt_exe,pre and post exemption variables,
 exemptions_by_class_per_TC <- #read_csv("all_exemptions_by_TC.csv") %>%
-  read_csv("3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>%
+  read_csv("./Output/3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>%
     mutate(tax_code_num = as.character(tax_code_num))
 
 tif_distrib <- DBI::dbGetQuery(
@@ -263,11 +263,11 @@ using the pin data from ptaxsim, I calculate the eav of all properties, exempt E
 > Joining problem: in `muni_agency_names`, Cicero is called "TOWN CICERO", in map shapefile it is called "CITY OF CICERO".
 
 ```{r}
-class_dict <- read_csv("class_dict_expanded.csv")
+class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv")
 
 # use exemptions in tax codes to summarize EAV. 
 # More accurate that calculating it from revenue collected.tax rate in tax bill data
-exemptions_by_class_per_TC <- read_csv("3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>% 
+exemptions_by_class_per_TC <- read_csv("./Output/3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>% 
   filter(class_code != "0") %>%
   left_join(class_dict) %>%
   mutate(tax_code_num = as.character(tax_code_num)) %>%
@@ -736,7 +736,7 @@ exemptions_to_resEAV_ratios %>% arrange(desc(nontif_ratio))
 Tax base in the tables above are the total EAV outside of TIF areas.
 
 ```{r}
-TC_bills_current <- read_csv("2_Summed_Bills_by_Taxcode_and_Class.csv") %>% 
+TC_bills_current <- read_csv("./Output/2_Summed_Bills_by_Taxcode_and_Class.csv") %>% 
   filter(class != "0") %>% 
   mutate(tax_code = as.character(tax_code),
          class = as.character(class))
@@ -819,7 +819,10 @@ pct_property_types <- left_join(grouped_exemptions, muni_eav) %>%
 
 pct_property_types
 
-write_csv(pct_property_types, "landuse_proportions_Aleacats.csv")
+
+# write_csv(pct_property_types, "./Output/landuse_proportions.csv")
+# was called landuse_proportions_Aleacats on local machine
+
 
 burden_table <- pct_property_types %>% 
   left_join(Current_Taxrates, by = c("agency_name", "clean_name")) %>%
@@ -1411,7 +1414,7 @@ props_wide
 proptypes3_comparisontable<- left_join(proptypes3_current, proptypes3_noexemps, by = "clean_name") 
 proptypes3_comparisontable
 
-write_csv(proptypes3_comparisontable, "OwnerOccupied_ComparisonTable.csv")
+# write_csv(proptypes3_comparisontable, "./Output/OwnerOccupied_ComparisonTable.csv")
 
 ```
 
@@ -1425,7 +1428,7 @@ proptypes3_burdenchange <- burden_shift %>%
 proptypes3_burdenchange[2:4] <- sapply(proptypes3_burdenchange[2:4], function(x) scales::percent(x, accuracy=.01))
 proptypes3_burdenchange
 
-#proptypes3_burdenchange %>% write_csv("burden_change_august6.csv")
+#proptypes3_burdenchange %>% write_csv("./Output/burden_change.csv")
 
 ```
 
@@ -1681,5 +1684,5 @@ dataset_names <- list(
 #  'TaxcodeData-NoExemptions'=taxcodes_noexemps,
   'TaxcodeData-Current' = taxcodes_current)
 
-write.xlsx(dataset_names, file = 'data_for_slides_filteredMunis.xlsx')
+# write.xlsx(dataset_names, file = './Output/data_for_slides_filteredMunis.xlsx')
 ```
