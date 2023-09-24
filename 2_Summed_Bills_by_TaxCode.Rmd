@@ -45,9 +45,9 @@ library(httr)
 #muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/politicalBoundary/MapServer/2/query?outFields=*&where=1%3D1&f=geojson")
 
 #muni_shp <- read_json("muni_shp.json")
-nicknames <- readxl::read_excel("muni_shortnames.xlsx")
+nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
 
-class_dict <- read_csv("class_dict.csv")
+class_dict <- read_csv("./Necessary_Files/class_dict.csv")
 
 
 
@@ -181,7 +181,7 @@ using the pin data from ptaxsim, I calculate the eav of all properties, exempt E
 
 
 ```{r}
-taxbills_current <- read_csv("1_Get_All_Pins-AllPinTaxbills_2021_Actual.csv")
+taxbills_current <- read_csv("./Output/1_Get_All_Pins-AllPinTaxbills_2021_Actual.csv")
 # 22,453,875 tax bills in 2021 in municipalities. 
 # DOES NOT INCLUDE unincorporated tax bills based on how we pulled the data in Step 1.
 
@@ -215,7 +215,7 @@ head(pin14_bills_current)
 sapply(pin14_bills_current, function(x) sum(is.na(x)))
 
 
-write_csv(pin14_bills_current, "2_Summed_Bills_output-14digitPinSums")
+write_csv(pin14_bills_current, "./Output/2_Summed_Bills_output-14digitPinSums.csv")
 ```
 
 ```{r}
@@ -259,7 +259,7 @@ pin10_bills_current <- pin10_bills_current %>%
 
   mutate(parcel_bill_total = final_tax_to_tif + final_tax_to_dist)
 
-write_csv(pin10_bills_current, "2_Summed_Bills_output-10digitParcelSums.csv")
+write_csv(pin10_bills_current, "./Output/2_Summed_Bills_output-10digitParcelSums.csv")
 
 head(pin10_bills_current)
 tail(pin10_bills_current)
@@ -300,7 +300,7 @@ taxcodes_by_class_current <- pin10_bills_current %>%
 
 head(taxcodes_by_class_current)
 
-taxcodes_by_class_current %>% write_csv("2_Summed_Bills_by_Taxcode_and_Class.csv")
+taxcodes_by_class_current %>% write_csv("./Output/2_Summed_Bills_by_Taxcode_and_Class.csv")
 ```
 
 
@@ -330,14 +330,14 @@ taxcodes_by_majorclass_current <- taxcodes_by_class_current %>%
 head(taxcodes_by_majorclass_current)
 
 
-taxcodes_by_majorclass_current %>% write_csv("2_Summed_Bills_by_Taxcode_and_MajorClass.csv")
+taxcodes_by_majorclass_current %>% write_csv("./Output/2_Summed_Bills_by_Taxcode_and_MajorClass.csv")
 ```
 
 
 # Composite Tax Rates
 
 ```{r eval=FALSE}
-TC_bills_current <- read_csv("2_Summed_Bills_by_Taxcode_and_Class.csv") %>% 
+TC_bills_current <- read_csv("./Output/2_Summed_Bills_by_Taxcode_and_Class.csv") %>% 
  # filter(class == "205") %>%
   mutate(tax_code = as.character(tax_code),
          class = as.character(class))
@@ -388,7 +388,7 @@ Current_Taxrates_perTC <- taxcodes_current %>%
   arrange(desc(tax_rate_current))
 Current_Taxrates_perTC
 
-write_csv(Current_Taxrates_perTC, "2_taxcode_taxrates.csv")
+# write_csv(Current_Taxrates_perTC, "./Output/2_taxcode_taxrates.csv")
 
 
 ```
