@@ -49,9 +49,9 @@ library(httr)
 muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/politicalBoundary/MapServer/2/query?outFields=*&where=1%3D1&f=geojson")
 
 #muni_shp <- read_json("muni_shp.json")
-nicknames <- readxl::read_excel("muni_shortnames.xlsx")
+nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
 
-class_dict <- read_csv("class_dict_expanded.csv") %>% 
+class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv") %>% 
   mutate(class_code = as.character(class_code))
 
 
@@ -140,7 +140,7 @@ pin_data <- class_dict %>%
 
 
 # has exemption types and amount that went to every pin in Cook County
-# write_csv(pin_data, "3_Exemption_Details_output-all_cook_pin_exemptions_2021_actual.csv")
+# write_csv(pin_data, "./Output/3_Exemption_Details_output-all_cook_pin_exemptions_2021_actual.csv")
 
 
 
@@ -168,12 +168,12 @@ exemptions_inCook_perTC <- pin_data %>%
 # grouped by taxcode and property classes.
 # has amount of each type of exemption in each tax code
 
-# write_csv(exemptions_inCook_perTC, "3_Exemption_Details_output-Cook_Exemps_byClassandTaxcode.csv")
+# write_csv(exemptions_inCook_perTC, "./Output/3_Exemption_Details_output-Cook_Exemps_byClassandTaxcode.csv")
 ```
 
 
 
-```{r}
+```{r eval=FALSE}
 exemptiontypes_inCook_perTC <- pin_data %>%
   group_by(tax_code_num, class_code
            #, major_class_code, major_class_type
@@ -216,7 +216,7 @@ exemptions_per_parcel <- pin_data %>%
             
 )
 
-# write_csv(exemptions_per_parcel, "3_Exemptions_Details_output-ParcelExemps.csv")
+# write_csv(exemptions_per_parcel, "./Output/3_Exemptions_Details_output-ParcelExemps.csv")
 
 
 ```
@@ -303,7 +303,7 @@ Using the pin data from ptaxsim, I calculate the eav of all properties, exempt E
 # Class 2 Residential vs Other Property Types
 
 ```{r echo=FALSE}
-exemptions_by_class_per_TC <- read_csv("3_Exemption_Details_output-Cook_Exemps_byClassandTaxcode.csv") 
+exemptions_by_class_per_TC <- read_csv("./Output/3_Exemption_Details_output-Cook_Exemps_byClassandTaxcode.csv") 
 
 exemptions_by_class_per_TC %>% 
   summarize(av = sum(av, na.rm = TRUE),
@@ -384,7 +384,7 @@ exemptions_by_class_per_TC %>%
 # use exemptions in tax codes to summarize EAV. 
 # More accurate that calculating it from revenue collected.tax rate in tax bill data
 
-exemptions_by_class_per_TC <- read_csv("3_Exemption_Details_output-Cook_Exemps_byClassandTaxcode.csv") %>%
+exemptions_by_class_per_TC <- read_csv("./Output/3_Exemption_Details_output-Cook_Exemps_byClassandTaxcode.csv") %>%
   # exemptions_inCook_perTC %>%
   mutate(tax_code_num = as.character(tax_code_num),
          class_code = as.character(class_code),
@@ -526,7 +526,7 @@ pivot_table %>% arrange(desc(perc_class2))
 
 pivot_table %>% arrange(desc(perc_class3))
 
-#write_csv(pivot_table, "3_exemption_details_output-residential_percent_August5.csv")
+#write_csv(pivot_table, "./Output/3_exemption_details_output-residential_percent_August5.csv")
 
 ```
 
@@ -773,7 +773,7 @@ exemptions_per_ClassTaxcode <- pin_data %>%
 ) 
 
 
-# write_csv(exemptions_per_ClassTaxcode, "3_Exemptions_Details_output-MajorClassTaxcodeExemps.csv")
+# write_csv(exemptions_per_ClassTaxcode, "./Output/3_Exemptions_Details_output-MajorClassTaxcodeExemps.csv")
 
 
 
@@ -854,7 +854,7 @@ The way Alea wanted it to be coded.  Class 2 and 3 coded based on if it is owner
 # use exemptions in tax codes to summarize EAV. 
 # More accurate that calculating it from revenue collected.tax rate in tax bill data
 class_dict <- class_dict %>% mutate(class_1dig = as.character(class_1dig))
-exemptions_by_class_per_TC <- read_csv("3_Exemption_Details_output-Cook_Exemps_byClassandTaxcode.csv") %>%
+exemptions_by_class_per_TC <- read_csv("./Output/3_Exemption_Details_output-Cook_Exemps_byClassandTaxcode.csv") %>%
   # exemptions_inCook_perTC %>%
   mutate(tax_code_num = as.character(tax_code_num),
          class_code = as.character(class_code),
