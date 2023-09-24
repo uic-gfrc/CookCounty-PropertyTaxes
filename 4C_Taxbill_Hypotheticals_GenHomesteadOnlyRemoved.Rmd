@@ -67,7 +67,7 @@ tax_codes <- DBI::dbGetQuery(
 ```
 
 ```{r eval = FALSE}
-taxbills_current <- read_csv("1_Get_All_Pins-CookPinTaxbills_2021_Actual.csv")
+taxbills_current <- read_csv("./Output/1_Get_All_Pins-CookPinTaxbills_2021_Actual.csv")
 # 22,453,875 tax bills in 2021 in municipalities. 
 # DOES NOT INCLUDE unincorporated tax bills based on how we pulled the data in Step 1.
 
@@ -117,8 +117,8 @@ Need to merge PIN level data of tax bills and exemptions per PIN if the goal is 
 
 Note: The EAV from the exemption table is the original EAV (AV \* equalizer) without consider TIFs or exemptions.
 
-```{reval = FALSE}
-pin_eav <- read_csv("3_Exemption_Details_output-all_cook_pin_exemptions_2021_actual.csv") %>%
+```{r eval = FALSE}
+pin_eav <- read_csv("./Output/3_Exemption_Details_output-all_cook_pin_exemptions_2021_actual.csv") %>%
   #filter(class_code !=0) %>%
   
   mutate(all_exemptions = exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
@@ -143,16 +143,9 @@ pin_data <- left_join(pin_data, tax_codes, by = c("tax_code" = "tax_code_num"))
 
 
 
-```{r}
-pin_data <- read_csv("4C_joined_PINs_bills_and_exemptions.csv")
-
-head(pin_data)
-dim(pin_data)
-```
-
 ## Calculate new tax rates
 
-```{r}
+```{r eval = FALSE}
 # taxcodes_by_class_current <- pin_data %>% 
 #   group_by(tax_code, class)  %>%
 #   
@@ -249,13 +242,16 @@ pin_data2 <- pin_data2 %>% left_join(muni_agency_names)
 
 head(pin_data2)
 
-write_csv(pin_data2, "4C_joined_PINs_bills_and_exemptions.csv")
+write_csv(pin_data2, "./Output/4C_joined_PINs_bills_and_exemptions.csv")
 ```
 
 
 ```{r}
 
-pin_data2 <- read_csv("4C_joined_PINs_bills_and_exemptions.csv")
+pin_data2 <- read_csv("./Output/4C_joined_PINs_bills_and_exemptions.csv")
+
+head(pin_data2)
+dim(pin_data2)
 
 pin_data2 <- pin_data2 %>% 
   mutate(
@@ -296,7 +292,7 @@ muni_taxrates <- pin_data2 %>%
 
 muni_taxrates 
 
-muni_taxrates %>% write_csv("4C_muni_taxrates.csv")
+muni_taxrates %>% write_csv("./Output/4C_muni_taxrates.csv")
 ```
 
 ## Bill Distributions 
