@@ -193,8 +193,8 @@ cooktotals <- exemptions_by_class_per_TC %>%
             total_exempt_eav = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
                          exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
             homeowners_exemption = sum(exe_homeowner),
-            senior_exemption = sum(exe_senior),
-            freeze_exemption = sum(exe_freeze),
+            senior_exemption = sum(exe_senior, na.rm=TRUE),
+            freeze_exemption = sum(exe_freeze, na.rm=TRUE),
                         pin_count = n()) %>%
   pivot_longer(cols = av:pin_count, names_to = "Variables", values_to = "Cook County Totals")
 
@@ -205,14 +205,38 @@ munitotals <- exemptions_by_class_per_TC %>%
             total_exempt_eav = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
                          exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
             homeowners_exemption = sum(exe_homeowner),
-            senior_exemption = sum(exe_senior),
-            freeze_exemption = sum(exe_freeze),
+            senior_exemption = sum(exe_senior, na.rm=TRUE),
+            freeze_exemption = sum(exe_freeze, na.rm=TRUE),
                         pin_count = n()) %>%
   pivot_longer(cols = av:pin_count, names_to = "Variables", values_to = "Municipality Totals")
 
 
 total_exemptions <- left_join(cooktotals, munitotals)
 total_exemptions
+```
+
+```{r exemptiontype-permuni, include = FALSE}
+
+exemptype_totals_permuni <- exemptions_by_class_per_TC %>% 
+  mutate(tax_code_num = as.character(tax_code_num)) %>%
+  left_join(muni_tax_codes) %>%
+  left_join(muni_agency_names) %>%
+  filter(tax_code_num %in% muni_tax_codes$tax_code_num)%>%
+  group_by(agency_num, agency_name) %>%
+  summarize(av = sum(av, na.rm = TRUE),
+            eav=sum(eav, na.rm=TRUE),
+            total_exempt_eav_inMuni = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+                         exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
+            exe_homeowner = sum(exe_homeowner, na.rm=TRUE),
+            exe_senior = sum(exe_senior, na.rm=TRUE),
+            exe_freeze = sum(exe_freeze, na.rm=TRUE),
+            exe_longtime_homeowner = sum(exe_longtime_homeowner, na.rm=TRUE),
+            exe_disabled = sum(exe_disabled, na.rm=TRUE),
+            exe_vet_returning = sum(exe_vet_returning, na.rm=TRUE),
+            exe_vet_dis = sum(exe_vet_dis, na.rm=TRUE),
+            exe_abate = sum(exe_abate, na.rm=TRUE),
+            muni_pin_count = n())
+
 ```
 
 
@@ -1163,9 +1187,9 @@ burden_shift %>%
 # Hypothetical Median Tax Bill without Exemptions
 
 ```{r}
-bill_change_3groups <- read_csv( "4_Taxbill_Hypotheticals-taxbill_change_20230814.csv")
+#bill_change_3groups <- read_csv( "4_Taxbill_Hypotheticals-taxbill_change_20230814.csv")
 
-bill_change_3groups %>% select(Municipality = clean_name, bill_change, everything()) 
+#bill_change_3groups %>% select(Municipality = clean_name, bill_change, everything()) 
 
 
 tax_bill_change <- read_csv("4_Taxbill_Hypotheticals-taxbill_change_foreachPropClass_perMuni.csv")
@@ -1344,6 +1368,543 @@ land_use2
 
 
 ```
+
+
+## Using similarily Assessed Value properties 
+
+```{r}
+nicknames <- readxl::read_excel("muni_shortnames.xlsx")
+
+class_dict <- read_csv("class_dict.csv")
+
+taxcode_taxrates <- read_csv("2_taxcode_taxrates.csv")
+
+
+DoltonChicago <- read_csv("Cholton_taxbills.csv") %>% 
+  arrange(av) %>%     
+  left_join(taxcode_taxrates) %>%
+    mutate(propclass_1dig = str_sub(class, 1, 1))
+
+library(kableExtra)
+```
+
+```{r}
+# DoltonChicago %>% 
+#   group_by(agency_num, tax_code) %>% 
+#   summarize(max_comprate = max(tax_rate_current),
+#             min_comprate = min(tax_rate_current)) %>% arrange(-max_comprate)
+
+DoltonChicago %>% group_by(agency_num) %>% 
+  summarize(max_comprate = max(tax_rate_current, na.rm=TRUE),
+            mean_comprate = mean(tax_rate_current, na.rm=TRUE),
+            min_comprate = min(tax_rate_current, na.rm=TRUE)) %>% arrange(-mean_comprate)
+
+DoltonChicago %>% filter(agency_num == "030310000") %>%
+  group_by(agency_num, class) %>% 
+  summarize(max_comprate = max(tax_rate_current, na.rm=TRUE),
+            mean_comprate = mean(tax_rate_current, na.rm=TRUE),
+            min_comprate = min(tax_rate_current, na.rm=TRUE),
+            pin_count = n(),
+            av = mean(av),
+            eav = mean(eav),
+            tax_amt_post_exe = mean(tax_amt_post_exe),
+            tax_amt_exe = mean(tax_amt_exe),
+            tax_amt_pre_exe = mean(tax_amt_pre_exe)) %>% 
+  arrange(-pin_count) %>% head() %>% kbl()
+
+DoltonChicago %>% filter(agency_num == "030210000") %>%
+  group_by(agency_num, class) %>% 
+  summarize(max_comprate = max(tax_rate_current, na.rm=TRUE),
+            mean_comprate = mean(tax_rate_current, na.rm=TRUE),
+            min_comprate = min(tax_rate_current, na.rm=TRUE),
+            pin_count = n(),
+            av = mean(av),
+            eav = mean(eav),
+            tax_amt_post_exe = mean(tax_amt_post_exe),
+            tax_amt_exe = mean(tax_amt_exe),
+            tax_amt_pre_exe = mean(tax_amt_pre_exe)) %>% 
+  arrange(-pin_count) %>% head() %>% kbl()
+``` 
+
+
+
+```{r}
+
+DoltonChicago %>% 
+  filter(class == "203") %>% 
+  arrange(av)%>%
+  group_by(agency_num, class) %>%
+  summarize(medianbill = median(total_billed),
+            meanbill = mean(total_billed),
+            medianAV = median(av),
+            meanAV = mean(av),
+            )%>% 
+ # pivot_longer(medianbill:meanAV, names_to = "Stats", values_to = "Values")  %>%
+  kbl(caption= "Chicago and Dolton, Class 203, Measures of the Middle", digits=0, booktabs = T) %>%   
+  kable_styling(full_width = T)
+
+
+
+DoltonChicago %>% 
+  filter(class == "205") %>% 
+  group_by(agency_num, class) %>%
+  summarize(medianbill = median(total_billed),
+            meanbill = mean(total_billed),
+            medianAV = median(av),
+            meanAV = mean(av),
+            )%>% 
+ # pivot_longer(medianbill:meanAV, names_to = "Stats", values_to = "Values")  %>%
+  kbl(caption= "Chicago and Dolton, Class 205, Measures of the Middle", digits=0, booktabs = T) %>%   
+  kable_styling(full_width = T)
+
+DoltonChicago %>% 
+  filter(class == "211") %>% 
+  group_by(agency_num, class) %>%
+  summarize(medianbill = median(total_billed),
+            meanbill = mean(total_billed),
+            medianAV = median(av),
+            meanAV = mean(av),
+            )%>% 
+ # pivot_longer(medianbill:meanAV, names_to = "Stats", values_to = "Values")  %>%
+  kbl(caption= "Chicago and Dolton, Class 211, Measures of the Middle", digits=0, booktabs = T) %>%   
+  kable_styling(full_width = T)
+
+DoltonChicago %>% 
+  filter(class == "234") %>% 
+  group_by(agency_num, class) %>%
+  summarize(medianbill = median(total_billed),
+            meanbill = mean(total_billed),
+            medianAV = median(av),
+            meanAV = mean(av),
+            )%>% 
+ # pivot_longer(medianbill:meanAV, names_to = "Stats", values_to = "Values")  %>%
+  kbl(caption= "Chicago and Dolton, Class 234, Measures of the Middle", digits=0, booktabs = T) %>%   
+  kable_styling(full_width = T)
+
+
+```
+
+Chicago has 655 tax codes in its borders and Dolton has 13 tax codes in its borders. 
+
+
+> Max composite tax rate in a tax code in Chicago is 9.1% and minimum composite tax rate is 6.7%. Chicago has 665 tax codes. 
+
+> Max composite tax rate in a tax code in Dolton is 27.9% and minimum composite tax rate is 22.9%. Dolton has 13 tax codes. 
+
+
+
+### Class 203
+
+One story residence, any age, 1,000 to 1,800 sq. ft.
+
+
+```{r}
+DoltonChicago %>% 
+  filter(agency_num == "030210000" ) %>% #& class == "203" & between(av,9950,10050)) %>% 
+  group_by(tax_code) %>% 
+  summarize(count = n(),            
+            avg_current_comprate = mean(tax_rate_current, na.rm=TRUE)
+  ) %>% arrange(-avg_current_comprate) %>% head()
+
+DoltonChicago %>% 
+  filter(agency_num == "030310000") %>% # & class == "203" & between(av, 9950, 10050)) %>%
+  group_by(tax_code) %>%
+  summarize(count = n(),
+            avg_current_comprate = mean(tax_rate_current, na.rm=TRUE)
+  ) %>% arrange(-avg_current_comprate) %>% head()
+```
+
+
+If holding the levy constant and acknowledging the change in tax rates that would occur from having additional taxable EAV within the taxing jurisdictions....
+
+For property class 203 PINs with assessed values between \$9,000 and \$11,000, the average change in tax bill would be \$75 more in Chicago and \$205 more in Dolton compared to their current tax bills (\$1475 and $4312 respectively). 
+
+The "average" property tax payer would think they are saving \$624 in Chicago and $2708 in Dolton due to exemptions. This number appears on their taxbill and calculated by the full EAV * current tax rate and does NOT consider the change in tax rate that would occur if levies are held constant and all EAV became taxable. 
+
+
+```{r}
+Chi3 <- DoltonChicago %>% 
+  filter(agency_num == "030210000" & class == "203" & between(av,9000,11000)) %>%
+    summarize(              
+    comp_taxrate = mean(tax_code_rate, na.rm=TRUE),
+    bill_current = mean(tax_amt_post_exe, na.rm=TRUE),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+  ) %>% 
+  pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
+
+Dol3 <- DoltonChicago %>% 
+  filter(agency_num == "030310000" & class == "203" & between(av, 9000, 11000)) %>%
+    summarize(              
+    comp_taxrate = mean(tax_code_rate, na.rm=TRUE),
+    bill_current = mean(tax_amt_post_exe, na.rm=TRUE),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe, na.rm=TRUE),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe, na.rm=TRUE),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+  ) %>% 
+    pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
+
+both_dt <- cbind(Chi3, Dol3)
+
+
+kbl(both_dt, booktabs = T, digits = 0, 
+    caption = "Property Class 203 Comparison, AV ~ $10,000 (9000-11000 range)") %>%
+  kable_styling(full_width = T)%>%
+add_header_above(c("Chicago" = 2, "Dolton" = 2))
+```
+
+
+> Changing the range of PINs included in the calculation alters the "Median Property Statistic" 
+
+If holding the levy constant and acknowledging the change in tax rates that would occur from having additional taxable EAV within the taxing jurisdictions....
+
+For property class 203 PINs with assessed values between \$8,000 and \$12,000, the average change in tax bill would be \$98 more in Chicago and \$55 more in Dolton compared to their current tax bills (\$1513 and $4342 respectively). 
+
+```{r}
+Chi3 <- DoltonChicago %>% 
+  filter(agency_num == "030210000" & class == "203" & between(av,8000,12000)) %>%
+    summarize(              
+    comp_taxrate = mean(tax_code_rate, na.rm=TRUE),
+    bill_current = mean(tax_amt_post_exe, na.rm=TRUE),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe, na.rm=TRUE),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe, na.rm=TRUE),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+  ) %>% 
+  pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
+
+# Chicago only has 2 pins that are similar to Dolton's median pin (which had a lot of matches)
+Dol3 <- DoltonChicago %>% 
+  filter(agency_num == "030310000" & class == "203" & between(av, 8000, 12000)) %>%
+    summarize(              
+    comp_taxrate = mean(tax_code_rate, na.rm=TRUE),
+    bill_current = mean(tax_amt_post_exe, na.rm=TRUE),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe, na.rm=TRUE),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe, na.rm=TRUE),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+  ) %>% 
+    pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
+
+both_dt <- cbind(Chi3, Dol3)
+
+
+kbl(both_dt, booktabs = T, digits = 0, 
+    caption = "Property Major Class 2 Comparison, AV ~ $10,000 (AV range $8000-$12000)") %>%
+  kable_styling(full_width = T)%>%
+add_header_above(c("Chicago Class 203, 8K-12K Property Stats" = 2, "Dolton Class 203, 8L-12K AV Property Stats" = 2))
+```
+
+
+
+### Major Class 2
+
+Average and median tax bills and assessed values are calculated below for ALL property class types within the the broader "Residential" property class type (property classes that have the first digit "2", or Major Class Type 2)
+
+The median AV  is used to select a range of pins (based on their AV) to calculate the average current bill, hypothetical bill, and hypothetical change in tax bill for a "median property". 
+
+This is done because some properties receive multiple exemptions while others receive none. Using the literal median pin can skew the summary statistics of that specific pin receives no exemptions or multiple exemptions. The average for the range of "median PINs" is created to smooth out the variation within the observations. 
+
+```{r}
+DoltonChicago %>% 
+  filter(propclass_1dig == "2") %>% 
+  arrange(av) %>%
+  group_by(agency_num) %>%
+  summarize(medianbill = median(total_billed),
+            meanbill = mean(total_billed),
+            medianAV = median(av),
+            meanAV = mean(av),
+            pin_count = n()
+            )%>% 
+ # pivot_longer(medianbill:meanAV, names_to = "Stats", values_to = "Values")  %>%
+  kbl(caption= "Chicago and Dolton, Major Class 2, Measures of the Middle", digits=0, booktabs = T) %>%   
+  kable_styling(full_width = T)
+
+# 
+# DoltonChicago %>% 
+#   filter(propclass_1dig == "3") %>% 
+#   arrange(av) %>%
+#   group_by(agency_num) %>%
+#   summarize(medianbill = median(total_billed),
+#             meanbill = mean(total_billed),
+#             medianAV = median(av),
+#             meanAV = mean(av),
+#             pin_count = n()
+#             )%>% 
+#  # pivot_longer(medianbill:meanAV, names_to = "Stats", values_to = "Values")  %>%
+#   kbl(caption= "Chicago and Dolton, Major Class 3, Measures of the Middle", digits=0, booktabs = T) %>%   
+#   kable_styling(full_width = T)
+```
+
+If holding the levy constant and acknowledging the change in tax rates that would occur from having additional taxable EAV within the taxing jurisdictions, Chicago's hypothetical tax bill would be \$1570 (an \$14 increase from \$1556) and Dolton's would be \$4610 (a \$30 increase from $4580).   
+
+On average, residents would think they "saved" \$501 in Chicago and \$2588 in Dolton (based on tax_amt_exe which also shows up on their tax bill based on the "naive" pre-tax exemption tax bill amount on the tax bill). The amount saved per person will depend on how many exemptions they qualified for in the first place. This is a rough average for all types of exemptions and includes those that received no exemptions and multiiple exemptions. 
+
+Values were calculated by selecting pins with AVs between \$9000 and $11,000 and then calculating the average current bill, change in bill, and other statistics seen in the table. Pin count tells you the number of pins that were included in the AV range used for the "median property."
+
+```{r}
+Chi3 <- DoltonChicago %>% 
+  filter(agency_num == "030210000" & propclass_1dig == "2" & between(av,9000,11000)) %>%
+    summarize(              
+    comp_taxrate = mean(tax_code_rate, na.rm=TRUE),
+    bill_current = mean(tax_amt_post_exe, na.rm=TRUE),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe, na.rm=TRUE),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe, na.rm=TRUE),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+  ) %>% 
+  pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
+
+# Chicago only has 2 pins that are similar to Dolton's median pin (which had a lot of matches)
+Dol3 <- DoltonChicago %>% 
+  filter(agency_num == "030310000" & propclass_1dig == "2" & between(av, 9000, 11000)) %>%
+    summarize(              
+    comp_taxrate = mean(tax_code_rate, na.rm=TRUE),
+    bill_current = mean(tax_amt_post_exe, na.rm=TRUE),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe, na.rm=TRUE),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe, na.rm=TRUE),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+  ) %>% 
+    pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
+
+both_dt <- cbind(Chi3, Dol3)
+
+
+kbl(both_dt, booktabs = T, digits = 0, 
+    caption = "Property Major Class 2 Comparison, AV ~ $10,000 (AV range $9000-$11000)") %>%
+  kable_styling(full_width = T)%>%
+add_header_above(c("Chicago" = 2, "Dolton" = 2))
+```
+
+
+```{r}
+Chi3 <- DoltonChicago %>% 
+  filter(agency_num == "030210000" & propclass_1dig == "2" & between(av,8000,12000)) %>%
+    summarize(              
+    comp_taxrate = mean(tax_code_rate, na.rm=TRUE),
+    bill_current = mean(tax_amt_post_exe, na.rm=TRUE),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe, na.rm=TRUE),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe, na.rm=TRUE),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+  ) %>% 
+  pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
+
+# Chicago only has 2 pins that are similar to Dolton's median pin (which had a lot of matches)
+Dol3 <- DoltonChicago %>% 
+  filter(agency_num == "030310000" & propclass_1dig == "2" & between(av, 8000, 12000)) %>%
+    summarize(              
+    comp_taxrate = mean(tax_code_rate, na.rm=TRUE),
+    bill_current = mean(tax_amt_post_exe, na.rm=TRUE),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe, na.rm=TRUE),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe, na.rm=TRUE),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+  ) %>% 
+    pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
+
+both_dt <- cbind(Chi3, Dol3)
+
+
+kbl(both_dt, booktabs = T, digits = 0, 
+    caption = "Property Major Class 2 Comparison, AV ~ $10,000 (AV range $8000-$12000)") %>%
+  kable_styling(full_width = T)%>%
+add_header_above(c("Chicago" = 2, "Dolton" = 2))
+```
+If holding the levy constant and acknowledging the change in tax rates that would occur from having additional taxable EAV within the taxing jurisdictions, Chicago's hypothetical tax bill would be \$1592 (an \$13 increase from \$1579) and Dolton's would be \$4598 (a \$99 DECREASE from $4596).   
+
+Values were calculated by selecting pins with AVs between \$8000 and $12,000 and then calculating the average current bill, change in bill, and other statistics seen in the table. Pin count tells you the number of pins that were included in the AV range used for the "median property."
+
+
+> Increasing the number of pins included in the measurement of "average bill" and "average bill change" completely changed the results for Dolton. Using the "median" value must be done super carefully. 
+
+> If we "removed" only homeowners exemptions or only senior exemptions, then the median statistic would be more reliable... potentially. 
+
+
+
+### Class 205
+
+Two or more story residence, over 62 years, up to 2,200 sq. ft
+
+
+```{r}
+Chi3 <- DoltonChicago %>% 
+  filter(agency_num == "030210000" & class == "205" & between(av,8000,12000)) %>%
+    summarize(              
+    comp_taxrate = mean(tax_code_rate, na.rm=TRUE),
+    bill_current = mean(tax_amt_post_exe, na.rm=TRUE),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe, na.rm=TRUE),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe, na.rm=TRUE),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+  ) %>% 
+  pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
+
+
+Dol3 <- DoltonChicago %>% 
+  filter(agency_num == "030310000" & class == "205" & between(av, 8000, 12000)) %>%
+    summarize(              
+    comp_taxrate = mean(tax_code_rate, na.rm=TRUE),
+    bill_current = mean(tax_amt_post_exe, na.rm=TRUE),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe, na.rm=TRUE),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe, na.rm=TRUE),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+  )  %>% 
+    pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
+
+both_dt <- cbind(Chi3, Dol3)
+
+
+kbl(both_dt, booktabs = T, digits = 0, 
+    caption = "Property Class 205 Comparison, AV ~ $10,000 (8000 to 12000 AV range)") %>%
+  kable_styling(full_width = T)%>%
+add_header_above(c("Chicago" = 2, "Dolton" = 2))
+```
+
+
+### Class 211
+
+Two to six residential apartments, any age.
+
+
+```{r}
+Chi3 <- DoltonChicago %>% 
+  filter(agency_num == "030210000" & class == "211" & between(av,17000,19000)) %>%
+    summarize(              
+    comp_taxrate = mean(tax_code_rate, na.rm=TRUE),
+    bill_current = mean(tax_amt_post_exe, na.rm=TRUE),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe, na.rm=TRUE),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe, na.rm=TRUE),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+  ) %>% 
+  pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
+
+
+Dol3 <- DoltonChicago %>% 
+  filter(agency_num == "030310000" & class == "211" & between(av, 17000, 19000)) %>%
+    summarize(              
+    comp_taxrate = mean(tax_code_rate, na.rm=TRUE),
+    bill_current = mean(tax_amt_post_exe, na.rm=TRUE),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe, na.rm=TRUE),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe, na.rm=TRUE),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+  ) %>% 
+    pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
+
+both_dt <- cbind(Chi3, Dol3)
+
+
+kbl(both_dt, booktabs = T, digits = 0, 
+    caption = "Property Class 211 Comparison, AV ~ $18,000") %>%
+  kable_styling(full_width = T)%>%
+add_header_above(c("Chicago" = 2, "Dolton" = 2))
+```
+
+
+
+### Class 234
+
+Split level residence, with a lower level below grade, all ages, all sizes
+
+
+```{r}
+Chi3 <- DoltonChicago %>% 
+  filter(agency_num == "030210000" & class == "234" & between(av,12000,13000)) %>%
+    summarize(              
+    comp_taxrate = mean(tax_code_rate, na.rm=TRUE),
+    bill_current = mean(tax_amt_post_exe, na.rm=TRUE),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe, na.rm=TRUE),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe, na.rm=TRUE),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)
+  ) %>% 
+  pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
+
+
+Dol3 <- DoltonChicago %>% 
+  filter(agency_num == "030310000" & class == "234" & between(av, 12450, 12750)) %>%
+    summarize(              
+    comp_taxrate = mean(tax_code_rate, na.rm=TRUE),
+    bill_current = mean(tax_amt_post_exe, na.rm=TRUE),
+    bill_hyp = mean(eav*taxrate_new, na.rm=TRUE),
+    bill_change = bill_hyp - bill_current,
+    tax_amt_post_exe = mean(tax_amt_post_exe),
+    tax_amt_exe = mean(tax_amt_exe, na.rm=TRUE),
+    tax_amt_pre_exe = mean(tax_amt_pre_exe, na.rm=TRUE),
+    pin_count = n(),
+    av = mean(av), 
+    eav = mean(eav)) %>% 
+    pivot_longer(cols = comp_taxrate:eav, names_to = "Stats", values_to = "Values")
+
+both_dt <- cbind(Chi3, Dol3)
+
+
+kbl(both_dt, booktabs = T, digits = 0, 
+    caption = "Property Class 234 Comparison, AV ~ $12,500") %>%
+  kable_styling(full_width = T)%>%
+add_header_above(c("Chicago" = 2, "Dolton" = 2))
+```
+
+
 
 
 
@@ -1538,6 +2099,323 @@ tax_bill_change %>% ungroup() %>%
 group_by(Triad, clean_name)
 ```
 
+## Other Exemption Scenarios
+
+### Taxable Base in Scenarios
+
+```{r}
+exemptions <- read_csv("3_Exemption_Details_output-all_cook_pin_exemptions_2021_actual.csv") 
+# head(exemptions)
+
+
+exemptions <- exemptions %>% 
+  select(pin, av, eav_original = eav, class_code, tax_code_num, major_class_code, exe_homeowner:exe_abate) %>%
+  
+  mutate(exe_vet_dis = exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70,
+         total_exempt_eav = exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+           exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate,
+         has_homeown = ifelse(exe_homeowner > 0, 1, 0),
+         has_senior = ifelse(exe_senior > 0, 1, 0),
+         has_freeze = ifelse(exe_freeze > 0, 1, 0),
+         
+         has_seniorexemps = ifelse(exe_senior > 0 & exe_freeze > 0, 1, 0),
+         has_disability = ifelse(exe_disabled > 0, 1, 0),
+         has_vetreturn = ifelse(exe_vet_returning > 0, 1, 0), 
+         
+         has_any_exemps = ifelse(total_exempt_eav > 0, 1, 0),
+         has_multi_exemps = ifelse(has_senior + has_freeze + has_homeown + has_disability + has_vetreturn > 1, 1, 0)) %>% 
+  
+  mutate(tax_code_num = as.character(tax_code_num))%>%
+  left_join(muni_tax_codes) %>% 
+  left_join(muni_agency_names) %>% 
+  left_join(nicknames)
+
+# head(exemptions)
+
+#table(exemptions$has_any_exemps)
+#table(exemptions$has_seniorexemps)
+#table(exemptions$has_multi_exemps)
+
+has_exemptions_pins <-  exemptions %>% 
+  filter(has_any_exemps == 1)
+
+# head(has_exemptions_pins)
+
+has_exemptions_pins %>% 
+  summarize(
+    av = sum(av, na.rm = TRUE),
+    EAV_beforeExemptsOrTIF=sum(eav_original, na.rm=TRUE),
+    total_exempt_eav = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+                             exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
+    homeowners_exemption = sum(exe_homeowner),
+    senior_exemption = sum(exe_senior, na.rm=TRUE),
+    freeze_exemption = sum(exe_freeze, na.rm=TRUE),
+    other_exemptions = sum(exe_vet_dis + exe_disabled + exe_longtime_homeowner + exe_vet_returning + exe_abate))  
+
+
+muni_exempt_eav <- has_exemptions_pins %>% 
+  group_by(clean_name, agency_num) %>%
+  summarize(
+    av_hasexemps = sum(av, na.rm = TRUE),
+    eav_original_hasexemps=sum(eav_original, na.rm=TRUE),
+    total_exempt_eav = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+                             exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
+    homeowners_exemption = sum(exe_homeowner),
+    senior_exemption = sum(exe_senior, na.rm=TRUE),
+    freeze_exemption = sum(exe_freeze, na.rm=TRUE),
+    other_exemptions = sum(exe_vet_dis + exe_disabled + exe_longtime_homeowner + exe_vet_returning + exe_abate), 
+    #pin_count_hasexemptions = n(),
+    PC_has_exe = n() # has at least one exemption associated with the pin
+    ) 
+
+
+# muni_exempt_eav %>% select(-agency_num)
+
+muni_C2_has_exe_eav <- has_exemptions_pins %>%
+  group_by(clean_name, agency_num) %>%
+  filter(major_class_code == "2") %>%
+  summarize(
+    av_hasexemps = sum(av, na.rm = TRUE),
+    eav_original_hasexemps=sum(eav_original, na.rm=TRUE),
+    total_exempt_eav = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner +
+                             exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
+    homeowners_exemption = sum(exe_homeowner),
+    senior_exemption = sum(exe_senior, na.rm=TRUE),
+    freeze_exemption = sum(exe_freeze, na.rm=TRUE),
+    other_exemptions = sum(exe_vet_dis + exe_disabled + exe_longtime_homeowner + exe_vet_returning + exe_abate),
+    PC_C2_has_exe = n()
+    )
+
+
+muni_singfamres_has_homeowners_exemps <- has_exemptions_pins %>% 
+  filter(class_code > 199 & class_code < 211) %>%
+  filter(exe_homeowner > 0) %>%
+  group_by(clean_name, agency_num) %>%
+  summarize(
+    av_singfam_has_homeownexemps = sum(av, na.rm = TRUE),
+    eav_original_sing_fam_has_homeownexemps=sum(eav_original, na.rm=TRUE),
+    total_exempt_eav_singfam_has_homeown = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
+    homeowners_exemption_singfam = sum(exe_homeowner),
+    #pin_count_singfam_has_homeownerexemptions = n(),
+    PC_SF_has_HOexe = n() # has Homeowner exemption and is within Class range specified
+  ) 
+
+```
+
+Over 10 billion in EAV is not taxed due to the general homeowners exemption. 2.63 billion is not taxed due to senior exemptions. 3.2 billion in EAV is not taxed due to F
+
+- 1,029,799 pins have at least one exemption in 2021.  
+- 350,126 pins have multiple exemptions in 2021.  
+- 151,642 pins have the senior exemption, senior freeze exemption, or both of those exemptions.    
+
+
+```{r}
+munitotals <- exemptions %>%
+  filter(tax_code_num %in% muni_tax_codes$tax_code_num)%>%
+  group_by(clean_name, agency_num) %>%
+  summarize(muni_av = sum(av, na.rm = TRUE),
+            muni_eav_original=sum(eav_original, na.rm=TRUE),
+            total_exempt_eav = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+                                     exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
+            homeowners_exemption = sum(exe_homeowner),
+            senior_exemption = sum(exe_senior, na.rm=TRUE),
+            freeze_exemption = sum(exe_freeze, na.rm=TRUE),
+            PC_allPINs_muni = n() # number of pins within each municipality
+            ) 
+
+# munitotals %>% select(-agency_num)
+
+
+muni_residentialtotals <- exemptions %>%
+  filter(tax_code_num %in% muni_tax_codes$tax_code_num)%>%
+  filter(major_class_code == "2") %>% 
+  group_by(clean_name, agency_num) %>%
+  summarize(muni_residential_av = sum(av, na.rm = TRUE),
+            muni_residential_eav_original=sum(eav_original, na.rm=TRUE),
+            total_residential_exempt_eav = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+                                                 exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
+            PC_C2_muni = n() # number of PINs that are Class 2 Residential 
+            ) 
+
+#muni_residentialtotals %>% select(-agency_num)
+
+
+# Should I add the other "single family" property classes??  ## 
+muni_singfam_residentialtotals <- exemptions %>%
+  filter(tax_code_num %in% muni_tax_codes$tax_code_num)%>%
+  filter(class_code > 199 & class_code < 211) %>% 
+  group_by(clean_name, agency_num) %>%
+  summarize(muni_singfam_residential_av = sum(av, na.rm = TRUE),
+            muni_singfam_residential_eav_original=sum(eav_original, na.rm=TRUE),
+           # total "single-family" residential exempt eav
+            SF_res_exe_EAV_muni = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+                                      exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
+            PC_SF_Res = n() 
+           ) 
+
+#muni_singfam_residentialtotals %>% select(-agency_num)
+
+merged <- munitotals %>% 
+  select(clean_name, agency_num, muni_av, muni_eav_original, PC_allPINs_muni) %>% 
+  left_join(muni_exempt_eav) %>% 
+  left_join(muni_residentialtotals) %>%
+  left_join(muni_singfam_residentialtotals) %>%
+  left_join(muni_C2_has_exe_eav) %>%
+  left_join(muni_singfamres_has_homeowners_exemps) %>%
+  mutate(pct_ofSF_pins_w_HOexe = PC_SF_has_HOexe / PC_SF_Res,
+        # pct_SF_pins_w_exemps = pin_count_has_homeownerexemptions / pin_count_singfam_residential,
+        # pct_pins_w_exemps = pin_count_hasexemptions / pin_count,
+        pct_ofallpins_w_exe = PC_has_exe / PC_allPINs_muni, #       pins with exemptions / all pins in a muni
+
+         pct_C2_w_exemps = PC_C2_has_exe / PC_C2_muni, # 
+         #pct_singfam_pins_w_exemps = pin_count_hasexemptions / pin_count_singfam_residential,
+      #   pct_singfam_pins_w_exemps = pin_count_has_homeownerexemptions / pin_count_singfam_residential
+    ) %>%
+  
+  select(clean_name, pct_ofSF_pins_w_HOexe, pct_ofallpins_w_exe, pct_C2_w_exemps, 
+         PC_has_exe, PC_C2_muni, PC_allPINs_muni, everything())
+
+merged
+```
+
+> Bring in tax bills to calculate the muni levy for each municipality from final_tax_to_dist variable.
+
+```{r}
+TC_bills_current <- read_csv("2_Summed_Bills_by_Taxcode_and_Class.csv") %>% 
+  mutate(tax_code = as.character(tax_code),
+         class = as.character(class))
+
+class_dict$class_code <- as.character(class_dict$class_code)
+ 
+
+taxcodes_current <- left_join(TC_bills_current, muni_tax_codes, 
+                      by = c("tax_code" = "tax_code_num")) 
+
+MuniLevy <- taxcodes_current %>% 
+  left_join(muni_agency_names, by = "agency_num") %>%
+  left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
+  #filter(!agency_num %in% cross_county_lines) %>%
+  group_by(clean_name) %>%
+  
+  summarize(MuniLevy = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by munis with current exemptions in place
+            nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
+            TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),  
+            Exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE), 
+            Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE))
+
+
+merged <- merged %>% left_join(MuniLevy)
+```
+
+
+
+```{r}
+scenario_taxrates <- merged %>% 
+  mutate(scenario1_taxable_eav = Total_EAV - TIF_increment_EAV - Exempt_EAV + homeowners_exemption,
+         scenario2_taxable_eav = Total_EAV - TIF_increment_EAV - Exempt_EAV + (senior_exemption + freeze_exemption ),
+                  scenario_noexemptions_taxable_eav = Total_EAV - Exempt_EAV) %>%
+  mutate(taxrate_scen1 = MuniLevy / scenario1_taxable_eav,
+         taxrate_scen2 = MuniLevy / scenario2_taxable_eav,
+         tax_rate_current = MuniLevy/nonTIF_EAV_post_exemps,
+         taxrate_noexemps = MuniLevy /(Total_EAV - TIF_increment_EAV  ),
+         taxrate_noTIFs = MuniLevy / (Total_EAV - Exempt_EAV),
+         taxrate_noTIFs_orExemps = MuniLevy / Total_EAV)  %>%
+  select(clean_name, MuniLevy, taxrate_scen1, taxrate_scen2, tax_rate_current, taxrate_noexemps, taxrate_noTIFs, taxrate_noTIFs_orExemps, scenario1_taxable_eav, scenario2_taxable_eav)
+
+scenario_taxrates
+
+
+merged %>% 
+  filter(clean_name %in% c("Park Forest","Markham",  "Dolton", "Hillside", "Riverside", "Chicago", "Westchester", "Winnetka", "Rosemont")) %>%
+  mutate(scenario1_taxable_eav = Total_EAV - TIF_increment_EAV - Exempt_EAV + homeowners_exemption,
+         scenario2_taxable_eav = Total_EAV - TIF_increment_EAV - Exempt_EAV + (senior_exemption + freeze_exemption ),
+         scenario_noexemptions_taxable_eav = Total_EAV - Exempt_EAV) %>%
+  mutate(taxrate_scen1 = MuniLevy / scenario1_taxable_eav,
+         taxrate_scen2 = MuniLevy / scenario2_taxable_eav,
+         tax_rate_current = MuniLevy/nonTIF_EAV_post_exemps,
+         taxrate_noexemps = MuniLevy /(Total_EAV - TIF_increment_EAV  ),
+         taxrate_noTIFs = MuniLevy / (Total_EAV - Exempt_EAV),
+         taxrate_noTIFs_orExemps = MuniLevy / Total_EAV)  %>%
+  select(clean_name, MuniLevy, taxrate_scen1, taxrate_scen2, tax_rate_current, taxrate_noexemps, scenario1_taxable_eav, scenario2_taxable_eav, scenario_noexemptions_taxable_eav, Total_EAV, taxrate_noTIFs, taxrate_noTIFs_orExemps)
+
+```
+
+> Scenario 1 is removing homeowners exemptions. Scenario 2 is removing the two senior exemptions. 
+
+
+
+
+### Burden Share for Scenarios
+
+
+Calculate Class 2 Burden --> Calculate the amount of taxable EAV in the Municipality (for each scenario) and multiply it by the new composite tax rate (for each scenario).
+
+
+Burden Share  = Taxable EAV within Property Class * Composite tax rate 
+
+Composite Tax Rate = (Municipal Levy / Taxable EAV )
+
+
+
+```{r}
+Class2_EAV_scenarios <- exemptions %>% 
+  filter(class_code >= 200 & class_code <= 300) %>% 
+  filter(tax_code_num %in% muni_tax_codes$tax_code_num)%>%
+  group_by(clean_name) %>%
+  summarize(Class2_av = sum(av, na.rm = TRUE),
+            Class2_eav_original=sum(eav_original, na.rm=TRUE),
+            Class2_total_exempt_eav = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+                                     exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
+            Class2_homeowners_exemption = sum(exe_homeowner),
+            Class2_senior_exemption = sum(exe_senior, na.rm=TRUE),
+            Class2_freeze_exemption = sum(exe_freeze, na.rm=TRUE),
+            Class2_PC_permuni = n() # number of pins within each municipality
+            ) 
+Class2_EAV_scenarios
+
+
+Class2_TIF_EAV <-  taxcodes_current %>% 
+  filter(class >=200 & class <=300) %>%
+  left_join(muni_agency_names, by = "agency_num") %>%
+  left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
+  filter(!agency_num %in% cross_county_lines) %>%
+  group_by(clean_name) %>%
+  summarize(Class2_DistrictRev = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by munis with current exemptions in place
+            Class2_nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
+            Class2_TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),  
+            Class2_Exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE), 
+            Class2_Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE))
+
+Class2_TIF_EAV
+
+
+Class2_merged <- Class2_TIF_EAV %>% 
+  left_join(Class2_EAV_scenarios) %>%
+  left_join(MuniLevy)
+
+
+Class2_Scenario_burdenshift <- Class2_merged %>% 
+  left_join(scenario_taxrates) %>%
+  mutate(Class2_scenario1_taxable_eav = Class2_Total_EAV - Class2_TIF_increment_EAV - Exempt_EAV +  Class2_homeowners_exemption,
+        Class2_scenario2_taxable_eav = Class2_Total_EAV - Class2_TIF_increment_EAV - Exempt_EAV +  (Class2_senior_exemption + Class2_freeze_exemption )) %>%
+  
+  mutate(burden_C2_scen1 = (Class2_scenario1_taxable_eav * taxrate_scen1)/ MuniLevy,
+         burden_C2_scen2 = (Class2_scenario2_taxable_eav * taxrate_scen2) / MuniLevy,
+         burden_C2_current = Class2_nonTIF_EAV_post_exemps * tax_rate_current/ MuniLevy,
+         burden_C2_noexemps = ( (Class2_Total_EAV - Class2_TIF_increment_EAV)*taxrate_noexemps ) / MuniLevy,
+         burden_C2_noTIF_orExemps = (Class2_Total_EAV * taxrate_noTIFs_orExemps ) / MuniLevy,
+         burden_C2_noTIFs =  ((Class2_Total_EAV - Class2_Exempt_EAV) * taxrate_noTIFs ) / MuniLevy) #  %>%
+ # select(clean_name, MuniLevy, taxrate_scen1, taxrate_scen2, tax_rate_current, taxrate_noexemps, scenario1_taxable_eav, scenario2_taxable_eav)
+
+Class2_Scenario_burdenshift %>% 
+  select(clean_name, burden_C2_scen1:burden_C2_noTIFs)  %>% 
+  filter(clean_name %in% c("Park Forest","Markham",  "Dolton", "Hillside", "Riverside", "Chicago", "Westchester", "Winnetka", "Rosemont"))
+```
+
+
+
+
+
 # Appendix: All code for this report.
 
 ## Exporting data into Excel 
@@ -1546,7 +2424,8 @@ group_by(Triad, clean_name)
 library(openxlsx)
 
 dataset_names <- list('Cook County Totals' = total_exemptions,
-                      'Muni Exemption Totals' = muni_totals,
+                      'Incorp Exemp Totals' = muni_totals,
+                      'Muni Level Exemp Tot' = exemptype_totals_permuni,
                       'EAV in and out of TIF' = tif_table,
                       'Percent Residential' = perc_residential,
                       'Tax Base by Class' = grouped_exemptions,
@@ -1556,8 +2435,8 @@ dataset_names <- list('Cook County Totals' = total_exemptions,
                       'Exemps by Class, All Tax Codes' = exemptions_by_class_per_TC,
                       'Exempt Residential EAV' = exemptions_to_class2EAV_ratios,
                       'Tax Code Tax Rates'= taxcodes_current,
-                      'Tax Bill Change, All PropClass' = tax_bill_change, # uses the actual median value for the statistic. Not my favorite way to calculate this statistic
-                      'Tax Bill Change, 3 MajorClasses' = bill_change_3groups, # uses the actual median value for the statistic. Not my favorite way to calculate this statistic
+                  #    'Tax Bill Change, All PropClass' = tax_bill_change, # uses the actual median value for the statistic. Not my favorite way to calculate this statistic
+                    #  'Tax Bill Change, 3 MajorClasses' = bill_change_3groups, # uses the actual median value for the statistic. Not my favorite way to calculate this statistic
 
                       'Muni TaxCodeXClass Bill Sums' = TC_bills_current, # uses the actual median value for the statistic. Not my favorite way to calculate this statistic
                       'Composite tax rates' = Current_Taxrates
