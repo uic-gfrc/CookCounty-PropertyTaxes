@@ -22,6 +22,9 @@ library(ptaxsim)
 
 ```
 
+
+> Most of the steps done in this file are done in a different in better way in 4B and 4C of the file. Will delete this file eventually, keeping it currently only as a reference for early attempts at summarizing impacts of removing exemptions on tax rates and the outcome for the "average home owner." 
+
 # Bring in data
 
 The tax code taxrates were made in file `2_...rmd` and the exemptions file were created in file `3_.....rmd`
@@ -33,9 +36,9 @@ The median assessed value is used to determine the `median property` for various
 The assessed value and original equalized assessed values come from the `pin` data table within PTAXSIM. This table also has every type of exemption that the property received and the amount of EAV that was exempt due to the exemption. 
 
 ```{r}
-taxcode_taxrates <- read_csv("2_taxcode_taxrates.csv")
+taxcode_taxrates <- read_csv("./Output/2_taxcode_taxrates.csv")
 
-pin_eav <- read_csv("3_Exemption_Details_output-all_cook_pin_exemptions_2021_actual.csv") %>%
+pin_eav <- read_csv("./Output/3_Exemption_Details_output-all_cook_pin_exemptions_2021_actual.csv") %>%
     filter(class_code !=0) %>%
 
   mutate(exempt_EAV = exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
@@ -343,7 +346,7 @@ muni_rachelgroups_stats2 %>% select(clean_name,  grouped_classes, bill_change, e
 Uses owner, renter, commercial and industrial.
 
 ```{r}
-class_dict <- read_csv("class_dict_expanded.csv") %>% 
+class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv") %>% 
   mutate(class_code = as.character(class_code))
 
 muni_Alea_cat_stats <- tax_bill_change %>% 
@@ -463,7 +466,7 @@ muni_tax_codes <- DBI::dbGetQuery(
   .con = ptaxsim_db_conn
   )
 )
-nicknames <- readxl::read_excel("muni_shortnames.xlsx")
+nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
 
 
 
@@ -629,7 +632,7 @@ doltchi_tax_codes <- DBI::dbGetQuery(
 ```
 
 ```{r eval=FALSE}
-taxbills_current <- read_csv("1_Get_All_Pins-CookPinTaxbills_2021_Actual.csv")
+taxbills_current <- read_csv("./Output/1_Get_All_Pins-CookPinTaxbills_2021_Actual.csv")
 # 22,453,875 tax bills in 2021 in municipalities (incorporated areas). 
 # 22,972,902 tax bills in all of Cook County in 2021 (incorporated and unincorporated)
 # DOES INCLUDE unincorporated tax bills based on how we pulled the data in Step 1.
@@ -677,7 +680,7 @@ DoltonChicago <- DoltonChicago %>%
 
 ```{r}
 DoltonChicago <- read_csv("Cholton_taxbills.csv")
-nicknames <- readxl::read_excel("muni_shortnames.xlsx")
+nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
 
 
 DoltonChicago <- DoltonChicago %>% mutate(tax_code = as.character(tax_code)) %>% left_join(doltchi_tax_codes, by = c("tax_code" = "tax_code")) 
@@ -686,7 +689,7 @@ DoltonChicago <- DoltonChicago %>% left_join(muni_agency_names, by = c("agency_n
 
 DoltonChicago %>% group_by(agency_num) %>% summarize(forgone_rev = sum(tax_amt_exe))
 
-class_dict <- read_csv("class_dict.csv")
+class_dict <- read_csv("./Necessary Files/class_dict.csv")
 
 
 DoltonChicago %>% 
