@@ -1,0 +1,320 @@
+---
+title: "Incentive Properties"
+author: "AWM"
+format: html
+editor: visual
+code-fold: true
+---
+
+```{r setup, warning = FALSE, message = FALSE}
+library(tidyverse)
+library(ptaxsim)
+library(DBI)
+library(httr)
+library(jsonlite)
+library(glue)
+library(sf)
+
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+
+
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
+
+# link to the API output as a JSON file
+muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/politicalBoundary/MapServer/2/query?outFields=*&where=1%3D1&f=geojson")
+
+#muni_shp <- read_json("muni_shp.json")
+nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
+
+class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv") %>% 
+  mutate(class_code = as.character(class_code))
+
+NBHs <- read_sf("https://datacatalog.cookcountyil.gov/resource/pcdw-pxtg.geojson")
+```
+
+## Aggregating pin data to new shapes!
+
+::: {.callout-note appearance="minimal"} Assessor neighborhoods are 5 digits: first 2 for the township, last 3 are for the neighborhood within the township. These do not resemble the neighborhoods that many of us may think of but are instead of groups of properties with similar characteristics **(that are taxed in similar rates? double check)** :::
+
+Pull pins, neighborhood codes, property class, assessment triad, and other variables from Parcel Universe using the GET() command. Pulls data from online API, not PTAXSIM database. I am using this instead of PTAXSIM because neighborhood codes are not included in PTAXSIM tables: Tax codes are the smallest unit of measurement. **NOTE: Tax codes and neighborhoods do not appear to share borders?**
+
+> Want: Amount of AV of incentive classes in each municipality and/or assessor neighborhood?
+
+```{r eval = FALSE}
+base_url <- "https://datacatalog.cookcountyil.gov/resource/tx2p-k2g9.json"
+
+nbh_pins <- GET(
+  base_url,
+  query = list(
+    tax_year = 2021,
+ #   ward_num = 49,
+   # property_city = "ROGERS PARK",
+    `$select` = paste0(c("pin", "pin10", 
+                         "class", 
+                         "township_code", "township_name",
+                         "nbhd_code", "census_puma_geoid",
+                         #"lat","lon", 
+                         "triad_name" 
+                         ),
+   collapse = ","),
+   `$limit` = 500000000L
+  )
+)
+
+nbh_pins2 <- fromJSON(rawToChar(nbh_pins$content))
+head(nbh_pins2)
+
+
+
+# has EAV values, extensions by agency_num
+agency_dt <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT *
+  FROM agency
+  WHERE year = 2021
+  "
+)
+
+cook_agency_names <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT DISTINCT agency_num, agency_name
+  FROM agency_info
+  "
+)
+
+ 
+
+
+# has all tax codes and the taxing agency that taxes them. Tax code rates and agency rates. 
+cook_tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT*
+  FROM tax_code
+  WHERE agency_num IN ({cook_agency_names$agency_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+)
+# There are 1,864,594 pins taxed by Cook County in 2021.
+cook_pins <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql(
+  "SELECT DISTINCT pin, class, tax_code_num
+  FROM pin
+  WHERE tax_code_num IN ({cook_tax_codes$tax_code_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+))
+
+
+muni_agency_names <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT DISTINCT agency_num, agency_name, minor_type
+  FROM agency_info
+  WHERE minor_type = 'MUNI'
+  OR agency_num = '020060000'  
+
+  "
+)
+
+muni_tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT*
+  FROM tax_code
+  WHERE agency_num IN ({muni_agency_names$agency_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+)
+
+muni_tax_codes <- muni_tax_codes %>% left_join(muni_agency_names)
+
+# finds all pins within a municipality
+pin_data <- lookup_pin(2021, cook_pins$pin) %>%
+  left_join(cook_pins, by = c("pin", "class")) %>% 
+  mutate(class_1dig = str_sub(class, 1, 1))
+
+# change variable type to character so the join works.
+#class_dict$class_code <- as.character(class_dict$class_code)
+
+
+
+# use the property class to make the major property types
+# joins the class_dict file to the pin_data classes
+#pin_data <- class_dict %>%
+  #select(-c(assessment_level:reporting_group, class_desc:max_size)) %>%
+#  right_join(pin_data, by = c("class_code" = "class"))
+
+
+
+#parcel_exemps <- read_csv("./Output/3_Exemptions_Details_output-ParcelExemps.csv")
+
+parcel_data <- left_join(pin_data, nbh_pins2, by = c("pin", "class"))
+
+parcel_data <- parcel_data %>% 
+  mutate(township = str_sub(nbhd_code,1,2),
+         nbhd_3 = str_sub(nbhd_code, 3,5)) %>% 
+  left_join(class_dict, by = c("class" = "class_code"))
+
+parcel_data %>% head()
+
+incentive_classes <- parcel_data %>% filter(class>599) %>%  mutate(pin10 = str_sub(pin,1, 10))  %>% left_join(muni_tax_codes)
+
+incentive_parcels <- incentive_classes %>% 
+  group_by(pin10, class, tax_code_num, major_class_code) %>% 
+  summarize(av = sum(av), 
+            pins_in_parcel = n())
+  
+
+incentives_perTC <- incentive_classes %>% 
+  group_by(tax_code_num, major_class_code) %>% 
+  summarize(av = sum(av), 
+            pins_in_parcel = n())
+```
+
+
+```{r}
+incentive_classes %>% 
+  group_by(agency_name, major_class_type, major_class_code) %>%
+  summarize(av = sum(av),
+            pins = n()) %>%
+  pivot_wider(id_cols = agency_name, names_from = "major_class_type", values_from = "av")
+  
+incentive_classes %>% 
+  group_by(agency_name, major_class_type, major_class_code) %>%
+  summarize(av = sum(av),
+            pins = n()) %>%
+  pivot_wider(id_cols = agency_name, names_from = "major_class_type", values_from = "pins")
+
+incentive_classes %>% 
+  group_by(agency_name, major_class_type, major_class_code) %>%
+  summarize(av = sum(av),
+            pins = n()) %>%
+  pivot_wider(id_cols = agency_name, names_from = "major_class_code", values_from = "pins")
+
+incentive_classes %>% 
+  group_by(agency_name, major_class_type, major_class_code) %>%
+  summarize(av = sum(av),
+            pins = n()) %>%
+  pivot_wider(id_cols = agency_name, names_from = "major_class_code", values_from = "pins")
+
+```
+
+```{r}
+nbh_pincounts <- parcel_data %>% 
+  group_by(nbhd_code, class) %>%
+  dplyr::summarize(pin_count = n(),
+            av = sum(av)) %>%
+  mutate(class_1dig = str_sub(class, 1, 1))
+
+nbh_pincounts_majorclass <- parcel_data %>% 
+  group_by(major_class_code, major_class_type, nbhd_code) %>%
+  dplyr::summarize(pin_count = n(),
+            av = sum(av))
+
+table(nbh_pincounts_majorclass$major_class_code)
+
+parcel_data %>% 
+  mutate(major_class_fct = recode_factor(
+  class_1dig,
+  "1" = "1 - Vacant",
+  "2" = "2 - Residential",
+  "3" = "3 - Multifamily",
+  "4" = "4 - Non-profit",
+  "5" = "5 - Commercial & Industrial",
+  "6" = "6 - Industrial",
+  "7" = "7 - Commercial",
+  "9" = "9 - Multifamily"
+)) %>%
+  group_by(major_class_fct, nbhd_code) %>%
+  summarize(nbh_av = sum(av),
+            pin_count = n()) 
+
+
+incentives_props <- nbh_pincounts_majorclass %>% 
+  mutate()
+  filter(major_class_code %in% c("6A", "6B", "6C", "7A", "7B", "8", "9"))
+
+
+incentives_props %>% 
+  full_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
+  ggplot(aes(fill = pin_count)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  labs(title = "Number of PINs with Incentives in Assessor Neighborhoods", 
+  caption = "Count of 14 digit PINs") +
+  theme_void() + 
+   theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+scale_fill_steps2(
+  high = "darkblue", low = "orange",
+ nice.breaks = FALSE,
+  show.limits=TRUE,
+na.value = NA,
+  name = "Count")
+
+
+incentives_props %>% 
+  full_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
+  ggplot(aes(fill = av)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  labs(title = "Number of PINs with Incentives in Assessor Neighborhoods", 
+  caption = "Count of 14 digit PINs") +
+  theme_void() + 
+   theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+scale_fill_steps2(
+  high = "darkblue", low = "orange",
+ nice.breaks = FALSE,
+  show.limits=TRUE,
+na.value = NA,
+  name = "Count")
+```
+
+```{r}
+nbh_pincounts <- parcel_data %>% 
+  group_by(nbhd_code, class) %>%
+  dplyr::summarize(pin_count = n(),
+            av = sum(av)) %>%
+  mutate(class_1dig = str_sub(class, 1, 1))
+
+nbh_pincounts_majorclass <- parcel_data %>% 
+  group_by(major_class_code, major_class_type, nbhd_code) %>%
+  dplyr::summarize(pin_count = n(),
+            av = sum(av))
+
+table(nbh_pincounts_majorclass$major_class_code)
+
+
+incentives_props <- nbh_pincounts_majorclass %>% 
+  filter(major_class_code %in% c("6A", "6B", "6C", "7A", "7B", "8"))
+
+
+incentives_props %>% 
+  full_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
+  ggplot(aes(fill = pin_count)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  labs(title = "Number of PINs with Incentives in Assessor Neighborhoods", 
+  caption = "Count of 14 digit PINs") +
+  theme_void() + 
+   theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+scale_fill_steps2(
+  high = "darkblue", low = "orange",
+ nice.breaks = FALSE,
+  show.limits=TRUE,
+na.value = NA,
+  name = "Count")
+```
+
+# Incentive Property Classes
+
+Class 6b: Designed to encourage industrial development throughout Cook County by offering a real estate tax incentive for the development of new industrial facilities, the rehabilitation of existing industrial structures, and the industrial reutilization of abandoned buildings.
+
+Class 7A(B): Intended to encourage commercial projects in areas determined to be "in need of commercial development.These projects have total development costs, exclusive of land, that DO NOT EXCEED(DO EXCEED) two million and would not be economically feasible without the incentive.
+
+Class 8: Designed to encourage industrial and commercial development in areas of the county which are experiencing severe economic stagnation.
+
+Class 9: Designed to encourage new development, rehabilitation and long-term preservation of affordable multi-family rental housing throughout Cook County.
