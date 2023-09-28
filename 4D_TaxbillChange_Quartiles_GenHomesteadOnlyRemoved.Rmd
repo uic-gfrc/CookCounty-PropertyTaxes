@@ -259,6 +259,12 @@ muni_taxrates <- pin_data2 %>%
 
 ## Cook Median
 
+Cook County Stats:
+
+-   25th percentile of PIN AV is \$14,155 in Cook County (i.e. 25% of homes have AVs less than 14K and 75% have AVs more than 14K)
+-   50th percentile of PIN AV is \$21,003
+-   75th percentile of PIN AV is \$31,417
+
 ```{r out.width="50%", fig.show='hold', echo=FALSE}
 
 singfam_pins %>%
@@ -287,7 +293,7 @@ singfam_pins %>%
 
 ```{r}
 # Quartiles
-quantile(singfam_pins$av)
+#quantile(singfam_pins$av)
 
 
 # Deciles
@@ -347,18 +353,6 @@ chosen3_billchange <-  chosen3_ranked %>%
 
 #### Bill change for those that Did Not Claim Exemptions:
 
-Cook County Stats:
-
--   25th percentile of PIN AV is \$14,155 in Cook County (i.e. 25% of homes have AVs less than 14K and 75% have AVs more than 14K)\
--   50th percentile of PIN AV is \$21,003\
--   75th percentile of PIN AV is \$31,417
-
-```{r}
-chosen3_billchange %>% 
-  filter(has_HO_exemp == 0 & !is.na(rank)) %>%
-  select(Municipality = clean_name, "Percentile" = rank,  "Avg Current Bill" = mean_bill_cur, "Avg New Bill" = mean_bill_new, "Tax Bill Change" = mean_change, "Perceived Savings" = perceived_savings, "# Pins in AV Range" = pincount, "AV" = median_AV, cur_comp_TC_rate, new_comp_TC_rate, everything())
-```
-
 Each Municipality has different composite tax rates. This causes the average tax bill to vary geographically within Cook County. For properties that are at the Cook County 25th percentile in assessed value (\$14,000), current tax bills range from \$2,800 in Chicago to over \$10,000 in Dolton. The median Cook County property currently (AV= \$21,000) has a \$4,200 bill in Chicago, a \$14,400 bill in Dolton, and a \$6,000 bill in Glencoe.
 
 If the general homestead exemption was terminated, additional EAV would become taxable which would then result in lower tax rates for all properties. This lower tax rate would result in lower tax bills for properties that were not claiming the general homestead exemption.[^1]
@@ -367,6 +361,14 @@ If the general homestead exemption was terminated, additional EAV would become t
 
 When looking at those who did not claim the General Homestead Exemption (GHE) and own properties assessed at Cook County's median AV (AV = \$21,000), all tax bills would decrease from current amounts. A homeowner would experience a \$500 decrease in their taxbill in Chicago and over a \$2,100 decrease in Dolton if additional EAV became taxable from the termination of the GHE.
 
+```{r}
+chosen3_billchange %>% 
+  filter(has_HO_exemp == 0 & !is.na(rank)) %>%
+  select(Municipality = clean_name, "Percentile" = rank,  "Avg Current Bill" = mean_bill_cur, "Avg New Bill" = mean_bill_new, "Tax Bill Change" = mean_change, "Perceived Savings" = perceived_savings, "# Pins in AV Range" = pincount, "AV" = median_AV, cur_comp_TC_rate, new_comp_TC_rate, everything())
+```
+
+#### Bill Change for those that did claim the  General Homestead Exemption
+
 When looking at those who did claim the General Homestead Exemption (GHE) and own properties assessed at Cook County's median AV (AV = \$21,000), all tax bills would increase from current amounts but the tax rate applied to all property owners would decrease. A homeowner would experience a \$190 increase in their taxbill in Chicago and a \$85 increase in Glencoe. While there are no properties valued at the county median AV in Dolton, a property valued at the county's 25th percentile would experience a \$650 increase if additional EAV became taxable from the termination of the GHE.
 
 However, these hypothetical bill increases would be significantly less than property owners would initially think. All tax bills showthe amount that thetax bill was reduced due to exemptions: exempt EAV \* current composite tax rate. However, this value is an over estimate of how the tax bill would change because it does not take into account the decrease in tax rate that would occur: if you increase the taxable EAV and hold the levy constant, then the tax rate decreases for all properties.
@@ -374,8 +376,6 @@ However, these hypothetical bill increases would be significantly less than prop
 Overall, home owners believe they are benefiting more from the general homestead exemption than they would be in this scenario. Policymakers also likely believe exemptions are providing more benefits than they actually are to homeowners. While those who claim the exemption have less EAV that is taxed, the composite tax rate increases for all property owners. Ultimately some of the property tax burden is shifted from homeowners to other property owners. The amount of the burden shift depends on an area's proportional land use (residential EAV / total EAV).[^2]
 
 [^2]: While the tax rate calculations do take into consideration TIF increments, we have not discussed the role that TIFs play in composite tax rates. If a TIF exists in the same tax code as a homeowner, the taxable EAV is frozen for years to come. However the levy amount needed to provide public services usually increases over time and results in higher tax rates for those in TIF areas compared to nearby non-TIF tax codes.
-
-#### Bill Change for those that did claim the  General Homestead Exemption
 
 ```{r}
 chosen3_summarytable <- chosen3_billchange %>% 
@@ -412,7 +412,7 @@ muni_quartiles <- pin_data2 %>%
 chosen3 <- muni_quartiles %>% 
   left_join(nicknames) %>% 
   filter(clean_name %in% c("Dolton", "Chicago", "Glencoe"))
-chosen3
+# chosen3
 
 chosen3_ranked <- pin_data2 %>%
   inner_join(chosen3, by = "agency_name") %>%
