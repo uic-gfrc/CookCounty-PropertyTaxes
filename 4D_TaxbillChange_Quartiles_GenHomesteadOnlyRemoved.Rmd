@@ -13,7 +13,7 @@ output:
 ```{r setup, warning=FALSE, message=FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
-
+#renv::install("ccao-data/ptaxsim")
 library(tidyverse)
 library(data.table)
 library(gstat)
@@ -117,7 +117,6 @@ rm(taxbills_current)
 
 pin_eav <- read_csv("./Output/3_Exemption_Details_output-all_cook_pin_exemptions_2021_actual.csv") %>%
   #filter(class_code !=0) %>%
-  
   mutate(all_exemptions = exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
            exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 + exe_abate) %>%
   mutate(zero_bill = ifelse(eav <= all_exemptions, 1, 0),
@@ -261,19 +260,21 @@ muni_taxrates <- pin_data2 %>%
 
 Cook County Stats:
 
--   25th percentile of PIN AV is \$14,155 in Cook County (i.e. 25% of homes have AVs less than 14K and 75% have AVs more than 14K)
+-   25th percentile of PIN AV is \$14,155 in Cook County (i.e., 25% of homes have AVs less than 14K and 75% have AVs more than 14K)
 -   50th percentile of PIN AV is \$21,003
 -   75th percentile of PIN AV is \$31,417
 
-```{r out.width="50%", fig.show='hold', echo=FALSE}
-
-singfam_pins %>%
-  ggplot( aes(y=av)) +
-    geom_boxplot()  +
-  theme_classic()+
-  coord_flip()+
-    labs(title = "Cook County Class Distribution of AV", y = "Assessed Value ($)", x="") +
-  scale_y_continuous(label = scales::dollar)
+```{r, out.width="50%", fig.show='hold', echo=FALSE}
+# 
+# singfam_pins %>%
+# ggplot(aes(x = Option2, y=av)) +
+#   geom_violin(width = 1.4)  +
+#   geom_boxplot(color = "gray", alpha = 0.2)+
+#   theme_classic()+
+#  # theme(legend.position = "none") +
+#   coord_flip()+
+#   labs(title = "Cook County Class Distribution of AV", y = "Assessed Value ($)", x="") +
+#   scale_y_continuous(label = scales::dollar)
 
 singfam_pins %>%
   #  filter(av < 1000000) %>% # just to see the histogram better
@@ -349,6 +350,51 @@ chosen3_billchange <-  chosen3_ranked %>%
 ) %>%
   arrange(has_HO_exemp, rank)
 
+
+write_csv(chosen3_billchange, "4d_quartiles_billchange.csv")
+```
+
+
+```{r quartile-billchange-allCook, eval=FALSE, include = FALSE}
+allmunis_ranked <- singfam_pins %>%  
+  left_join(nicknames) %>% 
+ # filter(clean_name %in% c("Dolton", "Chicago", "Glencoe")) %>%
+  mutate(rank = case_when(
+    av > (cook_quartiles$quant25-500) & (av<cook_quartiles$quant25+500) ~ "q25",
+    av > (cook_quartiles$quant50-500) & (av<cook_quartiles$quant50+500) ~ "q50",
+    av > (cook_quartiles$quant75-500) & (av<cook_quartiles$quant75+500) ~ "q75")) %>%
+  select(clean_name, rank, av, pin, class, everything()) %>% 
+  filter(!is.na(rank))
+
+
+allmunis_ranked_billchange <-  allmunis_ranked %>% 
+  group_by(clean_name, rank)%>%
+  arrange(av) %>%
+ # group_by(agency_name, has_HO_exemp) %>% 
+  mutate(#taxable_eav = final_tax_to_dist / tax_code_rate,
+    # current bill = current tax rate * portion of levy billed
+         bill_current = (final_tax_to_dist + final_tax_to_tif),
+         bill_noexemps =  new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
+         bill_change = bill_noexemps - bill_current) %>%
+  group_by(clean_name, rank, has_HO_exemp) %>% 
+  summarize(median_AV = round(median(av)),
+            median_EAV = round(median(eav)),
+            # median_bill_cur = median(bill_current),
+            # median_bill_new = median(bill_noexemps),
+            # median_change = median(bill_change),
+            mean_bill_cur = round(mean(bill_current, na.rm=TRUE)),
+            mean_bill_new = round(mean(bill_noexemps, na.rm=TRUE)),
+            mean_change = round(mean(bill_change, na.rm=TRUE)),
+            perceived_savings = median(tax_amt_exe),
+            cur_comp_TC_rate = round(mean(cur_comp_TC_rate), digits = 2),
+            new_comp_TC_rate = round(mean(new_comp_TC_rate), digits = 2),
+            pincount=n()
+) %>%
+  arrange(has_HO_exemp, rank) %>%
+  mutate(rate_change = new_comp_TC_rate - cur_comp_TC_rate)
+
+
+write_csv(allmunis_ranked_billchange, "4d_quartiles_allMunis_billchange.csv")
 ```
 
 #### Bill change for those that Did Not Claim Exemptions:
@@ -367,7 +413,7 @@ chosen3_billchange %>%
   select(Municipality = clean_name, "Percentile" = rank,  "Avg Current Bill" = mean_bill_cur, "Avg New Bill" = mean_bill_new, "Tax Bill Change" = mean_change, "Perceived Savings" = perceived_savings, "# Pins in AV Range" = pincount, "AV" = median_AV, cur_comp_TC_rate, new_comp_TC_rate, everything())
 ```
 
-#### Bill Change for those that did claim the  General Homestead Exemption
+#### Bill Change for those that did claim the General Homestead Exemption
 
 When looking at those who did claim the General Homestead Exemption (GHE) and own properties assessed at Cook County's median AV (AV = \$21,000), all tax bills would increase from current amounts but the tax rate applied to all property owners would decrease. A homeowner would experience a \$190 increase in their taxbill in Chicago and a \$85 increase in Glencoe. While there are no properties valued at the county median AV in Dolton, a property valued at the county's 25th percentile would experience a \$650 increase if additional EAV became taxable from the termination of the GHE.
 
@@ -499,19 +545,95 @@ chosen3_billchange <-  chosen3_ranked %>%
 
 pin_data2 %>%
   left_join(nicknames) %>%
-  #filter(Alea_cats == "Owner Occupied") %>%
   filter(Option2 == "Single-Family") %>%
-  filter(av < 1000000) %>% # remove the couple really extreme outliers in Chicago
+  filter(av < 500000) %>% # remove the couple really extreme outliers in Chicago
   filter(clean_name %in% c("Dolton", "Chicago", "Glencoe", "Oak Park")) %>%
-  ggplot( aes(y=av)) +
+  ggplot( aes(y=av, group = clean_name, fill = clean_name)) +
   geom_boxplot()+
-  facet_wrap(~agency_name, ncol=4) +
+ # facet_wrap(~agency_name, nrow=4) +
+ coord_flip() +
+  theme_bw()  +
+    theme(axis.text.x = element_blank(), 
+        axis.ticks.x = element_blank()) +
+  labs(title = "Distribution of Residential Properties AV", y = "Assessed Value ($)") +
+  scale_y_continuous(label = scales::dollar) 
+```
+
+```{r}
+#install.packages("ggridges")
+library(ggridges)
+
+pin_data2 %>%
+  left_join(nicknames) %>%
+  filter(Option2 == "Single-Family") %>%
+  filter(av < 300000) %>% # remove the couple really extreme outliers in Chicago
+ filter(clean_name %in% c("Dolton", "Chicago", "Glencoe")) %>%
+  ggplot( aes(x = av, y= clean_name, fill = clean_name ) )+
+  geom_density_ridges( aes(x = av, y=clean_name, fill = clean_name) )+
+  viridis::scale_fill_viridis(discrete = T, name = "")+
+  #facet_wrap(~agency_name, ncol=4) +
 #  coord_flip() +
-  theme_bw() + 
-  theme(axis.text.x = element_blank(), 
-        axis.ticks.x = element_blank() ) +
-  labs(title = "Distribution of Residential Properties AV", y = "Assessed Value ($)", x= "" ) +
-  scale_y_continuous(label = scales::dollar) #+ scale_x_continuous(labels = element_blank())
+  theme_ridges() + 
+  theme(#axis.text.x = element_blank(), 
+ #       axis.ticks.x = element_blank(,
+ legend.position = "none") +
+  labs(title = "Distribution of Residential Properties' AV", 
+       y = "Assessed Value", x= "" ) +
+  scale_x_continuous(label = scales::dollar)
+
+pin_data2 %>%
+  left_join(nicknames) %>%
+  filter(Option2 == "Single-Family") %>%
+  filter(av < 300000) %>% # remove the couple really extreme outliers in Chicago
+ filter(clean_name %in% c("Dolton", "Chicago", "Glencoe")) %>%
+  ggplot( aes(x = av, fill = clean_name ) )+
+  geom_histogram( )+
+  facet_wrap(~agency_name, nrow=4) +
+  coord_flip() +
+  theme_classic()+
+  theme(#axis.text.x = element_blank(), 
+ #       axis.ticks.x = element_blank(,
+ legend.position = "none") +
+  labs(title = "Distribution of Residential Properties' AV", 
+       x = "Assessed Value", x= "# PINs" ) +
+  scale_x_continuous(label = scales::dollar)
+```
+
+```{r}
+pin_data2 %>%
+  left_join(nicknames) %>%
+  #filter(Alea_cats == "Owner Occupied") %>%
+  mutate(has_HO_exemp = factor(has_HO_exemp, levels = c("Did Not Claim", "Did Claim")),
+         clean_name = factor(clean_name)) %>%
+  filter(Option2 == "Single-Family") %>%
+  filter(clean_name %in% c("Dolton", "Chicago", "Glencoe", "Oak Park")) %>%
+  ggplot(aes(x = clean_name, y=log(av), fill = clean_name)  )+
+  geom_violin(position = "dodge", alpha = 0.5, outlier.color = "transparent")+
+      viridis::scale_fill_viridis(discrete=T, name="") +
+  theme_classic() +
+  coord_flip()+
+  #facet_wrap(~agency_name, ncol=4) +
+   theme(legend.position = "none") + 
+  labs(title = "Distribution of Residential Properties' AV", y = "log(Assessed Value)", x= "" ) #+
+ # scale_y_continuous(label = scales::dollar) #+ scale_x_continuous(labels = element_blank())
+
+pin_data2 %>%
+  left_join(nicknames) %>%
+  mutate(has_HO_exemp = factor(has_HO_exemp, levels = c("Did Not Claim", "Did Claim")),
+         clean_name = factor(clean_name)) %>%
+  filter(Option2 == "Single-Family") %>%
+  filter(clean_name %in% c("Dolton", "Chicago", "Glencoe", "Oak Park")) %>%
+  ggplot(aes(x = clean_name, y=log(av), fill = clean_name)  )+
+  geom_boxplot(position = "dodge", alpha = 0.5, outlier.color = "transparent")+
+    #  viridis::scale_fill_viridis(discrete=T, name="") +
+  theme_classic() +
+    coord_flip()+
+
+  #facet_wrap(~agency_name, ncol=4) +
+   theme(legend.position = "none") + 
+  labs(title = "Distribution of Residential Properties' AV", y = "log(Assessed Value)", x= "" )
+
+
 ```
 
 ```{r}
