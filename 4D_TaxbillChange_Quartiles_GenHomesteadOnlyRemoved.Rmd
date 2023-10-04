@@ -196,7 +196,7 @@ write_csv(pin_data2, "./Output/4C_joined_PINs_bills_and_exemptions.csv")
 ```
 
 ```{r read-files}
-class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv") %>% 
+class_dict <- read_csv("./Necessary_Files/class_dict_singlefamcodes.csv") %>% 
   mutate(class_code = as.character(class_code)) # change variable type to character so the join works.
 
 nicknames <- readxl::read_xlsx("./Necessary_Files/muni_shortnames.xlsx")
@@ -668,3 +668,88 @@ chosen3_summarytable <- chosen3_billchange %>%
 
 chosen3_summarytable
 ```
+
+# Graph requested Oct 4
+
+For those that DID claim the exemption, create ratio of:
+
+25th percentile home bill change / AV : 75th percentile home bill change/AV.
+
+Graph the ratio points for all munis.
+
+```{r}
+q = c(.25, .5, .75)
+
+muni_quartiles <- pin_data2 %>%
+  filter(Option2 == "Single-Family")%>%
+  group_by(agency_name ) %>%
+  arrange(av) %>%
+  summarize(count_pins = n(), 
+            min = min(av),
+            quant25 = round(quantile(av, probs = q[1])), 
+            quant50 = round(quantile(av, probs = q[2])),
+            quant75 = round(quantile(av, probs = q[3])),
+            max = max(av)) %>% 
+  arrange( desc( quant50)) %>%
+    left_join(nicknames)
+
+
+
+munis_ranked <- pin_data2 %>%
+  inner_join(muni_quartiles, by = "agency_name") %>%
+  mutate(rank = case_when(
+    av > (quant25-500) & (av<quant25+500) ~ "q25",
+    av > (quant50-500) & (av<quant50+500) ~ "q50",
+    av > (quant75-500) & (av<quant75+500) ~ "q75")) %>%
+  select(clean_name, rank, av, pin, class, everything())
+
+munis_ranked_pincheck <- pin_data2 %>%
+  inner_join(muni_quartiles, by = "agency_name") %>%
+  mutate(rank = case_when(
+    av > (quant25-1000) & (av<quant25+1000) ~ "q25",
+    av > (quant50-1000) & (av<quant50+1000) ~ "q50",
+    av > (quant75-1000) & (av<quant75+1000) ~ "q75")) %>%
+  select(clean_name, rank, av, pin, class, everything())
+
+munis_billchange <-  munis_ranked  %>% 
+  group_by(clean_name, rank) %>%
+  arrange(av) %>%
+ # group_by(agency_name, has_HO_exemp) %>% 
+  mutate(#taxable_eav = final_tax_to_dist / tax_code_rate,
+    # current bill = current tax rate * portion of levy billed
+         bill_current = (final_tax_to_dist + final_tax_to_tif),
+         bill_noexemps =  new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
+         bill_change = bill_noexemps - bill_current) %>%
+  group_by(clean_name, rank, has_HO_exemp) %>% 
+  summarize(median_AV = round(median(av)),
+            median_EAV = round(median(eav)),
+            # median_bill_cur = median(bill_current),
+            # median_bill_new = median(bill_noexemps),
+            # median_change = median(bill_change),
+            mean_bill_cur = round(mean(bill_current, na.rm=TRUE)),
+            mean_bill_new = round(mean(bill_noexemps, na.rm=TRUE)),
+            mean_change = round(mean(bill_change, na.rm=TRUE)),
+            perceived_savings = median(tax_amt_exe),
+            cur_comp_TC_rate = round(mean(cur_comp_TC_rate), digits = 2),
+            new_comp_TC_rate = round(mean(new_comp_TC_rate), digits = 2),
+            pincount=n()
+) %>%
+  arrange(has_HO_exemp, rank)
+
+munis_billchange <- munis_billchange %>% left_join(muni_quartiles)
+
+ratios<- munis_billchange %>% 
+  filter(has_HO_exemp == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
+  mutate(billchange_to_AV_25 = ifelse(rank == "q25", mean_change/median_AV, NA)) %>%
+  mutate(billchange_to_AV_75 = ifelse(rank == "q75", mean_change/median_AV, NA)) %>% 
+  group_by(clean_name) %>%
+  summarize(billchange_to_AV_25 = max(billchange_to_AV_25, na.rm=TRUE),
+            billchange_to_AV_75 = max(billchange_to_AV_75, na.rm=TRUE)) %>%
+  mutate(muni_ratio_25to75 = billchange_to_AV_25/billchange_to_AV_75)
+
+ratios
+
+ggplot(data = ratios, aes(y = billchange_to_AV_25, x = billchange_to_AV_75, label = clean_name)) + 
+         geom_point(aes(alpha = .5)) + geom_text(nudge_x = .03, nudge_y=0.01, size = 3, check_overlap = TRUE)+ theme_classic() + theme(legend.position = "none")
+```
+
