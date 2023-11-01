@@ -1,0 +1,462 @@
+---
+title: "Cook County Tax Codes' Tax Rates"
+author: "AWM"
+format: html
+editor: visual
+code-fold: true
+---
+
+# Data Prep
+
+```{r setup, warning = FALSE, message = FALSE}
+library(tidyverse)
+library(ptaxsim)
+library(DBI)
+library(httr)
+library(jsonlite)
+library(glue)
+library(sf)
+
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+
+#NBHs<- read_csv("Assessor_-_Neighborhood_Boundaries.csv")
+
+# NBHs <- read_sf("https://datacatalog.cookcountyil.gov/resource/pcdw-pxtg.geojson")
+
+muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/politicalBoundary/MapServer/2/query?outFields=*&where=1%3D1&f=geojson")
+
+muni_shp2 <- st_transform(muni_shp, crs = 3435)
+
+cook_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/plss/MapServer/1/query?outFields=*&where=1%3D1&f=geojson")
+
+cook_shp <- st_transform(cook_shp, crs = 3435)
+
+```
+
+```{r}
+# Create the DB connection with the default name expected by PTAXSIM functions
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "C:/Users/aleaw/OneDrive/Documents/PhD Fall 2021 - Spring 2022/Merriman RA/ptax/ptaxsim.db/ptaxsim-2021.0.4.db")
+
+
+nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
+
+
+
+cook_agency_names <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT DISTINCT agency_num, agency_name
+  FROM agency_info
+  "
+)
+
+cook_tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT*
+  FROM tax_code
+  WHERE agency_num IN ({cook_agency_names$agency_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+)
+
+tif_distrib <- DBI::dbGetQuery(
+  ptaxsim_db_conn, 
+  glue_sql("
+  SELECT *
+  FROM tif_distribution
+  WHERE tax_code_num IN ({cook_tax_codes$tax_code_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+) %>% mutate(tax_code_num = as.character(tax_code_num))
+
+
+```
+
+```{r eval=FALSE}
+taxbills_current <- read_csv("C:/Users/aleaw/OneDrive/Documents/PhD Fall 2021 - Spring 2022/Merriman RA/ptax/Output/Dont_Upload/1_Get_All_Pins-CookPinTaxbills_2021_Actual.csv")
+
+sapply(taxbills_current, function(x) sum(is.na(x)))
+
+
+# 1,825,816 billed properties with 14-digit PINs in incorporated areas
+# 1,864,594 in incorporated and unincorporated areas.
+pin14_bills_current <- taxbills_current %>%
+  group_by(tax_code, class, pin) %>%
+  
+  mutate(total_bill = final_tax_to_dist + final_tax_to_tif) %>% # from each taxing agency
+  
+  summarize(
+    total_billed = sum(total_bill, na.rm = TRUE), # total on someone's property tax bill
+    av = first(av),
+    eav = first(eav),
+    # pin_count_in_parcel = n(),
+    final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE),
+    final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+    tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), # revenue lost due to exemptions
+    tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), # total rev before all exemptions
+    tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE), # total rev after all exemptions
+    rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE), # not used
+    rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE), # not used
+    rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE), # not used
+    tif_share = mean(tif_share, na.rm=TRUE), # not used
+  )  %>% 
+  mutate(propclass_1dig = str_sub(class, 1, 1))
+
+
+sapply(pin14_bills_current, function(x) sum(is.na(x)))
+
+
+# Now group again and sum values for tax code and each property class!
+
+# There are 28,381 property class - tax code group combinations in incorporated areas.
+# There are 28,534 property class - tax code group combos in incorporated + unincorporated areas
+
+rm(taxbills_current)
+```
+
+## Exemption Data - Calculating Tax Rates
+
+```{r eval=FALSE}
+exemptions <- read_csv("C:/Users/aleaw/OneDrive/Documents/PhD Fall 2021 - Spring 2022/Merriman RA/ptax/Output/Dont_Upload/3_Exemption_Details_output-all_cook_pin_exemptions_2021_actual.csv") %>%
+  mutate(all_exemptions = exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+           exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 + exe_abate) %>%
+  mutate(zero_bill = ifelse(eav <= all_exemptions, 1, 0),
+         has_HO_exemp = ifelse(exe_homeowner > 0, 1, 0)) %>%
+  rename(equalized_AV = eav,
+         pin_AV = av)
+
+nicknames <- readxl::read_excel("muni_shortnames.xlsx")
+
+tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT DISTINCT tax_code_num, tax_code_rate
+  FROM tax_code
+  WHERE year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+) %>% mutate(tax_code_num = as.numeric(tax_code_num))
+
+
+pin_data <- left_join(pin14_bills_current, exemptions, by = c("pin", "class" = "class_code" ))
+
+pin_data <- left_join(pin_data, tax_codes, by = c("tax_code_num" = "tax_code_num"))
+
+taxcodes_by_TC_current <- pin_data %>% 
+  group_by(tax_code_num)  %>%
+  summarize(
+    av = sum(av),
+    eav = sum(eav),
+    equalized_AV = sum(equalized_AV),
+    pins_in_TC = n(),
+    current_exemptions = sum(all_exemptions),
+    HO_exemps = sum(exe_homeowner),
+    tax_code_rate = first(tax_code_rate),
+    final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # used as LEVY amount!! 
+    final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+    tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), 
+    tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), 
+    tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE),
+    rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE), # not used
+    rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE), # not used
+    rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE), # not used
+    tif_share = mean(tif_share, na.rm=TRUE), # not used
+  ) %>% 
+  mutate(total_bill_current = final_tax_to_dist + final_tax_to_tif) %>%
+  rename(cur_comp_TC_rate = tax_code_rate) %>%
+  mutate(current_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100),
+         new_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100) + HO_exemps) %>%
+  mutate(new_comp_TC_rate = (final_tax_to_dist / new_taxable_eav)*100) %>%
+  mutate(new_comp_TC_rate = ifelse(is.nan(new_comp_TC_rate), cur_comp_TC_rate, new_comp_TC_rate)) %>%
+  select(tax_code_num, cur_comp_TC_rate, new_comp_TC_rate, current_taxable_eav, new_taxable_eav, everything())
+
+write_csv(taxcodes_by_TC_current, "./Necessary_Files/taxcode_taxrates.csv")
+```
+
+
+```{r}
+taxcodes_by_TC_current <- read_csv("C:/Users/aleaw/OneDrive/Documents/PhD Fall 2021 - Spring 2022/Merriman RA/Property Tax Map/Necessary_Files/taxcode_taxrates.csv")
+
+tc_shp <- st_read("C:/Users/aleaw/OneDrive/Documents/PhD Fall 2021 - Spring 2022/Merriman RA/Property Tax Map/tax_code_map_shape/tax_code_map_shape.shp")
+
+
+# st_crs(tc_shp)$epsg     # CRS = 3435 for Illinois specific projection
+  
+```
+
+```{r }
+incentive_classes <- read_csv("./Output/7_output_incentive_classes.csv") %>% 
+  filter(class>599 & class < 900)
+
+  
+
+incentives_perTC <- incentive_classes %>% 
+  group_by(tax_code_num, major_class_code) %>% 
+  summarize(av = sum(av), 
+            pins_in_TC = n())
+
+
+
+table1 <- incentive_classes %>% 
+  filter(class > 799 & class < 900) %>% 
+  group_by(tax_code_num, agency_name, major_class_code) %>%
+  summarize(av = sum(av)) %>%
+  pivot_wider(id_cols = c(tax_code_num, agency_name), 
+              names_from = "major_class_code", 
+              values_from = "av") %>%
+  rename(AV = `8`)
+
+table2 <- incentive_classes %>% 
+  filter(class > 799 & class < 900) %>% 
+  group_by(tax_code_num, agency_name, major_class_code) %>%
+  summarize(pincount = n()) %>%
+  pivot_wider(id_cols = c(tax_code_num, agency_name), 
+              names_from = "major_class_code", 
+              values_from = "pincount") %>%
+  rename(pincount = `8`)
+
+left_join(table1, table2)
+```
+```{r}
+TC_pincounts <- incentive_classes %>% 
+  group_by(tax_code_num, class) %>%
+  dplyr::summarize(pin_count = n(),
+            av = sum(av)) %>%
+  mutate(class_1dig = str_sub(class, 1, 1))
+
+TC_pincounts_majorclass <- incentive_classes %>% 
+  group_by(major_class_code, major_class_type, tax_code_num) %>%
+  dplyr::summarize(pin_count = n(),
+            av = sum(av))
+
+# table(nbh_pincounts_majorclass$major_class_code)
+
+
+incentives_props <- TC_pincounts_majorclass %>% 
+  filter(major_class_code %in% c("6A", "6B", "6C", "7A", "7B", "8", "9")) %>%
+  mutate(tax_code_num = as.character(tax_code_num))
+
+
+```
+
+
+# Maps
+
+```{r}
+fig_TC_pincount <- incentives_props %>% 
+  mutate(tax_code_num = as.character(tax_code_num)) %>%
+  full_join(tc_shp, by = c("tax_code_num" = "tx_cd_n")) %>% 
+  ggplot(aes(fill = pin_count)) +
+  geom_sf(aes(geometry = geometry),
+             color = NA)+ 
+  labs(title = "PINs with Incentives per TC") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+  scale_fill_steps2(
+    high = "maroon", low = "pink",
+    nice.breaks = FALSE,
+    show.limits=TRUE,
+    na.value = NA,
+    name = "Count",
+ # label = scales::percent
+  )
+
+fig_TC_pincount
+```
+```{r eval=FALSE, include = FALSE}
+muni_lines <- ggplot() + 
+  geom_sf(data = muni_shp2, aes(geometry = geometry), color = "black", lwd = 0.05, fill = NA) + 
+  theme_void()
+
+muni_lines
+```
+
+
+```{r}
+fig_TC_AV <- incentives_props %>% 
+  group_by(tax_code_num) %>%
+  summarize(av = sum(av)) %>%
+  full_join(tc_shp, by = c("tax_code_num" = "tx_cd_n")) %>%
+  ggplot(aes(fill = av)) + 
+  geom_sf(aes(geometry = geometry), color = NA) + 
+  labs(title = "Assessed Value of Properties within 2021 Assessor Tax Codes") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+  scale_fill_steps2(
+    high = "maroon4", low = "pink3",
+    nice.breaks = FALSE,
+    show.limits=TRUE,
+    na.value = NA,
+    name = "Dollars",
+  label = scales::dollar
+  )
+
+fig_TC_AV
+
+st_crs(tc_shp)$epsg
+
+```
+
+
+```{r eval=FALSE, include=FALSE}
+joined <- incentives_props %>% 
+  group_by(tax_code_num) %>%
+  summarize(av = sum(av)) %>%
+  full_join(tc_shp, by = c("tax_code_num" = "tx_cd_n")) 
+
+joined <- st_transform(joined, crs = 3435)
+
+
+fig_TC_AV <- ggplot(joined, aes(fill = av)) +
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  theme_void() + theme(axis.ticks = element_blank(), axis.text = element_blank(), legend.position = "none") +
+  scale_fill_steps2(
+    high = "maroon", low = "pink",
+    nice.breaks = FALSE,
+    show.limits=TRUE,
+    na.value = NA,
+    name = "Dollars",
+  label = scales::dollar) 
+
+
+fig_TC_AV <- fig_TC_AV + 
+  geom_sf(data = muni_shp, fill = NA, color = "black", lwd = 1) + theme_void()
+
+fig_TC_AV
+
+identical(st_crs(joined), st_crs(muni_shp2))
+
+# muni_lines +  
+#   geom_sf(data = joined, aes(geometry = geometry, fill = av), color = NA) + 
+# 
+#   #labs(title = "Assessed Value of Properties within 2021 Assessor Tax Codes") +
+#   theme_void() + 
+#   theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+#   scale_fill_steps2(
+#     high = "maroon", low = "pink",
+#     nice.breaks = FALSE,
+#     show.limits=TRUE,
+#     na.value = NA,
+#     name = "Dollars",
+#   label = scales::dollar) 
+```
+
+```{r}
+current_taxrates <- taxcodes_by_TC_current %>% 
+  mutate(tax_code_num = as.character(tax_code_num)) %>%
+  full_join(tc_shp, by = c("tax_code_num" = "tx_cd_n")) %>% 
+  ggplot(aes(fill = new_comp_TC_rate)) +
+  geom_sf(aes(geometry = geometry),
+             color = NA)+ 
+  labs(title = "Hypothetical tax rates at the tax code level",
+       subtitle = "if all exempt EAV (from exemptions) became taxable") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+  scale_fill_steps2(
+    high = "maroon", low = "pink",
+    limits = c(0, 45),
+    nice.breaks = FALSE,
+    show.limits=TRUE,
+    na.value = NA,
+    name = "Tax Rate",
+ # label = scales::percent
+  )
+
+
+# current_taxrates <- current_taxrates + geom_sf(data = muni_shp, fill = NA, color = "black", lwd = 1) + theme_void()
+
+current_taxrates
+```
+
+```{r munitaxcode-maps, eval = FALSE}
+
+tc_rates %>% 
+  mutate(tax_code = as.character(tax_code)) %>%
+  left_join(tc_shp, by = c("tax_code" = "tx_cd_n")) %>% 
+  ggplot(aes(fill = tax_rate_current)) +
+  geom_sf(aes(geometry = geometry),
+             lwd = 0.01)+ 
+  labs(title = "Tax rates at the tax code level",
+       subtitle = "Shapefile created by CMAP. Merged & mapped by AWM.") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+  scale_fill_steps2(
+    high = "maroon", low = "pink",
+    nice.breaks = FALSE,
+    show.limits=TRUE,
+    na.value = NA,
+    name = "Tax Rate",
+  label = scales::percent)
+
+tc_rates_Cook %>% 
+  mutate(tax_code = as.character(tax_code)) %>%
+  left_join(tc_shp, by = c("tax_code" = "tx_cd_n")) %>% 
+  ggplot(aes(fill = tax_rate_current)) +
+  geom_sf(aes(geometry = geometry),
+             lwd = 0.01)+ 
+  labs(title = "Tax rates at the tax code level",
+       caption = "Uses tax rates from summed bills by taxcode and class CSV") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+  scale_fill_steps2(
+    high = "maroon", low = "pink",
+    nice.breaks = FALSE,
+    show.limits=TRUE,
+    na.value = NA,
+    name = "Tax Rate",
+  label = scales::percent)
+
+
+tc_rates %>% 
+  mutate(tax_code = as.character(tax_code)) %>%
+  full_join(tc_shp, by = c("tax_code" = "tx_cd_n")) %>% 
+  ggplot(aes(fill = tax_rate_current)) +
+  geom_sf(aes(geometry = geometry), 
+          color = NA,
+            #  lwd = 0
+          )+ 
+  labs(title = "Tax rates at the tax code level",
+       subtitle =  "Full Join",
+       caption = "Shapefile created by CMAP. Merged & mapped by AWM.") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+  scale_fill_steps2(
+    high = "maroon", low = "pink",
+    nice.breaks = FALSE,
+    show.limits=TRUE,
+    na.value = NA,
+    name = "Tax Rate",
+  label = scales::percent)
+
+
+tc_rates_Cook %>% 
+  mutate(tax_code = as.character(tax_code)) %>%
+  full_join(tc_shp, by = c("tax_code" = "tx_cd_n")) %>% 
+  ggplot(aes(fill = tax_rate_current)) +
+  geom_sf(aes(geometry = geometry), 
+          color = NA,
+            #  lwd = 0
+          )+ 
+  labs(title = "Tax rates at the tax code level",
+       subtitle =  "Full Join",
+       caption = "Shapefile created by CMAP. Merged & mapped by AWM.") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+  scale_fill_steps2(
+    high = "maroon", low = "pink",
+    nice.breaks = FALSE,
+    show.limits=TRUE,
+    na.value = NA,
+    name = "Tax Rate",
+  label = scales::percent)
+```
+
+```{r eval=FALSE}
+ggplot(tc_shp) + geom_sf()
+```
