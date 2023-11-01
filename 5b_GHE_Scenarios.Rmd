@@ -1,0 +1,883 @@
+---
+title: "Exemption Scenarios - Requested in October 25 Meeting"
+author: "Alea Wilbur"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+    code_download: yes
+---
+
+
+
+```{r setup, warning = FALSE, message = FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+
+library(tidyverse)
+library(DBI)
+library(data.table)
+library(ggspatial)
+library(gstat)
+library(here)
+library(httr)
+library(jsonlite)
+library(ptaxsim)
+library(sf)
+library(stars)
+library(glue)
+library(ggpattern)
+
+# Create the DB connection with the default name expected by PTAXSIM functions
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
+
+
+options(digits=4, scipen = 999)
+
+
+library(httr)
+library(NatParksPalettes)
+
+# link to the API output as a JSON file
+muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/politicalBoundary/MapServer/2/query?outFields=*&where=1%3D1&f=geojson")
+
+cook_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/plss/MapServer/1/query?outFields=*&where=1%3D1&f=geojson")
+
+
+
+#muni_shp <- read_json("muni_shp.json")
+nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
+
+class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv") %>% 
+  mutate(class_code = as.character(class_code))
+
+
+
+# `agency_dt` has all taxing agencies (but not TIFs) that existed each year and includes their total taxable base (cty_cook_eav), their levy, taxing rate, binary variables for if a municipality is home rule or not, as well as many other variables. tax_bill() uses this table for the taxable EAV that is used to  calculate the tax rates in the tax bills. For simulations, you must alter the taxable EAV or levy or other variables and then tell tax_bill() function to use the modified agency data table for simulated tax bills.
+# 
+
+
+
+# has EAV values, extensions by agency_num
+agency_dt <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT *
+  FROM agency
+  WHERE year = 2021
+  "
+)
+
+
+# cook_agency_names <- DBI::dbGetQuery(
+#   ptaxsim_db_conn,
+#   "SELECT DISTINCT agency_num, agency_name
+#   FROM agency_info
+#   "
+# )
+# 
+#  
+# 
+# 
+# # has all tax codes and the taxing agency that taxes them. Tax code rates and agency rates. 
+# cook_tax_codes <- DBI::dbGetQuery(
+#   ptaxsim_db_conn,
+#   glue_sql("
+#   SELECT*
+#   FROM tax_code
+#   WHERE agency_num IN ({cook_agency_names$agency_num*})
+#   AND year = 2021
+#   ",
+#   .con = ptaxsim_db_conn
+#   )
+# )
+
+
+muni_agency_names <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT DISTINCT agency_num, agency_name, minor_type
+  FROM agency_info
+  WHERE minor_type = 'MUNI'
+  OR agency_num = '020060000'  
+
+  "
+)
+
+muni_tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT*
+  FROM tax_code
+  WHERE agency_num IN ({muni_agency_names$agency_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+)  
+  
+tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT DISTINCT tax_code_num, tax_code_rate
+  FROM tax_code
+  WHERE year = 2021  
+  ",
+  .con = ptaxsim_db_conn
+  )
+)
+
+## All tax codes. 
+## tax codes within municipalities have additional info 
+tc_muninames <- tax_codes %>% 
+  left_join(muni_tax_codes) %>%
+  left_join(muni_agency_names) %>% 
+  select(-agency_rate) %>% 
+  left_join(nicknames) %>% 
+  select(-c(minor_type, short_name, `Column1`, `Most recent reassessed`, agency_number))
+
+
+# Agency number and agency name for all TIFs
+TIF_agencies <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT DISTINCT agency_num, agency_name, major_type, minor_type
+  FROM agency_info
+  WHERE minor_type = 'TIF'
+  "
+)
+
+unique_tif_taxcodes <- DBI::dbGetQuery(
+  ptaxsim_db_conn, 
+  glue_sql("
+  SELECT DISTINCT tax_code_num
+  FROM tax_code
+  WHERE agency_num IN ({TIF_agencies$agency_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+)
+
+
+tif_distrib <- DBI::dbGetQuery(
+  ptaxsim_db_conn, 
+  glue_sql("
+  SELECT *
+  FROM tif_distribution
+  WHERE tax_code_num IN ({muni_tax_codes$tax_code_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+) %>% mutate(tax_code_num = as.character(tax_code_num))
+
+
+
+cross_county_lines <- c("030440000", "030585000", "030890000", "030320000", "031280000","030080000", "030560000", "031120000", "030280000", "030340000","030150000","030050000", "030180000","030500000","031210000")
+
+
+cross_county_lines <- muni_agency_names %>% 
+  filter(agency_num %in% cross_county_lines) %>% 
+  left_join(nicknames, by = "agency_name")
+```
+
+# Changing General Homeowner Exemption - Scenarios
+
+Create a PIN input with modified exemption amounts, then recalculate the base by taking the difference between the real and hypothetical exemptions.
+
+Then recalculate the tax base for each district. If increasing the exemption, the base should decrease because there is less taxable EAV.
+
+```{r current-taxsystem, eval=FALSE, include =FALSE}
+
+### NOT NEEDED ### 
+
+## Used to check the "current year" in the code chunk below
+## Where the current exemption is reduced by 10,000 
+## Like our very main scenario where we dropped exemptions 
+
+
+tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT DISTINCT tax_code_num, tax_code_rate
+  FROM tax_code
+  WHERE year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+) %>% mutate(tax_code_num = as.numeric(tax_code_num))
+
+
+
+# Load pins
+t_pins <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "
+  SELECT DISTINCT pin
+  FROM pin
+  "
+)
+
+t_pins <- t_pins$pin
+t_years <- 2021
+
+rates <- NULL
+exe_steps <- c(0)
+
+for(m in exe_steps){
+  
+# Set exemption value
+  t_pin_dt_new_exe <- lookup_pin(t_years, t_pins)
+  t_pin_dt_new_exe[, tax_code := lookup_tax_code(year, pin)]
+  
+  # new taxcode level sums of exemption
+  t_tc_sum_new_exe <- t_pin_dt_new_exe[
+    # if exe_homeowner > 0, then add the alternate GHE amount to the current GHE amount
+    # calculates the amount of EAV to be added/subtracted from taxable base of taxing agencies
+    , .(exe_total = sum(((m * exe_homeowner!=0)))),
+    by = .(year, tax_code)
+  ]
+  
+  # Calculate bases by adding agency total and the exemption amount
+  t_agency_dt_new_exe <- lookup_agency(t_years, t_pin_dt_new_exe$tax_code)
+  t_agency_dt_new_exe[
+    t_tc_sum_new_exe,
+    on = .(year, tax_code),
+    agency_total_eav := agency_total_eav + exe_total
+  ]
+  
+  # Recalculate tax bills
+  t_pin_dt_new_exe <- t_pin_dt_new_exe[
+    exe_homeowner!=0, exe_homeowner := exe_homeowner+m
+  ][
+    , c("tax_code") := NULL       # deletes tax_code column
+  ]
+  
+  bills <- tax_bill(
+    year_vec = t_years,
+    pin_vec = t_pins,
+    agency_dt = t_agency_dt_new_exe,
+    pin_dt = t_pin_dt_new_exe,
+    simplify = FALSE
+  )
+  
+# Clear up memory
+  rm(t_pin_dt_new_exe, t_tc_sum_new_exe)
+  
+    # Combine bills, aggregate to pin by year
+  current_rates <- bills %>%
+    dplyr::group_by(pin, tax_code) %>%
+    mutate(total_bill = final_tax_to_dist + final_tax_to_tif) %>% # from each taxing agency
+    
+    summarize(
+      total_billed = sum(total_bill, na.rm = TRUE), # total on someone's property tax bill
+      av = first(av),
+      eav = first(eav),
+      taxing_agency_count = n(), # number of taxing agencies that tax the pin
+      final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # portion of all levies paid by the pin
+      final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE), 
+      tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE),           # revenue lost due to exemptions
+      tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE),   # total rev before all exemptions
+      tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE), # total rev after all exemptions
+      # rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE),     # not used
+      # rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE),       # not used
+      # rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE),     # not used
+      # tif_share = mean(tif_share, na.rm=TRUE),                # not used
+    ) %>%
+    mutate(tax_code = as.numeric(tax_code)) %>% 
+    left_join(tax_codes, by = c("tax_code" = "tax_code_num") ) %>% # add current, real tax code level tax rates
+    mutate(exemption_level = m) %>%
+    dplyr::group_by(tax_code, exemption_level) %>%
+    dplyr::summarize(
+      tc_levy = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by munis with current exemptions in place
+      nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
+      TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),  
+      Exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE), 
+      Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE),
+    ) %>%
+  
+    mutate(
+      tax_rate_current = tc_levy/nonTIF_EAV_post_exemps,
+      nonTIF_EAV_pre_exemps = nonTIF_EAV_post_exemps + Exempt_EAV,
+      taxrate_new = tc_levy/nonTIF_EAV_pre_exemps, # tax rate if there were no exemptions
+      taxrate_change = tax_rate_current-taxrate_new,
+    ) %>% 
+    select(tax_code, taxrate_change, tax_rate_current, taxrate_new, everything()) %>% 
+    arrange(desc(tax_code))
+  
+    rm(bills)
+}
+
+
+
+bills <- tax_bill(2021, pin_vec = t_pins, simplify = FALSE)
+
+
+munilevel_current_rates <- bills %>%
+    dplyr::group_by(pin, tax_code) %>%
+    mutate(total_bill = final_tax_to_dist + final_tax_to_tif) %>% # from each taxing agency
+    
+    summarize(
+      total_billed = sum(total_bill, na.rm = TRUE), # total on someone's property tax bill
+      av = first(av),
+      eav = first(eav),
+      taxing_agency_count = n(), # number of taxing agencies that tax the pin
+      final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # portion of all levies paid by the pin
+      final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE), 
+      tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE),           # revenue lost due to exemptions
+      tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE),   # total rev before all exemptions
+      tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE), # total rev after all exemptions
+      ) %>%
+    # mutate(tax_code = as.numeric(tax_code)) %>% 
+    left_join(tc_muninames, by = c("tax_code" = "tax_code_num") ) %>%
+  left_join(nicknames) %>% 
+  # add current, real tax code level tax rates
+    dplyr::group_by(clean_name, agency_num) %>%
+    dplyr::summarize(
+      muni_levy = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by munis with current exemptions in place
+      nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
+      TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),  
+      Exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE), 
+      Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE),
+      pin_count = n()
+    ) %>%
+  
+    mutate(
+      tax_rate_current = muni_levy/nonTIF_EAV_post_exemps,
+      nonTIF_EAV_pre_exemps = nonTIF_EAV_post_exemps + Exempt_EAV,
+      taxrate_new = muni_levy/nonTIF_EAV_pre_exemps, # tax rate if there were no exemptions
+      taxrate_change = tax_rate_current-taxrate_new,
+    )
+  
+  
+```
+
+```{r scenarios-taxcodelevel, eval=FALSE}
+
+tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT DISTINCT tax_code_num, tax_code_rate
+  FROM tax_code
+  WHERE year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+) %>% mutate(tax_code_num = as.numeric(tax_code_num))
+
+
+
+# Load pins
+t_pins <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "
+  SELECT DISTINCT pin
+  FROM pin
+  "
+)
+
+t_pins <- t_pins$pin
+t_years <- 2021
+
+rates <- NULL
+exe_steps <- c(-10000, -5000, 0, 5000, 10000, 15000, 20000, 30000, 40000)
+
+start_time <- Sys.time()
+for(m in exe_steps){
+  
+# Set exemption value
+  t_pin_dt_new_exe <- lookup_pin(t_years, t_pins)
+  t_pin_dt_new_exe[, tax_code := lookup_tax_code(year, pin)]
+  
+  # new taxcode level sums of exemption
+  t_tc_sum_new_exe <- t_pin_dt_new_exe[
+    # if exe_homeowner > 0, then add the alternate GHE amount to the current GHE amount
+    # calculates the amount of EAV to be added/subtracted from taxable base of taxing agencies
+    , .(exe_total = sum(((m * exe_homeowner!=0)))),
+    by = .(year, tax_code)
+  ]
+  
+  # Calculate bases by adding agency total and the exemption amount
+  t_agency_dt_new_exe <- lookup_agency(t_years, t_pin_dt_new_exe$tax_code)
+  t_agency_dt_new_exe[
+    t_tc_sum_new_exe,
+    on = .(year, tax_code),
+    agency_total_eav := agency_total_eav - exe_total
+  ]
+  
+  # Recalculate tax bills
+  t_pin_dt_new_exe <- t_pin_dt_new_exe[
+    exe_homeowner!=0, exe_homeowner := exe_homeowner+m
+  ][
+    ### ADD IF ELSE STATEMENT 
+    
+    
+    , c("tax_code") := NULL       # deletes tax_code column
+  ]
+  
+  bills <- tax_bill(
+    year_vec = t_years,
+    pin_vec = t_pins,
+    agency_dt = t_agency_dt_new_exe,
+    pin_dt = t_pin_dt_new_exe,
+    simplify = FALSE
+  )
+  
+# Clear up memory
+  rm(t_pin_dt_new_exe, t_tc_sum_new_exe)
+  
+    # Combine bills, aggregate to pin by year
+  rates2 <- bills %>%
+    dplyr::group_by(pin, tax_code) %>%
+    
+    mutate(total_bill = final_tax_to_dist + final_tax_to_tif) %>% # from each taxing agency
+    
+    summarize(
+      total_billed = sum(total_bill, na.rm = TRUE), # total on someone's property tax bill
+      av = first(av),
+      eav = first(eav),
+      taxing_agency_count = n(), # number of taxing agencies that tax the pin
+      final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # portion of all levies paid by the pin
+      final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE), 
+      tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE),           # revenue lost due to exemptions
+      tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE),   # total rev before all exemptions
+      tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE)#, # total rev after all exemptions
+      # rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE),     # not used
+      # rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE),       # not used
+      # rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE),     # not used
+      # tif_share = mean(tif_share, na.rm=TRUE),                # not used
+    ) %>%
+   # mutate(tax_code = as.numeric(tax_code)) %>% 
+    mutate(exemption_level = m) %>%
+   # left_join(tax_codes, by = c("tax_code" = "tax_code_num") ) %>% # add current, real tax code level tax rates
+    dplyr::group_by(tax_code, exemption_level) %>%
+    dplyr::summarize(
+      total_billed = sum(total_billed, na.rm = TRUE), # total on someone's property tax bill
+      av = sum(av, na.rm=TRUE),
+      eav = sum(eav, na.rm = TRUE),
+      taxing_agency_count = first(taxing_agency_count), # number of taxing agencies that tax the pin
+      final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # portion of all levies paid by the pin
+      final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE), 
+      tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE),           # revenue lost due to exemptions
+      tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE),   # total rev before all exemptions
+      tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE) ) %>% # total rev after all exemptions
+# 
+#     dplyr::summarize(
+#       tc_levy = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by munis with current exemptions in place
+#       nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
+#       TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),  
+#       Exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE), 
+#       Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE),
+#     ) %>%
+  
+    # mutate(
+    #   tc_levy = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by munis with current exemptions in place
+    #   
+    #   tax_rate_current = tc_levy/nonTIF_EAV_post_exemps,
+    #   nonTIF_EAV_pre_exemps = nonTIF_EAV_post_exemps + Exempt_EAV,
+    #   taxrate_new = tc_levy/nonTIF_EAV_pre_exemps,
+    #   taxrate_change = tax_rate_current-taxrate_new,
+    # ) %>% 
+     select(tax_code, everything())
+
+  
+  if(is.data.frame(rates)){rates <- rbind(rates2, rates)}else{rates <- rates2}
+  rm(rates2, bills)
+}
+end_time <- Sys.time()
+end_time - start_time
+
+write_csv(rates, "C:/Users/aleaw/OneDrive/Documents/PhD Fall 2021 - Spring 2022/Merriman RA/ptax/Output/5b_scenario_rates3.csv")
+```
+
+> line 521 - finish thought! 
+
+
+
+```{r scenarios-munilevel, eval=FALSE}
+
+rates <- NULL
+exe_steps <- c(-10000, -5000, 0, 5000, 10000, 15000, 20000, 30000, 40000)
+
+start_time <- Sys.time()
+
+for(m in exe_steps){
+  
+# Set exemption value
+  t_pin_dt_new_exe <- lookup_pin(t_years, t_pins)      # creates "current" tax system pin data with current exemptions
+  
+  t_pin_dt_new_exe[, tax_code := lookup_tax_code(year, pin)]  # adds tax code variable to pin & exemption data 
+  
+  
+  
+
+  # new taxcode level sums of exemption
+  
+ # summarizes pin data table that has the tax code variable by year and tax code
+ # creates a new variable exe_total
+  t_tc_sum_new_exe <- t_pin_dt_new_exe[
+    # if exe_homeowner > 0, then add the alternate GHE amount to the current GHE amount
+    # calculates the amount of EAV to be added/subtracted from taxable base of taxing agencies
+    , .(exe_change = sum(((m * exe_homeowner!=0)))),
+    by = .(year, tax_code)
+  ]
+  
+##### COME BACK TO THIS POINT ###### 
+  
+# # Calculate bases by adding agency total and the exemption amount # # 
+  
+  # new agency data table <- # same input as normal agency table
+  t_agency_dt_new_exe <- lookup_agency(t_years, t_pin_dt_new_exe$tax_code)
+  
+  ## updates taxable base EAV in agency data table
+  t_agency_dt_new_exe[
+    t_tc_sum_new_exe,
+    on = .(year, tax_code),
+    agency_total_eav := agency_total_eav - exe_change
+  ]
+  
+  # # Recalculate tax bills
+  # t_pin_dt_new_exe <- t_pin_dt_new_exe[
+  #   exe_homeowner!=0, exe_homeowner := exe_homeowner + m
+  # ][
+  #   exe_homeowner > eav, exe_homeowner:= eav
+  # ][
+  #   , c("tax_code") := NULL       # deletes tax_code column
+  # ]
+
+# Recalculate tax bills
+t_pin_dt_new_exe <- t_pin_dt_new_exe[
+ exe_homeowner!= 0, exe_homeowner := ifelse(exe_homeowner + m > eav , eav, exe_homeowner + m)
+ ][
+    , c("tax_code") := NULL       # deletes tax_code column from pin table that has exemption data
+  ]
+
+## re-sum all homeowner exemptions by agency * update taxable EAV in agency_dt 
+  
+  bills <- tax_bill(
+    year_vec = t_years,
+    pin_vec = t_pins,
+    agency_dt = t_agency_dt_new_exe,
+    pin_dt = t_pin_dt_new_exe,
+    simplify = FALSE
+  )
+  
+# Clear up memory
+  rm(t_pin_dt_new_exe, t_tc_sum_new_exe)
+  
+    # Combine bills, aggregate to pin by year
+  rates2 <- bills %>%
+    dplyr::group_by(pin, tax_code) %>%
+    
+    mutate(total_bill = final_tax_to_dist + final_tax_to_tif) %>% # from each taxing agency
+    
+    summarize(
+      total_billed = sum(total_bill, na.rm = TRUE), # total on someone's property tax bill
+      av = first(av),
+      eav = first(eav),
+      taxing_agency_count = n(), # number of taxing agencies that tax the pin
+      final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # portion of all levies paid by the pin
+      final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE), 
+      tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE),           # revenue lost due to exemptions
+      tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE),   # total rev before all exemptions
+      tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE)#, # total rev after all exemptions
+) %>%
+   # mutate(tax_code = as.numeric(tax_code)) %>% 
+    mutate(exemption_level = m) %>%
+   # left_join(tax_codes, by = c("tax_code" = "tax_code_num") ) %>% # add current, real tax code level tax rates
+    left_join(tc_muninames, by = c("tax_code" = "tax_code_num")) %>%
+    dplyr::group_by(clean_name, agency_num, exemption_level) %>%
+    dplyr::summarize(
+      total_billed = sum(total_billed, na.rm = TRUE), # total on someone's property tax bill
+      av = sum(av, na.rm=TRUE),
+      eav = sum(eav, na.rm = TRUE),
+      
+      nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
+      TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),
+      Exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE),
+      Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE),
+      final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), 
+      final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE), 
+      tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE),    
+      tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE),   
+      tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE),
+      pin_count = n()
+
+    ) %>%
+  
+    mutate(
+      tax_rate_current = final_tax_to_dist/nonTIF_EAV_post_exemps,
+      nonTIF_EAV_pre_exemps = nonTIF_EAV_post_exemps + Exempt_EAV,
+      taxrate_new = final_tax_to_dist/nonTIF_EAV_pre_exemps,
+      taxrate_change = tax_rate_current-taxrate_new,
+    ) %>%
+     select(clean_name, everything())
+
+  
+  
+  if(is.data.frame(rates)){rates <- rbind(rates2, rates)}else{rates <- rates2}
+  rm(rates2, bills)
+}
+end_time <- Sys.time()
+end_time - start_time
+
+
+write_csv(rates, "C:/Users/aleaw/OneDrive/Documents/PhD Fall 2021 - Spring 2022/Merriman RA/ptax/Output/5b_scenario_rates_munilevel_scenarios2.csv")
+
+
+
+```
+
+
+```{r read-in-rates}
+scenario_rates <- read_csv("C:/Users/aleaw/OneDrive/Documents/PhD Fall 2021 - Spring 2022/Merriman RA/ptax/Output/5b_scenario_rates3.csv") %>%
+ # read_csv("C:/Users/aleaw/OneDrive/Documents/PhD Fall 2021 - Spring 2022/Merriman RA/ptax/Output/5b_scenario_rates.csv") %>%
+  mutate(tax_code = as.character(tax_code)) %>% 
+  left_join(tc_muninames, by = c("tax_code" = "tax_code_num")) %>%
+  select(clean_name, tax_code, everything())
+
+ # scenario_rates %>% write_csv("C:/Users/aleaw/OneDrive/Documents/PhD Fall 2021 - Spring 2022/Merriman RA/ptax/Output/5b_scenario_rates_labeled2.csv")
+
+scenario_rates
+
+scenario_rates_munilevel_scenarios <- read_csv("C:/Users/aleaw/OneDrive/Documents/PhD Fall 2021 - Spring 2022/Merriman RA/ptax/Output/5b_scenario_rates_munilevel_scenarios.csv")
+
+scenario_rates_munilevel_scenarios
+
+```
+
+
+```{r eval=FALSE}
+exemptions <- read_csv("./Output/Dont_Upload/3_Exemption_Details_output-all_cook_pin_exemptions_2021_actual.csv") 
+# head(exemptions)
+
+
+exemptions <- exemptions %>% 
+  select(pin, av, eav_original = eav, class_code, tax_code_num, major_class_code, exe_homeowner:exe_abate) %>%
+  
+  mutate(exe_vet_dis = exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70,
+         total_exempt_eav = exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+           exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate,
+         has_homeown = ifelse(exe_homeowner > 0, 1, 0),
+         has_senior = ifelse(exe_senior > 0, 1, 0),
+         has_freeze = ifelse(exe_freeze > 0, 1, 0),
+         
+         has_seniorexemps = ifelse(exe_senior > 0 & exe_freeze > 0, 1, 0),
+         has_disability = ifelse(exe_disabled > 0, 1, 0),
+         has_vetreturn = ifelse(exe_vet_returning > 0, 1, 0), 
+         
+         has_any_exemps = ifelse(total_exempt_eav > 0, 1, 0),
+         has_multi_exemps = ifelse(has_senior + has_freeze + has_homeown + has_disability + has_vetreturn > 1, 1, 0)) %>% 
+  
+  mutate(tax_code_num = as.character(tax_code_num))%>%
+  left_join(muni_tax_codes) %>% 
+  left_join(muni_agency_names) %>% 
+  left_join(nicknames)
+
+# head(exemptions)
+
+#table(exemptions$has_any_exemps)
+#table(exemptions$has_seniorexemps)
+#table(exemptions$has_multi_exemps)
+
+has_exemptions_pins <-  exemptions %>% 
+  filter(has_any_exemps == 1)
+
+# head(has_exemptions_pins)
+
+has_exemptions_pins %>% 
+  summarize(
+    av = sum(av, na.rm = TRUE),
+    EAV_beforeExemptsOrTIF=sum(eav_original, na.rm=TRUE),
+    total_exempt_eav = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+                             exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
+    homeowners_exemption = sum(exe_homeowner),
+    senior_exemption = sum(exe_senior, na.rm=TRUE),
+    freeze_exemption = sum(exe_freeze, na.rm=TRUE),
+    other_exemptions = sum(exe_vet_dis + exe_disabled + exe_longtime_homeowner + exe_vet_returning + exe_abate))  %>% 
+  pivot_longer(cols = av:other_exemptions, values_to = "Values", names_to = "Names")
+
+
+muni_exempt_eav <- has_exemptions_pins %>% 
+  group_by(clean_name, agency_num) %>%
+  summarize(
+    av_hasexemps = sum(av, na.rm = TRUE),
+    eav_original_hasexemps=sum(eav_original, na.rm=TRUE),
+    total_exempt_eav = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+                             exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
+    homeowners_exemption = sum(exe_homeowner, na.rm=TRUE),
+    senior_exemption = sum(exe_senior, na.rm=TRUE),
+    freeze_exemption = sum(exe_freeze, na.rm=TRUE),
+    other_exemptions = sum(exe_vet_dis + exe_disabled + exe_longtime_homeowner + exe_vet_returning + exe_abate, na.rm=TRUE), 
+    #pin_count_hasexemptions = n(),
+    PC_has_exe = n() # has at least one exemption associated with the pin
+    ) 
+
+
+# muni_exempt_eav %>% select(-agency_num)
+
+muni_C2_has_exe_eav <- has_exemptions_pins %>%
+  group_by(clean_name, agency_num) %>%
+  filter(major_class_code == "2") %>%
+  summarize(
+    av_hasexemps = sum(av, na.rm = TRUE),
+    eav_original_hasexemps=sum(eav_original, na.rm=TRUE),
+    total_exempt_eav = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner +
+                             exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
+    homeowners_exemption = sum(exe_homeowner, na.rm=TRUE),
+    senior_exemption = sum(exe_senior, na.rm=TRUE),
+    freeze_exemption = sum(exe_freeze, na.rm=TRUE),
+    other_exemptions = sum(exe_vet_dis + exe_disabled + exe_longtime_homeowner + exe_vet_returning + exe_abate),
+    PC_C2_has_exe = n()
+    )
+
+
+muni_singfamres_has_homeowners_exemps <- has_exemptions_pins %>% 
+  filter(class_code > 199 & class_code < 211) %>%
+  filter(exe_homeowner > 0) %>%
+  group_by(clean_name, agency_num) %>%
+  summarize(
+    av_singfam_has_homeownexemps = sum(av, na.rm = TRUE),
+    eav_original_sing_fam_has_homeownexemps=sum(eav_original, na.rm=TRUE),
+    total_exempt_eav_singfam_has_homeown = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
+    homeowners_exemption_singfam = sum(exe_homeowner),
+    #pin_count_singfam_has_homeownerexemptions = n(),
+    PC_SF_has_HOexe = n() # has Homeowner exemption and is within Class range specified
+  ) 
+
+```
+
+Over \$10 billion in EAV is not taxed due to the general homeowners exemption. $2.63 billion is not taxed due to senior exemptions. \$3.2 billion in EAV is not taxed due to Senior Freeze Exemptions.
+
+- 1,029,799 pins have at least one exemption in 2021.  
+- 350,126 pins have multiple exemptions in 2021.  
+- 151,642 pins have the senior exemption, senior freeze exemption, or both of those exemptions.    
+
+
+
+
+
+```{r eval=FALSE}
+munitotals <- exemptions %>%
+  filter(tax_code_num %in% muni_tax_codes$tax_code_num)%>%
+  group_by(clean_name, agency_num) %>%
+  summarize(muni_av = sum(av, na.rm = TRUE),
+            muni_eav_original=sum(eav_original, na.rm=TRUE),
+            total_exempt_eav = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+                                     exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
+            homeowners_exemption = sum(exe_homeowner),
+            senior_exemption = sum(exe_senior, na.rm=TRUE),
+            freeze_exemption = sum(exe_freeze, na.rm=TRUE),
+            PC_allPINs_muni = n() # number of pins within each municipality
+            ) 
+
+# munitotals %>% select(-agency_num)
+
+
+muni_residentialtotals <- exemptions %>%
+  filter(tax_code_num %in% muni_tax_codes$tax_code_num)%>%
+  filter(major_class_code == "2") %>% 
+  group_by(clean_name, agency_num) %>%
+  summarize(muni_residential_av = sum(av, na.rm = TRUE),
+            muni_residential_eav_original=sum(eav_original, na.rm=TRUE),
+            total_residential_exempt_eav = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+                                                 exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
+            PC_C2_muni = n() # number of PINs that are Class 2 Residential 
+            ) 
+
+
+muni_singfam_residentialtotals <- exemptions %>%
+  filter(tax_code_num %in% muni_tax_codes$tax_code_num)%>%
+  filter(class_code > 199 & class_code < 211) %>% 
+  group_by(clean_name, agency_num) %>%
+  summarize(muni_singfam_residential_av = sum(av, na.rm = TRUE),
+            muni_singfam_residential_eav_original=sum(eav_original, na.rm=TRUE),
+           # total "single-family" residential exempt eav
+            SF_res_exe_EAV_muni = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+                                      exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
+            PC_SF_Res = n() 
+           ) 
+
+#muni_singfam_residentialtotals %>% select(-agency_num)
+
+merged <- munitotals %>% 
+  select(clean_name, agency_num, muni_av, muni_eav_original, PC_allPINs_muni) %>% 
+  left_join(muni_exempt_eav) %>% 
+  left_join(muni_residentialtotals) %>%
+  left_join(muni_singfam_residentialtotals) %>%
+  left_join(muni_C2_has_exe_eav) %>%
+  left_join(muni_singfamres_has_homeowners_exemps) %>%
+  mutate(pct_ofSF_pins_w_HOexe = PC_SF_has_HOexe / PC_SF_Res,
+        # pct_SF_pins_w_exemps = pin_count_has_homeownerexemptions / pin_count_singfam_residential,
+        # pct_pins_w_exemps = pin_count_hasexemptions / pin_count,
+        pct_ofallpins_w_exe = PC_has_exe / PC_allPINs_muni, #       pins with exemptions / all pins in a muni
+
+        pct_EAV_is_C2 = muni_residential_eav_original / muni_eav_original,
+         pct_C2_w_exemps = PC_C2_has_exe / PC_C2_muni, # 
+         #pct_singfam_pins_w_exemps = pin_count_hasexemptions / pin_count_singfam_residential,
+      #   pct_singfam_pins_w_exemps = pin_count_has_homeownerexemptions / pin_count_singfam_residential
+    ) %>%
+  
+  select(clean_name, pct_EAV_is_C2, pct_ofSF_pins_w_HOexe, pct_ofallpins_w_exe, pct_C2_w_exemps, 
+         PC_has_exe, PC_C2_muni, PC_allPINs_muni, everything())
+
+merged
+```
+
+
+
+> CHECK CODE LOGIC in CHUNK BELOW 
+
+
+
+```{r}
+scenario_taxrates <- merged %>% 
+  mutate(scenario1_taxable_eav = Total_EAV - TIF_increment_EAV - Exempt_EAV + homeowners_exemption,
+         scenario2_taxable_eav = Total_EAV - TIF_increment_EAV - Exempt_EAV + (senior_exemption + freeze_exemption ),
+         scenario_noexemptions_taxable_eav = Total_EAV - Exempt_EAV) %>%
+  mutate(taxrate_scen1 = MuniLevy / scenario1_taxable_eav,
+         taxrate_scen2 = MuniLevy / scenario2_taxable_eav,
+         tax_rate_current = MuniLevy/nonTIF_EAV_post_exemps,
+         taxrate_noexemps = MuniLevy /(Total_EAV - TIF_increment_EAV  ),
+         taxrate_noTIFs = MuniLevy / (Total_EAV - Exempt_EAV),
+         taxrate_noTIFs_orExemps = MuniLevy / Total_EAV)  %>%
+  select(clean_name, MuniLevy, taxrate_scen1, taxrate_scen2, tax_rate_current, taxrate_noexemps, taxrate_noTIFs, taxrate_noTIFs_orExemps, scenario1_taxable_eav, scenario2_taxable_eav)
+
+scenario_taxrates
+
+
+merged %>% 
+  filter(clean_name %in% c("Park Forest", #"Markham",  
+                           "Dolton", #"Hillside", "Riverside", 
+                           "Chicago"# # "Westchester", "Winnetka", "Rosemont"
+                           )) %>%
+  mutate(scenario1_taxable_eav = Total_EAV - TIF_increment_EAV - Exempt_EAV + homeowners_exemption,
+         scenario2_taxable_eav = Total_EAV - TIF_increment_EAV - Exempt_EAV + (senior_exemption + freeze_exemption ),
+         scenario_noexemptions_taxable_eav = Total_EAV - Exempt_EAV) %>%
+  mutate(taxrate_scen1 = MuniLevy / scenario1_taxable_eav,
+         taxrate_scen2 = MuniLevy / scenario2_taxable_eav,
+         tax_rate_current = MuniLevy/nonTIF_EAV_post_exemps,
+         taxrate_noexemps = MuniLevy /(Total_EAV - TIF_increment_EAV  ),
+         taxrate_noTIFs = MuniLevy / (Total_EAV - Exempt_EAV),
+         taxrate_noTIFs_orExemps = MuniLevy / Total_EAV)  %>%
+  select(clean_name, MuniLevy, taxrate_scen1, taxrate_scen2, tax_rate_current, taxrate_noexemps, scenario1_taxable_eav, scenario2_taxable_eav, scenario_noexemptions_taxable_eav, Total_EAV, taxrate_noTIFs, taxrate_noTIFs_orExemps)
+
+
+scenario_taxrates %>% ungroup() %>% summarize()
+
+```
+
+
+
+
+
+# Burden Share for Scenarios
+
+
+Calculate Class 2 Burden --> Calculate the amount of taxable EAV in the Municipality (for each scenario) and multiply it by the new composite tax rate (for each scenario).
+
+
+Burden Share  = Taxable EAV within Property Class * Composite tax rate 
+
+Composite Tax Rate = (Municipal Levy / Taxable EAV )
+
+
