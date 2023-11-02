@@ -1,6 +1,6 @@
 ---
-title: 'Hypothetical Taxbills: Remove all Exemptions'
-author: "Alea Wilbur"
+title: 'Hypothetical Taxbills: Remove General Homestead Exemptions'
+author: "AWM"
 date: "`r Sys.Date()`"
 output:
   html_document:
@@ -25,7 +25,8 @@ library(glue)
 
 # Bring in data
 
-The tax code taxrates were made in file `2_...rmd` and the exemptions file were created in file `3_.....rmd`
+Bills were pulled from PTAXSIM amd summed to the pin level in files `1_...rmd` and `2...rmd`.
+Exemption data per PIN was pulled from PTAXSIM in file `3_.....rmd`.
 
 ```{r}
 ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
@@ -67,9 +68,10 @@ tax_codes <- DBI::dbGetQuery(
 ```
 
 ```{r eval = FALSE}
-taxbills_current <- read_csv("./Output/1_Get_All_Pins-CookPinTaxbills_2021_Actual.csv")
+taxbills_current <- read_csv("./Output/Dont_Upload/1_Get_All_Pins-CookPinTaxbills_2021_Actual.csv")
 # 22,453,875 tax bills in 2021 in municipalities. 
-# DOES NOT INCLUDE unincorporated tax bills based on how we pulled the data in Step 1.
+# taxing agency-PIN is the unit of observation here (only partial property tax bills)
+# Each PIN has multiple rows (because it is taxed by multiple taxing agencies)
 
 sapply(taxbills_current, function(x) sum(is.na(x)))
 
@@ -98,7 +100,7 @@ pin14_bills_current <- taxbills_current %>%
   )  %>% 
   mutate(propclass_1dig = str_sub(class, 1, 1))
 
-head(pin14_bills_current)
+# head(pin14_bills_current)
 
 sapply(pin14_bills_current, function(x) sum(is.na(x)))
 
@@ -117,8 +119,11 @@ Need to merge PIN level data of tax bills and exemptions per PIN if the goal is 
 
 Note: The EAV from the exemption table is the original EAV (AV \* equalizer) without consider TIFs or exemptions.
 
+31,000 properties have $0 tax bills based on exemption data table made from PTAXSIM's `pin` table. 
+(Using the tax bill data allows for more in depth look at tax bills and can create variables such as `small_bill` if bills were less than $100 after exemptions were applied). 
+
 ```{r eval = FALSE}
-pin_eav <- read_csv("./Output/3_Exemption_Details_output-all_cook_pin_exemptions_2021_actual.csv") %>%
+pin_eav <- read_csv("./Output/Dont_Upload/3_Exemption_Details_output-all_cook_pin_exemptions_2021_actual.csv") %>%
   #filter(class_code !=0) %>%
   
   mutate(all_exemptions = exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
@@ -126,7 +131,8 @@ pin_eav <- read_csv("./Output/3_Exemption_Details_output-all_cook_pin_exemptions
   mutate(zero_bill = ifelse(eav <= all_exemptions, 1, 0),
          has_HO_exemp = ifelse(exe_homeowner > 0, 1, 0)) %>%
   rename(equalized_AV = eav,
-         pin_AV = av)# %>% mutate(class_code = as.numeric(class_code))
+         pin_AV = av)
+
 # table(pin_eav$zero_bill)
 
 table(pin_eav$major_class_code, pin_eav$zero_bill)
@@ -134,9 +140,14 @@ table(pin_eav$major_class_code, pin_eav$zero_bill)
 # table(pin_eav$major_class_code, pin_eav$has_HO_exemp)
 
 
+
+## Add exemption types and values to the tax bill data at PIN level
 pin_data <- left_join(pin14_bills_current, pin_eav, by = c("pin", "class" = "class_code" ))
 
+## Add tax code tax rate to PIN level data
 pin_data <- left_join(pin_data, tax_codes, by = c("tax_code" = "tax_code_num"))
+
+
 
 ```
 
@@ -145,7 +156,9 @@ pin_data <- left_join(pin_data, tax_codes, by = c("tax_code" = "tax_code_num"))
 
 ## Calculate new tax rates
 
-```{r eval = FALSE}
+
+
+```{r taxcode-taxrates, eval = FALSE}
 # taxcodes_by_class_current <- pin_data %>% 
 #   group_by(tax_code, class)  %>%
 #   
@@ -180,9 +193,8 @@ pin_data <- left_join(pin_data, tax_codes, by = c("tax_code" = "tax_code_num"))
 # head(taxcodes_by_class_current) 
 
 
-taxcodes_by_TC_current <- pin_data %>% 
+taxcodes_current <- pin_data %>% 
   group_by(tax_code)  %>%
-  
   summarize(
     av = sum(av),
     eav = sum(eav),
@@ -190,7 +202,7 @@ taxcodes_by_TC_current <- pin_data %>%
     pins_in_class = n(),
     current_exemptions = sum(all_exemptions),
     HO_exemps = sum(exe_homeowner),
-    tax_code_rate = first(tax_code_rate),
+    tax_code_rate = first(tax_code_rate), 
     final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # used as LEVY amount!! 
     final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
     tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), 
@@ -211,15 +223,23 @@ taxcodes_by_TC_current <- pin_data %>%
   select(tax_code, cur_comp_TC_rate, new_comp_TC_rate, current_taxable_eav, new_taxable_eav, everything())
 
 
-head(taxcodes_by_TC_current) 
+#head(taxcodes_current) 
 
 
-taxcode_taxrates <- taxcodes_by_TC_current %>% 
+taxcode_taxrates <- taxcodes_current %>% 
   select(tax_code, cur_comp_TC_rate, new_comp_TC_rate, current_exemptions, HO_exemps)
 
-taxcode_taxrates %>% right_join(muni_tax_codes, by = c("tax_code" = "tax_code_num")) %>% group_by(agency_num) %>% summarize(cur_comp_TC_rate = mean(cur_comp_TC_rate, na.rm=TRUE),
-                                                                                                                          new_comp_TC_rate = mean(new_comp_TC_rate, na.rm = TRUE)) %>% right_join(muni_agency_names) %>%
-  arrange(agency_name)# %>% write_csv("4c_taxrates.csv")
+
+### Summarizing it from tax code to municipality weights the rates incorrectly (since some tax codes have waaaay more pins than others) ### 
+
+
+# taxcode_taxrates %>% 
+#   right_join(muni_tax_codes, by = c("tax_code" = "tax_code_num")) %>% 
+#   group_by(agency_num) %>% 
+#   summarize(cur_comp_TC_rate = mean(cur_comp_TC_rate, na.rm=TRUE),
+#             new_comp_TC_rate = mean(new_comp_TC_rate, na.rm = TRUE)) %>% right_join(muni_agency_names) %>%
+#   arrange(agency_name) 
+# %>% write_csv("4c_tc_taxrates.csv")
 
 
 
@@ -239,12 +259,16 @@ pin_data2 <- pin_data2 %>% left_join(muni_tax_codes)
 
 pin_data2 <- pin_data2 %>% left_join(muni_agency_names)
 
-
-head(pin_data2)
-
 write_csv(pin_data2, "./Output/4C_joined_PINs_bills_and_exemptions.csv")
+
+#head(pin_data2)
+
 ```
 
+<!--- Changed calculation for muni tax rates below on November 1st. 
+When aggregating pin tax bills to the municipality level, first(tax_code_rate)
+was used instead of avg(tax_code_rate) which probably messes up a few 
+muni's avg composite tax rates. 4c_muni_rates.csv may have had incorrect rates --->
 
 ```{r}
 
@@ -264,13 +288,13 @@ muni_taxrates <- pin_data2 %>%
   group_by(agency_name)  %>%
   
   summarize(
-    av = sum(av),
-    eav = sum(eav),
-    equalized_AV = sum(equalized_AV),
+    av = sum(av, na.rm = TRUE),
+    eav = sum(eav, na.rm = TRUE),
+    equalized_AV = sum(equalized_AV, na.rm = TRUE),
     pins_in_class = n(),
-    current_exemptions = sum(all_exemptions),
-    HO_exemps = sum(exe_homeowner),
-    tax_code_rate = first(tax_code_rate),
+    current_exemptions = sum(all_exemptions, na.rm = TRUE),
+    HO_exemps = sum(exe_homeowner, na.rm = TRUE),
+    tax_code_rate = mean(tax_code_rate, na.rm = TRUE), # Changed from first() to mean() on Nov 1
     final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # used as LEVY amount!! 
     final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
     tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), 
