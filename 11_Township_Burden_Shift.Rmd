@@ -211,11 +211,11 @@ unique_tif_taxcodes <- DBI::dbGetQuery(
 
 
 ## Read in summarized tax code level data for exemptions and taxbills.
-taxbills_by_Class_per_TC <- read_csv("2_Summed_Bills_by_Taxcode_and_Class.csv")  %>% 
+taxbills_by_Class_per_TC <- read_csv("./Output/2_Summed_Bills_by_Taxcode_and_Class.csv")  %>% 
   mutate(tax_code = as.character(tax_code)) 
 
 
-exemptions_by_class_per_TC <- read_csv("3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>%
+exemptions_by_class_per_TC <- read_csv("./Output/3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>%
     mutate(tax_code_num = as.character(tax_code_num))
 
 tif_distrib <- DBI::dbGetQuery(
@@ -263,11 +263,11 @@ using the pin data from ptaxsim, I calculate the eav of all properties, exempt E
 
 # chi_hoods <- read_sf("https://data.cityofchicago.org/resource/igwz-8jzy.json")
 
-class_dict <- read_csv("class_dict_expanded.csv")
+class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv")
 
 # use exemptions in tax codes to summarize EAV. 
 # More accurate that calculating it from revenue collected.tax rate in tax bill data
-exemptions_by_class_per_TC <- read_csv("3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>% 
+exemptions_by_class_per_TC <- read_csv("./Output/3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>% 
   filter(class_code != "0") %>%
   left_join(class_dict) %>%
   mutate(tax_code_num = as.character(tax_code_num)) %>%
@@ -377,7 +377,7 @@ perc_residential %>%
 Tax base in the tables above are the total EAV outside of TIF areas.
 
 ```{r}
-TC_bills_current <- read_csv("2_Summed_Bills_by_Taxcode_and_Class.csv") %>% 
+TC_bills_current <- read_csv("./Output/2_Summed_Bills_by_Taxcode_and_Class.csv") %>% 
   filter(class != "0") %>% 
   mutate(tax_code = as.character(tax_code),
          class = as.character(class))
@@ -433,7 +433,7 @@ Current_Taxrates <- taxcodes_current %>%
 
 Current_Taxrates
 
-write_csv(Current_Taxrates, "Township_Composite_Taxrates.csv")
+write_csv(Current_Taxrates, "./Output/11_Township_Composite_Taxrates.csv")
 ```
 
 Current composite tax rates for each township are above. Table also includes the new tax rate if there were no exemptions, the levy (aka amount collected by the district from final_tax_to_dist variable), EAV outside of TIFs, amount of exempt EAV, and additional variables.
@@ -524,7 +524,7 @@ Probably not correct....
 
 ```{r}
 
-exemptions_by_class_per_TC <- read_csv("3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>% 
+exemptions_by_class_per_TC <- read_csv("./Output/3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>% 
   mutate(class_code = as.character(class_code)) %>%
   filter(class_code >=800 & class_code <900) %>%
   left_join(class_dict) %>%
@@ -550,7 +550,7 @@ exemptions_by_class_per_TC
 
 
 
-class8Townships = read_csv("3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>% 
+class8Townships = read_csv("./Output/3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>% 
   mutate(class_code = as.character(class_code)) %>%
   filter(class_code >=800 & class_code <900) %>%
   left_join(class_dict) %>%
@@ -559,7 +559,7 @@ class8Townships = read_csv("3_Exemptions_Details_output-ClassTaxcodeExemps.csv")
   left_join(township_agency_names)%>% 
   distinct(agency_name) 
 
-C8_exemptions <- read_csv("3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>% 
+C8_exemptions <- read_csv("./Output/3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>% 
   mutate(class_code = as.character(class_code)) %>%
   filter(class_code !=0) %>%
   left_join(class_dict) %>%
@@ -582,8 +582,9 @@ C8_exemptions <- read_csv("3_Exemptions_Details_output-ClassTaxcodeExemps.csv") 
 
 C8_exemptions
 ```
+
 ```{r}
-TC_bills_current <- read_csv("2_Summed_Bills_by_Taxcode_and_Class.csv") %>% 
+TC_bills_current <- read_csv("./Output/2_Summed_Bills_by_Taxcode_and_Class.csv") %>% 
   filter(class != "0") %>% 
   mutate(tax_code = as.character(tax_code),
          class = as.character(class))
@@ -741,7 +742,7 @@ Include only Bloom, Bremen, Calumet, Rich, Thornton.
 C8_ships <- c("TOWN BLOOM", "TOWN BREMEN", "TOWN CALUMET", "TOWN RICH", "TOWN THORNTON")
 
 
-exemptions_by_class_per_TC <- read_csv("3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>% 
+exemptions_by_class_per_TC <- read_csv("./Output/3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>% 
   mutate(class_code = as.character(class_code)) %>%
   filter(class_code >=800 & class_code <900) %>%
   left_join(class_dict) %>%
@@ -767,7 +768,7 @@ exemptions_by_class_per_TC <- read_csv("3_Exemptions_Details_output-ClassTaxcode
 
 exemptions_by_class_per_TC
 
-class8Townships = read_csv("3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>% 
+class8Townships = read_csv("./Output/3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>% 
   mutate(class_code = as.character(class_code)) %>%
   filter(class_code >=800 & class_code <900) %>%
   left_join(class_dict) %>%
@@ -779,7 +780,7 @@ class8Townships = read_csv("3_Exemptions_Details_output-ClassTaxcodeExemps.csv")
   distinct(agency_name)
 
 
-C8_exemptions <- read_csv("3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>% 
+C8_exemptions <- read_csv("./Output/3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>% 
   mutate(class_code = as.character(class_code)) %>%
   filter(class_code !=0) %>%
   left_join(class_dict) %>%
@@ -805,7 +806,7 @@ C8_exemptions <- read_csv("3_Exemptions_Details_output-ClassTaxcodeExemps.csv") 
 C8_exemptions
 ```
 ```{r}
-TC_bills_current <- read_csv("2_Summed_Bills_by_Taxcode_and_Class.csv") %>% 
+TC_bills_current <- read_csv("./Output/2_Summed_Bills_by_Taxcode_and_Class.csv") %>% 
   filter(class != "0") %>% 
   mutate(tax_code = as.character(tax_code),
          class = as.character(class))
@@ -935,7 +936,6 @@ Current_Taxrates %>%
   geom_sf(aes(geometry = geometry), color = "black") + 
   labs(title = "External Funds Needed to Prevent Exemption Externalities",
        subtitle = "Gap between Levy and Revenue Collected",
-       
        caption = "Amount of revenue collected is the taxable EAV after exemptions * hypothetical 
        \"no exemption\" tax rate.Additional money must come from somewhere in order 
        to meet the  taxing districts' levies if tax rates are not raised."
