@@ -197,17 +197,17 @@ pin14_bills_current <- taxbills_current %>%
   summarize(total_billed = sum(total_bill, na.rm = TRUE), # total on someone's property tax bill
    av = first(av),
    eav = first(eav),
-   pin_count_in_parcel = n(),
-            final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE),
-            final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
-            tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), # revenue lost due to exemptions
-            tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), # total rev before all exemptions
-            tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE), # total rev after all exemptions
-        rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE), # not used
-        rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE), # not used
-         rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE), # not used
-          tif_share = mean(tif_share, na.rm=TRUE), # not used
-       )  %>% 
+   taxing_agency_count = n(), # number of taxing agencies that tax the pin
+   final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # portion of all levies paid by the pin
+   final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE), 
+   tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE),           # revenue lost due to exemptions
+   tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE),   # total rev before all exemptions
+   tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE), # total rev after all exemptions
+   rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE),     # not used
+   rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE),       # not used
+   rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE),     # not used
+   tif_share = mean(tif_share, na.rm=TRUE),                # not used
+  )  %>% 
   mutate(propclass_1dig = str_sub(class, 1, 1))
 
 head(pin14_bills_current)
@@ -231,21 +231,21 @@ pin10_bills_current <- pin14_bills_current %>%
   mutate(pin10 = str_sub(pin, 1, 10)) %>%
   group_by(tax_code, class, pin10) %>%
   mutate(total_bill = final_tax_to_dist + final_tax_to_tif) %>%
-  
-  summarize(total_billed = sum(total_bill, na.rm = TRUE),
-   av = sum(av), # changed from first() to sum() on 7/28/2023. Probably results in different output.......
-   eav = sum(eav), # these would be parcel sums. All eav in the building or parcel for multi-unit buildings
-   pin_count_in_parcel = n(),
-            final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE),
-            final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
-            tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), # revenue lost due to exemptions
-            tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), # total rev before all exemptions
-            tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE), # total rev after all exemptions
-        rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE), # not used
-        rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE), # not used
-         rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE), # not used
-          tif_share = mean(tif_share, na.rm=TRUE), 
-       )  %>% mutate(propclass_2dig = str_sub(class, 1, 2)) 
+  summarize(
+    total_billed = sum(total_bill, na.rm = TRUE),
+    av = sum(av), # changed from first() to sum() on 7/28/2023. Probably results in different output.......
+    eav = sum(eav), # these would be parcel sums. All eav in the building or parcel for multi-unit buildings
+    pin_count_in_parcel = n(),
+    final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE),
+    final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+    tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), # revenue lost due to exemptions
+    tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), # total rev before all exemptions
+    tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE), # total rev after all exemptions
+    rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE), # not used
+    rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE), # not used
+    rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE), # not used
+    tif_share = mean(tif_share, na.rm=TRUE))  %>% 
+  mutate(propclass_2dig = str_sub(class, 1, 2)) 
 
 
 head(pin10_bills_current)
@@ -279,23 +279,20 @@ There are 28,381 property class - tax code group combinations.
 taxcodes_by_class_current <- pin10_bills_current %>% 
   ungroup() %>%
   group_by(tax_code, class)  %>%
-  
   summarize(
-   av = sum(av), # changed from first() to sum() on 7/28/2023. Probably results in different output.......
-   eav = sum(eav),
-   pins_in_class = sum(pin_count_in_parcel),
-   parcel_count_in_class = n(),
-            final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE),
-            final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
-            tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), # revenue lost due to exemptions
-            tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), # total rev before all exemptions
-            tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE), # total rev after all exemptions
-        rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE), # not used
-        rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE), # not used
-         rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE), # not used
-          tif_share = mean(tif_share, na.rm=TRUE), # not used
-       ) %>%
-  
+    av = sum(av), # changed from first() to sum() on 7/28/2023. Probably results in different output.......
+    eav = sum(eav),
+    pins_in_class = sum(pin_count_in_parcel),
+    parcel_count_in_class = n(),
+    final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE),
+    final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+    tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), # revenue lost due to exemptions
+    tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), # total rev before all exemptions
+    tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE), # total rev after all exemptions
+    rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE), # not used
+    rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE), # not used
+    rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE), # not used
+    tif_share = mean(tif_share, na.rm=TRUE)) %>% 
   mutate(total_bill = final_tax_to_dist + final_tax_to_tif)
 
 head(taxcodes_by_class_current)
@@ -311,20 +308,20 @@ taxcodes_by_majorclass_current <- taxcodes_by_class_current %>%
   group_by(tax_code, major_class_code, major_class_type)  %>%
   
   summarize(
-   av = sum(av), 
-   eav = sum(eav),
-   pins_in_majorclass = sum(pins_in_class),
-   parcel_count_in_majorclass = sum(parcel_count_in_class),
-            final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE),
-            final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
-            tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), # revenue lost due to exemptions
-            tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), # total rev before all exemptions
-            tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE), # total rev after all exemptions
-        rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE), # not used
-        rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE), # not used
-         rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE), # not used
-          tif_share = mean(tif_share, na.rm=TRUE),
-       ) %>%
+    av = sum(av), 
+    eav = sum(eav),
+    pins_in_majorclass = sum(pins_in_class),
+    parcel_count_in_majorclass = sum(parcel_count_in_class),
+    final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE),
+    final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+    tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), # revenue lost due to exemptions
+    tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), # total rev before all exemptions
+    tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE), # total rev after all exemptions
+    rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE), # not used
+    rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE), # not used
+    rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE), # not used
+    tif_share = mean(tif_share, na.rm=TRUE),
+  ) %>%
   
   mutate(total_bill = final_tax_to_dist + final_tax_to_tif)
 head(taxcodes_by_majorclass_current)
@@ -338,7 +335,6 @@ taxcodes_by_majorclass_current %>% write_csv("./Output/2_Summed_Bills_by_Taxcode
 
 ```{r eval=FALSE}
 TC_bills_current <- read_csv("./Output/2_Summed_Bills_by_Taxcode_and_Class.csv") %>% 
- # filter(class == "205") %>%
   mutate(tax_code = as.character(tax_code),
          class = as.character(class))
 
@@ -373,19 +369,20 @@ Current_Taxrates_perTC <- taxcodes_current %>%
   left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
   #filter(!agency_num %in% cross_county_lines) %>%
   group_by(clean_name, agency_name, tax_code, pins_in_class) %>%
+  summarize(
+    MuniLevy = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by munis with current exemptions in place
+    nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
+    TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),  
+    Exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE), 
+    Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE)) %>%
   
-  summarize(MuniLevy = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by munis with current exemptions in place
-            nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
-            TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),  
-            Exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE), 
-            Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE)) %>%
-
   mutate(tax_rate_current = MuniLevy/nonTIF_EAV_post_exemps,
          nonTIF_EAV_pre_exemps = nonTIF_EAV_post_exemps + Exempt_EAV,
          taxrate_new = MuniLevy/nonTIF_EAV_pre_exemps,
          taxrate_change = tax_rate_current-taxrate_new) %>% 
- select(clean_name, taxrate_change, tax_rate_current, taxrate_new, tax_code, everything()) %>% 
+  select(clean_name, taxrate_change, tax_rate_current, taxrate_new, tax_code, everything()) %>% 
   arrange(desc(tax_rate_current))
+
 Current_Taxrates_perTC
 
 # write_csv(Current_Taxrates_perTC, "./Output/2_taxcode_taxrates.csv")
