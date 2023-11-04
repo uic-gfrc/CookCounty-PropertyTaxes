@@ -45,9 +45,9 @@ library(httr)
 library(NatParksPalettes)
 
 # link to the API output as a JSON file
-muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/politicalBoundary/MapServer/2/query?outFields=*&where=1%3D1&f=geojson")
+#muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/politicalBoundary/MapServer/2/query?outFields=*&where=1%3D1&f=geojson")
 
-cook_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/plss/MapServer/1/query?outFields=*&where=1%3D1&f=geojson")
+#cook_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/plss/MapServer/1/query?outFields=*&where=1%3D1&f=geojson")
 
 
 
@@ -121,6 +121,17 @@ muni_tax_codes <- DBI::dbGetQuery(
 )  
   
 
+tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT DISTINCT tax_code_num, tax_code_rate
+  FROM tax_code
+  WHERE year = 2021  
+  ",
+  .con = ptaxsim_db_conn
+  )
+)
+
 # Agency number and agency name for all TIFs
 TIF_agencies <- DBI::dbGetQuery(
   ptaxsim_db_conn,
@@ -163,6 +174,18 @@ cross_county_lines <- c("030440000", "030585000", "030890000", "030320000", "031
 cross_county_lines <- muni_agency_names %>% 
   filter(agency_num %in% cross_county_lines) %>% 
   left_join(nicknames, by = "agency_name")
+
+
+## All tax codes. 
+## tax codes within municipalities have additional info 
+tc_muninames <- tax_codes %>% 
+  left_join(muni_tax_codes) %>%
+  left_join(muni_agency_names) %>% 
+  select(-agency_rate) %>% 
+  left_join(nicknames) %>% 
+  select(-c(minor_type, short_name, `Column1`, `Most recent reassessed`, agency_number)) %>% 
+  mutate(tax_code_num = as.character(tax_code_num))
+
 ```
 
 # Taxable Base in Scenarios
@@ -190,9 +213,10 @@ exemptions <- exemptions %>%
          has_multi_exemps = ifelse(has_senior + has_freeze + has_homeown + has_disability + has_vetreturn > 1, 1, 0)) %>% 
   
   mutate(tax_code_num = as.character(tax_code_num))%>%
-  left_join(muni_tax_codes) %>% 
-  left_join(muni_agency_names) %>% 
-  left_join(nicknames)
+  left_join(tc_muninames)
+  # left_join(muni_tax_codes) %>% 
+  # left_join(muni_agency_names) %>% 
+  # left_join(nicknames)
 
 # head(exemptions)
 
@@ -428,23 +452,27 @@ merged
 > Bring in tax bills to calculate the muni levy for each municipality from final_tax_to_dist variable.
 
 ```{r}
-TC_bills_current <- read_csv("./Output/2_Summed_Bills_by_Taxcode_and_Class.csv") %>% 
-  mutate(tax_code = as.character(tax_code),
-         class = as.character(class))
+# TC_bills_current <- read_csv("./Output/2_Summed_Bills_by_Taxcode_and_Class.csv") %>%
+bills_current <- read_csv("./Output/4C_joined_PINs_bills_and_exemptions.csv") %>% 
 
-class_dict$class_code <- as.character(class_dict$class_code)
+  mutate(tax_code_num = as.character(tax_code_num),
+         tax_code= as.character(tax_code)
+     #    class = as.character(class)
+         )
+
+#class_dict$class_code <- as.character(class_dict$class_code)
  
 
-taxcodes_current <- left_join(TC_bills_current, muni_tax_codes, 
+taxcodes_current <- left_join(bills_current, muni_tax_codes, 
                       by = c("tax_code" = "tax_code_num")) 
 
 
 
-MuniLevy <- taxcodes_current %>% 
-  left_join(muni_agency_names, by = "agency_num") %>%
-  left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
+MuniLevy <- bills_current %>% 
+ # left_join(muni_agency_names, by = "agency_num") %>%
+#  left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
   #filter(!agency_num %in% cross_county_lines) %>%
-  group_by(clean_name) %>%
+  group_by(clean_name, agency_num) %>%
   
   summarize(MuniLevy = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by munis with current exemptions in place
             nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
@@ -523,6 +551,10 @@ Composite Tax Rate = (Municipal Levy / Taxable EAV )
 > Scen 1 and Scen 2 were also switched to exclude the inverse of what we wanted. Switched August 29. 
 
 ```{r}
+
+
+
+
 Class2_EAV_scenarios <- exemptions %>% 
   filter(class_code >= 200 & class_code <= 300) %>% 
   filter(tax_code_num %in% muni_tax_codes$tax_code_num)%>%
@@ -539,11 +571,12 @@ Class2_EAV_scenarios <- exemptions %>%
 Class2_EAV_scenarios
 
 
-Class2_TIF_EAV <-  taxcodes_current %>% 
-  filter(class >=200 & class <=300) %>%
-  left_join(muni_agency_names, by = "agency_num") %>%
-  left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
-  filter(!agency_num %in% cross_county_lines) %>%
+Class2_TIF_EAV <-  bills_current %>% 
+  filter(class >= 200 & class <=300) %>%
+  left_join(tc_muninames, by = c("tax_code_num", "tax_code_rate" )) %>%
+ # left_join(muni_agency_names, by = "agency_num") %>%
+ # left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
+ # filter(!agency_num %in% cross_county_lines) %>%
   group_by(clean_name) %>%
   summarize(Class2_DistrictRev = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by munis with current exemptions in place
             Class2_nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
@@ -591,14 +624,15 @@ Class2_Scenario_burdenshift %>%
 
 
 ```{r}
-cost_table <- TC_bills_current %>%   
-  left_join(muni_tax_codes, by = c("tax_code" = "tax_code_num")) %>% 
-  select(-c(agency_rate)) %>%
-  left_join(muni_agency_names, by = "agency_num") %>%
-  left_join(nicknames) %>%
-  filter(!agency_num %in% cross_county_lines) %>%  
-  left_join(scenario_taxrates) %>% 
-  select(-c(Column1, `Most recent reassessed`, short_name, minor_type))
+# cost_table <- bills_current %>%   
+#   left_join(tc_muninames) %>%
+#   # left_join(muni_tax_codes, by = c("tax_code" = "tax_code_num")) %>% 
+#   # select(-c(agency_rate)) %>%
+#   # left_join(muni_agency_names, by = "agency_num") %>%
+#   # left_join(nicknames) %>%
+#   filter(!agency_num %in% cross_county_lines) %>%  
+#   left_join(scenario_taxrates)# %>% 
+# #  select(-c(Column1, `Most recent reassessed`, short_name, minor_type))
 
 cost_table <- merged %>% left_join(scenario_taxrates)
 
@@ -714,8 +748,8 @@ merged_cook
 ```{r}
 # Cook Total numbers
 
-Cooklevy <- taxcodes_current %>% 
-  left_join(muni_agency_names, by = "agency_num") %>%
+Cooklevy <- bills_current %>% 
+ # left_join(muni_agency_names, by = "agency_num") %>%
   left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
 
   summarize(CookLevy = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by munis with current exemptions in place
@@ -774,11 +808,13 @@ Cook_Class2_EAV_scenarios <- exemptions %>%
 # Cook2_EAV_scenarios
 
 
-Class2_TIF_EAV <-  taxcodes_current %>% 
+Class2_TIF_EAV <-  bills_current %>% 
   filter(class >=200 & class <=300) %>%
-  left_join(muni_agency_names, by = "agency_num") %>%
-  left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
-  filter(!agency_num %in% cross_county_lines) %>%
+  # left_join(muni_agency_names, by = "agency_num") %>%
+  # left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
+  left_join(tc_muninames, by = c("tax_code_num", "tax_code_rate" )) %>%
+
+ # filter(!agency_num %in% cross_county_lines) %>%
   summarize(Class2_DistrictRev = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by munis with current exemptions in place
             Class2_nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
             Class2_TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),  
