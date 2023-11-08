@@ -366,7 +366,7 @@ munilevel_current_rates <- bills %>%
   
 ```
 
-```{r scenarios-taxcodelevel, eval=FALSE}
+```{r scenarios-taxcodelevel, eval=FALSE, include=FALSE}
 
 tax_codes <- DBI::dbGetQuery(
   ptaxsim_db_conn,
@@ -504,11 +504,10 @@ end_time - start_time
 write_csv(rates, "C:/Users/aleaw/OneDrive/Documents/PhD Fall 2021 - Spring 2022/Merriman RA/ptax/Output/5b_scenario_rates3.csv")
 ```
 
-> line 521 - finish thought! 
+<!--- line 521 - finish thought!  --->
 
 
-
-```{r scenarios-munilevel, eval=FALSE}
+```{r scenarios-munilevel, eval=FALSE, include=FALSE}
 
 rates <- NULL
 exe_steps <- c(-10000, -5000, 0, 5000, 10000, 15000, 20000, 30000, 40000)
@@ -643,7 +642,7 @@ write_csv(rates, "C:/Users/aleaw/OneDrive/Documents/PhD Fall 2021 - Spring 2022/
 ```
 
 
-```{r read-in-rates, eval=FALSE}
+```{r read-in-rates, eval=FALSE, include=FALSE}
 scenario_rates <- read_csv("C:/Users/aleaw/OneDrive/Documents/PhD Fall 2021 - Spring 2022/Merriman RA/ptax/Output/5b_scenario_rates3.csv") %>%
  # read_csv("C:/Users/aleaw/OneDrive/Documents/PhD Fall 2021 - Spring 2022/Merriman RA/ptax/Output/5b_scenario_rates.csv") %>%
   mutate(tax_code = as.character(tax_code)) %>% 
@@ -660,215 +659,8 @@ scenario_rates_munilevel_scenarios
 
 ```
 
-## To be deleted!: From 5A Exemption scenarios
 
-```{r eval=FALSE}
-exemptions <- read_csv("./Output/Dont_Upload/3_Exemption_Details_output-all_cook_pin_exemptions_2021_actual.csv") 
-# head(exemptions)
-
-
-exemptions <- exemptions %>% 
-  select(pin, av, eav_original = eav, class_code, tax_code_num, major_class_code, exe_homeowner:exe_abate) %>%
-  
-  mutate(exe_vet_dis = exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70,
-         total_exempt_eav = exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
-           exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate,
-         has_homeown = ifelse(exe_homeowner > 0, 1, 0),
-         has_senior = ifelse(exe_senior > 0, 1, 0),
-         has_freeze = ifelse(exe_freeze > 0, 1, 0),
-         
-         has_seniorexemps = ifelse(exe_senior > 0 & exe_freeze > 0, 1, 0),
-         has_disability = ifelse(exe_disabled > 0, 1, 0),
-         has_vetreturn = ifelse(exe_vet_returning > 0, 1, 0), 
-         
-         has_any_exemps = ifelse(total_exempt_eav > 0, 1, 0),
-         has_multi_exemps = ifelse(has_senior + has_freeze + has_homeown + has_disability + has_vetreturn > 1, 1, 0)) %>% 
-  
-  mutate(tax_code_num = as.character(tax_code_num))%>%
-  left_join(muni_tax_codes) %>% 
-  left_join(muni_agency_names) %>% 
-  left_join(nicknames)
-
-# head(exemptions)
-
-#table(exemptions$has_any_exemps)
-#table(exemptions$has_seniorexemps)
-#table(exemptions$has_multi_exemps)
-
-has_exemptions_pins <-  exemptions %>% 
-  filter(has_any_exemps == 1)
-
-# head(has_exemptions_pins)
-
-has_exemptions_pins %>% 
-  summarize(
-    av = sum(av, na.rm = TRUE),
-    EAV_beforeExemptsOrTIF=sum(eav_original, na.rm=TRUE),
-    total_exempt_eav = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
-                             exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
-    homeowners_exemption = sum(exe_homeowner),
-    senior_exemption = sum(exe_senior, na.rm=TRUE),
-    freeze_exemption = sum(exe_freeze, na.rm=TRUE),
-    other_exemptions = sum(exe_vet_dis + exe_disabled + exe_longtime_homeowner + exe_vet_returning + exe_abate))  %>% 
-  pivot_longer(cols = av:other_exemptions, values_to = "Values", names_to = "Names")
-
-
-muni_exempt_eav <- has_exemptions_pins %>% 
-  group_by(clean_name, agency_num) %>%
-  summarize(
-    av_hasexemps = sum(av, na.rm = TRUE),
-    eav_original_hasexemps=sum(eav_original, na.rm=TRUE),
-    total_exempt_eav = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
-                             exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
-    homeowners_exemption = sum(exe_homeowner, na.rm=TRUE),
-    senior_exemption = sum(exe_senior, na.rm=TRUE),
-    freeze_exemption = sum(exe_freeze, na.rm=TRUE),
-    other_exemptions = sum(exe_vet_dis + exe_disabled + exe_longtime_homeowner + exe_vet_returning + exe_abate, na.rm=TRUE), 
-    #pin_count_hasexemptions = n(),
-    PC_has_exe = n() # has at least one exemption associated with the pin
-    ) 
-
-
-# muni_exempt_eav %>% select(-agency_num)
-
-muni_C2_has_exe_eav <- has_exemptions_pins %>%
-  group_by(clean_name, agency_num) %>%
-  filter(major_class_code == "2") %>%
-  summarize(
-    av_hasexemps = sum(av, na.rm = TRUE),
-    eav_original_hasexemps=sum(eav_original, na.rm=TRUE),
-    total_exempt_eav = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner +
-                             exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
-    homeowners_exemption = sum(exe_homeowner, na.rm=TRUE),
-    senior_exemption = sum(exe_senior, na.rm=TRUE),
-    freeze_exemption = sum(exe_freeze, na.rm=TRUE),
-    other_exemptions = sum(exe_vet_dis + exe_disabled + exe_longtime_homeowner + exe_vet_returning + exe_abate),
-    PC_C2_has_exe = n()
-    )
-
-
-muni_singfamres_has_homeowners_exemps <- has_exemptions_pins %>% 
-  filter(class_code > 199 & class_code < 211) %>%
-  filter(exe_homeowner > 0) %>%
-  group_by(clean_name, agency_num) %>%
-  summarize(
-    av_singfam_has_homeownexemps = sum(av, na.rm = TRUE),
-    eav_original_sing_fam_has_homeownexemps=sum(eav_original, na.rm=TRUE),
-    total_exempt_eav_singfam_has_homeown = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
-    homeowners_exemption_singfam = sum(exe_homeowner),
-    #pin_count_singfam_has_homeownerexemptions = n(),
-    PC_SF_has_HOexe = n() # has Homeowner exemption and is within Class range specified
-  ) 
-
-```
-
-```{r eval=FALSE}
-munitotals <- exemptions %>%
-  filter(tax_code_num %in% muni_tax_codes$tax_code_num) %>%
-  group_by(clean_name, agency_num) %>%
-  summarize(muni_av = sum(av, na.rm = TRUE),
-            muni_eav_original=sum(eav_original, na.rm=TRUE),
-            total_exempt_eav = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
-                                     exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
-            homeowners_exemption = sum(exe_homeowner),
-            senior_exemption = sum(exe_senior, na.rm=TRUE),
-            freeze_exemption = sum(exe_freeze, na.rm=TRUE),
-            PC_allPINs_muni = n() # number of pins within each municipality
-            ) 
-
-# munitotals %>% select(-agency_num)
-
-
-muni_residentialtotals <- exemptions %>%
-  filter(tax_code_num %in% muni_tax_codes$tax_code_num)%>%
-  filter(major_class_code == "2") %>% 
-  group_by(clean_name, agency_num) %>%
-  summarize(muni_residential_av = sum(av, na.rm = TRUE),
-            muni_residential_eav_original=sum(eav_original, na.rm=TRUE),
-            total_residential_exempt_eav = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
-                                                 exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
-            PC_C2_muni = n() # number of PINs that are Class 2 Residential 
-            ) 
-
-
-muni_singfam_residentialtotals <- exemptions %>%
-  filter(tax_code_num %in% muni_tax_codes$tax_code_num)%>%
-  filter(class_code > 199 & class_code < 211) %>% 
-  group_by(clean_name, agency_num) %>%
-  summarize(muni_singfam_residential_av = sum(av, na.rm = TRUE),
-            muni_singfam_residential_eav_original=sum(eav_original, na.rm=TRUE),
-           # total "single-family" residential exempt eav
-            SF_res_exe_EAV_muni = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
-                                      exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
-            PC_SF_Res = n() 
-           ) 
-
-#muni_singfam_residentialtotals %>% select(-agency_num)
-
-merged <- munitotals %>% 
-  select(clean_name, agency_num, muni_av, muni_eav_original, PC_allPINs_muni) %>% 
-  left_join(muni_exempt_eav) %>% 
-  left_join(muni_residentialtotals) %>%
-  left_join(muni_singfam_residentialtotals) %>%
-  left_join(muni_C2_has_exe_eav) %>%
-  left_join(muni_singfamres_has_homeowners_exemps) %>%
-  mutate(pct_ofSF_pins_w_HOexe = PC_SF_has_HOexe / PC_SF_Res,
-        # pct_SF_pins_w_exemps = pin_count_has_homeownerexemptions / pin_count_singfam_residential,
-        # pct_pins_w_exemps = pin_count_hasexemptions / pin_count,
-        pct_ofallpins_w_exe = PC_has_exe / PC_allPINs_muni, #       pins with exemptions / all pins in a muni
-
-        pct_EAV_is_C2 = muni_residential_eav_original / muni_eav_original,
-         pct_C2_w_exemps = PC_C2_has_exe / PC_C2_muni, # 
-         #pct_singfam_pins_w_exemps = pin_count_hasexemptions / pin_count_singfam_residential,
-      #   pct_singfam_pins_w_exemps = pin_count_has_homeownerexemptions / pin_count_singfam_residential
-    ) %>%
-  
-  select(clean_name, pct_EAV_is_C2, pct_ofSF_pins_w_HOexe, pct_ofallpins_w_exe, pct_C2_w_exemps, 
-         PC_has_exe, PC_C2_muni, PC_allPINs_muni, everything())
-
-merged
-```
-
-```{r eval=FALSE}
-scenario_taxrates <- merged %>% 
-  mutate(scenario1_taxable_eav = Total_EAV - TIF_increment_EAV - Exempt_EAV + homeowners_exemption,
-         scenario2_taxable_eav = Total_EAV - TIF_increment_EAV - Exempt_EAV + (senior_exemption + freeze_exemption ),
-         scenario_noexemptions_taxable_eav = Total_EAV - Exempt_EAV) %>%
-  mutate(taxrate_scen1 = MuniLevy / scenario1_taxable_eav,
-         taxrate_scen2 = MuniLevy / scenario2_taxable_eav,
-         tax_rate_current = MuniLevy/nonTIF_EAV_post_exemps,
-         taxrate_noexemps = MuniLevy /(Total_EAV - TIF_increment_EAV  ),
-         taxrate_noTIFs = MuniLevy / (Total_EAV - Exempt_EAV),
-         taxrate_noTIFs_orExemps = MuniLevy / Total_EAV)  %>%
-  select(clean_name, MuniLevy, taxrate_scen1, taxrate_scen2, tax_rate_current, taxrate_noexemps, taxrate_noTIFs, taxrate_noTIFs_orExemps, scenario1_taxable_eav, scenario2_taxable_eav)
-
-scenario_taxrates
-
-
-merged %>% 
-  filter(clean_name %in% c("Park Forest", #"Markham",  
-                           "Dolton", #"Hillside", "Riverside", 
-                           "Chicago"# # "Westchester", "Winnetka", "Rosemont"
-                           )) %>%
-  mutate(scenario1_taxable_eav = Total_EAV - TIF_increment_EAV - Exempt_EAV + homeowners_exemption,
-         scenario2_taxable_eav = Total_EAV - TIF_increment_EAV - Exempt_EAV + (senior_exemption + freeze_exemption ),
-         scenario_noexemptions_taxable_eav = Total_EAV - Exempt_EAV) %>%
-  mutate(taxrate_scen1 = MuniLevy / scenario1_taxable_eav,
-         taxrate_scen2 = MuniLevy / scenario2_taxable_eav,
-         tax_rate_current = MuniLevy/nonTIF_EAV_post_exemps,
-         taxrate_noexemps = MuniLevy /(Total_EAV - TIF_increment_EAV  ),
-         taxrate_noTIFs = MuniLevy / (Total_EAV - Exempt_EAV),
-         taxrate_noTIFs_orExemps = MuniLevy / Total_EAV)  %>%
-  select(clean_name, MuniLevy, taxrate_scen1, taxrate_scen2, tax_rate_current, taxrate_noexemps, scenario1_taxable_eav, scenario2_taxable_eav, scenario_noexemptions_taxable_eav, Total_EAV, taxrate_noTIFs, taxrate_noTIFs_orExemps)
-
-
-scenario_taxrates %>% ungroup() %>% summarize()
-
-```
-
-
-
-# Quartiles and Progressivity
+## Quartiles and Progressivity
 
 ```{r}
 class_dict <- read_csv("./Necessary_Files/class_dict_singlefamcodes.csv") %>% 
@@ -1005,11 +797,16 @@ scenario_calcs <- joined_pins %>%
          taxrate_noTIFs_orExemps = MuniLevy / Total_EAV) %>%
   select(clean_name, MuniLevy, tr_neg10:taxrate_noTIFs_orExemps, everything())
 
+write_csv(scenario_calcs, "5b_scenario_calcs.csv")
+
+
 scenario_taxrates <- scenario_calcs %>%  select(clean_name, MuniLevy, tr_neg10:taxrate_noTIFs_orExemps) 
+
 scenario_taxrates
+
 ```
 
-## Share of Tax Burden
+## Class 2 Burden Shift
 
 ```{r}
 
@@ -1059,9 +856,12 @@ C2_burden_shift <- C2_taxableEAV %>%
   select(clean_name, C2_EAV_pct, burden_C2_neg10:burden_C2_plus40, everything())
 
 C2_burden_shift
+
+write_csv(C2_burden_shift, "5b_Class2_burdenshift.csv")
 ```
 
 
+#### Scenario Tax rate graphs 
 
 ```{r}
 scenarios_long <- scenario_taxrates  %>% 
@@ -1086,6 +886,8 @@ scenario_taxrates %>%
 
 
 # Ranked Properties and Muni Quartiles
+
+## 25 v 75 Percentile Homes
 
 ```{r}
 q = c(.25, .5, .75)
@@ -1130,6 +932,10 @@ munis_billchange <-  munis_ranked %>%
  # group_by(agency_name, has_HO_exemp) %>% 
   mutate(#taxable_eav = final_tax_to_dist / tax_code_rate,
     # current bill = current tax rate * portion of levy billed
+    
+    
+   # ## Made negative tax bills!! ## #
+         
          bill_neg10 = tr_neg10*(equalized_AV-all_exemptions+ exe_homeowner -exe_neg10),
 
          bill_current = cur_comp_TC_rate/100*(equalized_AV-all_exemptions),
@@ -1137,7 +943,42 @@ munis_billchange <-  munis_ranked %>%
          bill_plus20 = tr_plus20*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus20),
          bill_plus30 = tr_plus20*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus30),
          bill_plus40 = tr_plus20*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus40),
-         #  bill_change = bill_plus10 - bill_current
+    
+    # ## make bills $1 if they had been negative.    
+         bill_neg10 = ifelse(bill_neg10 < 1, 1, bill_neg10),
+         bill_current = ifelse(bill_current < 1, 1, bill_current),
+         bill_plus10 = ifelse(bill_plus10 < 1, 1, bill_plus10),
+         bill_plus20 = ifelse(bill_plus20 < 1, 1, bill_plus20),
+         bill_plus30 = ifelse(bill_plus30 < 1, 1, bill_plus30),
+         bill_plus40 = ifelse(bill_plus40 < 1, 1, bill_plus40),
+         
+## Prevent tax bills from having negative values  (if exemptions > eav of home)
+         # bill_neg10 = ifelse(tr_neg10*(equalized_AV-all_exemptions+ exe_homeowner -exe_neg10) > 1,
+         #                              tr_neg10*(equalized_AV-all_exemptions+ exe_homeowner -exe_neg10), 1),
+         # 
+         # bill_current = ifelse(cur_comp_TC_rate/100*(equalized_AV-all_exemptions) > 1,
+         #                       cur_comp_TC_rate/100*(equalized_AV-all_exemptions), 1),
+         # 
+         # bill_plus10 =  ifelse(tr_plus10*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus10) > 1,
+         #                       tr_plus10*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus10),1),
+         # 
+         # bill_plus20 = ifelse(tr_plus20*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus20) > 1,
+         #                      tr_plus20*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus20), 1),
+         # 
+         # bill_plus30 = ifelse(tr_plus30*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus30) >1, 
+         #                      tr_plus30*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus30), 1),
+         #                      
+         #                      
+         # bill_plus40 = ifelse(tr_plus40*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus40) > 1,
+         #                      tr_plus40*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus40), 1)
+         )%>%
+  mutate(
+         zerodol_bills_ghe0 = ifelse(bill_neg10 < 5, 1, 0),
+         zerodol_bills_current = ifelse(bill_current < 5, 1, 0),
+         zerodol_bills_ghe20 = ifelse(bill_plus10 < 5, 1, 0),
+         zerodol_bills_ghe30 = ifelse(bill_plus20 < 5, 1, 0),
+         zerodol_bills_ghe40 = ifelse(bill_plus30 < 5, 1, 0),
+         zerodol_bills_ghe50 = ifelse(bill_plus40 < 5, 1, 0),
   ) %>%
   group_by(clean_name, rank, has_HO_exemp) %>% 
   summarize(median_AV = round(median(av)),
@@ -1150,19 +991,29 @@ munis_billchange <-  munis_ranked %>%
             mean_bill_plus40 = round(mean(bill_plus40, na.rm=TRUE)),
             
             # current perceived_savings = median(tax_amt_exe),
-            tr_neg10 = round(mean(tr_neg10), digits = 2), 
+            tr_neg10 = round(mean(tr_neg10*100), digits = 2), 
             cur_comp_TC_rate = round(mean(cur_comp_TC_rate), digits = 2),
             tr_plus10 = round(mean(tr_plus10*100), digits = 2),
             tr_plus20 = round(mean(tr_plus20*100), digits = 2),
             tr_plus30 = round(mean(tr_plus30*100), digits = 2),
             tr_plus40 = round(mean(tr_plus40*100), digits = 2),
-            pincount=n()
+            pincount=n(),
+            zerodol_bills_ghe0 = sum(zerodol_bills_ghe0),           
+            zerodol_bills_current = sum(zerodol_bills_current),
+            zerodol_bills_ghe20 = sum(zerodol_bills_ghe20),
+            zerodol_bills_ghe30 = sum(zerodol_bills_ghe30),
+            zerodol_bills_ghe40 = sum(zerodol_bills_ghe40),
+            zerodol_bills_ghe50 = sum(zerodol_bills_ghe50),
+
+
   ) %>%
   arrange(has_HO_exemp, rank)
 
 
 munis_billchange <- munis_billchange %>% left_join(muni_quartiles)
 munis_billchange
+
+write_csv(munis_billchange, "5b_muni_billchange_scenarios.csv")
 ```
 
 
@@ -1314,7 +1165,7 @@ ggplot(data = new_ratios, aes(y = newbill_to_AV_25, x = newbill_to_AV_75, label 
 
 
 
-# 90/10 deciles
+## 90/10 deciles
 
 ```{r}
 q = c(.1, .5, .9)
@@ -1504,9 +1355,9 @@ ggplot(data = new_ratios, aes(y = newbill_to_AV_10, x = newbill_to_AV_90, label 
   geom_point(aes(alpha = .5)) + 
   geom_text(nudge_x = .03, nudge_y=0.01, size = 3, check_overlap = TRUE)+ 
   theme_classic() + 
-    scale_y_continuous(limits = c(0, .9))+
+    scale_y_continuous(limits = c(0, .6))+
 
-  scale_x_continuous(limits = c(0, .9))+
+  scale_x_continuous(limits = c(0, .6))+
   theme(legend.position = "none") + labs(title = "Increase GHE by 30,000 EAV (for up to 40,000 EAV exempt) ", 
                                          y = "10th percentile of homes, taxbill:AV",
                                          x= "90th percentile of homes, taxbill:AV",
@@ -1528,9 +1379,9 @@ ggplot(data = new_ratios, aes(y = newbill_to_AV_10, x = newbill_to_AV_90, label 
   geom_point(aes(alpha = .5)) + 
   geom_text(nudge_x = .03, nudge_y=0.01, size = 3, check_overlap = TRUE)+ 
   theme_classic() + 
-    scale_y_continuous(limits = c(0, .9))+
+    scale_y_continuous(limits = c(0, .6))+
 
-  scale_x_continuous(limits = c(0, .9))+
+  scale_x_continuous(limits = c(0, .6))+
   theme(legend.position = "none") + labs(title = "Increase GHE by 40,000 EAV (for up to 50,000 EAV exempt) ", 
                                          y = "10th percentile of homes, taxbill:AV",
                                          x= "90th percentile of homes, taxbill:AV",
@@ -1542,7 +1393,9 @@ ggplot(data = new_ratios, aes(y = newbill_to_AV_10, x = newbill_to_AV_90, label 
 
 
 
-# 90/10 deciles - Bigger AV range
+### 90/10 deciles - Bigger AV range
+
+Increased range of homes included in quantile to avoid having municipalities drop out if there were no tax bills. Not sure if it addresses the problem. 
 
 ```{r}
 q = c(.1, .5, .9)
