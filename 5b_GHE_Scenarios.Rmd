@@ -36,15 +36,12 @@ ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.
 options(digits=4, scipen = 999)
 
 
-library(httr)
-library(NatParksPalettes)
-
 # link to the API output as a JSON file
 muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/politicalBoundary/MapServer/2/query?outFields=*&where=1%3D1&f=geojson")
 
 cook_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/plss/MapServer/1/query?outFields=*&where=1%3D1&f=geojson")
 
-
+township_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/politicalBoundary/MapServer/3/query?outFields=*&where=1%3D1&f=geojson")
 
 #muni_shp <- read_json("muni_shp.json")
 nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
@@ -1013,7 +1010,7 @@ munis_billchange <-  munis_ranked %>%
 munis_billchange <- munis_billchange %>% left_join(muni_quartiles)
 munis_billchange
 
-write_csv(munis_billchange, "5b_muni_billchange_scenarios.csv")
+# write_csv(munis_billchange, "5b_muni_billchange_scenarios.csv")
 ```
 
 
@@ -1215,9 +1212,24 @@ munis_billchange <-  munis_ranked %>%
          bill_current = cur_comp_TC_rate/100*(equalized_AV-all_exemptions),
          bill_plus10 =  tr_plus10*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus10),
          bill_plus20 = tr_plus20*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus20),
-         bill_plus30 = tr_plus20*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus30),
-         bill_plus40 = tr_plus20*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus40),
-         #  bill_change = bill_plus10 - bill_current
+         bill_plus30 = tr_plus30*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus30),
+         bill_plus40 = tr_plus40*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus40),
+
+    # ## make bills $1 if they had been negative.    
+         bill_neg10 = ifelse(bill_neg10 < 1, 1, bill_neg10),
+         bill_current = ifelse(bill_current < 1, 1, bill_current),
+         bill_plus10 = ifelse(bill_plus10 < 1, 1, bill_plus10),
+         bill_plus20 = ifelse(bill_plus20 < 1, 1, bill_plus20),
+         bill_plus30 = ifelse(bill_plus30 < 1, 1, bill_plus30),
+         bill_plus40 = ifelse(bill_plus40 < 1, 1, bill_plus40)) %>%
+
+  mutate(
+         zerodol_bills_ghe0 = ifelse(bill_neg10 < 5, 1, 0),
+         zerodol_bills_current = ifelse(bill_current < 5, 1, 0),
+         zerodol_bills_ghe20 = ifelse(bill_plus10 < 5, 1, 0),
+         zerodol_bills_ghe30 = ifelse(bill_plus20 < 5, 1, 0),
+         zerodol_bills_ghe40 = ifelse(bill_plus30 < 5, 1, 0),
+         zerodol_bills_ghe50 = ifelse(bill_plus40 < 5, 1, 0),
   ) %>%
   group_by(clean_name, rank, has_HO_exemp) %>% 
   summarize(median_AV = round(median(av)),
@@ -1230,7 +1242,7 @@ munis_billchange <-  munis_ranked %>%
             mean_bill_plus40 = round(mean(bill_plus40, na.rm=TRUE)),
             
             # current perceived_savings = median(tax_amt_exe),
-            tr_neg10 = round(mean(tr_neg10), digits = 2), 
+            tr_neg10 = round(mean(tr_neg10*100), digits = 2), 
             cur_comp_TC_rate = round(mean(cur_comp_TC_rate), digits = 2),
             tr_plus10 = round(mean(tr_plus10*100), digits = 2),
             tr_plus20 = round(mean(tr_plus20*100), digits = 2),
@@ -1437,7 +1449,6 @@ munis_billchange <-  munis_ranked %>%
   group_by(clean_name, rank) %>%
   left_join(scenario_taxrates) %>%
   arrange(av) %>%
- # group_by(agency_name, has_HO_exemp) %>% 
   mutate(#taxable_eav = final_tax_to_dist / tax_code_rate,
     # current bill = current tax rate * portion of levy billed
          bill_neg10 = tr_neg10*(equalized_AV-all_exemptions+ exe_homeowner -exe_neg10),
@@ -1445,9 +1456,24 @@ munis_billchange <-  munis_ranked %>%
          bill_current = cur_comp_TC_rate/100*(equalized_AV-all_exemptions),
          bill_plus10 =  tr_plus10*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus10),
          bill_plus20 = tr_plus20*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus20),
-         bill_plus30 = tr_plus20*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus30),
-         bill_plus40 = tr_plus20*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus40),
-         #  bill_change = bill_plus10 - bill_current
+         bill_plus30 = tr_plus30*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus30),
+         bill_plus40 = tr_plus40*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus40),
+
+    # ## make bills $1 if they had been negative.    
+         bill_neg10 = ifelse(bill_neg10 < 1, 1, bill_neg10),
+         bill_current = ifelse(bill_current < 1, 1, bill_current),
+         bill_plus10 = ifelse(bill_plus10 < 1, 1, bill_plus10),
+         bill_plus20 = ifelse(bill_plus20 < 1, 1, bill_plus20),
+         bill_plus30 = ifelse(bill_plus30 < 1, 1, bill_plus30),
+         bill_plus40 = ifelse(bill_plus40 < 1, 1, bill_plus40)) %>%
+
+  mutate(
+         zerodol_bills_ghe0 = ifelse(bill_neg10 < 5, 1, 0),
+         zerodol_bills_current = ifelse(bill_current < 5, 1, 0),
+         zerodol_bills_ghe20 = ifelse(bill_plus10 < 5, 1, 0),
+         zerodol_bills_ghe30 = ifelse(bill_plus20 < 5, 1, 0),
+         zerodol_bills_ghe40 = ifelse(bill_plus30 < 5, 1, 0),
+         zerodol_bills_ghe50 = ifelse(bill_plus40 < 5, 1, 0),
   ) %>%
   group_by(clean_name, rank, has_HO_exemp) %>% 
   summarize(median_AV = round(median(av)),
@@ -1619,5 +1645,120 @@ ggplot(data = new_ratios, aes(y = newbill_to_AV_10, x = newbill_to_AV_90, label 
 ```
 
 
+# Combined tables
+<!--- Combined tables below --->
+
+
+```{r}
+q = c(.10, .25, .5, .75, .9, .99)
+
+## ranks properties that are considered single family homes in order of AV for each Muni
+muni_quartiles <- joined_pins %>%
+  filter(Option2 == "Single-Family") %>% 
+  filter(tax_code %in% muni_TC_fullyCook$tax_code_num) %>%
+  group_by(agency_name, clean_name) %>%
+  arrange(av) %>%
+  summarize(count_pins = n(), 
+            min = min(av),
+            quant10 = round(quantile(av, probs = q[1])), 
+
+            quant25 = round(quantile(av, probs = q[2])), 
+            quant50 = round(quantile(av, probs = q[3])),
+            quant75 = round(quantile(av, probs = q[4])),
+            quant90 = round(quantile(av, probs = q[5])),
+            quant99 = round(quantile(av, probs = q[6])),
+
+            max = max(av)
+           ) %>% 
+  arrange( desc( quant50))
+
+muni_quartiles
+
+
+## create rank variable for properties that fall within the quartiles +/- $500 range
+munis_ranked <- joined_pins  %>%
+  inner_join(muni_quartiles, by = c("agency_name", "clean_name")) %>% 
+  mutate(rank = case_when(
+    av > (quant10-500) & (av<quant10+500) ~ "q10",
+    av > (quant25-500) & (av<quant25+500) ~ "q25",
+    av > (quant50-500) & (av<quant50+500) ~ "q50",
+    av > (quant75-500) & (av<quant75+500) ~ "q75",
+    av > (quant90-500) & (av<quant90+500) ~ "q90",
+    av > (quant99-500) & (av<quant99+500) ~ "q99")
+
+    ) %>%
+  select(clean_name, rank, av, pin, class, everything()) %>%
+  left_join(nicknames)
+
+
+
+
+munis_billchange <-  munis_ranked %>% 
+  group_by(clean_name, rank) %>%
+  left_join(scenario_taxrates) %>%
+  arrange(av) %>%
+
+    mutate(
+   # ## Made negative tax bills!! ## #
+         
+         bill_neg10 = tr_neg10*(equalized_AV-all_exemptions+ exe_homeowner -exe_neg10),
+         bill_current = cur_comp_TC_rate/100*(equalized_AV-all_exemptions),
+         bill_plus10 =  tr_plus10*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus10),
+         bill_plus20 = tr_plus20*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus20),
+         bill_plus30 = tr_plus20*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus30),
+         bill_plus40 = tr_plus20*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus40),
+    
+    # ## make bills $1 if they had been negative.    
+         bill_neg10 = ifelse(bill_neg10 < 1, 1, bill_neg10),
+         bill_current = ifelse(bill_current < 1, 1, bill_current),
+         bill_plus10 = ifelse(bill_plus10 < 1, 1, bill_plus10),
+         bill_plus20 = ifelse(bill_plus20 < 1, 1, bill_plus20),
+         bill_plus30 = ifelse(bill_plus30 < 1, 1, bill_plus30),
+         bill_plus40 = ifelse(bill_plus40 < 1, 1, bill_plus40)
+         )%>%
+  mutate(
+         zerodol_bills_ghe0 = ifelse(bill_neg10 < 5, 1, 0),
+         zerodol_bills_current = ifelse(bill_current < 5, 1, 0),
+         zerodol_bills_ghe20 = ifelse(bill_plus10 < 5, 1, 0),
+         zerodol_bills_ghe30 = ifelse(bill_plus20 < 5, 1, 0),
+         zerodol_bills_ghe40 = ifelse(bill_plus30 < 5, 1, 0),
+         zerodol_bills_ghe50 = ifelse(bill_plus40 < 5, 1, 0)
+  ) %>%
+  group_by(clean_name, rank, has_HO_exemp) %>% 
+  summarize(median_AV = round(median(av)),
+            median_EAV = round(median(eav)),
+            mean_bill_neg10 = round(mean(bill_neg10, na.rm=TRUE)),
+            mean_bill_cur = round(mean(bill_current, na.rm=TRUE)),
+            mean_bill_plus10 = round(mean(bill_plus10, na.rm=TRUE)),
+            mean_bill_plus20 = round(mean(bill_plus20, na.rm=TRUE)),
+            mean_bill_plus30 = round(mean(bill_plus30, na.rm=TRUE)),
+            mean_bill_plus40 = round(mean(bill_plus40, na.rm=TRUE)),
+            
+            # current perceived_savings = median(tax_amt_exe),
+            tr_neg10 = round(mean(tr_neg10*100), digits = 2), 
+            cur_comp_TC_rate = round(mean(cur_comp_TC_rate), digits = 2),
+            tr_plus10 = round(mean(tr_plus10*100), digits = 2),
+            tr_plus20 = round(mean(tr_plus20*100), digits = 2),
+            tr_plus30 = round(mean(tr_plus30*100), digits = 2),
+            tr_plus40 = round(mean(tr_plus40*100), digits = 2),
+            pincount=n(),
+            zerodol_bills_ghe0 = sum(zerodol_bills_ghe0),           
+            zerodol_bills_current = sum(zerodol_bills_current),
+            zerodol_bills_ghe20 = sum(zerodol_bills_ghe20),
+            zerodol_bills_ghe30 = sum(zerodol_bills_ghe30),
+            zerodol_bills_ghe40 = sum(zerodol_bills_ghe40),
+            zerodol_bills_ghe50 = sum(zerodol_bills_ghe50),
+
+
+  ) %>%
+  arrange(has_HO_exemp, rank)
+
+
+munis_billchange <- munis_billchange %>% left_join(muni_quartiles)
+
+munis_billchange 
+
+write_csv(munis_billchange, "5b_munis_billchange_1025507590.csv")
+```
 
 
