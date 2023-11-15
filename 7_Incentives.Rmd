@@ -799,3 +799,237 @@ incentive_classes %>%
             av = sum(av))
 ```
 
+# Areas with lots of exemptions and incentives 
+
+aka a reduced tax base
+
+```{r}
+
+pin_data <- read_csv("./Output/4C_joined_PINs_bills_and_exemptions.csv")
+
+
+muni_taxrates <- pin_data %>% 
+  group_by(agency_name)  %>%
+  
+  summarize(
+    av = sum(av, na.rm = TRUE),
+    eav = sum(eav, na.rm = TRUE),
+    equalized_AV = sum(equalized_AV, na.rm = TRUE),
+    pins_in_class = n(),
+    current_exemptions = sum(all_exemptions, na.rm = TRUE),
+    HO_exemps = sum(exe_homeowner, na.rm = TRUE),
+    tax_code_rate = mean(tax_code_rate, na.rm = TRUE), # Changed from first() to mean() on Nov 1
+    final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # used as LEVY amount!! 
+    final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+    tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), 
+    tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), 
+    tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE),
+    rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE), # not used
+    rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE), # not used
+    rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE), # not used
+    tif_share = mean(tif_share, na.rm=TRUE), # not used
+  ) %>%
+  
+  mutate(total_bill_current = final_tax_to_dist + final_tax_to_tif) %>%
+  rename(cur_comp_TC_rate = tax_code_rate) %>%
+  mutate(current_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100),
+         new_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100) + HO_exemps) %>%
+  mutate(new_comp_TC_rate = (final_tax_to_dist / new_taxable_eav)*100) %>%
+  mutate(new_comp_TC_rate = ifelse(is.nan(new_comp_TC_rate), cur_comp_TC_rate, new_comp_TC_rate)) %>%
+  select(agency_name, cur_comp_TC_rate, new_comp_TC_rate, current_taxable_eav, new_taxable_eav, everything())
+
+muni_taxrates 
+```
+
+```{r}
+
+prop_class_sums <- pin_data %>% 
+  group_by(agency_name, major_class_code, major_class_type )  %>%
+  
+  summarize(
+    av = sum(av, na.rm = TRUE),
+    eav = sum(eav, na.rm = TRUE),
+    equalized_AV = sum(equalized_AV, na.rm = TRUE),
+    pins_in_class = n(),
+    current_exemptions = sum(all_exemptions, na.rm = TRUE),
+    HO_exemps = sum(exe_homeowner, na.rm = TRUE),
+    tax_code_rate = mean(tax_code_rate, na.rm = TRUE), # Changed from first() to mean() on Nov 1
+    final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # used as LEVY amount!! 
+    final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+    tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), 
+    tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), 
+    tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE),
+    rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE), # not used
+    rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE), # not used
+    rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE), # not used
+    tif_share = mean(tif_share, na.rm=TRUE), # not used
+  ) %>%
+  
+  mutate(total_bill_current = final_tax_to_dist + final_tax_to_tif) %>%
+  rename(cur_comp_TC_rate = tax_code_rate) %>%
+  mutate(current_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100),
+         new_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100) + HO_exemps) %>%
+  mutate(new_comp_TC_rate = (final_tax_to_dist / new_taxable_eav)*100) %>%
+  mutate(new_comp_TC_rate = ifelse(is.nan(new_comp_TC_rate), cur_comp_TC_rate, new_comp_TC_rate)) %>%
+  select(agency_name, cur_comp_TC_rate, new_comp_TC_rate, current_taxable_eav, new_taxable_eav, everything())
+
+prop_class_sums 
+
+
+```
+## Neighborhood level join
+
+```{r}
+
+nbh_major_class <- read_csv("./Output/8_Current_Taxrates_per_nbh_by_majorclass.csv")
+nbh_major_class
+
+
+nbh_pincounts_class <- incentive_classes %>% 
+  group_by(nbhd_code, class) %>%
+  dplyr::summarize(pin_count = n(),
+            av = sum(av)) %>%
+  mutate(class_1dig = str_sub(class, 1, 1))
+
+nbh_pincounts_majorclass <- incentive_classes %>% 
+  group_by(major_class_code, major_class_type, nbhd_code) %>%
+  dplyr::summarize(pin_count = n(),
+            av = sum(av))
+
+incentives_props <- nbh_pincounts_majorclass %>% 
+  filter(major_class_code %in% c("6A", "6B", "6C", "7A", "7B", "8")) %>%
+  mutate(nbhd_code = as.character(nbhd_code))
+
+
+
+
+# nbh_res_exemptions <- read_csv("./Output/8_nbh_sum_new_exe.csv") 
+nbh_taxrates <- read_csv( "./Output/8_Current_Taxrates_per_nbh.csv")
+
+
+nbh_data <- left_join(nbh_pincounts_majorclass, nbh_taxrates, by = "nbhd_code")
+
+
+nbh_data <- nbh_data %>% rename(all_PINs = pin_count.x,
+                                incentive_PINs = pin_count.y)  %>%
+  mutate(exempt_over_total_EAV = Exempt_EAV / Total_EAV,
+         nbhd_code = as.character(nbhd_code),
+         exempts_perPIN = Exempt_EAV / all_PINs,
+         incentive_projects_pct = incentive_PINs / all_PINs,
+         incentives_EAV = av * 3.0027 ,
+         incentives_over_total_EAV = incentives_EAV / Total_EAV) %>%
+  select(nbhd_code, exempt_over_total_EAV, all_PINs, incentive_PINs, exempts_perPIN, incentive_projects_pct, incentives_EAV, incentives_over_total_EAV, major_class_code, everything()) %>% arrange(nbhd_code)
+
+nbh_data
+
+
+```
+```{r munilevel-exemptions}
+# prop_class_sums is at muni level
+exempts_per_pin <- prop_class_sums %>% 
+  filter(major_class_code == "2") %>% # Class 2 residential only
+  mutate(avg_GHEexe_perPIN = HO_exemps/pins_in_class,
+         avg_allexe_perPIN = current_exemptions / pins_in_class) %>% 
+  select(agency_name, avg_GHEexe_perPIN, avg_allexe_perPIN)
+exempts_per_pin
+
+
+# Class2_data is also at Muni Level
+Class2_data <- read_csv("./Output/5b_Class2_burdenshift.csv")
+
+residential_data <- Class2_data %>% 
+  mutate(exemptions_per_resPIN = C2_current_GHE/ C2_PC_permuni )  %>%
+  select(clean_name, exemptions_per_resPIN, C2_EAV_pct)
+```
+
+
+```{r}
+nbh_res <- nbh_major_class %>% filter(major_class_code == 2) %>% select(nbhd_code, major_class_code, residential_PC = pin_count, res_EAV = Total_EAV, res_exemptions = Exempt_EAV) %>%
+  mutate(nbhd_code = as.character(nbhd_code))
+
+nbh_data2 <- nbh_data %>% left_join(nbh_res, by = "nbhd_code") %>% select(nbhd_code, all_PINs, residential_PC, incentive_PINs, everything()) %>% mutate(exemps_per_resPIN = res_exemptions / residential_PC) %>% arrange(nbhd_code)
+
+
+fig4 <- nbh_data2 %>% 
+  full_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
+  ggplot(aes(fill = exemps_per_resPIN)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  labs(title = "Average exemptions per PIN") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+  scale_fill_steps2(
+    high = "darkblue", low = "white",
+    #nice.breaks = FALSE,
+    show.limits=TRUE,
+    na.value = NA,
+    name = "Exemptions per PIN")
+
+fig4
+```
+
+## Maps
+
+```{r}
+fig1 <- nbh_data %>% 
+  #filter(major_class_code == "8") %>%
+  #group_by(nbhd_code)%>%
+  #summarize(pin_count = sum(pin_count)) %>% 
+  full_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
+  ggplot(aes(fill = exempt_over_total_EAV)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  labs(title = "Exempt EAV / Total EAV",
+      # caption = "Total EAV includes TIF and all EAV before exemptions are deducted"
+       ) +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+  scale_fill_steps2(
+    high = "forestgreen", low = "white",
+    #nice.breaks = FALSE,
+    show.limits=TRUE,
+    na.value = NA,
+    name = "% Total EAV Exempt")
+
+fig1
+
+
+
+fig3 <- nbh_data %>% 
+  #filter(major_class_code == "8") %>%
+  #group_by(nbhd_code)%>%
+  #summarize(pin_count = sum(pin_count)) %>% 
+  full_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
+  ggplot(aes(fill = incentives_over_total_EAV)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  labs(title = "EAV of incentive properties / Total EAV") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+  scale_fill_steps2(
+    high = "orange", low = "yellow",
+    #nice.breaks = FALSE,
+    show.limits=TRUE,
+    na.value = NA,
+    name = "%")
+
+fig3
+
+
+fig2 <- nbh_data %>% 
+  #filter(major_class_code == "8") %>%
+  #group_by(nbhd_code)%>%
+  #summarize(pin_count = sum(pin_count)) %>% 
+  full_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
+  ggplot(aes(fill = exempts_perPIN)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  labs(title = "Average exemptions per PIN") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+  scale_fill_steps2(
+    high = "darkblue", low = "white",
+    #nice.breaks = FALSE,
+    show.limits=TRUE,
+    na.value = NA,
+    name = "Exemptions per PIN")
+
+fig2
+```
+
