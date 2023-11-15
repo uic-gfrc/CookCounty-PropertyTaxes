@@ -229,7 +229,8 @@ Current_Taxrates_per_nbh_TC
 
 Current_Taxrates_per_nbh_class <- pin14_bills_current %>% 
  left_join(TC_taxrates, by = c("tax_code" = "tax_code_num")) %>%
-  group_by(nbhd_code, class) %>%
+  left_join(class_dict, by = c("class" = "class_code")) %>%
+  group_by(nbhd_code, major_class_code, major_class_type) %>%
   
   summarize(nbh_rate = mean(tax_code_rate, na.rm=TRUE),
             pin_count = n(),
@@ -243,8 +244,7 @@ Current_Taxrates_per_nbh_class <- pin14_bills_current %>%
          nonTIF_EAV_pre_exemps = nonTIF_EAV_post_exemps + Exempt_EAV,
          taxrate_new = dist_rev_needed/nonTIF_EAV_pre_exemps,
          taxrate_change = tax_rate_current-taxrate_new) %>% 
- select(nbhd_code, class, taxrate_change, tax_rate_current, taxrate_new, everything()) %>% 
-  arrange(desc(tax_rate_current))
+ select(nbhd_code, major_class_code, major_class_type, taxrate_change, tax_rate_current, taxrate_new, everything())
 
 Current_Taxrates_per_nbh_class
 
@@ -316,6 +316,8 @@ rates2 <- bills %>%
 ```{r eval=FALSE}
 write_csv(nbh_sum_new_exe, "./Output/8_nbh_sum_new_exe.csv")
 write_csv(Current_Taxrates_per_nbh, "./Output/Current_Taxrates_per_nbh.csv")
+write_csv(Current_Taxrates_per_nbh_class, "./Output/8_Current_Taxrates_per_nbh_by_majorclass.csv")
+
 write_csv(Current_Taxrates_per_nbh_TC, "./Output/Current_Taxrates_per_nbh_TC.csv")
 ```
 
