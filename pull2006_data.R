@@ -14,31 +14,18 @@ library(glue)
 # Create the DB connection with the default name expected by PTAXSIM functions
 ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
 
-
+class_dict <- read_csv("./Necessary_Files/class_dict.csv")
 nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
 
-class_dict <- read_csv("./Necessary_Files/class_dict.csv")
 
-cook_agency_names <- DBI::dbGetQuery(
+# has EAV values, extensions by agency_num
+agency_dt <- DBI::dbGetQuery(
   ptaxsim_db_conn,
-  "SELECT DISTINCT agency_num, agency_name
-  FROM agency_info
+  "SELECT *
+  FROM agency
+  WHERE year = 2006
   "
 )
-
-# # has all tax codes and the taxing agency that taxes them. Tax code rates and agency rates.
-# # 41,948 in 2006?
-# cook_tax_codes <- DBI::dbGetQuery(
-#   ptaxsim_db_conn,
-#   glue_sql("
-#   SELECT*
-#   FROM tax_code
-#   WHERE agency_num IN ({cook_agency_names$agency_num*})
-#   AND year = 2006
-#   ",
-#   .con = ptaxsim_db_conn
-#   )
-# )  
 
 ## has all tax codes and the composite tax rate for the tax code 
 ## 2917 in 2006
@@ -53,10 +40,41 @@ tax_codes <- DBI::dbGetQuery(
   )
 )
 
+## Municipality taxing agencies only + Cicero
+muni_agency_names <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT DISTINCT agency_num, agency_name, minor_type
+  FROM agency_info
+  WHERE minor_type = 'MUNI'
+  OR agency_num = '020060000'  
+  "
+)
+## All tax codes that are taxed by an Incorporated Municipality
+muni_tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT*
+  FROM tax_code
+  WHERE agency_num IN ({muni_agency_names$agency_num*})
+  AND year = 2006
+  ",
+  .con = ptaxsim_db_conn
+  )
+) 
+
+## All tax codes. 
+## tax codes within municipalities have additional info 
+tc_muninames <- tax_codes %>% 
+  left_join(muni_tax_codes) %>%
+  left_join(muni_agency_names) %>% 
+  select(-agency_rate) %>% 
+  left_join(nicknames) %>% 
+  select(-c(minor_type, short_name, `Column1`, `Most recent reassessed`, agency_number))
+# 2917 in 2006
 
 
 # There are 1,864,594 pins taxed by Cook County in 2021.
-# There are 1,771,315 pins in 2006
+# There are 1,771,314 pins in 2006
 cook_pins <- DBI::dbGetQuery(
   ptaxsim_db_conn,
   glue_sql(
@@ -68,117 +86,42 @@ cook_pins <- DBI::dbGetQuery(
   .con = ptaxsim_db_conn
   ))
 
-
-# grabs all unique muni names & numbs
-# don't forget Cicero
-muni_agency_names <- DBI::dbGetQuery(
-  ptaxsim_db_conn,
-  "SELECT DISTINCT agency_num, agency_name, minor_type
-  FROM agency_info
-  WHERE minor_type = 'MUNI'
-  OR agency_num = '020060000'  
-
-  "
-)
-
-muni_agency_names <- muni_agency_names %>% 
-  mutate(first6 = str_sub(agency_num,1,6),
-         first5 = str_sub(agency_num,1,5)) %>% 
-  select(-minor_type)
-
-
-
-#Makes a list of ALL taxing agencies, including TIFs, SSAs, etc.
-
-# all agency names, numbers, and types
-# includes TIF and non-TIF agencies
-all_taxing_agencies <- DBI::dbGetQuery(
-  ptaxsim_db_conn,
-  "SELECT agency_num, agency_name, major_type, minor_type
-  FROM agency_info
-  "
-) %>% mutate(first6 = str_sub(agency_num,1,6),
-             first5 = str_sub(agency_num,1,5))
-
-
-muni_agency_nums<- all_taxing_agencies %>% 
-  filter(minor_type %in% c("MUNI") | 
-           agency_num == "020060000") %>%
-  select(agency_num)
-
-
-# list of all taxcodes in municipalities. 
-# This does NOT include unincorporated tax codes!!
-muni_tax_codes <- DBI::dbGetQuery(
-  ptaxsim_db_conn,
-  glue_sql("
-  SELECT*
-  FROM tax_code
-  WHERE agency_num IN ({muni_agency_names$agency_num*})
-  AND year = 2006
-  ",
-  .con = ptaxsim_db_conn
-  )
-)# %>% select(-agency_rate)
-
-# Agency number and agency name for all TIFs
-TIF_agencies <- DBI::dbGetQuery(
-  ptaxsim_db_conn,
-  "SELECT DISTINCT agency_num, agency_name, major_type, minor_type
-  FROM agency_info
-  WHERE minor_type = 'TIF'
-  "
-)
-
-unique_tif_taxcodes <- DBI::dbGetQuery(
-  ptaxsim_db_conn, 
-  glue_sql("
-  SELECT DISTINCT tax_code_num
-  FROM tax_code
-  WHERE agency_num IN ({TIF_agencies$agency_num*})
-  AND year = 2006
-  ",
-  .con = ptaxsim_db_conn
-  )
-)
-
-
-tif_distrib <- DBI::dbGetQuery(
-  ptaxsim_db_conn, 
-  glue_sql("
-  SELECT *
-  FROM tif_distribution
-  WHERE tax_code_num IN ({muni_tax_codes$tax_code_num*})
-  AND year = 2006
-  ",
-  .con = ptaxsim_db_conn
-  )
-) %>% mutate(tax_code_num = as.character(tax_code_num))
-
-
-
-all_taxing_agencies <- all_taxing_agencies %>% 
-  left_join(muni_agency_names, by = c("first5", "first6")) %>% 
-  rename(muni_name =  agency_name.y,
-         muni_num = agency_num.y,
-         agency_name = agency_name.x,
-         agency_num = agency_num.x)
+# 
+# # Agency number and agency name for all TIFs
+# TIF_agencies <- DBI::dbGetQuery(
+#   ptaxsim_db_conn,
+#   "SELECT DISTINCT agency_num, agency_name, major_type, minor_type
+#   FROM agency_info
+#   WHERE minor_type = 'TIF'
+#   "
+# )
+# 
+# unique_tif_taxcodes <- DBI::dbGetQuery(
+#   ptaxsim_db_conn, 
+#   glue_sql("
+#   SELECT DISTINCT tax_code_num
+#   FROM tax_code
+#   WHERE agency_num IN ({TIF_agencies$agency_num*})
+#   AND year = 2006
+#   ",
+#   .con = ptaxsim_db_conn
+#   )
+# )
 
 
 # combine taxing agency names and agency type to data table that has eav and extension values
-agency_data <- right_join(agency_dt, all_taxing_agencies) %>% 
+agency_data <- right_join(agency_dt, muni_agency_names) %>% 
   # get rid of unneeded columns to make table outputs smaller
   select(-c(cty_dupage_eav:cty_livingston_eav)) %>% # drop some of the unused variables
   arrange(agency_num)
 
-
-taxbills_2006 <- tax_bill(2006,  
-                             cook_pins$pin, 
+# 22,730,572 pin-taxing agency combinations for tax bills
+taxbills_2006 <- tax_bill(2006,  cook_pins$pin, 
                              #  pin_dt = exe_dt, # default option, change for "no exemption" simulation
                              simplify = FALSE)
 
 
-sapply(taxbills_current, function(x) sum(is.na(x)))
+sapply(taxbills_2006, function(x) sum(is.na(x)))
 
 
 # 1,825,816 billed properties with 14-digit PINs  
@@ -210,30 +153,33 @@ sapply(pin14_bills_2006, function(x) sum(is.na(x)))
 rm(taxbills_2006)
 
 
-# finds all pins within a municipality
-pin_data <- lookup_pin(2006, cook_pins$pin) %>%
-  left_join(cook_pins, by = c("pin", "class"))
+# finds all pins within Cook county and data on their exemptions
+# joins tax code variable in 2006 by pin
+exemption_data <- lookup_pin(2006, cook_pins$pin) %>%
+  left_join(cook_pins, by = c("pin", "class")) %>%
+  mutate(all_exemptions = exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+           exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 + exe_abate) %>%
+  mutate(zero_bill = ifelse(eav <= all_exemptions, 1, 0),
+         has_HO_exemp = ifelse(exe_homeowner > 0, 1, 0))
 
 
 # change variable type to character so the join works.
 class_dict$class_code <- as.character(class_dict$class_code)
 
-
-
 # use the property class to make the major property types
 # joins the class_dict file to the pin_data classes
-pin_data <- class_dict %>%
-  #select(-c(assessment_level:reporting_group, class_desc:max_size)) %>%
-  right_join(pin_data, by = c("class_code" = "class"))
+exemption_data <- class_dict %>%
+  right_join(exemption_data, by = c("class_code" = "class"))
 
 
 ## summarize pin level data to the tax code level for each type of property class
-exemptions_inCook_perTC <- pin_data %>%
+exemptions_inCook_perTC <- exemption_data %>%
   group_by(tax_code_num, class_code
            #, major_class_code, major_class_type
   ) %>%
   summarize(av = sum(av, na.rm = TRUE),
             eav=sum(eav, na.rm=TRUE),
+            all_exemptions = sum(all_exemptions),
             exe_homeowner = sum(exe_homeowner, na.rm=TRUE),
             exe_senior = sum(exe_senior, na.rm=TRUE),
             exe_freeze = sum(exe_freeze, na.rm=TRUE),
@@ -246,22 +192,153 @@ exemptions_inCook_perTC <- pin_data %>%
             
   )
 
+exemptions_inCook_perTC <- exemptions_inCook_perTC %>% 
+  left_join(tc_muninames)
 
 
 ## Add exemption types and values to the tax bill data at PIN level
-joined_pin_data <- left_join(pin14_bills_2006, pin_data, by = c("pin", "class" = "class_code" ))
+joined_pin_data <- left_join(pin14_bills_2006, exemption_data, by = c("pin", "class" = "class_code" ))  %>%
+  rename(av = av.x,
+         eav =  eav.x,
+         equalized_av = eav.y)
 
 ## Add tax code tax rate to PIN level data
-pin_data <- left_join(joined_pin_data, tax_codes, by = c("tax_code" = "tax_code_num"))
+pin_data <- left_join(joined_pin_data, tc_muninames, by = c("tax_code" = "tax_code_num"))
 
 head(pin_data)
-#pin_data2 <- left_join(pin_data, taxcode_taxrates, by = c("tax_code" = "tax_code"))
+
+#write_csv(pin_data, "joined_pin_bills_and_exemps_2006.csv")
 
 
-pin_data2 <- pin_data %>% left_join(muni_tax_codes) 
 
-head(pin_data2)
+## 2006 Composite Tax Rates for Municipalities
+muni_taxrates <- pin_data %>% 
+  group_by(clean_name)  %>%
+  
+  summarize(
+    av = sum(av, na.rm = TRUE),
+    eav = sum(eav, na.rm = TRUE),
+    equalized_av = sum(equalized_av, na.rm = TRUE),
+    pins_in_muni = n(),
+    all_exemptions = sum(all_exemptions, na.rm = TRUE),
+    HO_exemps = sum(exe_homeowner, na.rm = TRUE),
+    tax_code_rate = mean(tax_code_rate, na.rm = TRUE), # Changed from first() to mean() on Nov 1
+    final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # used as LEVY amount!! 
+    final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+    tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), 
+    tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), 
+    tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE),
+    rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE), # not used
+    rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE), # not used
+    rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE), # not used
+    tif_share = mean(tif_share, na.rm=TRUE), # not used
+  ) %>%
+  
+  mutate(total_bill_current = final_tax_to_dist + final_tax_to_tif) %>%
+  rename(cur_comp_TC_rate = tax_code_rate) %>%
+  mutate(current_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100),
+         new_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100) + HO_exemps) %>%
+  mutate(new_comp_TC_rate = (final_tax_to_dist / new_taxable_eav)*100) %>%
+  mutate(new_comp_TC_rate = ifelse(is.nan(new_comp_TC_rate), cur_comp_TC_rate, new_comp_TC_rate)) %>%
+  select(clean_name, cur_comp_TC_rate, new_comp_TC_rate, current_taxable_eav, new_taxable_eav, everything())
 
-pin_data2 <- pin_data2 %>% left_join(muni_agency_names)
+muni_taxrates
 
-write_csv()
+tc_mc_summaries <- pin_data %>% 
+  group_by(tax_code_num, major_class_code) %>%
+  summarize(TC_MC_PC = n(),
+            TC_MC_AV = sum(av),
+            TC_MC_EAV = sum(eav),
+            Total_Exemptions = sum(exe_homeowner+exe_senior +exe_freeze + exe_longtime_homeowner +exe_disabled + exe_vet_returning + exe_vet_dis_lt50+ exe_vet_dis_50_69 + exe_vet_dis_ge70 + exe_abate, na.rm = TRUE),
+            GHE_only = sum(exe_homeowner, na.rm = TRUE),
+            ) %>% 
+  left_join(tc_muninames)
+
+
+tc_class_summaries <- pin_data %>% 
+  group_by(tax_code_num, major_class_code, class) %>%
+  summarize(TC_class_PC = n(),
+            TC_class_AV = sum(av),
+            TC_class_EAV = sum(eav),
+            Total_Exemptions = sum(exe_homeowner+exe_senior +exe_freeze + exe_longtime_homeowner +exe_disabled + exe_vet_returning + exe_vet_dis_lt50+ exe_vet_dis_50_69 + exe_vet_dis_ge70 + exe_abate, na.rm = TRUE),
+            GHE_only = sum(exe_homeowner, na.rm = TRUE)) %>% 
+  left_join(tc_muninames)
+  
+tc_mc_summaries %>% ungroup() %>%
+ # group_by(clean_name, major_class_code) %>%
+  reframe(Muni_Prop_PINcount = sum(TC_MC_PC),
+          Muni_Prop_MuniAV = sum(TC_MC_AV),
+          .by=c(clean_name, major_class_code)) %>% 
+  rename(
+    Municipality = clean_name) %>%
+  mutate(Municipality = ifelse(is.na(Municipality), "Unincorporated", Municipality)) %>%
+  arrange(Municipality)
+
+pin_data %>% 
+mutate(class = as.character(class)) %>%
+ filter(class > 599 & class < 900) %>% 
+  group_by(clean_name, major_class_code) %>%
+  summarize(pincount = n()) %>%
+  pivot_wider(id_cols = clean_name, 
+              names_from = "major_class_code", 
+              values_from = "pincount") %>%
+  select( Municipality = clean_name,
+          "6A", "6B", # "6C",  # 6c not used?
+          "7A", "7B", "8") %>% 
+  mutate(Municipality = ifelse(is.na(Municipality), "Unincorporated", Municipality)) %>%
+  arrange(Municipality)
+
+
+
+prop_class_sums <- pin_data %>% 
+ # left_join(nicknames, by = "agency_name") %>%
+  
+  group_by(clean_name, major_class_code, major_class_type )  %>%
+  
+  summarize(
+    av = sum(av, na.rm = TRUE),
+    eav = sum(eav, na.rm = TRUE),
+    equalized_AV = sum(equalized_av, na.rm = TRUE),
+    pins_in_class = n(),
+    current_exemptions = sum(all_exemptions, na.rm = TRUE),
+    HO_exemps = sum(exe_homeowner, na.rm = TRUE),
+    tax_code_rate = mean(tax_code_rate, na.rm = TRUE), # Changed from first() to mean() on Nov 1
+    final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # used as LEVY amount!! 
+    final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+    tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), 
+    tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), 
+    tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE),
+    rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE), # not used
+    rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE), # not used
+    rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE), # not used
+    tif_share = mean(tif_share, na.rm=TRUE), # not used
+  ) %>%
+  
+  mutate(total_bill_current = final_tax_to_dist + final_tax_to_tif) %>%
+  rename(cur_comp_TC_rate = tax_code_rate) %>%
+  mutate(current_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100),
+         new_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100) + HO_exemps) %>%
+  mutate(new_comp_TC_rate = (final_tax_to_dist / new_taxable_eav)*100) %>%
+  mutate(new_comp_TC_rate = ifelse(is.nan(new_comp_TC_rate), cur_comp_TC_rate, new_comp_TC_rate),
+         year = "2006") %>%
+  select(clean_name, major_class_code, HO_exemps, current_exemptions, pins_in_class, current_taxable_eav, new_taxable_eav,  everything())
+
+# muni level by major_class summary
+prop_class_sums 
+
+prop_class_sums2 <- prop_class_sums %>%
+  group_by(clean_name) %>%
+  mutate(muni_PC = sum(pins_in_class,na.rm=TRUE),
+         muni_taxable_eav = sum(current_taxable_eav, na.rm=TRUE),
+         muni_equalized_av = sum(equalized_AV, na.rm=TRUE),
+         muni_av = sum(av, na.rm=TRUE),
+         pct_pins = pins_in_class / muni_PC,
+         pct_taxable_eav = current_taxable_eav / muni_taxable_eav,
+         pct_eq_eav = equalized_AV / muni_equalized_av,
+         pct_av = av / muni_av,
+         year = "2006"
+  ) %>% 
+  mutate_at(vars(pct_pins, pct_taxable_eav, pct_eq_eav, pct_av), funs(round(.,3)))
+
+write_csv(prop_class_sums2, "./Output/7_MC_muni_summaries_2006.csv") 
+
