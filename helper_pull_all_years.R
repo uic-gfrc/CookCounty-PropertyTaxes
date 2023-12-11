@@ -4,36 +4,50 @@
 ## Incentives/Exemptions Over Time    ##
 ## CMAP Project                       ##
 
-######## Libraries/DB Connection ########
 
 
-######## Prep ##############
+
+
+
+######## Libraries/DB Connection/Import Files ########
+
+#### Libraries ####
 
 library(tidyverse)
 library(DBI)
 library(data.table)
-library(ggspatial)
-library(gstat)
 library(here)
 library(httr)
 library(jsonlite)
 library(ptaxsim)
 library(sf)
-library(stars)
 library(glue)
 
-# Create the DB connection with the default name expected by PTAXSIM functions
+#### Open PTAXSIM DB Connection ####
+
+# AWM Path:
 # ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
 
-ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "G:/My Drive/PhD/Cook County Property Taxes/Data Analysis/Working Directory/ptaxsim.db")
+#MVH Path:
+
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db")
+
+#### Load additional files ####
 
 class_dict <- read_csv("./Necessary_Files/class_dict.csv")
+
 nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
 
 
-#### 2006 Data Pull ####
 
-# has EAV values, extensions by agency_num
+
+
+######## Year: 2006 ########
+
+#### Pull PTAXSIM Data ####
+
+#Query agency data table: has EAV values and extensions by agency_num
+
 agency_dt <- DBI::dbGetQuery(
   ptaxsim_db_conn,
   "SELECT *
@@ -42,8 +56,8 @@ agency_dt <- DBI::dbGetQuery(
   "
 )
 
-## has all tax codes and the composite tax rate for the tax code
-## 2917 in 2006
+## Query tax_code data table: has composite rates by tax code for all TCs
+
 tax_codes <- DBI::dbGetQuery(
   ptaxsim_db_conn,
   glue_sql("
@@ -55,7 +69,9 @@ tax_codes <- DBI::dbGetQuery(
   )
 )
 
-## Municipality taxing agencies only + Cicero
+## Query agency_info data table for all minor_type = muni AND the TOWNSHIP
+## of Cicero since it is a Township not Muni
+
 muni_agency_names <- DBI::dbGetQuery(
   ptaxsim_db_conn,
   "SELECT DISTINCT agency_num, agency_name, minor_type
@@ -64,7 +80,9 @@ muni_agency_names <- DBI::dbGetQuery(
   OR agency_num = '020060000'
   "
 )
-## All tax codes that are taxed by an Incorporated Municipality
+
+## Select ONLY TCs within minor_type = muni
+
 muni_tax_codes <- DBI::dbGetQuery(
   ptaxsim_db_conn,
   glue_sql("
