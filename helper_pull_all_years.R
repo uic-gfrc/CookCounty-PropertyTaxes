@@ -14,7 +14,7 @@ library(stars)
 library(glue)
 
 # Create the DB connection with the default name expected by PTAXSIM functions
-ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
+# ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
 
 class_dict <- read_csv("./Necessary_Files/class_dict.csv")
 nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
@@ -246,7 +246,7 @@ muni_taxrates <- pin_data %>%
   mutate(new_comp_TC_rate = ifelse(is.nan(new_comp_TC_rate), cur_comp_TC_rate, new_comp_TC_rate)) %>%
   select(clean_name, cur_comp_TC_rate, new_comp_TC_rate, current_taxable_eav, new_taxable_eav, everything())
 
-muni_taxrates
+
 
 tc_mc_summaries <- pin_data %>%
   group_by(tax_code_num, major_class_code) %>%
@@ -268,44 +268,59 @@ tc_class_summaries <- pin_data %>%
             GHE_only = sum(exe_homeowner, na.rm = TRUE)) %>%
   left_join(tc_muninames)
 
-tc_mc_summaries %>% ungroup() %>%
- # group_by(clean_name, major_class_code) %>%
-  reframe(Muni_Prop_PINcount = sum(TC_MC_PC),
-          Muni_Prop_MuniAV = sum(TC_MC_AV),
-          .by=c(clean_name, major_class_code)) %>%
-  rename(
-    Municipality = clean_name) %>%
-  mutate(Municipality = ifelse(is.na(Municipality), "Unincorporated", Municipality)) %>%
-  arrange(Municipality)
 
-pin_data %>%
-mutate(class = as.character(class)) %>%
- filter(class > 599 & class < 900) %>%
-  group_by(clean_name, major_class_code) %>%
-  summarize(pincount = n()) %>%
-  pivot_wider(id_cols = clean_name,
-              names_from = "major_class_code",
-              values_from = "pincount") %>%
-  select( Municipality = clean_name,
-          "6A", "6B", # "6C",  # 6c not used?
-          "7A", "7B", "8") %>%
-  mutate(Municipality = ifelse(is.na(Municipality), "Unincorporated", Municipality)) %>%
-  arrange(Municipality)
-
-
-
-##### Export File #####
-
-#### 2007 Data Pull ####
-
-
-
-#### 2008 Data Pull ####
 
 prop_class_sums <- pin_data %>%
- # left_join(nicknames, by = "agency_name") %>%
-
   group_by(clean_name, major_class_code, major_class_type )  %>%
+  summarize(
+    av = sum(av, na.rm = TRUE),
+    eav = sum(eav, na.rm = TRUE),
+    equalized_AV = sum(equalized_av, na.rm = TRUE),
+    pins_in_class = n(),
+    current_exemptions = sum(all_exemptions, na.rm = TRUE),
+    HO_exemps = sum(exe_homeowner, na.rm = TRUE),
+    tax_code_rate = mean(tax_code_rate, na.rm = TRUE), # Changed from first() to mean() on Nov 1
+    final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # used as LEVY amount!!
+    final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+    tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE),
+    tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE),
+    tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE),
+    rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE), # not used
+    rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE), # not used
+    rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE), # not used
+    tif_share = mean(tif_share, na.rm=TRUE), # not used
+  ) %>%
+
+  mutate(total_bill_current = final_tax_to_dist + final_tax_to_tif) %>%
+  rename(cur_comp_TC_rate = tax_code_rate) %>%
+  mutate(current_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100),
+         new_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100) + HO_exemps) %>%
+  mutate(new_comp_TC_rate = (final_tax_to_dist / new_taxable_eav)*100) %>%
+  mutate(new_comp_TC_rate = ifelse(is.nan(new_comp_TC_rate), cur_comp_TC_rate, new_comp_TC_rate),
+         year = "2006") %>%
+  select(clean_name, major_class_code, HO_exemps, current_exemptions, pins_in_class, current_taxable_eav, new_taxable_eav,  everything())
+
+prop_class_sums2 <- prop_class_sums %>%
+  group_by(clean_name) %>%
+  mutate(muni_PC = sum(pins_in_class,na.rm=TRUE),
+         muni_taxable_eav = sum(current_taxable_eav, na.rm=TRUE),
+         muni_equalized_av = sum(equalized_AV, na.rm=TRUE),
+         muni_av = sum(av, na.rm=TRUE),
+         pct_pins = pins_in_class / muni_PC,
+         pct_taxable_eav = current_taxable_eav / muni_taxable_eav,
+         pct_eq_eav = equalized_AV / muni_equalized_av,
+         pct_av = av / muni_av,
+         year = "2006"
+  ) %>%
+  mutate_at(vars(pct_pins, pct_taxable_eav, pct_eq_eav, pct_av), funs(round(.,3)))
+
+write_csv(prop_class_sums2, "./Output/all_years_pull/TC_MC_2006.csv")
+
+
+##### Summarized by Class-TC combos ######
+
+prop_class_sums <- pin_data %>%
+  group_by(clean_name, class_code )  %>%
 
   summarize(
     av = sum(av, na.rm = TRUE),
@@ -335,8 +350,7 @@ prop_class_sums <- pin_data %>%
          year = "2006") %>%
   select(clean_name, major_class_code, HO_exemps, current_exemptions, pins_in_class, current_taxable_eav, new_taxable_eav,  everything())
 
-# muni level by major_class summary
-prop_class_sums
+
 
 prop_class_sums2 <- prop_class_sums %>%
   group_by(clean_name) %>%
@@ -352,5 +366,12 @@ prop_class_sums2 <- prop_class_sums %>%
   ) %>%
   mutate_at(vars(pct_pins, pct_taxable_eav, pct_eq_eav, pct_av), funs(round(.,3)))
 
-write_csv(prop_class_sums2, "./Output/7_MC_muni_summaries_2006.csv")
+write_csv(prop_class_sums2, "./Output/TC_class_2006.csv")
 
+
+
+#### 2007 Data Pull ####
+
+
+
+#### 2008 Data Pull ####
