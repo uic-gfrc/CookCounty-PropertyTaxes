@@ -1,3 +1,12 @@
+######### 2006-2021 PTAXSIM Data Pull #########
+## 12/11/2023 MVH/AWM                 ##
+## PTAXSIM DB v.2021.0.4              ##
+## Incentives/Exemptions Over Time    ##
+## CMAP Project                       ##
+
+######## Libraries/DB Connection ########
+
+
 ######## Prep ##############
 
 library(tidyverse)
@@ -15,6 +24,8 @@ library(glue)
 
 # Create the DB connection with the default name expected by PTAXSIM functions
 # ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
+
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "G:/My Drive/PhD/Cook County Property Taxes/Data Analysis/Working Directory/ptaxsim.db")
 
 class_dict <- read_csv("./Necessary_Files/class_dict.csv")
 nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
@@ -90,27 +101,6 @@ cook_pins <- DBI::dbGetQuery(
   .con = ptaxsim_db_conn
   ))
 
-#
-# # Agency number and agency name for all TIFs
-# TIF_agencies <- DBI::dbGetQuery(
-#   ptaxsim_db_conn,
-#   "SELECT DISTINCT agency_num, agency_name, major_type, minor_type
-#   FROM agency_info
-#   WHERE minor_type = 'TIF'
-#   "
-# )
-#
-# unique_tif_taxcodes <- DBI::dbGetQuery(
-#   ptaxsim_db_conn,
-#   glue_sql("
-#   SELECT DISTINCT tax_code_num
-#   FROM tax_code
-#   WHERE agency_num IN ({TIF_agencies$agency_num*})
-#   AND year = 2006
-#   ",
-#   .con = ptaxsim_db_conn
-#   )
-# )
 
 
 # combine taxing agency names and agency type to data table that has eav and extension values
@@ -150,9 +140,6 @@ pin14_bills_2006 <- taxbills_2006 %>%
   )  %>%
   mutate(propclass_1dig = str_sub(class, 1, 1))
 
-head(pin14_bills_2006)
-
-sapply(pin14_bills_2006, function(x) sum(is.na(x)))
 
 rm(taxbills_2006)
 
@@ -320,7 +307,7 @@ write_csv(prop_class_sums2, "./Output/all_years_pull/TC_MC_2006.csv")
 ##### Summarized by Class-TC combos ######
 
 prop_class_sums <- pin_data %>%
-  group_by(clean_name, class_code )  %>%
+  group_by(clean_name, class)  %>%
 
   summarize(
     av = sum(av, na.rm = TRUE),
@@ -348,7 +335,7 @@ prop_class_sums <- pin_data %>%
   mutate(new_comp_TC_rate = (final_tax_to_dist / new_taxable_eav)*100) %>%
   mutate(new_comp_TC_rate = ifelse(is.nan(new_comp_TC_rate), cur_comp_TC_rate, new_comp_TC_rate),
          year = "2006") %>%
-  select(clean_name, major_class_code, HO_exemps, current_exemptions, pins_in_class, current_taxable_eav, new_taxable_eav,  everything())
+  select(clean_name, class, HO_exemps, current_exemptions, pins_in_class, current_taxable_eav, new_taxable_eav, everything())
 
 
 
@@ -366,7 +353,7 @@ prop_class_sums2 <- prop_class_sums %>%
   ) %>%
   mutate_at(vars(pct_pins, pct_taxable_eav, pct_eq_eav, pct_av), funs(round(.,3)))
 
-write_csv(prop_class_sums2, "./Output/TC_class_2006.csv")
+write_csv(prop_class_sums2, "./Output/all_years_pull/TC_class_2006.csv")
 
 
 
