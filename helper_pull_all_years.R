@@ -4,14 +4,9 @@
 ## Incentives/Exemptions Over Time    ##
 ## CMAP Project                       ##
 
+######### Libraries/DB Connection/Import Files #########
 
-
-
-
-
-######## Libraries/DB Connection/Import Files ########
-
-#### Libraries ####
+### Libraries ###
 
 library(tidyverse)
 library(DBI)
@@ -38,11 +33,7 @@ class_dict <- read_csv("./Necessary_Files/class_dict.csv")
 
 nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
 
-
-
-
-
-######## Year: 2006 ########
+######### Year: 2006 #########
 
 #### Pull PTAXSIM Data ####
 
@@ -81,7 +72,7 @@ muni_agency_names <- DBI::dbGetQuery(
   "
 )
 
-## Select ONLY TCs within minor_type = muni
+## Select ONLY TCs within minor_type = muni & Cicero
 
 muni_tax_codes <- DBI::dbGetQuery(
   ptaxsim_db_conn,
@@ -95,6 +86,19 @@ muni_tax_codes <- DBI::dbGetQuery(
   )
 )
 
+ ## Query pin data base for all PINs in munis & Cicero
+
+cook_pins <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql(
+    "SELECT DISTINCT pin, class, tax_code_num
+  FROM pin
+  WHERE tax_code_num IN ({tax_codes$tax_code_num*})
+  AND year = 2006
+  ",
+  .con = ptaxsim_db_conn)
+  )
+
 ## All tax codes.
 ## tax codes within municipalities have additional info
 tc_muninames <- tax_codes %>%
@@ -105,19 +109,6 @@ tc_muninames <- tax_codes %>%
   select(-c(minor_type, short_name, `Column1`, `Most recent reassessed`, agency_number))
 # 2917 in 2006
 
-
-# There are 1,864,594 pins taxed by Cook County in 2021.
-# There are 1,771,314 pins in 2006
-cook_pins <- DBI::dbGetQuery(
-  ptaxsim_db_conn,
-  glue_sql(
-  "SELECT DISTINCT pin, class, tax_code_num
-  FROM pin
-  WHERE tax_code_num IN ({tax_codes$tax_code_num*})
-  AND year = 2006
-  ",
-  .con = ptaxsim_db_conn
-  ))
 
 
 
