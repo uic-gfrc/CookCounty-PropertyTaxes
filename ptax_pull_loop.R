@@ -134,7 +134,6 @@ for(i in years){
   
   rm(taxbills)
   
-  
   # finds all pins within Cook county and data on their exemptions
   # joins tax code variable in 2006 by pin
   exemption_data <- lookup_pin(year_variable, cook_pins$pin) %>%
@@ -143,6 +142,8 @@ for(i in years){
              exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 + exe_abate) %>%
     mutate(zero_bill = ifelse(eav <= all_exemptions, 1, 0),
            has_HO_exemp = ifelse(exe_homeowner > 0, 1, 0))
+  
+  rm(cook_pins)
   
   
   # change variable type to character so the join works.
@@ -157,7 +158,6 @@ for(i in years){
   ## summarize pin level data to the tax code level for each type of property class
   exemptions_inCook_perTC <- exemption_data %>%
     group_by(tax_code_num, class_code
-             #, major_class_code, major_class_type
     ) %>%
     summarize(year = first(year), 
               av = sum(av, na.rm = TRUE),
@@ -175,6 +175,7 @@ for(i in years){
               
     )
   
+  
   exemptions_inCook_perTC <- exemptions_inCook_perTC %>% 
     left_join(tc_muninames)
   
@@ -185,8 +186,11 @@ for(i in years){
            eav =  eav.x,
            equalized_av = eav.y)
   
+  rm(exemptions_data)
+  
+  
   ## Add tax code tax rate to PIN level data
-  pin_data <- left_join(joined_pin_data, tc_muninames, by = c("tax_code" = "tax_code_num"))
+  joined_pin_data <- left_join(joined_pin_data, tc_muninames, by = c("tax_code" = "tax_code_num"))
   
   
   # ## 2006 Composite Tax Rates for Municipalities
@@ -224,7 +228,7 @@ for(i in years){
   # muni_taxrates
   
   
-  year_summaries2 <- pin_data %>% 
+  year_summaries2 <- joined_pin_data %>% 
  # tc_mc_summaries <- pin_data %>% 
     group_by(tax_code_num, major_class_code) %>%
     summarize(TC_MC_PC = n(),
@@ -243,4 +247,4 @@ for(i in years){
 
 } 
 
-write_csv(yearly_summaries, "./Output/ptaxsim_TC_MC_summaries_2006-2021.csv")
+write_csv(year_summaries, "./Output/ptaxsim_TC_MC_summaries_2006-2021.csv")
