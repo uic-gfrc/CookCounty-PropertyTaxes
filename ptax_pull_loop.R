@@ -1,5 +1,6 @@
-# File Prep ----------------------------------------
+# File & Loop Prep ----------------------------------------
 ## AWM & MVH ##
+## 12-17-23 ##
 
 library(tidyverse)
 library(DBI)
@@ -13,22 +14,39 @@ library(stars)
 library(glue)
 
 # Create the DB connection with the default name expected by PTAXSIM functions
+
+# AWM filepath:
 # ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
 
+# MVH filepath:
  ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "ptaxsim.db")
 
+# Load supplemental files w/ "clean" muni names and detail re: class codes.
 
 class_dict <- read_csv("./Necessary_Files/class_dict.csv")
-nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
-years <-(2006:2014 )
 
+nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
+
+ # Set years for loop to run.
+
+years <-(2006:2021)
+
+ # Create empty dataframes for the loop to populate.
 
 muni_level_summary <- NULL
+
 muni_MC_summary <- NULL
+
 muni_class_summary <- NULL
 
 tc_mc_summaries <- NULL
+
 tc_class_summaries <- NULL
+
+
+# Loop Start --------------------------------------------------------------
+
+
 
 for(i in years){
 
@@ -48,19 +66,24 @@ for(i in years){
 
 
   agency_dt<- dbGetQuery(ptaxsim_db_conn, paste('SELECT * FROM agency WHERE year = ', i, ';'))
+
   tax_codes <- dbGetQuery(ptaxsim_db_conn, paste('SELECT DISTINCT tax_code_num, tax_code_rate FROM tax_code WHERE year = ', i, ';'))
 
 
 
   sql <- "SELECT * FROM tax_code WHERE agency_num IN ({muni_agency_names$agency_num*}) AND year = ?year"
+
   query <- sqlInterpolate(ptaxsim_db_conn, sql, year = i)
+
   muni_tax_codes<- dbGetQuery(ptaxsim_db_conn, glue_sql(query, .con = ptaxsim_db_conn))
 
 
 
 
   ## All tax codes.
+
   ## tax codes within municipalities have additional info
+
   tc_muninames <- tax_codes %>%
     left_join(muni_tax_codes) %>%
     left_join(muni_agency_names) %>%
@@ -369,12 +392,12 @@ for(i in years){
 
 # Export CSVs ------------------------------------------------------------
 
-write_csv(muni_level_summary, "./Output/ptaxsim_muni_level_2006-2014.csv")
-write_csv(muni_MC_summary, "./Output/ptaxsim_muni_MC_2006-2014.csv")
-write_csv(muni_class_summary, "./Output/ptaxsim_muni_class_summaries_2006-2014.csv")
+write_csv(muni_level_summary, "./Output/ptaxsim_muni_level_2006-2021.csv")
+write_csv(muni_MC_summary, "./Output/ptaxsim_muni_MC_2006-2021.csv")
+write_csv(muni_class_summary, "./Output/ptaxsim_muni_class_summaries_2006-2021.csv")
 
 
-write_csv(tc_mc_summaries, "./Output/ptaxsim_TC_MC_summaries_2006-2014.csv")
-write_csv(tc_class_summaries, "./Output/ptaxsim_TC_Class_summaries_2006-2014.csv")
+write_csv(tc_mc_summaries, "./Output/ptaxsim_TC_MC_summaries_2006-2021.csv")
+write_csv(tc_class_summaries, "./Output/ptaxsim_TC_Class_summaries_2006-2021.csv")
 
 
