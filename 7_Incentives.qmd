@@ -42,6 +42,8 @@ NBHs <- read_sf("https://datacatalog.cookcountyil.gov/resource/pcdw-pxtg.geojson
 chi_townships = c("WEST", "SOUTH", "HYDE PARK", "LAKE", "NORTH", "JEFFERSON", "LAKE VIEW", "ROGER PARK")
 
 chi_townships2 <- c("Jefferson", "Hyde Park", "Lake", "Lake View", "North Chicago", "South Chicago", "West Chicago" )
+
+class8township <- c("Bloom", "Bremen","Calumet","Rich", "Thornton")
 ```
 
 
@@ -862,7 +864,25 @@ prop_class_sums <- pin_data %>%
 # muni level by major_class summary
 prop_class_sums 
 
+prop_class_sums2 <- prop_class_sums %>%
+  group_by(clean_name) %>%
+  mutate(muni_PC = sum(pins_in_class, na.rm=TRUE),
+         muni_taxable_eav = sum(current_taxable_eav, na.rm = TRUE),
+         muni_equalized_av = sum(equalized_AV, na.rm=TRUE),
+         muni_av = sum(av, na.rm=TRUE),
+         pct_pins = pins_in_class / muni_PC,
+         pct_taxable_eav = current_taxable_eav / muni_taxable_eav,
+         pct_eq_eav = equalized_AV / muni_equalized_av,
+         pct_av = av / muni_av,
+         year = "2021"
+  ) %>% 
+  mutate_at(vars(pct_pins, pct_taxable_eav, pct_eq_eav, pct_av), funs(round(.,3)))
 
+prop_class_sums2  
+
+ write_csv(prop_class_sums2, "./Output/7_MC_muni_summaries_2021.csv") 
+
+# write_csv(prop_class_sums, "./Output/7_TC_MC_summaries.csv")
 ```
 
 
