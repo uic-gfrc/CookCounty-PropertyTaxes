@@ -267,7 +267,6 @@ muni's avg composite tax rates. 4c_muni_rates.csv may have had incorrect rates -
 > Download 4C_joined_PINs from [Box link here: ](https://uofi.box.com/s/cvp7pdjkx8kth7o0vg9itpra3z8vfkzq). I would move the downloaded file into your R project and then the code below should work without changing the file path. 
 
 ```{r}
-
 pin_data2 <- read_csv("./Output/4C_joined_PINs_bills_and_exemptions.csv")
 
 # head(pin_data2)
@@ -279,6 +278,27 @@ pin_data2 <- pin_data2 %>%
     bill_noGHE = new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
     bill_noexemps = new_comp_TC_rate/100*(equalized_AV),
     bill_change = bill_noGHE - bill_current)
+```
+
+```{r}
+C2_munistats <- pin_data2 %>% 
+  filter(class > 199 & class < 300) %>%
+  group_by(agency_name)  %>%
+  arrange(av) %>%
+  summarize(
+    median_eav = round(median(eav)), 
+    median_av = round(median(av)), 
+    avg_av = round(mean(av)),
+    avg_eav = round(mean(eav)),
+    C2_pins_in_muni = n(),
+    C2_current_exemptions = sum(all_exemptions, na.rm = TRUE),
+    C2_HO_exemps = sum(exe_homeowner, na.rm = TRUE),
+  )
+
+```
+
+```{r}
+eq_2021 <- 3.0027
 
 
 muni_taxrates <- pin_data2 %>% 
@@ -286,8 +306,10 @@ muni_taxrates <- pin_data2 %>%
   arrange(av) %>%
   
   summarize(
-   # median_eav = round(median(eav)), # includes ALL property types!! 
-    #median_av = round(median(av)),  # includes ALL property types!! 
+    muni_median_av = median(av, na.rm=TRUE),
+    muni_median_eav = median(eav, na.rm=TRUE),
+    muni_mean_av = round(mean(av, na.rm=TRUE)),
+    muni_mean_eav = round(mean(eav, na.rm=TRUE)),
     av = sum(av, na.rm = TRUE),
     eav = sum(eav, na.rm = TRUE),
     equalized_AV = sum(equalized_AV, na.rm = TRUE),
@@ -311,49 +333,23 @@ muni_taxrates <- pin_data2 %>%
   mutate(current_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100),
          new_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100) + HO_exemps) %>%
   mutate(new_comp_TC_rate = (final_tax_to_dist / new_taxable_eav)*100) %>%
-  mutate(new_comp_TC_rate = ifelse(is.nan(new_comp_TC_rate), cur_comp_TC_rate, new_comp_TC_rate)) %>%
-  select(agency_name, cur_comp_TC_rate, new_comp_TC_rate, current_taxable_eav, new_taxable_eav, everything())
+  
+  mutate(new_comp_TC_rate = ifelse(is.nan(new_comp_TC_rate), cur_comp_TC_rate, new_comp_TC_rate)) %>% 
+  
+  left_join(C2_munistats) %>%
+  
+  mutate(rate_change = cur_comp_TC_rate - new_comp_TC_rate,
+    nobillchange_propertyEAV = round(10000 * ((cur_comp_TC_rate/100) / (rate_change/100))),
+    nochange_av = round(nobillchange_propertyEAV / eq_2021),
+         nochange_ratio = nochange_av / median_av) %>%
+  select(agency_name, median_av, nochange_av, nochange_ratio, cur_comp_TC_rate, new_comp_TC_rate, current_taxable_eav, new_taxable_eav, everything())
 
 muni_taxrates 
 
-#muni_taxrates %>% write_csv("./Output/4C_muni_taxrates.csv")
-
-
-muni_taxrates_C2 <- pin_data2 %>% 
-  filter(class > 199 & class < 300) %>%
-  group_by(agency_name)  %>%
-  arrange(av) %>%
-  summarize(
-    median_eav = round(median(eav)), 
-    median_av = round(median(av)), 
-    av = sum(av, na.rm = TRUE),
-    eav = sum(eav, na.rm = TRUE),
-    equalized_AV = sum(equalized_AV, na.rm = TRUE),
-    C2_pins_in_muni = n(),
-    C2_current_exemptions = sum(all_exemptions, na.rm = TRUE),
-    C2_HO_exemps = sum(exe_homeowner, na.rm = TRUE),
-    C2_tax_code_rate = mean(tax_code_rate, na.rm = TRUE), # Changed from first() to mean() on Nov 1
-    C2_final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # used as LEVY amount!! 
-    C2_final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
-    tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), 
-    tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), 
-    tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE),
-    rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE), # not used
-    rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE), # not used
-    rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE), # not used
-    tif_share = mean(tif_share, na.rm=TRUE), # not used
-  ) %>%
-  
-  mutate(C2_total_bill_current = C2_final_tax_to_dist + C2_final_tax_to_tif) %>%
-  rename(C2_cur_comp_TC_rate = C2_tax_code_rate) %>%
-  mutate(C2_current_taxable_eav = C2_final_tax_to_dist/(C2_cur_comp_TC_rate/100),
-         C2_new_taxable_eav = C2_final_tax_to_dist/(C2_cur_comp_TC_rate/100) + C2_HO_exemps) %>%
-  mutate(C2_new_comp_TC_rate = (C2_final_tax_to_dist / C2_new_taxable_eav)*100) %>%
-  mutate(C2_new_comp_TC_rate = ifelse(is.nan(C2_new_comp_TC_rate), C2_cur_comp_TC_rate, C2_new_comp_TC_rate)) %>%
-  select(agency_name, C2_cur_comp_TC_rate, C2_new_comp_TC_rate, C2_current_taxable_eav, C2_new_taxable_eav, everything())
-
-muni_taxrates_C2
+muni_taxrates %>% write_csv("./Output/4C_muni_taxrates.csv")
 ```
+
+
 ## Most Common Class 2 Property Type
 
 203 is most common in Riverdale, Phoenix, and Park Forest.
@@ -400,6 +396,49 @@ pin_data2 %>%
   #   scale_y_continuous(limits = c(0, 1500))+
   labs(title = "PIN AV Distribution for All Class 2 Properties", x="AV", y="Number of PINs") +
   facet_wrap(~agency_name)
+
+
+
+
+pin_data2 %>%
+  #  filter(major_class_code == 2 & agency_name == "VILLAGE OF PARK FOREST") %>% 
+  filter((class > 199 & class < 300) &  agency_name == "VILLAGE OF PHOENIX") %>%
+         #  agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF RIVERDALE", "VILLAGE OF WINNETKA")) %>%
+  group_by(agency_name) %>%
+  ggplot() +
+  geom_histogram(aes(x = av, bins = 100)) +
+  geom_vline(aes(xintercept = median(av, na.rm=TRUE), color = "red")) +
+  geom_vline(aes(xintercept = 7974), linetype = "dashed", label = "Breakeven AV") +
+  theme_classic()+
+  theme(legend.position = "none") + 
+  geom_text(aes(x=(median(av)), y = 450, label = median(av))) +
+  geom_text(aes(x=14000, y = 350), label = "Breakeven AV = $7,974") +
+  scale_x_continuous(limits = c(-5, 50000)) +
+  #   scale_y_continuous(limits = c(0, 1500))+
+  labs(title = "Phoneix PIN AV Distribution for All Class 2 Properties", x="AV", y="Number of PINs",
+      caption =  "Median AV is $3,502, Breakeven AV is $7,974") 
+
+
+
+
+
+
+pin_data2 %>%
+  filter((class > 199 & class < 300) &  agency_name == "CITY OF CHICAGO") %>%
+  ggplot() +
+  geom_histogram(aes(x = av, bins = 100)) +
+  geom_vline(aes(xintercept = median(av, na.rm=TRUE), color = "red")) +
+  geom_vline(aes(xintercept = 84228), linetype = "dashed") +
+  theme_classic()+
+  theme(legend.position = "none") + 
+  geom_text(aes(x=median(av)+20000, y = 300000, label = median(av))) +
+ geom_text(aes(x=100000, y = 200000), label = "Breakeven AV = $84,228") +
+
+  scale_x_continuous(limits = c(-5, 500000), labels = scales::dollar) +
+  scale_y_continuous(limits = c(0, 300000))+
+  labs(title = "Chicago PIN AV Distribution for All Class 2 Properties", 
+       x="AV", y="Number of PINs",
+      caption =  "Median AV is ~$21,000, Breakeven AV is ~$84,000") 
 ```
 
 
@@ -552,47 +591,55 @@ muni_taxrates_C2 %>%
 ```
 
 
+
 ```{r}
-nobillchange <- muni_taxrates_C2 %>%
-  #  filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF RIVERDALE", "VILLAGE OF WINNETKA")) %>%
-  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
-         nobillchange_propertyEAV = round(10000 * ((C2_cur_comp_TC_rate/100) / (rate_change/100)))) %>%
-  filter(is.finite(nobillchange_propertyEAV) )%>%
-  select(agency_name, nobillchange_propertyEAV, rate_change, everything())
-
-nobillchange
-
-eq_2021 <- 3.0027
-
+nobillchange <- muni_taxrates
 
 nobillchange %>%       
-  filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF RIVERDALE", "VILLAGE OF WINNETKA")) %>%
+  filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF RIVERDALE", "VILLAGE OF WINNETKA", "CITY OF CHICAGO")) %>%
   ggplot(aes(y=median_av, x = agency_name)) +
   geom_col()+
   #geom_text(aes(x =(nobillchange_propertyEAV), y = (median_eav+5000)), size = 1.5) +
   scale_y_continuous(labels = scales::dollar) +
   theme_classic() +
-  scale_x_discrete(label = c("Park Forest", "Phoenix", "Riverdale", "Winnetka")) + 
+  scale_x_discrete(label = c("Chicago","Park Forest", "Phoenix", "Riverdale", "Winnetka")) + 
   labs(y = "Median Residential AV", x = "", title = "Median Residential Property Assessed Value - All Class 2 property Types")
 
 
 nobillchange %>%       
-  filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF RIVERDALE", "VILLAGE OF WINNETKA")) %>%
+  filter(agency_name %in% c("CITY OF CHICAGO", "VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF RIVERDALE", "VILLAGE OF WINNETKA")) %>%
   ggplot(aes(y=(nobillchange_propertyEAV/eq_2021), x = agency_name)) +
   geom_col() +
   geom_text(aes(y=(nobillchange_propertyEAV/eq_2021)+3000, label = round(nobillchange_propertyEAV/eq_2021)) ) +
   scale_y_continuous(labels = scales::dollar) +
   theme_classic() +
-  scale_x_discrete(label = c("Park Forest", "Phoenix", "Riverdale", "Winnetka")) + 
+  scale_x_discrete(label = c("Chicago", "Park Forest", "Phoenix", "Riverdale", "Winnetka")) + 
   labs(y = "Breakeven Point - Assessed Value", x = "", title = "Residential Property Assessed Value Breakeven Point", caption = "Residential properties above these values would have their bills decrease if the GHE were eliminated.")
+```
+
+```{r}
+
+nochange <- C2_munistats %>% left_join(muni_taxrates)
+
+
+nochange %>%
+  ggplot(aes(x=nochange_av, 
+             y = median_av, 
+             label=agency_name
+             )) +
+  geom_point() +
+ # geom_smooth(method = "lm" )+
+  geom_text(aes(x = (nochange_av), y = (median_av+1000)), size = 2)+
+  theme_classic() +
+  scale_x_continuous(labels = scales::dollar) +
+  scale_y_continuous(labels = scales::dollar) +
+  labs(x = "AV of Class 2 Property w/ No Bill Change", y = "Median AV of Class 2 Properties in Municipality", title = "Highly valued homes would have lower tax bills if the GHE were eliminated")
 ```
 
 
 ```{r}
-muni_taxrates_C2 %>%
+muni_taxrates %>%
       filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF RIVERDALE", "VILLAGE OF WINNETKA")) %>%
-  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
-         nobillchange_propertyEAV = round(10000 * ((C2_cur_comp_TC_rate/100) / (rate_change/100)))) %>%
   select(agency_name, nobillchange_propertyEAV, rate_change, everything()) %>%
  # filter(nobillchange_propertyEAV < 7000000) %>% 
   ggplot(aes(x=nobillchange_propertyEAV, y = median_eav, label=agency_name)) +
@@ -609,10 +656,8 @@ muni_taxrates_C2 %>%
 
 
 
-muni_taxrates_C2 %>%
+muni_taxrates %>%
       filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF RIVERDALE") ) %>%
-  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
-         nobillchange_propertyEAV = round(10000 * ((C2_cur_comp_TC_rate/100) / (rate_change/100)))) %>%
   filter(is.finite(nobillchange_propertyEAV) )%>%
   select(agency_name, nobillchange_propertyEAV, rate_change, everything()) %>%
  # filter(nobillchange_propertyEAV < 7000000) %>% 
@@ -626,11 +671,9 @@ muni_taxrates_C2 %>%
        subtitle = "Yes, in very, very rare cases. ")
 
 
-muni_taxrates_C2 %>%
+muni_taxrates %>%
     #  filter(agency_name == "VILLAGE OF WINNETKA") %>%
         filter(median_eav > 150000) %>%
-  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
-         nobillchange_propertyEAV = round(10000 * ((C2_cur_comp_TC_rate/100) / (rate_change/100)))) %>%
   filter(is.finite(nobillchange_propertyEAV) ) %>%
   select(agency_name, nobillchange_propertyEAV, rate_change, everything()) %>%
   #filter(nobillchange_propertyEAV < 7000000) %>% 
@@ -644,14 +687,12 @@ muni_taxrates_C2 %>%
        caption = "A $500K home in Winnetka would benefit if everyone else lost their General Homestead Exemption")
 
 
-muni_taxrates_C2 %>%
-  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
-         nobillchange_propertyEAV = round(10000 * ((C2_cur_comp_TC_rate/100) / (rate_change/100)))) %>%
+muni_taxrates  %>%
   filter(is.finite(nobillchange_propertyEAV) ) %>%
   select(agency_name,   nobillchange_propertyEAV, rate_change, everything()) %>%
 #  filter(nobillchange_propertyEAV < 7000000) %>% 
   ggplot(aes(x=nobillchange_propertyEAV, y = median_eav, label=agency_name)) +
-  geom_smooth(method = "lm" )+
+  # geom_smooth(method = "lm" )+
   geom_text(aes(x = (nobillchange_propertyEAV), y = (median_eav+1000)), size = 2)+
   theme_classic() +
   scale_x_continuous(labels = scales::dollar) +
@@ -660,9 +701,7 @@ muni_taxrates_C2 %>%
        subtitle = "In very, very rare instances: yes. ")
 
 
-muni_taxrates_C2 %>%
-  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
-         nobillchange_propertyEAV = round(10000 * ((C2_cur_comp_TC_rate/100) / (rate_change/100)))) %>%
+muni_taxrates %>%
   select(agency_name,   nobillchange_propertyEAV, rate_change, everything()) %>%
 #  filter(nobillchange_propertyEAV < 7000000) %>% 
   ggplot(aes(y=rate_change, x = median_eav, label=agency_name)) +
@@ -672,9 +711,7 @@ muni_taxrates_C2 %>%
   labs(x= "EAV of Class 2 Property w/ No Bill Change", y = "Composite Tax Rate Change (Percentage Points)", title = "EAV of Residential Property 'Breakeven Point' & Composite Tax Rate Change 
        from Elimination of GHE")
 
-muni_taxrates_C2 %>%
-  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
-         nobillchange_propertyEAV = round(10000 * ((C2_cur_comp_TC_rate/100) / (rate_change/100)))) %>%
+muni_taxrates %>%
   select(agency_name,   nobillchange_propertyEAV, rate_change, everything()) %>%
   ggplot(aes(y=rate_change, x = median_av, label=agency_name)) +
   geom_point() +
@@ -683,9 +720,7 @@ muni_taxrates_C2 %>%
   labs(x= "AV of Class 2 Property w/ No Bill Change", y = "Composite Tax Rate Change (Percentage Points)", title = "AV of Residential Property 'Breakeven Point' & Composite Tax Rate Change 
        from Elimination of GHE")
 
-muni_taxrates_C2 %>%
-  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
-         nobillchange_propertyEAV = round(10000 * ((C2_cur_comp_TC_rate/100) / (rate_change/100)))) %>%
+muni_taxrates %>%
   select(agency_name,   nobillchange_propertyEAV, rate_change, everything()) %>%
   ggplot(aes(y=rate_change, x = median_av*10, label=agency_name)) +
   geom_point() +
@@ -702,10 +737,8 @@ muni_taxrates_C2 %>%
 ```{r}
 
 
-muni_taxrates_C2 %>%
+muni_taxrates%>%
       filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF RIVERDALE")) %>%
-  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
-         nobillchange_propertyEAV = round(10000 * ((C2_cur_comp_TC_rate/100) / (rate_change/100)))) %>%
   select(agency_name, nobillchange_propertyEAV, rate_change, everything()) %>%
  # filter(nobillchange_propertyEAV < 7000000) %>% 
   ggplot(aes(y=median_av, x = agency_name)) +
@@ -715,10 +748,9 @@ muni_taxrates_C2 %>%
   theme_classic() +
   labs(y = "Median Residential AV", x = "", title = "Median Residential Property Assessed Value - All Class 2 property Types")
 
-muni_taxrates_C2 %>%
+muni_taxrates %>%
       filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF RIVERDALE")) %>%
-  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
-         nobillchange_propertyEAV = round(10000 * ((C2_cur_comp_TC_rate/100) / (rate_change/100)))) %>%
+
   select(agency_name, nobillchange_propertyEAV, rate_change, everything()) %>%
  # filter(nobillchange_propertyEAV < 7000000) %>% 
   ggplot(aes(y=median_av*10, x = agency_name)) +
@@ -729,10 +761,8 @@ muni_taxrates_C2 %>%
   labs(y = "Median Residential Market Value", x = "", title = "Median Residential Market Value (AV*10) - All Class 2 property Types")
 
 
-muni_taxrates_C2 %>%
+muni_taxrates %>%
       filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF RIVERDALE")) %>%
-  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
-         nobillchange_propertyEAV = round(10000 * ((C2_cur_comp_TC_rate/100) / (rate_change/100)))) %>%
   select(agency_name, nobillchange_propertyEAV, rate_change, everything()) %>%
   ggplot(aes(y=median_eav, x = agency_name)) +
   geom_col()+
@@ -741,10 +771,9 @@ muni_taxrates_C2 %>%
   labs(y = "Median Residential EAV", x = "", title = "Median Residential EAV - All Class 2 property Types")
 
 
-muni_taxrates_C2 %>%
+muni_taxrates %>%
       filter(agency_name %in% c("VILLAGE OF GLENCOE", "VILLAGE OF WINNETKA")) %>%
-  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
-         nobillchange_propertyEAV = round(10000 * ((C2_cur_comp_TC_rate/100) / (rate_change/100)))) %>%
+
   select(agency_name, nobillchange_propertyEAV, rate_change, everything()) %>%
   ggplot(aes(y=median_av, x = agency_name)) +
   geom_col()+
@@ -752,10 +781,9 @@ muni_taxrates_C2 %>%
   theme_classic() +
   labs(y = "Median Residential AV", x = "", title = "Median Residential Property AV - All Class 2 property Types")
 
-muni_taxrates_C2 %>%
+muni_taxrates %>%
       filter(agency_name %in% c("VILLAGE OF GLENCOE", "VILLAGE OF WINNETKA")) %>%
-  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
-         nobillchange_propertyEAV = round(10000 * ((C2_cur_comp_TC_rate/100) / (rate_change/100)))) %>%
+
   select(agency_name, nobillchange_propertyEAV, rate_change, everything()) %>%
   ggplot(aes(y=median_av*10, x = agency_name)) +
   geom_col()+
@@ -766,10 +794,8 @@ muni_taxrates_C2 %>%
 
 
 
-muni_taxrates_C2 %>%
+muni_taxrates %>%
       filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF RIVERDALE", "VILLAGE OF WINNETKA")) %>%
-  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
-         nobillchange_propertyEAV = round(10000 * ((C2_cur_comp_TC_rate/100) / (rate_change/100)))) %>%
   select(agency_name, nobillchange_propertyEAV, rate_change, everything()) %>%
   ggplot(aes(y=nobillchange_propertyEAV, x = agency_name)) +
   geom_col()+
@@ -782,10 +808,9 @@ muni_taxrates_C2 %>%
 
 
 
-muni_taxrates_C2 %>%
+muni_taxrates %>%
       filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF RIVERDALE", "VILLAGE OF WINNETKA")) %>%
-  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
-         nobillchange_propertyEAV = round(10000 * ((C2_cur_comp_TC_rate/100) / (rate_change/100)))) %>%
+
   select(agency_name, nobillchange_propertyEAV, rate_change, everything()) %>%
   ggplot(aes(y=nobillchange_propertyEAV/3*10, x = agency_name)) +
   geom_col()+
@@ -858,40 +883,6 @@ pin_data2 %>%
 
 ```
 
-
-```{r eval=FALSE, include = FALSE}
-options(scipen=999 )
-
-nobillchange <- muni_taxrates_C2 %>%
-  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
-         nobillchange_propertyEAV = round(10000/(rate_change/100))) %>%
-  filter(is.finite(nobillchange_propertyEAV) )%>%
-  select(agency_name, nobillchange_propertyEAV, rate_change, everything())
-
-nobillchange
-
-
-nobillchange %>%
-  filter(nobillchange_propertyEAV < 7000000) %>% 
-  ggplot(aes(x=nobillchange_propertyEAV, y = median_eav, label=agency_name)) +
-  geom_point()+
-  geom_text(aes(x =(nobillchange_propertyEAV), y = (median_eav+5000)), size = 1.5) +
-  theme_classic()
-
-
-nobillchange %>%
-  ggplot(aes(x=nobillchange_propertyEAV, y = median_eav, label=agency_name)) +
-  geom_smooth(method = "lm" )+
-  geom_text(aes(x = (nobillchange_propertyEAV), y = (median_eav+5000)), size = 1.5)+
-  theme_classic() +
-  labs(x = "EAV of Property w/ No Bill Change", y = "Median EAV of Municipality", title = "Municipality's Median EAV & EAV Where ") +
-  scale_x_continuous(labels = scales::dollar) +
-  scale_y_continuous(labels = scales::dollar)
-
-
-cor(nobillchange$median_eav, nobillchange$nobillchange_propertyEAV)
-
-```
 
 ## Bill Distributions 
 
@@ -1121,12 +1112,14 @@ filter(pin_AV > 0) %>%
 ```
 
 
+### Class 203 tables
 
 ```{r}
 tax_bill_change_HO <- pin_data2 %>% 
 filter(pin_AV > 0) %>% 
   filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF WINNETKA", "VILLAGE OF RIVERDALE")) %>%
-  filter(class == 203) %>% 
+ filter(class == 203) %>% 
+
   arrange(av) %>%
     mutate(bill_current = (final_tax_to_dist + final_tax_to_tif),
          bill_noexemps =  new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
@@ -1146,6 +1139,7 @@ pin_data2 %>%
 filter(pin_AV > 0) %>% 
   filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF WINNETKA", "VILLAGE OF RIVERDALE")) %>%
     filter(class == 203) %>% 
+
   arrange(av) %>%
   mutate(median_EAV = median(eav),
             median_bill_cur = round(median(bill_current)),
@@ -1158,6 +1152,7 @@ pin_data2 %>%
 filter(pin_AV > 0) %>% 
   filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF WINNETKA", "VILLAGE OF RIVERDALE")) %>%
   filter(class == 203) %>% 
+
   arrange(av) %>%
     mutate(bill_current = (final_tax_to_dist + final_tax_to_tif),
          bill_noexemps =  new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
@@ -1192,6 +1187,64 @@ The median EAV for all Class 2 properties is 17,163 in Riverdale.
 
 Winnetka class 203 median properties have a decrease of \$281 if they didn't claim homestead exemptions currently and increased \$608 f they did already claim the general homestead exemption. 37 people do not claim the exemption and 91 people do claim the general homestead exemption.
 ~~A home with EAV above 5,159,327 EAV  would experience a lower tax bill and homes below 5,159,327 EAV would experience an increase in their taxbill.~~  The median EAV for all Class 2 properties is 249,018 EAV in Winnetka.
+
+### All Class 2 Summary Tables
+```{r}
+tax_bill_change_HO <- pin_data2 %>% 
+  filter(pin_AV > 0) %>% 
+  filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF WINNETKA", "VILLAGE OF RIVERDALE")) %>%
+    filter(class >199 & class < 300) %>% 
+
+  arrange(av) %>%
+    mutate(bill_current = (final_tax_to_dist + final_tax_to_tif),
+         bill_noexemps =  new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
+         bill_change = bill_noexemps - bill_current) %>%
+  group_by(agency_name, has_HO_exemp) %>% 
+  summarize(median_AV = median(av),
+            median_EAV = median(eav),
+            median_bill_cur = round(median(bill_current)),
+            median_bill_new = round(median(bill_noexemps)),
+            median_change = round(median(bill_change)),
+            pincount=n(),
+            perceived_savings = median(tax_amt_exe))
+
+tax_bill_change_HO
+
+pin_data2 %>% 
+filter(pin_AV > 0) %>% 
+  filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF WINNETKA", "VILLAGE OF RIVERDALE")) %>%
+    #filter(class == 203) %>% 
+    filter(class >199 & class < 300) %>% 
+
+  arrange(av) %>%
+  mutate(median_EAV = median(eav),
+            median_bill_cur = round(median(bill_current)),
+            median_bill_new = round(median(bill_noexemps)),
+            median_change = round(median(bill_change)),
+            pincount=n(),
+            perceived_savings = median(tax_amt_exe))
+
+pin_data2 %>% 
+filter(pin_AV > 0) %>% 
+  filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF WINNETKA", "VILLAGE OF RIVERDALE")) %>%
+  #filter(class == 203) %>% 
+    filter(class >199 & class < 300) %>% 
+
+  arrange(av) %>%
+    mutate(bill_current = (final_tax_to_dist + final_tax_to_tif),
+         bill_noexemps =  new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
+         bill_change = bill_noexemps - bill_current) %>%
+  group_by(agency_name, zero_bill, has_HO_exemp) %>% 
+  summarize(median_AV = median(av),
+            median_EAV = median(eav),
+            median_bill_cur = round(median(bill_current)),
+            median_bill_new = round(median(bill_noexemps)),
+            median_change = round(median(bill_change)),
+            pincount=n(),
+            perceived_savings = median(tax_amt_exe))
+
+```
+
 
 # Muni Comparison of AVs and Tax Bills
 
@@ -1281,9 +1334,11 @@ filter(pin_AV > 0) %>%
 
 ```
 
-### Class 203 only
 
-```{r}
+
+```{r eval=FALSE, include = FALSE}
+### Class 203 only 
+
 pin_data2 %>% 
 filter(pin_AV > 0) %>% 
   filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF WINNETKA", "VILLAGE OF RIVERDALE")) %>%
@@ -1451,7 +1506,8 @@ medianEAVs_inMunis <- pin_data2 %>%
     bill_current = (final_tax_to_dist + final_tax_to_tif),
     bill_noexemps =  new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
     bill_change = bill_noexemps - bill_current) %>%
-  group_by(agency_name, has_HO_exemp) %>%
+  group_by(agency_name, has_HO_exemp) %>% 
+  left_join(C2_munistats) %>%
   summarize(median_AV = median(av),
             median_equalizedAV =  median(equalized_AV),
             taxable_eav = mean(equalized_AV-all_exemptions+exe_homeowner),
@@ -1462,6 +1518,8 @@ medianEAVs_inMunis <- pin_data2 %>%
             cur_comp_TC_rate = mean(cur_comp_TC_rate),
             new_comp_TC_rate = mean(new_comp_TC_rate),
             pincount=n())
+
+#write_csv(medianEAVs_inMunis, "data_request_01042023_munimedianproperty_billchanges.csv")
 
 # Bill change calculations for properties with AVs of $150,000
 pin_data2 %>% 
