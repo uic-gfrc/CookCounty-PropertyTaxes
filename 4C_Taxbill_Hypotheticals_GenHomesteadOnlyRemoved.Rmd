@@ -154,11 +154,7 @@ pin_data <- left_join(pin_data, tax_codes, by = c("tax_code" = "tax_code_num"))
 
 
 
-## Calculate new tax rates
-
-
-
-```{r taxcode-taxrates, eval = FALSE}
+```{r taxcode-taxrates, eval = FALSE, include=FALSE}
 # taxcodes_by_class_current <- pin_data %>% 
 #   group_by(tax_code, class)  %>%
 #   
@@ -231,6 +227,7 @@ taxcode_taxrates <- taxcodes_current %>%
 
 
 ### Summarizing it from tax code to municipality weights the rates incorrectly (since some tax codes have waaaay more pins than others) ### 
+## First 4c_tc_taxrates.csv file was off because of this.
 
 
 # taxcode_taxrates %>% 
@@ -239,7 +236,8 @@ taxcode_taxrates <- taxcodes_current %>%
 #   summarize(cur_comp_TC_rate = mean(cur_comp_TC_rate, na.rm=TRUE),
 #             new_comp_TC_rate = mean(new_comp_TC_rate, na.rm = TRUE)) %>% right_join(muni_agency_names) %>%
 #   arrange(agency_name) 
-# %>% write_csv("4c_tc_taxrates.csv")
+# %>% 
+# write_csv("4c_tc_taxrates.csv")
 
 
 
@@ -260,16 +258,12 @@ pin_data2 <- pin_data2 %>% left_join(muni_tax_codes)
 pin_data2 <- pin_data2 %>% left_join(muni_agency_names)
 
 write_csv(pin_data2, "./Output/4C_joined_PINs_bills_and_exemptions.csv")
-
-#head(pin_data2)
-
 ```
 
 <!--- Changed calculation for muni tax rates below on November 1st. 
 When aggregating pin tax bills to the municipality level, first(tax_code_rate)
 was used instead of avg(tax_code_rate) which probably messes up a few 
 muni's avg composite tax rates. 4c_muni_rates.csv may have had incorrect rates --->
-<<<<<<< HEAD
 
 
 > Download 4C_joined_PINs from [Box link here: ](https://uofi.box.com/s/cvp7pdjkx8kth7o0vg9itpra3z8vfkzq). I would move the downloaded file into your R project and then the code below should work without changing the file path. 
@@ -277,9 +271,6 @@ muni's avg composite tax rates. 4c_muni_rates.csv may have had incorrect rates -
 ```{r}
 
 pin_data2 <- read_csv("./Output/4C_joined_PINs_bills_and_exemptions.csv")
-
-# head(pin_data2)
-# dim(pin_data2)
 
 pin_data2 <- pin_data2 %>% 
   mutate(
@@ -320,7 +311,7 @@ muni_taxrates <- pin_data2 %>%
 
 muni_taxrates 
 
-muni_taxrates %>% write_csv("./Output/4C_muni_taxrates.csv")
+# muni_taxrates %>% write_csv("./Output/4C_muni_taxrates.csv")
 ```
 
 ## Bill Distributions 
