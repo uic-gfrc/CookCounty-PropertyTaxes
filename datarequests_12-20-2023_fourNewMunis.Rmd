@@ -31,6 +31,12 @@ Exemption data per PIN was pulled from PTAXSIM in file `3_.....rmd`.
 ```{r}
 ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
 
+eq_factor <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT*
+  FROM eq_factor
+  "
+)
 
 muni_agency_names <- DBI::dbGetQuery(
   ptaxsim_db_conn,
@@ -447,10 +453,9 @@ pin_data2 %>%
 
 
 
-
 ### Property Value where Bill doesn't change
 
-```{r}
+```{r wrong-calc, eval=FALSE, include = FALSE}
 options(scipen=999 )
 
 nobillchange <- muni_taxrates_C2 %>%
@@ -466,7 +471,7 @@ nobillchange
 muni_taxrates_C2 %>%
       filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF RIVERDALE", "VILLAGE OF WINNETKA")) %>%
   mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
-         nobillchange_propertyEAV = round(10000/(rate_change/100)) ) %>%
+         nobillchange_propertyEAV = round(10000 / (rate_change/100))) %>%
   select(agency_name, nobillchange_propertyEAV, rate_change, everything()) %>%
  # filter(nobillchange_propertyEAV < 7000000) %>% 
   ggplot(aes(x=nobillchange_propertyEAV, y = median_eav, label=agency_name)) +
@@ -547,6 +552,253 @@ muni_taxrates_C2 %>%
 ```
 
 
+```{r}
+nobillchange <- muni_taxrates_C2 %>%
+  #  filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF RIVERDALE", "VILLAGE OF WINNETKA")) %>%
+  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
+         nobillchange_propertyEAV = round(10000 * ((C2_cur_comp_TC_rate/100) / (rate_change/100)))) %>%
+  filter(is.finite(nobillchange_propertyEAV) )%>%
+  select(agency_name, nobillchange_propertyEAV, rate_change, everything())
+
+nobillchange
+
+eq_2021 <- 3.0027
+
+
+nobillchange %>%       
+  filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF RIVERDALE", "VILLAGE OF WINNETKA")) %>%
+  ggplot(aes(y=median_av, x = agency_name)) +
+  geom_col()+
+  #geom_text(aes(x =(nobillchange_propertyEAV), y = (median_eav+5000)), size = 1.5) +
+  scale_y_continuous(labels = scales::dollar) +
+  theme_classic() +
+  scale_x_discrete(label = c("Park Forest", "Phoenix", "Riverdale", "Winnetka")) + 
+  labs(y = "Median Residential AV", x = "", title = "Median Residential Property Assessed Value - All Class 2 property Types")
+
+
+nobillchange %>%       
+  filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF RIVERDALE", "VILLAGE OF WINNETKA")) %>%
+  ggplot(aes(y=(nobillchange_propertyEAV/eq_2021), x = agency_name)) +
+  geom_col() +
+  geom_text(aes(y=(nobillchange_propertyEAV/eq_2021)+3000, label = round(nobillchange_propertyEAV/eq_2021)) ) +
+  scale_y_continuous(labels = scales::dollar) +
+  theme_classic() +
+  scale_x_discrete(label = c("Park Forest", "Phoenix", "Riverdale", "Winnetka")) + 
+  labs(y = "Breakeven Point - Assessed Value", x = "", title = "Residential Property Assessed Value Breakeven Point", caption = "Residential properties above these values would have their bills decrease if the GHE were eliminated.")
+```
+
+
+```{r}
+muni_taxrates_C2 %>%
+      filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF RIVERDALE", "VILLAGE OF WINNETKA")) %>%
+  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
+         nobillchange_propertyEAV = round(10000 * ((C2_cur_comp_TC_rate/100) / (rate_change/100)))) %>%
+  select(agency_name, nobillchange_propertyEAV, rate_change, everything()) %>%
+ # filter(nobillchange_propertyEAV < 7000000) %>% 
+  ggplot(aes(x=nobillchange_propertyEAV, y = median_eav, label=agency_name)) +
+  geom_point()+
+  geom_text(aes(x =(nobillchange_propertyEAV), y = (median_eav+5000)), size = 1.5) +
+      scale_x_continuous(labels = scales::dollar) +
+      scale_y_continuous(labels = scales::dollar) +
+  theme_classic() +
+  labs(x = "EAV of Class 2 Property w/ No Bill Change", y = "Median EAV of Municipality", title = "Can homeowners with GHE benefit from removal of the GHE?",
+       subtitle = "Yes, if from a muni with high tax rates and if they have a property valued way above other properties in their taxing district",
+       caption = "Homeowners in municipalities with high tax rates and AV's much higher
+       the median AV in the municipality properties see their bill decrease in GHE removal scenario. 
+       These are extreme situations that should not be used for policy decisions or examples.")
+
+
+
+muni_taxrates_C2 %>%
+      filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF RIVERDALE") ) %>%
+  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
+         nobillchange_propertyEAV = round(10000 * ((C2_cur_comp_TC_rate/100) / (rate_change/100)))) %>%
+  filter(is.finite(nobillchange_propertyEAV) )%>%
+  select(agency_name, nobillchange_propertyEAV, rate_change, everything()) %>%
+ # filter(nobillchange_propertyEAV < 7000000) %>% 
+  ggplot(aes(x=nobillchange_propertyEAV, y = median_eav, label=agency_name)) +
+  geom_point()+
+  geom_text(aes(x =(nobillchange_propertyEAV), y = (median_eav+500)), size = 2) +
+      scale_x_continuous(labels = scales::dollar) +
+      scale_y_continuous(labels = scales::dollar) +
+  theme_classic() +
+  labs(x = "EAV of Class 2 Property w/ No Bill Change", y = "Median EAV of Municipality", title = "Can homeowners have lower tax bills if the GHE exemption was ended?",
+       subtitle = "Yes, in very, very rare cases. ")
+
+
+muni_taxrates_C2 %>%
+    #  filter(agency_name == "VILLAGE OF WINNETKA") %>%
+        filter(median_eav > 150000) %>%
+  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
+         nobillchange_propertyEAV = round(10000 * ((C2_cur_comp_TC_rate/100) / (rate_change/100)))) %>%
+  filter(is.finite(nobillchange_propertyEAV) ) %>%
+  select(agency_name, nobillchange_propertyEAV, rate_change, everything()) %>%
+  #filter(nobillchange_propertyEAV < 7000000) %>% 
+  ggplot(aes(x=nobillchange_propertyEAV, y = median_eav, label=agency_name)) +
+  geom_point()+
+  geom_text(aes(x =(nobillchange_propertyEAV), y = (median_eav+1000)), size = 2) +
+      scale_x_continuous(labels = scales::dollar) +
+      scale_y_continuous(labels = scales::dollar) +
+  theme_classic() +
+  labs(x = "EAV of Class 2 Property w/ No Bill Change", y = "Median EAV of Municipality", title = "Can homeowners with GHE benefit from removal of the GHE?",
+       caption = "A $500K home in Winnetka would benefit if everyone else lost their General Homestead Exemption")
+
+
+muni_taxrates_C2 %>%
+  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
+         nobillchange_propertyEAV = round(10000 * ((C2_cur_comp_TC_rate/100) / (rate_change/100)))) %>%
+  filter(is.finite(nobillchange_propertyEAV) ) %>%
+  select(agency_name,   nobillchange_propertyEAV, rate_change, everything()) %>%
+#  filter(nobillchange_propertyEAV < 7000000) %>% 
+  ggplot(aes(x=nobillchange_propertyEAV, y = median_eav, label=agency_name)) +
+  geom_smooth(method = "lm" )+
+  geom_text(aes(x = (nobillchange_propertyEAV), y = (median_eav+1000)), size = 2)+
+  theme_classic() +
+  scale_x_continuous(labels = scales::dollar) +
+  scale_y_continuous(labels = scales::dollar) +
+  labs(x = "EAV of Class 2 Property w/ No Bill Change", y = "Median EAV of Municipality", title = "Can homeowners who claim GHE benefit from removal of the GHE?",
+       subtitle = "In very, very rare instances: yes. ")
+
+
+muni_taxrates_C2 %>%
+  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
+         nobillchange_propertyEAV = round(10000 * ((C2_cur_comp_TC_rate/100) / (rate_change/100)))) %>%
+  select(agency_name,   nobillchange_propertyEAV, rate_change, everything()) %>%
+#  filter(nobillchange_propertyEAV < 7000000) %>% 
+  ggplot(aes(y=rate_change, x = median_eav, label=agency_name)) +
+  geom_point() +
+  theme_classic() +
+  scale_x_continuous(labels = scales::dollar) +
+  labs(x= "EAV of Class 2 Property w/ No Bill Change", y = "Composite Tax Rate Change (Percentage Points)", title = "EAV of Residential Property 'Breakeven Point' & Composite Tax Rate Change 
+       from Elimination of GHE")
+
+muni_taxrates_C2 %>%
+  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
+         nobillchange_propertyEAV = round(10000 * ((C2_cur_comp_TC_rate/100) / (rate_change/100)))) %>%
+  select(agency_name,   nobillchange_propertyEAV, rate_change, everything()) %>%
+  ggplot(aes(y=rate_change, x = median_av, label=agency_name)) +
+  geom_point() +
+  theme_classic() +
+  scale_x_continuous(labels = scales::dollar) +
+  labs(x= "AV of Class 2 Property w/ No Bill Change", y = "Composite Tax Rate Change (Percentage Points)", title = "AV of Residential Property 'Breakeven Point' & Composite Tax Rate Change 
+       from Elimination of GHE")
+
+muni_taxrates_C2 %>%
+  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
+         nobillchange_propertyEAV = round(10000 * ((C2_cur_comp_TC_rate/100) / (rate_change/100)))) %>%
+  select(agency_name,   nobillchange_propertyEAV, rate_change, everything()) %>%
+  ggplot(aes(y=rate_change, x = median_av*10, label=agency_name)) +
+  geom_point() +
+  theme_classic() +
+  scale_x_continuous(labels = scales::dollar) +
+  labs(x= "Market Value of Class 2 Property 
+       at 'Breakeven Point'", 
+       y = "Composite Tax Rate Change 
+       (Percentage Points)", 
+       title = "Market Value of Residential Property 'Breakeven Point' & 
+       Composite Tax Rate Change from Elimination of GHE")
+```
+
+```{r}
+
+
+muni_taxrates_C2 %>%
+      filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF RIVERDALE")) %>%
+  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
+         nobillchange_propertyEAV = round(10000 * ((C2_cur_comp_TC_rate/100) / (rate_change/100)))) %>%
+  select(agency_name, nobillchange_propertyEAV, rate_change, everything()) %>%
+ # filter(nobillchange_propertyEAV < 7000000) %>% 
+  ggplot(aes(y=median_av, x = agency_name)) +
+  geom_col()+
+  #geom_text(aes(x =(nobillchange_propertyEAV), y = (median_eav+5000)), size = 1.5) +
+  scale_y_continuous(labels = scales::dollar) +
+  theme_classic() +
+  labs(y = "Median Residential AV", x = "", title = "Median Residential Property Assessed Value - All Class 2 property Types")
+
+muni_taxrates_C2 %>%
+      filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF RIVERDALE")) %>%
+  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
+         nobillchange_propertyEAV = round(10000 * ((C2_cur_comp_TC_rate/100) / (rate_change/100)))) %>%
+  select(agency_name, nobillchange_propertyEAV, rate_change, everything()) %>%
+ # filter(nobillchange_propertyEAV < 7000000) %>% 
+  ggplot(aes(y=median_av*10, x = agency_name)) +
+  geom_col()+
+  #geom_text(aes(x =(nobillchange_propertyEAV), y = (median_eav+5000)), size = 1.5) +
+  scale_y_continuous(labels = scales::dollar) +
+  theme_classic() +
+  labs(y = "Median Residential Market Value", x = "", title = "Median Residential Market Value (AV*10) - All Class 2 property Types")
+
+
+muni_taxrates_C2 %>%
+      filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF RIVERDALE")) %>%
+  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
+         nobillchange_propertyEAV = round(10000 * ((C2_cur_comp_TC_rate/100) / (rate_change/100)))) %>%
+  select(agency_name, nobillchange_propertyEAV, rate_change, everything()) %>%
+  ggplot(aes(y=median_eav, x = agency_name)) +
+  geom_col()+
+  scale_y_continuous(labels = scales::dollar) +
+  theme_classic() +
+  labs(y = "Median Residential EAV", x = "", title = "Median Residential EAV - All Class 2 property Types")
+
+
+muni_taxrates_C2 %>%
+      filter(agency_name %in% c("VILLAGE OF GLENCOE", "VILLAGE OF WINNETKA")) %>%
+  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
+         nobillchange_propertyEAV = round(10000 * ((C2_cur_comp_TC_rate/100) / (rate_change/100)))) %>%
+  select(agency_name, nobillchange_propertyEAV, rate_change, everything()) %>%
+  ggplot(aes(y=median_av, x = agency_name)) +
+  geom_col()+
+  scale_y_continuous(labels = scales::dollar) +
+  theme_classic() +
+  labs(y = "Median Residential AV", x = "", title = "Median Residential Property AV - All Class 2 property Types")
+
+muni_taxrates_C2 %>%
+      filter(agency_name %in% c("VILLAGE OF GLENCOE", "VILLAGE OF WINNETKA")) %>%
+  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
+         nobillchange_propertyEAV = round(10000 * ((C2_cur_comp_TC_rate/100) / (rate_change/100)))) %>%
+  select(agency_name, nobillchange_propertyEAV, rate_change, everything()) %>%
+  ggplot(aes(y=median_av*10, x = agency_name)) +
+  geom_col()+
+  scale_y_continuous(labels = scales::dollar) +
+  theme_classic() +
+  labs(y = "Median Residential Market Value", x = "", title = "Median Residential Property Market Value - All Class 2 property Types")
+
+
+
+
+muni_taxrates_C2 %>%
+      filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF RIVERDALE", "VILLAGE OF WINNETKA")) %>%
+  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
+         nobillchange_propertyEAV = round(10000 * ((C2_cur_comp_TC_rate/100) / (rate_change/100)))) %>%
+  select(agency_name, nobillchange_propertyEAV, rate_change, everything()) %>%
+  ggplot(aes(y=nobillchange_propertyEAV, x = agency_name)) +
+  geom_col()+
+  scale_y_continuous(labels = scales::dollar) +
+  theme_classic() +
+  labs(y = "EAV of Class 2 Property w/ No Bill Change", x = "", title = "Breakeven points - EAV where taxbill wouldn't change if GHE were eliminated",
+       caption = "Homeowners in municipalities with high tax rates and AV's much higher
+       the median AV in the municipality properties see their bill decrease in GHE removal scenario. 
+       These are extreme situations that should not be used for policy decisions or examples.")
+
+
+
+muni_taxrates_C2 %>%
+      filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF RIVERDALE", "VILLAGE OF WINNETKA")) %>%
+  mutate(rate_change = C2_cur_comp_TC_rate - C2_new_comp_TC_rate, ## 
+         nobillchange_propertyEAV = round(10000 * ((C2_cur_comp_TC_rate/100) / (rate_change/100)))) %>%
+  select(agency_name, nobillchange_propertyEAV, rate_change, everything()) %>%
+  ggplot(aes(y=nobillchange_propertyEAV/3*10, x = agency_name)) +
+  geom_col()+
+  scale_y_continuous(labels = scales::dollar) +
+  theme_classic() +
+  labs(y = "Approximate Market Value of Class 2 Property", x = "", title = "Breakeven points - Value of home where taxbill wouldn't change",
+       subtitle = "If General Homestead Exemption were Eiminated",
+       caption = "A home valued above the points in the graph would experience a lower tax bill if the GHE were eliminated from all other properties.
+       These are not the type of properties we are trying to help. Their taxbill going down is NOT a benefit in the big picture.")
+
+```
+
+
 ## EAV PIN distribution
 
 ```{r, fig.show='hold', out.width="50%"}
@@ -607,12 +859,7 @@ pin_data2 %>%
 ```
 
 
-
-
-
-### Property Value where Bill doesn't change
-
-```{r}
+```{r eval=FALSE, include = FALSE}
 options(scipen=999 )
 
 nobillchange <- muni_taxrates_C2 %>%
@@ -930,21 +1177,21 @@ filter(pin_AV > 0) %>%
 If only "removing"/"refunding" the general homestead exemption:
 
 For Park Forest class 203 properties, the median tax bill would go down \$2,088 for those who don't currently have a general homestead exemption and would increase \$2,314 for people who do currently claim the general homestead exemption. 779 people don't claim the exemption and 1398 people do. 
-A home with EAV above 88,298 EAV  would experience a lower tax bill and homes below 88,298 EAV would experience an increase in their taxbill. 
+~~A home with EAV above 88,298 EAV  would experience a lower tax bill and homes below 88,298 EAV would experience an increase in their taxbill.~~ 
 The median EAV for all class 2 properties is 18,320 in Park Forest. 
 
 
 Phoenix class 203 median properties have a decrease of \$1,481 if they didn't claim homestead exemptions currently and increased \$1,468 f they did already claim the general homestead exemption. 137 people do not claim the exemption and 209 people do claim the general homestead exemption.
-A home with EAV above 79,946 EAV  would experience a lower tax bill and homes below 29,946 EAV would experience an increase in their taxbill. 
-The median EAV for all class 2 properties is 10,515 in Phoenix. 
+~~A home with EAV above 79,946 EAV  would experience a lower tax bill and homes below 29,946 EAV would experience an increase in their taxbill.~~ The median EAV for all class 2 properties is 10,515 in Phoenix. 
+
 
 Riverdale class 203 median properties have a decrease of \$2095 if they didn't claim homestead exemptions currently and increased \$1,155 f they did already claim the general homestead exemption. 209 people do not claim the exemption and 443 people do claim the general homestead exemption.
-A home with EAV above 170,261 EAV  would experience a lower tax bill and homes below 170,261 EAV would experience an increase in their taxbill. 
+~~A home with EAV above 170,261 EAV  would experience a lower tax bill and homes below 170,261 EAV would experience an increase in their taxbill.~~
+
 The median EAV for all Class 2 properties is 17,163 in Riverdale.
 
 Winnetka class 203 median properties have a decrease of \$281 if they didn't claim homestead exemptions currently and increased \$608 f they did already claim the general homestead exemption. 37 people do not claim the exemption and 91 people do claim the general homestead exemption.
-A home with EAV above 5,159,327 EAV  would experience a lower tax bill and homes below 5,159,327 EAV would experience an increase in their taxbill. 
-The median EAV for all Class 2 properties is 249,018 EAV in Winnetka.
+~~A home with EAV above 5,159,327 EAV  would experience a lower tax bill and homes below 5,159,327 EAV would experience an increase in their taxbill.~~  The median EAV for all Class 2 properties is 249,018 EAV in Winnetka.
 
 # Muni Comparison of AVs and Tax Bills
 
