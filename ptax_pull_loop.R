@@ -84,7 +84,9 @@ for(i in years){
     left_join(muni_agency_names) %>% 
     select(-agency_rate) %>% 
     left_join(nicknames) %>% 
-    select(-c(minor_type, short_name, `Column1`, `Most recent reassessed`, agency_number))
+    select(-c(minor_type, short_name, 
+             # `Column1`, `Most recent reassessed`,
+              agency_number))
   
   
   

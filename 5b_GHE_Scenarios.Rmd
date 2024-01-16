@@ -130,7 +130,7 @@ tc_muninames <- tax_codes %>%
   left_join(muni_agency_names) %>% 
   select(-agency_rate) %>% 
   left_join(nicknames) %>% 
-  select(-c(minor_type, short_name, `Column1`, `Most recent reassessed`, agency_number))
+  select(-c(minor_type, short_name, agency_number))
 
 
 # Agency number and agency name for all TIFs
@@ -794,7 +794,7 @@ scenario_calcs <- joined_pins %>%
          taxrate_noTIFs_orExemps = MuniLevy / Total_EAV) %>%
   select(clean_name, MuniLevy, tr_neg10:taxrate_noTIFs_orExemps, everything())
 
-write_csv(scenario_calcs, "5b_scenario_calcs.csv")
+write_csv(scenario_calcs, "./Output/5b_scenario_calcs.csv")
 
 
 scenario_taxrates <- scenario_calcs %>%  select(clean_name, MuniLevy, tr_neg10:taxrate_noTIFs_orExemps) 
@@ -854,7 +854,7 @@ C2_burden_shift <- C2_taxableEAV %>%
 
 C2_burden_shift
 
-write_csv(C2_burden_shift, "5b_Class2_burdenshift.csv")
+write_csv(C2_burden_shift, "./Output/5b_Class2_burdenshift.csv")
 ```
 
 
@@ -1051,14 +1051,16 @@ ratios<- munis_billchange %>%
 
 ggplot(data = ratios, aes(y = currbill_to_AV_25, x = currbill_to_AV_75, label = clean_name)) + 
   geom_abline(intercept = 0, slope = 1) +
-  geom_point(aes(alpha = .5)) + 
-  geom_text(nudge_x = .03, nudge_y=0.01, size = 3, check_overlap = TRUE)+ 
-  theme_classic() + 
+  geom_point(data = ratios, aes(alpha = .5)) + 
+  geom_point(data = (ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Riverdale","Dolton"))), aes(y = currbill_to_AV_25, x = currbill_to_AV_75, color = "red"), size = 3)+
+  ggrepel::geom_text_repel(data = (ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Riverdale", "Dolton"))), aes(y = currbill_to_AV_25, x = currbill_to_AV_75, label = clean_name), size = 3)+
+  theme_classic() +
     scale_y_continuous(limits = c(0, .6))+
 
-  scale_x_continuous(limits = c(0, .6))+
+
+   scale_x_continuous(limits = c(0, .6))+
   theme(legend.position = "none") +
-  labs(title = "Current GHE Amount (up to 10,000 EAV exempt per property)")
+  labs(title = "Current GHE Amount (up to 10,000 EAV exempt per property)", x="", y="")
 ```
 
 ```{r}
@@ -1079,8 +1081,9 @@ ggplot(data = new_ratios, aes(y = newbill_to_AV_25, x = newbill_to_AV_75, label 
   theme_classic() + 
   scale_y_continuous(limits = c(0, .6))+
   scale_x_continuous(limits = c(0, .6))+
-  theme(legend.position = "none") + labs(title = "Increase GHE by 10,000 EAV (for up to 20,000 EAV exempt) ", 
-                                         y = "25th percentile of homes, taxbill:AV",
+  theme(legend.position = "none") + 
+  labs(title = "Increase GHE by 10,000 EAV (for up to 20,000 EAV exempt) ", 
+                                   y = "25th percentile of homes, taxbill:AV",
                                          x= "75th percentile of homes, taxbill:AV",
                                          caption =  "Uses single-family properties. Exempt EAV up to 20K per property")
 
@@ -1102,8 +1105,9 @@ ggplot(data = new_ratios, aes(y = newbill_to_AV_25, x = newbill_to_AV_75, label 
   theme_classic() + 
     scale_y_continuous(limits = c(0, .6))+
 
-  scale_x_continuous(limits = c(0, .6))+
-  theme(legend.position = "none") + labs(title = "Increase GHE by 20,000 EAV (for up to 30,000 EAV exempt) ", 
+  scale_x_continuous(limits = c(0, .6), expand = c(0,0))+
+  theme(legend.position = "none") + 
+  labs(title = "Increase GHE by 20,000 EAV (for up to 30,000 EAV exempt) ",
                                          y = "25th percentile of homes, taxbill:AV",
                                          x= "75th percentile of homes, taxbill:AV",
                                          caption =  "Uses single-family properties. Exempt EAV up to 30K per property")
@@ -1126,7 +1130,8 @@ ggplot(data = new_ratios, aes(y = newbill_to_AV_25, x = newbill_to_AV_75, label 
     scale_y_continuous(limits = c(0, .6))+
 
   scale_x_continuous(limits = c(0, .6))+
-  theme(legend.position = "none") + labs(title = "Increase GHE by 30,000 EAV (for up to 40,000 EAV exempt) ", 
+  theme(legend.position = "none") + 
+  labs(title = "Increase GHE by 30,000 EAV (for up to 40,000 EAV exempt) ", 
                                          y = "25th percentile of homes, taxbill:AV",
                                          x= "75th percentile of homes, taxbill:AV",
                                          caption =  "Uses single-family properties. Exempt EAV up to 40K per property")
@@ -1155,6 +1160,165 @@ ggplot(data = new_ratios, aes(y = newbill_to_AV_25, x = newbill_to_AV_75, label 
                                          x= "75th percentile of homes, taxbill:AV",
                                          caption =  "Uses single-family properties. Exempt EAV up to 50K per property")
 ```
+
+
+
+
+
+
+
+
+
+## Case Studies in Red - 25 v 75 Percentile Homes
+
+
+```{r casestudies-inred}
+ratios<- munis_billchange %>% 
+  filter(has_HO_exemp == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
+  mutate(currbill_to_AV_25 = ifelse(rank == "q25", mean_bill_neg10/median_AV, NA)) %>%
+  mutate(currbill_to_AV_75 = ifelse(rank == "q75", mean_bill_neg10/median_AV, NA)) %>% 
+  group_by(clean_name) %>%
+  summarize(GHE_0_bill_to_AV_25 = max(currbill_to_AV_25, na.rm=TRUE),
+            GHE_0_bill_to_AV_75 = max(currbill_to_AV_75, na.rm=TRUE)) %>%
+  mutate(muni_ratio_25to75 = GHE_0_bill_to_AV_25/GHE_0_bill_to_AV_75) #%>%filter(muni_ratio_25to75 > 0.01)
+
+
+ggplot(data = ratios, aes(y = GHE_0_bill_to_AV_25, x = GHE_0_bill_to_AV_75, label = clean_name)) + 
+  geom_abline(intercept = 0, slope = 1) +
+  geom_point(aes(alpha = .5)) + 
+  geom_point(data = (ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Glencoe", "Winnetka", "Riverdale","Dolton", "Phoenix"))), aes(y = GHE_0_bill_to_AV_25, x = GHE_0_bill_to_AV_75, color = "red"), size = 3)+
+    ggrepel::geom_text_repel(data = (ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Glencoe", "Winnetka", "Riverdale", "Dolton", "Phoenix"))), aes(y = GHE_0_bill_to_AV_25, x = GHE_0_bill_to_AV_75 + 0.1, label = clean_name, size = 2))+
+
+  theme_classic() + 
+    scale_y_continuous(limits = c(0, .6), expand = c(0,0))+
+  scale_x_continuous(limits = c(0, .6), expand = c(0,0))+
+  theme(legend.position = "none") +
+  labs(title = "Reduced GHE Amount by 10,000 EAV (0 EAV exempt from GHE)",
+       subtitle = "Other exemptions still in place", x="", y="")
+
+
+ratios<- munis_billchange %>% 
+  filter(has_HO_exemp == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
+  mutate(currbill_to_AV_25 = ifelse(rank == "q25", mean_bill_cur/median_AV, NA)) %>%
+  mutate(currbill_to_AV_75 = ifelse(rank == "q75", mean_bill_cur/median_AV, NA)) %>% 
+  group_by(clean_name) %>%
+  summarize(currbill_to_AV_25 = max(currbill_to_AV_25, na.rm=TRUE),
+            currbill_to_AV_75 = max(currbill_to_AV_75, na.rm=TRUE)) %>%
+  mutate(muni_ratio_25to75 = currbill_to_AV_25/currbill_to_AV_75) %>% filter(muni_ratio_25to75 > 0.01)
+
+
+
+ggplot(data = ratios, aes(y = currbill_to_AV_25, x = currbill_to_AV_75, label = clean_name)) + 
+  geom_abline(intercept = 0, slope = 1) +
+  geom_point(data = ratios, aes(alpha = .5)) + 
+  geom_point(data = (ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Riverdale","Dolton"))), aes(y = currbill_to_AV_25, x = currbill_to_AV_75, color = "red"), size = 3)+
+  ggrepel::geom_text_repel(data = (ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Riverdale", "Dolton"))), aes(y = currbill_to_AV_25, x = currbill_to_AV_75, label = clean_name), size = 3)+
+  theme_classic() +
+    scale_y_continuous(limits = c(0, .6), expand = c(0,0))+
+
+
+   scale_x_continuous(limits = c(0, .6), expand = c(0,0))+
+  theme(legend.position = "none") +
+  labs(title = "Current GHE Amount (up to 10,000 EAV exempt per property)", x="", y="")
+
+
+new_ratios<- munis_billchange %>% 
+  filter(has_HO_exemp == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
+  mutate(newbill_to_AV_25 = ifelse(rank == "q25", mean_bill_plus10/median_AV, NA)) %>%
+  mutate(newbill_to_AV_75 = ifelse(rank == "q75", mean_bill_plus10/median_AV, NA)) %>% 
+  group_by(clean_name) %>%
+  summarize(newbill_to_AV_25 = max(newbill_to_AV_25, na.rm=TRUE),
+            newbill_to_AV_75 = max(newbill_to_AV_75, na.rm=TRUE)) %>%
+  mutate(muni_ratio_25to75 = newbill_to_AV_25/newbill_to_AV_75) %>% filter(muni_ratio_25to75 > 0.01)
+
+
+ggplot(data = new_ratios, aes(y = newbill_to_AV_25, x = newbill_to_AV_75, label = clean_name)) + 
+  geom_abline(intercept = 0, slope = 1) +
+  geom_point(data = new_ratios, aes(alpha = .5)) + 
+  geom_point(data = (new_ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Riverdale", "Dolton"))), aes(y = newbill_to_AV_25, x = newbill_to_AV_75, color = "red", size = 2))+
+  theme_classic() + 
+  scale_y_continuous(limits = c(0, .6), expand = c(0,0))+
+  scale_x_continuous(limits = c(0, .6), expand = c(0,0))+
+  theme(legend.position = "none") + 
+  labs(title = "Increase GHE by 10,000 EAV (for up to 20,000 EAV exempt) ", 
+                                   y = "25th percentile of homes, taxbill:AV",
+                                         x= "75th percentile of homes, taxbill:AV",
+                                         caption =  "Uses single-family properties. Exempt EAV up to 20K per property")
+
+
+new_ratios<- munis_billchange %>% 
+  filter(has_HO_exemp == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
+  mutate(newbill_to_AV_25 = ifelse(rank == "q25", mean_bill_plus20/median_AV, NA)) %>%
+  mutate(newbill_to_AV_75 = ifelse(rank == "q75", mean_bill_plus20/median_AV, NA)) %>% 
+  group_by(clean_name) %>%
+  summarize(newbill_to_AV_25 = max(newbill_to_AV_25, na.rm=TRUE),
+            newbill_to_AV_75 = max(newbill_to_AV_75, na.rm=TRUE)) %>%
+  mutate(muni_ratio_25to75 = newbill_to_AV_25/newbill_to_AV_75) %>% filter(muni_ratio_25to75 > 0.01)
+
+
+ggplot(data = new_ratios, aes(y = newbill_to_AV_25, x = newbill_to_AV_75, label = clean_name)) + 
+  geom_abline(intercept = 0, slope = 1) +
+  geom_point(aes(alpha = .5)) + 
+  geom_point(data = (new_ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton"))), aes(y = newbill_to_AV_25, x = newbill_to_AV_75, color = "red"), size = 3)+
+  theme_classic() + 
+    scale_y_continuous(limits = c(0, .6), expand = c(0,0))+
+
+  scale_x_continuous(limits = c(0, .6), expand = c(0,0))+
+  theme(legend.position = "none") + 
+  labs(title = "Increase GHE by 20,000 EAV (for up to 30,000 EAV exempt) ",
+                                         y = "25th percentile of homes, taxbill:AV",
+                                         x= "75th percentile of homes, taxbill:AV",
+                                         caption =  "Uses single-family properties. Exempt EAV up to 30K per property")
+
+new_ratios<- munis_billchange %>% 
+  filter(has_HO_exemp == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
+  mutate(newbill_to_AV_25 = ifelse(rank == "q25", mean_bill_plus30/median_AV, NA)) %>%
+  mutate(newbill_to_AV_75 = ifelse(rank == "q75", mean_bill_plus30/median_AV, NA)) %>% 
+  group_by(clean_name) %>%
+  summarize(newbill_to_AV_25 = max(newbill_to_AV_25, na.rm=TRUE),
+            newbill_to_AV_75 = max(newbill_to_AV_75, na.rm=TRUE)) %>%
+  mutate(muni_ratio_25to75 = newbill_to_AV_25/newbill_to_AV_75) %>% filter(muni_ratio_25to75 > 0.01)
+
+
+ggplot(data = new_ratios, aes(y = newbill_to_AV_25, x = newbill_to_AV_75, label = clean_name)) + 
+  geom_abline(intercept = 0, slope = 1) +
+  geom_point(aes(alpha = .5)) + 
+  geom_point(data = (new_ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Glencoe", "Winnetka", "Riverdale","Dolton"))), aes(y = newbill_to_AV_25, x = newbill_to_AV_75, color = "red"), size = 3)+
+  theme_classic() + 
+    scale_y_continuous(limits = c(0, .6), expand = c(0,0))+
+
+  scale_x_continuous(limits = c(0, .6), expand = c(0,0))+
+  theme(legend.position = "none") + 
+  labs(title = "Increase GHE by 30,000 EAV (for up to 40,000 EAV exempt) ", 
+                                         y = "25th percentile of homes, taxbill:AV",
+                                         x= "75th percentile of homes, taxbill:AV",
+                                         caption =  "Uses single-family properties. Exempt EAV up to 40K per property")
+
+
+new_ratios<- munis_billchange %>% 
+  filter(has_HO_exemp == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
+  mutate(newbill_to_AV_25 = ifelse(rank == "q25", mean_bill_plus40/median_AV, NA)) %>%
+  mutate(newbill_to_AV_75 = ifelse(rank == "q75", mean_bill_plus40/median_AV, NA)) %>% 
+  group_by(clean_name) %>%
+  summarize(newbill_to_AV_25 = max(newbill_to_AV_25, na.rm=TRUE),
+            newbill_to_AV_75 = max(newbill_to_AV_75, na.rm=TRUE)) %>%
+  mutate(muni_ratio_25to75 = newbill_to_AV_25/newbill_to_AV_75) %>% filter(muni_ratio_25to75 > 0.01)
+
+
+ggplot(data = new_ratios, aes(y = newbill_to_AV_25, x = newbill_to_AV_75, label = clean_name)) + 
+  geom_abline(intercept = 0, slope = 1) +
+  geom_point(aes(alpha = .5)) + 
+  geom_point(data = (new_ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale","Dolton"))), aes(y = newbill_to_AV_25, x = newbill_to_AV_75, color = "red"), size = 3)+
+  theme_classic() + 
+    scale_y_continuous(limits = c(0, .6), expand = c(0,0))+
+
+  scale_x_continuous(limits = c(0, .6), expand = c(0,0))+
+  theme(legend.position = "none") + labs(title = "Increase GHE by 40,000 EAV (for up to 50,000 EAV exempt) ", 
+                                         y = "25th percentile of homes, taxbill:AV",
+                                         x= "75th percentile of homes, taxbill:AV",
+                                         caption =  "Uses single-family properties. Exempt EAV up to 50K per property")
+```
+
 
 
 

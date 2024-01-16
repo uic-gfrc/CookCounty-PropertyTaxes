@@ -492,7 +492,7 @@ filter(pin_AV > 0) %>%
 
 pin_data2 %>% 
 filter(pin_AV > 0) %>% 
-  filter(agency_name %in% c("CITY OF CHICAGO", "VILLAGE OF DOLTON", "VILLAGE OF GLENCOE")) %>%
+  #filter(agency_name %in% c("CITY OF CHICAGO", "VILLAGE OF DOLTON", "VILLAGE OF GLENCOE")) %>%
   filter(class >199 & class < 300) %>% 
   arrange(av) %>%
  # group_by(agency_name, has_HO_exemp) %>% 
@@ -504,11 +504,11 @@ filter(pin_AV > 0) %>%
   group_by(agency_name) %>% 
   summarize(median_AV = median(av),
             median_EAV = median(eav),
-            mean_bill_cur = mean(bill_current, na.rm=TRUE),
+            #mean_bill_cur = mean(bill_current, na.rm=TRUE),
             median_bill_cur = median(bill_current),
-            mean_bill_new = mean(bill_noexemps, na.rm=TRUE),
+            #mean_bill_new = mean(bill_noexemps, na.rm=TRUE),
             median_bill_new = median(bill_noexemps),
-            mean_change = mean(bill_change, na.rm=TRUE),
+           # mean_change = mean(bill_change, na.rm=TRUE),
             median_change = median(bill_change),
             perceived_savings = median(tax_amt_exe),
             cur_comp_TC_rate = mean(cur_comp_TC_rate),
@@ -632,6 +632,37 @@ Dolton class 213 median properties have a decrease of \$1295 if they didn't clai
 +----------------------+-----------------+-----------------+---------------+----------+-------------------+
 | Dolton               | 4152            | 4770            | 1009          | 3609     | 2294              |
 +----------------------+-----------------+-----------------+---------------+----------+-------------------+
+
+# Compare Median AV of each Municipality
+
+```{r}
+
+c2_pins <- pin_data2 %>% 
+filter(pin_AV > 0) %>% 
+  #filter(agency_name %in% c("CITY OF CHICAGO", "VILLAGE OF DOLTON", "VILLAGE OF GLENCOE")) %>%
+  filter(class >199 & class < 300) %>% 
+  arrange(av) %>%
+ # group_by(agency_name, has_HO_exemp) %>% 
+  mutate(#taxable_eav = final_tax_to_dist / tax_code_rate,
+    # current bill = current tax rate * portion of levy billed
+         bill_current = (final_tax_to_dist + final_tax_to_tif),
+         bill_noexemps =  new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
+         bill_change = bill_noexemps - bill_current) %>%
+  #group_by(agency_name) %>% 
+  summarize(median_AV = median(av),
+            median_EAV = median(eav),
+            #mean_bill_cur = mean(bill_current, na.rm=TRUE),
+            median_bill_cur = median(bill_current),
+            #mean_bill_new = mean(bill_noexemps, na.rm=TRUE),
+            median_bill_new = median(bill_noexemps),
+           # mean_change = mean(bill_change, na.rm=TRUE),
+            median_change = median(bill_change),
+            perceived_savings = median(tax_amt_exe),
+            cur_comp_TC_rate = mean(cur_comp_TC_rate),
+            new_comp_TC_rate = mean(new_comp_TC_rate),
+            pincount=n()
+)
+```
 
 # Compare AV=10,000
 

@@ -1,0 +1,440 @@
+---
+title: 'Taxbill Change from elimination of GHE'
+subtitle: 'for Median Class 2 Property in each Municipality'
+author: "AWM & MVH"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+    code_download: yes
+---
+# Setup
+```{r setup, warning=FALSE, message=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+
+library(tidyverse)
+library(data.table)
+library(gstat)
+library(ptaxsim)
+library(glue)
+
+nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
+```
+
+Bills were pulled from PTAXSIM amd summed to the pin level in files `1_...rmd` and `2...rmd`. Exemption data per PIN was pulled from PTAXSIM in file `3_.....rmd`.
+
+```{r}
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
+
+eq_factor <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT*
+  FROM eq_factor
+  "
+)
+
+muni_agency_names <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT DISTINCT agency_num, agency_name, minor_type
+  FROM agency_info
+  WHERE minor_type = 'MUNI'
+  OR agency_num = '020060000'  
+
+  "
+)
+
+muni_tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT DISTINCT agency_num, tax_code_num
+  FROM tax_code
+  WHERE agency_num IN ({muni_agency_names$agency_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+) %>% 
+  mutate(tax_code_num = as.numeric(tax_code_num))
+
+tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT DISTINCT tax_code_num, tax_code_rate
+  FROM tax_code
+  WHERE year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+) %>% mutate(tax_code_num = as.numeric(tax_code_num))
+```
+
+```{r eval = FALSE}
+taxbills_current <- read_csv("./Output/Dont_Upload/1_Get_All_Pins-CookPinTaxbills_2021_Actual.csv")
+# 22,453,875 tax bills in 2021 in municipalities. 
+# taxing agency-PIN is the unit of observation here (only partial property tax bills)
+# Each PIN has multiple rows (because it is taxed by multiple taxing agencies)
+
+sapply(taxbills_current, function(x) sum(is.na(x)))
+
+
+# 1,825,816 billed properties with 14-digit PINs in incororated areas
+# 1,864,594 in incorported and unincorporated areas.
+pin14_bills_current <- taxbills_current %>%
+  group_by(tax_code, class, pin) %>%
+  
+  mutate(total_bill = final_tax_to_dist + final_tax_to_tif) %>% # from each taxing agency
+  
+  summarize(
+    total_billed = sum(total_bill, na.rm = TRUE), # total on someone's property tax bill
+    av = first(av),
+    eav = first(eav),
+    # pin_count_in_parcel = n(),
+    final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE),
+    final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+    tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), # revenue lost due to exemptions
+    tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), # total rev before all exemptions
+    tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE), # total rev after all exemptions
+    rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE), # not used
+    rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE), # not used
+    rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE), # not used
+    tif_share = mean(tif_share, na.rm=TRUE), # not used
+  )  %>% 
+  mutate(propclass_1dig = str_sub(class, 1, 1))
+
+# head(pin14_bills_current)
+
+sapply(pin14_bills_current, function(x) sum(is.na(x)))
+
+
+# Now group again and sum values for tax code and each property class!
+
+# There are 28,381 property class - tax code group combinations in incorporated areas.
+# There are 28,534 property class - tax code group combos in incorporated + unincorporated areas
+
+rm(taxbills_current)
+```
+
+Need to merge PIN level data of tax bills and exemptions per PIN if the goal is to calculate new tax rates for different scenarios AND view individual level tax bill changes. (i.e. if we want to look at the "median taxpayer" then need to use this method).
+
+Note: The EAV from the exemption table is the original EAV (AV \* equalizer) without consider TIFs or exemptions.
+
+31,000 properties have \$0 tax bills based on exemption data table made from PTAXSIM's `pin` table. (Using the tax bill data allows for more in depth look at tax bills and can create variables such as `small_bill` if bills were less than \$100 after exemptions were applied).
+
+```{r eval = FALSE}
+pin_eav <- read_csv("./Output/Dont_Upload/3_Exemption_Details_output-all_cook_pin_exemptions_2021_actual.csv") %>%
+  #filter(class_code !=0) %>%
+  
+  mutate(all_exemptions = exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+           exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 + exe_abate) %>%
+  mutate(zero_bill = ifelse(eav <= all_exemptions, 1, 0),
+         has_HO_exemp = ifelse(exe_homeowner > 0, 1, 0)) %>%
+  rename(equalized_AV = eav,
+         pin_AV = av)
+
+# table(pin_eav$zero_bill)
+
+table(pin_eav$major_class_code, pin_eav$zero_bill)
+
+# table(pin_eav$major_class_code, pin_eav$has_HO_exemp)
+
+
+
+## Add exemption types and values to the tax bill data at PIN level
+pin_data <- left_join(pin14_bills_current, pin_eav, by = c("pin", "class" = "class_code" ))
+
+## Add tax code tax rate to PIN level data
+pin_data <- left_join(pin_data, tax_codes, by = c("tax_code" = "tax_code_num"))
+
+
+
+```
+
+```{r taxcode-taxrates, eval = FALSE}
+taxcodes_current <- pin_data %>% 
+  group_by(tax_code)  %>%
+  summarize(
+    av = sum(av),
+    eav = sum(eav),
+    equalized_AV = sum(equalized_AV),
+    pins_in_class = n(),
+    current_exemptions = sum(all_exemptions),
+    HO_exemps = sum(exe_homeowner),
+    tax_code_rate = first(tax_code_rate), 
+    final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # used as LEVY amount!! 
+    final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+    tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), 
+    tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), 
+    tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE),
+    rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE), # not used
+    rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE), # not used
+    rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE), # not used
+    tif_share = mean(tif_share, na.rm=TRUE), # not used
+  ) %>%
+  
+  mutate(total_bill_current = final_tax_to_dist + final_tax_to_tif) %>%
+  rename(cur_comp_TC_rate = tax_code_rate) %>%
+  mutate(current_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100),
+         new_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100) + HO_exemps) %>%
+  mutate(new_comp_TC_rate = (final_tax_to_dist / new_taxable_eav)*100) %>%
+  mutate(new_comp_TC_rate = ifelse(is.nan(new_comp_TC_rate), cur_comp_TC_rate, new_comp_TC_rate)) %>%
+  select(tax_code, cur_comp_TC_rate, new_comp_TC_rate, current_taxable_eav, new_taxable_eav, everything())
+
+
+#head(taxcodes_current) 
+
+
+taxcode_taxrates <- taxcodes_current %>% 
+  select(tax_code, cur_comp_TC_rate, new_comp_TC_rate, current_exemptions, HO_exemps)
+
+
+```
+
+# Finding the "Median Property" or "Average Taxpayer"
+
+
+```{r eval=FALSE, include=FALSE}
+pin_data2 <- left_join(pin_data, taxcode_taxrates, by = c("tax_code" = "tax_code"))
+
+
+pin_data2 <- pin_data2 %>% left_join(muni_tax_codes) 
+
+pin_data2 <- pin_data2 %>% left_join(muni_agency_names)
+
+write_csv(pin_data2, "./Output/4C_joined_PINs_bills_and_exemptions.csv")
+
+#head(pin_data2)
+
+```
+
+
+> Download 4C_joined_PINs from [Box link here:](https://uofi.box.com/s/cvp7pdjkx8kth7o0vg9itpra3z8vfkzq). I would move the downloaded file into your R project and then the code below should work without changing the file path.
+
+```{r}
+pin_data2 <- read_csv("./Output/4C_joined_PINs_bills_and_exemptions.csv")
+
+# head(pin_data2)
+# dim(pin_data2)
+
+pin_data2 <- pin_data2 %>% 
+  mutate(
+    bill_current = (final_tax_to_dist + final_tax_to_tif),
+    bill_noGHE = new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
+    bill_noexemps = new_comp_TC_rate/100*(equalized_AV),
+    bill_change = bill_noGHE - bill_current)
+
+
+```
+
+```{r}
+C2_munistats <- pin_data2 %>% 
+  filter(class > 199 & class < 300) %>%
+  group_by(agency_name)  %>%
+  arrange(av) %>%
+  summarize(
+    median_eav = round(median(eav)), 
+    median_av = round(median(av)), 
+    avg_av = round(mean(av)),
+    avg_eav = round(mean(eav)),
+    C2_pins_in_muni = n(),
+    C2_current_exemptions = sum(all_exemptions, na.rm = TRUE),
+    C2_HO_exemps = sum(exe_homeowner, na.rm = TRUE),
+  )
+
+## removes properties that have more than one exemption type
+C2_munistats_filtered <- pin_data2 %>% 
+  filter(class > 199 & class < 300) %>%
+    filter(exe_senior == 0 & 
+           exe_freeze == 0 & 
+           exe_longtime_homeowner == 0 & 
+           exe_disabled == 0 & 
+           exe_vet_returning == 0 & 
+           exe_vet_dis_lt50 == 0 & 
+           exe_vet_dis_50_69 == 0 & 
+           exe_vet_dis_ge70 == 0 & 
+           exe_abate == 0) %>%
+  group_by(agency_name)  %>%
+  arrange(av) %>%
+  summarize(
+    median_eav = round(median(eav, na.rm=TRUE)), 
+    median_av = round(median(av, na.rm=TRUE)), 
+    avg_av = round(mean(av, na.rm=TRUE)),
+    avg_eav = round(mean(eav, na.rm=TRUE)),
+    C2_pins_in_muni = n(),
+    C2_current_exemptions = sum(all_exemptions, na.rm = TRUE),
+    C2_HO_exemps = sum(exe_homeowner, na.rm = TRUE),
+  )
+
+C2_munistats_filtered 
+
+C2_munistats
+```
+
+```{r}
+eq_2021 <- 3.0027
+
+
+muni_taxrates <- pin_data2 %>% 
+  group_by(agency_name)  %>%
+  arrange(av) %>%
+  
+  summarize(
+    muni_median_av = round(median(av, na.rm=TRUE)),
+    muni_median_eav = round(median(eav, na.rm=TRUE)),
+    muni_mean_av = round(mean(av, na.rm=TRUE)),
+    muni_mean_eav = round(mean(eav, na.rm=TRUE)),
+    av = sum(av, na.rm = TRUE),
+    eav = sum(eav, na.rm = TRUE),
+    equalized_AV = sum(equalized_AV, na.rm = TRUE),
+    pins_in_muni = n(),
+    current_exemptions = sum(all_exemptions, na.rm = TRUE),
+    HO_exemps = sum(exe_homeowner, na.rm = TRUE),
+    tax_code_rate = mean(tax_code_rate, na.rm = TRUE), # Changed from first() to mean() on Nov 1
+    final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # used as LEVY amount!! 
+    final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+    tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), 
+    tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), 
+    tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE),
+    rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE), # not used
+    rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE), # not used
+    rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE), # not used
+    tif_share = mean(tif_share, na.rm=TRUE), # not used
+  ) %>%
+  
+  mutate(total_bill_current = final_tax_to_dist + final_tax_to_tif) %>%
+  rename(cur_comp_TC_rate = tax_code_rate) %>%
+  mutate(current_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100),
+         new_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100) + HO_exemps) %>%
+  mutate(new_comp_TC_rate = (final_tax_to_dist / new_taxable_eav)*100) %>%
+  
+  mutate(new_comp_TC_rate = ifelse(is.nan(new_comp_TC_rate), cur_comp_TC_rate, new_comp_TC_rate)) %>% 
+  
+  left_join(C2_munistats) %>%
+  left_join(nicknames) %>%
+  mutate(rate_change = cur_comp_TC_rate - new_comp_TC_rate,
+    nobillchange_propertyEAV = round(10000 * ((cur_comp_TC_rate/100) / (rate_change/100))),
+    nochange_av = round(nobillchange_propertyEAV / eq_2021),
+    nochange_ratio = nochange_av / median_av) %>%
+  select(clean_name, C2median_av = median_av, muni_median_av,  C2mean_av = avg_av, muni_mean_av, cur_comp_TC_rate, new_comp_TC_rate, current_taxable_eav, new_taxable_eav, everything())
+
+muni_taxrates 
+
+#muni_taxrates %>% write_csv("./Output/4C_muni_taxrates.csv")
+
+muni_taxrates %>% left_join(nicknames) %>% select(clean_name, muni_median_av, C2median_av, nochange_av )
+```
+
+
+## Assessed Value PIN distribution
+
+```{r}
+pin_data2 %>%
+  filter((class > 199 & class < 300) & agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF RIVERDALE", "VILLAGE OF WINNETKA")) %>%
+  group_by(agency_name) %>%
+  ggplot() +
+  geom_histogram(aes(x = av, bins = 100)) +
+#  geom_vline(aes(xintercept = median(av, na.rm=TRUE), color = "red")) +
+  theme_classic()+
+  theme(legend.position = "none") + 
+ # geom_text(aes(x=(median(av) + 5000), y = 1500, label = median(av))) +
+  scale_x_continuous(limits = c(-5, 50000)) +
+  #   scale_y_continuous(limits = c(0, 1500))+
+  labs(title = "PIN AV Distribution for All Class 2 Properties", x="AV", y="Number of PINs") +
+  facet_wrap(~agency_name)
+
+
+
+
+pin_data2 %>%
+  filter((class > 199 & class < 300) &  agency_name == "VILLAGE OF PHOENIX") %>%
+  group_by(agency_name) %>%
+  ggplot() +
+  geom_histogram(aes(x = av, bins = 100)) +
+  geom_vline(aes(xintercept = median(av, na.rm=TRUE), color = "red")) +
+  geom_vline(aes(xintercept = 7974), linetype = "dashed", label = "Breakeven AV") +
+  theme_classic()+
+  theme(legend.position = "none") + 
+  geom_text(aes(x=(median(av)), y = 450, label = median(av))) +
+  geom_text(aes(x=14000, y = 350), label = "Breakeven AV = $7,974") +
+  scale_x_continuous(limits = c(-5, 50000)) +
+  #   scale_y_continuous(limits = c(0, 1500))+
+  labs(title = "Phoenix PIN AV Distribution for All Class 2 Properties", x="AV", y="Number of PINs",
+      caption =  "Median AV is $3,502, Breakeven AV is $7,974") 
+
+
+
+# pin_data2 %>%
+#   filter((class > 199 & class < 300) &  agency_name == "CITY OF CHICAGO") %>%
+#   ggplot() +
+#   geom_histogram(aes(x = av, bins = 100)) +
+#   geom_vline(aes(xintercept = median(av, na.rm=TRUE), color = "red")) +
+#   geom_vline(aes(xintercept = 84228), linetype = "dashed") +
+#   theme_classic()+
+#   theme(legend.position = "none") + 
+#   geom_text(aes(x=median(av)+20000, y = 300000, label = median(av))) +
+#  geom_text(aes(x=100000, y = 200000), label = "Breakeven AV = $84,228") +
+# 
+#   scale_x_continuous(limits = c(-5, 500000), labels = scales::dollar) +
+#   scale_y_continuous(limits = c(0, 300000))+
+#   labs(title = "Chicago PIN AV Distribution for All Class 2 Properties", 
+#        x="AV", y="Number of PINs",
+#       caption =  "Median AV is ~$21,000, Breakeven AV is ~$84,000") 
+```
+
+# Calculation for Median properties in each munis
+
+```{r}
+## Grouped by if they have a $0 tax bill and had the GHE per muni
+## Recalculating for Josh & Rachael
+muni_median_summarytable <- pin_data2 %>% 
+
+  filter(class >199 & class < 300) %>% 
+  
+  # merge in muni residential median AV
+  left_join(C2_munistats_filtered) %>%
+  
+  # +/- 500 from municpalities median residential AV
+  filter(av < median_av+1000 & av > median_av-1000) %>%
+  
+  # Removes properties that received other types of exemptions
+  filter(exe_senior == 0 & 
+           exe_freeze == 0 & 
+           exe_longtime_homeowner == 0 & 
+           exe_disabled == 0 & 
+           exe_vet_returning == 0 & 
+           exe_vet_dis_lt50 == 0 & 
+           exe_vet_dis_50_69 == 0 & 
+           exe_vet_dis_ge70 == 0 & 
+           exe_abate == 0) %>%
+  
+  arrange(av) %>%
+  
+  mutate(bill_current = (final_tax_to_dist + final_tax_to_tif),
+         bill_noexemps =  new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
+         bill_change = bill_noexemps - bill_current) %>%
+  
+  group_by(agency_name, # zero_bill, 
+           has_HO_exemp) %>% 
+  
+  summarize(AV = median(median_av), # median_av was calculated earlier: C2 median AV for the muni 
+            `Taxable EAV` = round(median(eav)),
+            bill_cur = round(median(bill_current)),
+            bill_new = round(median(bill_noexemps)),
+            bill_change = round(median(bill_change)),
+            pincount=n(),
+            perceived_savings = round(median(tax_amt_exe))) %>% 
+  
+  # merge in clean_names variable
+  left_join(nicknames) %>%
+  
+  select(clean_name, has_HO_exemp, bill_cur, bill_new, bill_change, perceived_savings,  AV, `Taxable EAV`, everything()) %>%
+  select(-c(agency_number, agency_name))
+
+muni_median_summarytable
+
+muni_median_summarytable %>% 
+  left_join(muni_taxrates) %>% 
+  ungroup() %>%
+  select(clean_name, has_HO_exemp, bill_cur, bill_new, bill_change, perceived_savings,  AV, `Taxable EAV`, nochange_av, nochange_ratio) #%>% writexl::write_xlsx("data_request_01072024_v3.xlsx")
+```

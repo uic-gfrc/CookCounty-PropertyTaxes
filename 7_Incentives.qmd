@@ -11,7 +11,7 @@ format:
     fig-cap-location: top
 ---
 
-Incentive properties include any property within Cook County that has a property class between 600 and 899. 
+Incentive properties include any property within Cook County that has a property class between 600 and 899.
 
 ```{r setup, warning = FALSE, message = FALSE}
 library(tidyverse)
@@ -45,9 +45,6 @@ chi_townships2 <- c("Jefferson", "Hyde Park", "Lake", "Lake View", "North Chicag
 
 class8township <- c("Bloom", "Bremen","Calumet","Rich", "Thornton")
 ```
-
-
-
 
 # Incentive Properties In Cook County, IL
 
@@ -88,8 +85,6 @@ incentive_pins %>%
   arrange(Municipality)
 ```
 
-
-
 ```{r }
 #| column: page
 
@@ -107,7 +102,6 @@ incentive_pins %>%
   arrange(Municipality)
 
 ```
-
 
 ```{r nbhd-allclasses}
 nbh_pincounts <- incentive_pins %>% 
@@ -389,8 +383,6 @@ fig_nbhd_C6_Chicago_PC <- incentives_props %>%
     name = "Pin Count")
 ```
 
-
-
 ## All Incentive Types Together
 
 ```{r muni-alltogether}
@@ -438,8 +430,6 @@ fig_muni_AV <- muni_pincounts_majorclass %>%
 fig_muni_AV
 fig_nbhd_AV
 ```
-
-
 
 ```{r muni-pincount}
 #| column: page
@@ -539,12 +529,9 @@ fig_nbhd_C6_PC
 
 ```
 
-
 ## Class 7 Incentives
 
 Class 7A(B): Intended to encourage commercial projects in areas determined to be "in need of commercial development.These projects have total development costs, exclusive of land, that DO NOT EXCEED(DO EXCEED) two million and would not be economically feasible without the incentive.
-
-
 
 ```{r }
 #| column: page
@@ -605,17 +592,13 @@ fig_muni_C7_PC
 fig_nbhd_C7_PC
 ```
 
-
 ## Class 8 Incentives
-
 
 Class 8: Designed to encourage industrial and commercial development in areas of the county which are experiencing severe economic stagnation.
 
-
 Class 8 properties exist in places besides the 5 townships:
 
-Bloom, Bremen, Calumet, Rich, Thornton  
-
+Bloom, Bremen, Calumet, Rich, Thornton
 
 ```{r class8}
 #| column: page
@@ -719,7 +702,6 @@ fig_nbhd_C8_PC
 
 > There are some Class 8 properties located in townships other than the Class 8 five chosen for the incentives.
 
-
 ```{r class8-2}
 #| column: page
 #| layout-ncol: 2
@@ -749,7 +731,6 @@ fig_muni_C8
 fig_nbhd_C8
 
 ```
-
 
 # Chicago Specific Graphs
 
@@ -781,17 +762,15 @@ incentive_pins %>%
             av = sum(av))
 ```
 
-
-# Areas with lots of exemptions and incentives 
+# Areas with lots of exemptions and incentives
 
 aka a reduced tax base
 
-## Municpality Level 
+## Municpality Level
 
 ```{r}
 pin_data <- read_csv("./Output/4C_joined_PINs_bills_and_exemptions.csv")
 ```
-
 
 ```{r}
 muni_taxrates <- pin_data %>% 
@@ -810,10 +789,10 @@ muni_taxrates <- pin_data %>%
     tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), 
     tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), 
     tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE),
-    # rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE), # not used
-    # rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE), # not used
-    # rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE), # not used
-    # tif_share = mean(tif_share, na.rm=TRUE), # not used
+    rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE), # not used
+    rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE), # not used
+    rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE), # not used
+    tif_share = mean(tif_share, na.rm=TRUE), # not used
   ) %>%
   
   rename(cur_comp_TC_rate = muni_comp_rate) %>%
@@ -880,11 +859,10 @@ prop_class_sums2 <- prop_class_sums %>%
 
 prop_class_sums2  
 
- write_csv(prop_class_sums2, "./Output/7_MC_muni_summaries_2021.csv") 
+# write_csv(prop_class_sums2, "./Output/7_MC_muni_summaries_2021.csv") 
 
 # write_csv(prop_class_sums, "./Output/7_TC_MC_summaries.csv")
 ```
-
 
 ```{r munilevel-exemptions, eval=FALSE, include=FALSE}
 # prop_class_sums is at muni level
@@ -902,8 +880,35 @@ Class2_data <- read_csv("./Output/5b_Class2_burdenshift.csv")
 residential_data <- Class2_data %>% 
   mutate(exemptions_per_resPIN = C2_current_GHE/ C2_PC_permuni )  %>%
   select(clean_name, exemptions_per_resPIN, C2_EAV_pct)
-```
 
+
+
+fig_muni_AV <- Class2_data %>% 
+  #filter(major_class_code %in% c("6A", "6B", "6C", "7A", "7B", "8")) %>%
+ # filter(clean_name != "Chicago") %>% 
+  group_by(shpfile_name)%>%
+  summarize(av = sum(av)) %>% 
+  filter(!is.na(shpfile_name) ) %>% 
+  full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
+  ggplot(aes(fill = av)) + 
+  geom_sf(aes(geometry = geometry),
+          color = "black",
+          lwd = .05)+ 
+  labs(title = "Properties with Any Type of Incentive Class",
+       subtitle = "AV of Buildings with Incentives in Municipalities (Except Chicago).
+       Chicago has around $500 million in AV from properties with incentives.") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+  scale_fill_steps2(
+    high = "darkblue", low = "orange",
+  #  nice.breaks = FALSE,
+    show.limits=TRUE,
+    na.value = NA,
+  limits = c(0, 90000000),
+    name = "AV ($)",
+    label = scales::dollar)
+
+```
 
 ## Neighborhood level join
 
@@ -932,7 +937,6 @@ incentives_props <- nbh_major_class %>%
 
 ```
 
-
 ```{r eval=FALSE}
 
 
@@ -959,8 +963,6 @@ nbh_data
 
 ```
 
-
-
 ```{r}
 # nbh_res_exemptions <- read_csv("./Output/8_nbh_sum_new_exe.csv") 
 nbh_taxrates <- read_csv( "./Output/8_Current_Taxrates_per_nbh.csv") %>% select(nbhd_code, pin_count, Total_EAV)
@@ -984,9 +986,8 @@ nbh_data <- nbh_data %>%
 nbh_data
 ```
 
-
-
 ## Maps
+
 ```{r}
 nbh_res <- nbh_data %>% 
   filter(major_class_code == 2) %>% 
