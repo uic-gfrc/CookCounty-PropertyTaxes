@@ -57,31 +57,34 @@ township_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/
 **Data Prep**
 
 
-```{r eval = FALSE, include=FALSE}
-ward_link <- "https://gis.cookcountyil.gov/hosting/rest/services/Hosted/Parcel2021_enhancedAll/FeatureServer/0/query?where=chicagoward%20%3D%20'49'&outFields=*&outSR=4326&f=json"
+```{r}
+#ward_link <- "https://gis.cookcountyil.gov/hosting/rest/services/Hosted/Parcel2021_enhancedAll/FeatureServer/0/query?where=chicagoward%20%3D%20'49'&outFields=*&outSR=4326&f=json"
 
 
 base_url <- "https://datacatalog.cookcountyil.gov/resource/tx2p-k2g9.json"
 
-# Grab all PINs in Rogers Park in 2020
-township_pins <- GET(
+# Grab all PINs with townsip variables
+
+pins_2021 <- GET(
   base_url,
   query = list(
-    tax_year = 2020,
-    ward_num = 49,
+    year = 2021,
+    # ward_num = 49,
    # property_city = "ROGERS PARK",
-    `$select` = paste0(c("pin", "class","tax_code", "lat","lon"),
+    `$select` = paste0(c("pin", "class", "township_code", "township_name",
+                         "nbhd_code", "census_puma_geoid"),
    collapse = ","),
-    `$limit` = 500000L
+    `$limit` = 500000000L
   )
 )
+
+pins_2021 <- fromJSON(rawToChar(pins_2021$content))
+
 ```
 
-Pull all agency names that exist, then use agency numbers associated with SCHOOL types to pull only the `school_agency_names` object.
 
-There are 946 unique taxing agencies that existed in 2021.
 
-```{r agency-dt}
+```{r agency-dt, eval=FALSE, include=FALSE}
 # has EAV values, extensions by agency_num
 agency_dt <- DBI::dbGetQuery(
   ptaxsim_db_conn,
@@ -211,12 +214,12 @@ unique_tif_taxcodes <- DBI::dbGetQuery(
 
 
 ## Read in summarized tax code level data for exemptions and taxbills.
-taxbills_by_Class_per_TC <- read_csv("./Output/2_Summed_Bills_by_Taxcode_and_Class.csv")  %>% 
-  mutate(tax_code = as.character(tax_code)) 
+# taxbills_by_Class_per_TC <- read_csv("./Output/2_Summed_Bills_by_Taxcode_and_Class.csv")  %>% 
+#   mutate(tax_code = as.character(tax_code)) 
 
 
-exemptions_by_class_per_TC <- read_csv("./Output/3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>%
-    mutate(tax_code_num = as.character(tax_code_num))
+# exemptions_by_class_per_TC <- read_csv("./Output/3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>%
+#    mutate(tax_code_num = as.character(tax_code_num))
 
 tif_distrib <- DBI::dbGetQuery(
   ptaxsim_db_conn, 
@@ -247,6 +250,13 @@ agency_data <- right_join(agency_dt, all_taxing_agencies) %>%
   arrange(agency_num)
 ```
 
+```{r}
+joined_pins <- read_csv("./Output/4C_joined_PINs_bills_and_exemptions.csv")
+
+joined_pins <- left_join(joined_pins, pins_2021, by = c("pin"))
+
+table(joined_pins$township_name)
+```
 
 # Proportion of Residential Land in Townships {.tabset .tabset-pills}
 
@@ -261,43 +271,44 @@ using the pin data from ptaxsim, I calculate the eav of all properties, exempt E
 
 ```{r}
 
-# chi_hoods <- read_sf("https://data.cityofchicago.org/resource/igwz-8jzy.json")
+# chi_nbhds <- read_sf("https://data.cityofchicago.org/resource/igwz-8jzy.json")
 
-class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv")
+# class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv")
 
 # use exemptions in tax codes to summarize EAV. 
 # More accurate that calculating it from revenue collected.tax rate in tax bill data
-exemptions_by_class_per_TC <- read_csv("./Output/3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>% 
-  filter(class_code != "0") %>%
-  left_join(class_dict) %>%
-  mutate(tax_code_num = as.character(tax_code_num)) %>%
-  left_join(township_tax_codes) %>%
-  full_join(township_agency_names) %>%
+#exemptions_by_class_per_TC <- read_csv("./Output/3_Exemptions_Details_output-ClassTaxcodeExemps.csv")
+
+  # #filter(class_code != "0") %>%
+  # left_join(class_dict) %>%
+  # mutate(tax_code_num = as.character(tax_code_num)) %>%
+  # left_join(township_tax_codes) %>%
+  # full_join(township_agency_names) %>%
   #.left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
 
   # merge with TIF distrib table to calculate the percent of the EAV that goes to the TIF vs the district
-  left_join(tif_distrib, by=c("tax_code_num", "year", "tax_code_rate")) %>%
-  mutate(exempt_EAV = (exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
-         exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate) ,
-         in_TIF = ifelse(tax_code_num %in% unique_tif_taxcodes$tax_code_num, 1, 0),
-         tax_base_current = ifelse(in_TIF==1, (eav-exempt_EAV)*(1-tax_code_distribution_pct/100), eav-exempt_EAV),
-         tax_base_noexemps = ifelse(in_TIF==1, (eav)*(1-tax_code_distribution_pct/100), eav),
-         ResidentialProps = ifelse(major_class_code %in% c("2", "3", "9"), "Residential", "Commercial"),
-         PropType = case_when(
-           major_class_code %in% c("3","9") ~ "Residential (C3&C9)",
-           major_class_code == "2" ~ "Residential (C1)",
-           TRUE~ "Commercial-Industrial"))
+  # left_join(tif_distrib, by=c("tax_code_num", "year", "tax_code_rate")) %>%
+  # mutate(exempt_EAV = (exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+  #        exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate) ,
+  #        in_TIF = ifelse(tax_code_num %in% unique_tif_taxcodes$tax_code_num, 1, 0),
+  #        tax_base_current = ifelse(in_TIF==1, (eav-exempt_EAV)*(1-tax_code_distribution_pct/100), eav-exempt_EAV),
+  #        tax_base_noexemps = ifelse(in_TIF==1, (eav)*(1-tax_code_distribution_pct/100), eav),
+  #        ResidentialProps = ifelse(major_class_code %in% c("2", "3", "9"), "Residential", "Commercial"),
+  #        PropType = case_when(
+  #          major_class_code %in% c("3","9") ~ "Residential (C3&C9)",
+  #          major_class_code == "2" ~ "Residential (C1)",
+  #          TRUE~ "Commercial-Industrial"))
          
 ```
 
 __Exemptions within each Townships:__
 
 
-Percent Residential is the Residential EAV outside of TIFs / Township EAV outside of TIFs.
+Percent of EAV that is Class 2 Residential represents all C2 EAV / Township EAV
 
+Percent of taxable Class 2 EAV is non-TIF increment EAV that is taxable by taxing agencies (i.e. exempt EAV from exemptions have been subtracted from totals)
 
 ```{r}
-
 ### Shows the amount in rental vs owner occupied residential properties ### 
 
 # grouped_exemptions <- exemptions_by_class_per_TC %>% 
@@ -310,35 +321,63 @@ Percent Residential is the Residential EAV outside of TIFs / Township EAV outsid
 #             tax_base_noexemps = sum(tax_base_noexemps, na.rm=TRUE)) %>% ungroup() %>% 
 #   select(agency_name, eav, exempt_EAV, everything()) %>% arrange(agency_name)
 # 
-# grouped_exemptions 
+# grouped_exemptions
+```
 
 
-
-grouped_exemptions <- exemptions_by_class_per_TC %>% 
-  group_by(PropType, agency_name, short_name)%>%
-  summarize(eav = sum(eav),
-            exempt_EAV = sum(exempt_EAV, exe_abate, na.rm=TRUE),
-            tax_base_current = sum(tax_base_current, na.rm=TRUE),
-            tax_base_noexemps = sum(tax_base_noexemps, na.rm=TRUE)) %>% ungroup() %>% 
-  select(agency_name, eav, exempt_EAV, everything()) %>% arrange(agency_name)
-
-grouped_exemptions 
-# calculate totals with ONLY EAV outside of TIFs
-TS_district_eav <- grouped_exemptions %>%  
-  group_by(agency_name, short_name) %>% 
-  summarize(TS_EAV_includesTIF = sum(eav), # all EAV in the municipality that exists
-            TS_tax_base_current=sum(tax_base_current), # taxable EAV based on current exemptions
-            TS_tax_base_noexemps = sum(tax_base_noexemps)) %>%  # taxable EAV pre-exemptions
-  ungroup() 
-
-perc_residential <- full_join(grouped_exemptions, TS_district_eav) %>% 
-  filter(PropType == "Residential (C1)") %>% 
-  
-  mutate(percent_residential = eav / TS_EAV_includesTIF)# %>% select()
+```{r}
+township_shp <- township_shp %>% 
+  mutate(name = str_to_title(NAME)) %>%
+  mutate(name = case_when( 
+    name == "North" ~ "North Chicago",
+    name == "South" ~ "South Chicago",
+    name == "West" ~ "West Chicago",
+    .default = as.character(name)) 
+  )
 
 
-perc_residential
+```
 
+```{r pct-exempt}
+pct_exempt_MC <- joined_pins %>% 
+  group_by(township_code, township_name) %>%
+  mutate(total_eav = sum(eav), # eav from pin table. "original" eav before exemptions or tifs
+         nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate/100)),
+        # nonTIF_EAV_pre_exemps = sum(final_tax_to_dist +  )
+         pin_count  = n(),
+         township_exemptEAV = sum(all_exemptions)) %>%
+  ungroup() %>%
+  group_by(township_code, township_name, major_class_code, total_eav, pin_count, township_exemptEAV, nonTIF_EAV_post_exemps) %>%
+  summarize(MC_eav =  sum(eav),
+            mc_pc = n(),
+            MC_exemptions = sum(all_exemptions),
+            MC_nonTIF_EAV_post_exemps = sum(final_tax_to_dist / (tax_code_rate/100) ),
+            
+) %>%
+  mutate(
+         pct_eav_MC = MC_eav / total_eav,
+       #  pct_pins_w_exe = mc_pc / pin_count,
+        exemps_per_resPIN =  MC_exemptions / mc_pc)
+
+pct_exempt_MC
+
+pct_exempt_MC %>% 
+  filter(major_class_code == 2) %>%
+  full_join(township_shp, by = c( "township_name" = "name") ) %>%
+  ggplot(aes(fill = exemps_per_resPIN)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  labs(title = "Average Exempt EAV for Residential PINs", 
+     #  caption = "The median township has 67.2% of its EAV from Class 2 Residential Properties"
+     ) +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
+  scale_fill_steps2(
+    high = "darkblue", low = "black",  #  guide = "legend",
+    #midpoint = median(pct_residential$pct_eav_MC),
+    show.limits=TRUE,
+    na.value = NA,
+    name = "Exempt EAV",
+    labels = scales::dollar)
 ```
 
 
@@ -346,23 +385,32 @@ perc_residential
 ## Residential (Class 2)
 
 
-The median amount of EAV from residential parcels is `r scales::percent(median(perc_residential$percent_residential))`.
+The median amount of EAV from residential parcels is `r scales::percent(median(pct_residential$pct_eav_MC))`.
 
 ```{r}
-# class 2
-perc_residential %>% 
-  #group_by(ResidentialProps)%>%
-    mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
- # left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
-  full_join(township_shp, b = c( "short_name" = "NAME") ) %>%
-  ggplot(aes(fill = percent_residential)) + 
+pct_eav_MC <- joined_pins %>% 
+  group_by(township_code, township_name) %>%
+  mutate(total_eav =  sum(eav)) %>%
+  ungroup() %>%
+  group_by(township_code, township_name, major_class_code, total_eav) %>%
+  summarize(MC_eav =  sum(eav)) %>%
+  mutate(
+         pct_eav_MC = MC_eav / total_eav )
+
+pct_residential <- pct_eav_MC %>% filter(major_class_code == 2)
+  
+pct_eav_MC %>% 
+  filter(major_class_code == 2) %>%
+  full_join(township_shp, by = c( "township_name" = "name") ) %>%
+  ggplot(aes(fill = pct_eav_MC)) + 
   geom_sf(aes(geometry = geometry), color = "black") + 
-  labs(title = "Residential EAV /  Total EAV in Township", caption = "The median township has 67.3% of its EAV from Class 2 Residential Properties") +
-  theme_classic() + 
+  labs(title = "Residential EAV /  Total EAV in Township", 
+       caption = "The median township has 67.2% of its EAV from Class 2 Residential Properties") +
+  theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
   scale_fill_steps2(
     high = "darkblue", low = "black",  #  guide = "legend",
-    midpoint = median(perc_residential$percent_residential),
+    midpoint = median(pct_residential$pct_eav_MC),
     show.limits=TRUE,
     na.value = NA,
     name = "% Residential",
@@ -372,32 +420,14 @@ perc_residential %>%
 
 
 
-# Taxable Base and Land Use
+# Taxable Base
 
 Tax base in the tables above are the total EAV outside of TIF areas.
 
 ```{r}
-TC_bills_current <- read_csv("./Output/2_Summed_Bills_by_Taxcode_and_Class.csv") %>% 
-  filter(class != "0") %>% 
-  mutate(tax_code = as.character(tax_code),
-         class = as.character(class))
 
-class_dict$class_code <- as.character(class_dict$class_code)
- 
-
-taxcodes_current <- TC_bills_current %>% 
-  filter(tax_code %in% township_tax_codes$tax_code_num) %>% 
-  left_join(township_tax_codes, by = c("tax_code" = "tax_code_num")) %>%
-  left_join(muni_tax_codes) %>%   
-  left_join(township_agency_names
-            ) %>% #  by = c("tax_code" = "tax_code_num")) %>%
-  left_join(muni_agency_names)  
-
-Current_Taxrates <- taxcodes_current %>% 
-
-  #left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
-#  filter(!agency_num %in% cross_county_lines) %>%
-  group_by(agency_name, short_name, agency_num) %>%
+TS_taxrates <- joined_pins %>% 
+  group_by(township_name, township_code) %>%
   summarize(TownshipLevy = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by tax districts with current exemptions in place
             nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
             TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),  
@@ -408,94 +438,85 @@ Current_Taxrates <- taxcodes_current %>%
          nonTIF_EAV_pre_exemps = nonTIF_EAV_post_exemps + Exempt_EAV,
          taxrate_new = TownshipLevy/nonTIF_EAV_pre_exemps,
          taxrate_change = tax_rate_current-taxrate_new) %>% 
-  select(short_name, taxrate_change, tax_rate_current, taxrate_new, everything()) %>% 
+  select(township_name, taxrate_change, tax_rate_current, taxrate_new, everything()) %>% 
   arrange(desc(tax_rate_current))
 
-# land_use <- taxcodes_current %>% 
-#   left_join(muni_agency_names) %>% 
-#   left_join(Current_Taxrates) %>%
-#   left_join(class_dict, by = c("class" = "class_code")) %>%
-# 
-#   mutate(class_1dig = str_sub(class, 1, 1),
-#     ResidentialProps = ifelse(class_1dig %in% c("2", "3", "9"), "Residential", "Non-Residential")) %>%
-#   #        PropType = case_when(
-#   #          major_class_code %in% c("3","9") ~ "Multi-Family",
-#   #          major_class_code == "2" ~ "Single-Family",
-#   #          TRUE ~ "Commercial-Industrial")) %>%
-#   group_by(clean_name, Alea_cat, agency_num, tax_rate_current, taxrate_new, taxrate_change, agency_name) %>% 
-#   
-#   # All of the values calculated below are AFTER exemptions have been removed
-#   summarize(taxrev_from_proptype = sum(final_tax_to_dist, na.rm = TRUE),
-#             nonTIF_EAV = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
-#             TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),
-#             Exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE),
-#             Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE) ) %>% ungroup()
+TS_taxrates
 
-Current_Taxrates
 
-write_csv(Current_Taxrates, "./Output/11_Township_Composite_Taxrates.csv")
+# write_csv(TS_taxrates, "./Output/11_Township_Composite_Taxrates.csv")
 ```
 
 Current composite tax rates for each township are above. Table also includes the new tax rate if there were no exemptions, the levy (aka amount collected by the district from final_tax_to_dist variable), EAV outside of TIFs, amount of exempt EAV, and additional variables.
 
+```{r township-current-taxrates}
 
-```{r}
-# 
-# grouped_exemptions <- exemptions_by_class_per_TC %>% 
-#    # group_by(agency_name, major_class_code, major_class_type, ResidentialProps, PropType) %>%
-#   group_by(clean_name, Alea_cat, agency_name) %>%
-#   summarize(eav = sum(eav),
-#            exempt_EAV = sum(exempt_EAV, exe_abate, na.rm=TRUE),
-#          tax_base_current = sum(tax_base_current, na.rm=TRUE),
-#          tax_base_noexemps = sum(tax_base_noexemps, na.rm=TRUE)) %>% ungroup()
-#   
-
-# calculate totals with ONLY EAV outside of TIFs
-township_dist_eav <- grouped_exemptions %>%  
-  group_by(agency_name, short_name) %>% 
-  summarize(TS_EAV_includesTIF = sum(eav), # all EAV in the municipality that exists
-            TS_tax_base_current=sum(tax_base_current), # taxable EAV based on current exemptions
-            TS_tax_base_noexemps = sum(tax_base_noexemps)) %>%  # taxable EAV pre-exemptions
-  ungroup() 
-
-pct_property_types <- left_join(grouped_exemptions, township_dist_eav) %>%
- # filter(ResidentialProps == "Alea_cat") %>% 
-  mutate(pct_PropType = eav / TS_EAV_includesTIF)# %>% select()
-
-pct_property_types
-
-
-burden_table <- pct_property_types %>% 
-  left_join(Current_Taxrates) %>%
-  mutate(rev_collected_current = tax_base_current * tax_rate_current,
-         rev_collected_new = tax_base_noexemps*taxrate_new,
-         burden_current = rev_collected_current/TownshipLevy,
-         burden_noexemps = rev_collected_new/TownshipLevy, 
-         burden_change = burden_noexemps- burden_current,
-         burden_noexemps = ifelse(burden_noexemps >1, 1, burden_noexemps)) %>%
-  mutate(burden_current = ifelse(is.na(burden_current), 0, burden_current),
-         burden_noexemps = ifelse(is.na(burden_noexemps), 0, burden_noexemps)) %>%
-  mutate(burden_noexemps = ifelse(burden_noexemps>1, 1, burden_noexemps),
-         burden_current = ifelse(burden_current>1, 1, burden_current)) %>%
-  mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) )
-
-
-burden_shift <- burden_table # only to not change code below in graphs. 
+TS_taxrates %>%
+  full_join(township_shp, by = c( "township_name" = "name") ) %>%
+  ggplot(aes(fill = tax_rate_current)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  labs(title = "Residential EAV /  Total EAV in Township", 
+       caption = "The median composite tax rate at the township level is 10.28%.") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
+  scale_fill_steps2(
+    high = "darkblue", low = "black",  #  guide = "legend",
+    midpoint = median(TS_taxrates$tax_rate_current),
+    show.limits=TRUE,
+    na.value = NA,
+    name = "Current Tax Rate",
+    labels = scales::percent)
 ```
 
 ```{r}
-Current_Taxrates %>% 
-   # mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
-  full_join(township_shp, by = c("short_name" = "NAME")) %>%
+
+burden_table <- TS_taxrates %>% 
+  left_join(pct_exempt_MC) %>%
+  left_join(pct_eav_MC) %>%
+  mutate(rev_collected_current = MC_nonTIF_EAV_post_exemps * tax_rate_current,
+         rev_collected_new = (MC_nonTIF_EAV_post_exemps + MC_exemptions )*taxrate_new,
+         burden_current = rev_collected_current/TownshipLevy,
+         burden_noexemps = rev_collected_new/TownshipLevy, 
+         burden_change = burden_noexemps- burden_current) %>%
+  mutate(burden_current = ifelse(burden_current>1, 1, burden_current))
+
+# TS_burden_table <- TS_taxrates %>% 
+#   left_join(pct_exempt_MC) %>%
+#   left_join(pct_eav_MC) %>%
+#   group_by(township_name) %>%
+#   summarize(rev_collected_current = sum(MC_nonTIF_EAV_post_exemps * tax_rate_current),
+  #        rev_collected_new = sum((MC_nonTIF_EAV_post_exemps + MC_exemptions )*taxrate_new),
+  #        burden_current = sum(rev_collected_current/TownshipLevy),
+  #        burden_noexemps = sum(rev_collected_new/TownshipLevy), 
+  #        burden_change = sum(burden_noexemps- burden_current) ) %>%
+  # mutate(burden_current = ifelse(burden_current>1, 1, burden_current)
+  
+# 
+# ,
+#          burden_noexemps = ifelse(burden_noexemps >1, 1, burden_noexemps)) %>%
+#   mutate(burden_current = ifelse(is.na(burden_current), 0, burden_current),
+#          burden_noexemps = ifelse(is.na(burden_noexemps), 0, burden_noexemps)) %>%
+#   mutate(burden_noexemps = ifelse(burden_noexemps>1, 1, burden_noexemps),
+#          burden_current = ifelse(burden_current>1, 1, burden_current))
+
+
+# burden_shift <- burden_table # only to not change code below in graphs. 
+```
+
+```{r}
+burden_table %>% 
+
+  full_join(township_shp, by = c("township_name" = "name")) %>%
   ggplot(aes(fill = tax_rate_current)) + 
   geom_sf(aes(geometry = geometry), color = "black") + 
   labs(title = "Composite Tax Rate  for Townships", 
-       caption = "The median township taxrate outside of Chicago has a composite tax rate around 11.1%") +
-    theme_classic() + 
+    #   caption = "The median township taxrate outside of Chicago has a composite tax rate around 11.1%"
+    ) +
+    theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
     scale_fill_steps2(
     high = "darkblue", low = "black",  #  guide = "legend",
-      midpoint = median(Current_Taxrates$tax_rate_current),
+    #  midpoint = median(Current_Taxrates$tax_rate_current),
   #                      n.breaks = 6,
   show.limits=TRUE,
   na.value = NA,
@@ -503,220 +524,16 @@ Current_Taxrates %>%
   labels = scales::percent)
 ```
 
-```{r}
-taxcodes_current %>% 
-  summarise(
-    bill_reduced = sum(tax_amt_exe))
-```
-
-For Townships (excluding Chicago) in 2021, there was $1.03 billion in "forgone" revenue due to current exempt EAV. Exempt EAV * tax rate at the tax code level is used for calculation.  
-
-
-# Class 8 Incentives
-
-
-## Townships with Class 8 Properties
-
-My first calculation: Filtered for all properties that had 800 level properties.
-
-Probably not correct....
-
 
 ```{r}
-
-exemptions_by_class_per_TC <- read_csv("./Output/3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>% 
-  mutate(class_code = as.character(class_code)) %>%
-  filter(class_code >=800 & class_code <900) %>%
-  left_join(class_dict) %>%
-  mutate(tax_code_num = as.character(tax_code_num)) %>%
-  left_join(township_tax_codes) %>%
-  full_join(township_agency_names) %>%
-  #.left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
-
-  # merge with TIF distrib table to calculate the percent of the EAV that goes to the TIF vs the district
-  left_join(tif_distrib, by=c("tax_code_num", "year", "tax_code_rate")) %>%
-  mutate(exempt_EAV = (exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
-         exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate) ,
-         in_TIF = ifelse(tax_code_num %in% unique_tif_taxcodes$tax_code_num, 1, 0),
-         tax_base_current = ifelse(in_TIF==1, (eav-exempt_EAV)*(1-tax_code_distribution_pct/100), eav-exempt_EAV),
-         tax_base_noexemps = ifelse(in_TIF==1, (eav)*(1-tax_code_distribution_pct/100), eav),
-         ResidentialProps = ifelse(major_class_code %in% c("2", "3", "9"), "Residential", "Commercial"),
-         PropType = case_when(
-           major_class_code %in% c("3","9") ~ "Residential (C3&C9)",
-           major_class_code == "2" ~ "Residential (C1)",
-           TRUE~ "Commercial-Industrial"))
-
-exemptions_by_class_per_TC
-
-
-
-class8Townships = read_csv("./Output/3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>% 
-  mutate(class_code = as.character(class_code)) %>%
-  filter(class_code >=800 & class_code <900) %>%
-  left_join(class_dict) %>%
-  mutate(tax_code_num = as.character(tax_code_num)) %>%
-  left_join(township_tax_codes) %>%
-  left_join(township_agency_names)%>% 
-  distinct(agency_name) 
-
-C8_exemptions <- read_csv("./Output/3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>% 
-  mutate(class_code = as.character(class_code)) %>%
-  filter(class_code !=0) %>%
-  left_join(class_dict) %>%
-  mutate(tax_code_num = as.character(tax_code_num)) %>%
-  left_join(township_tax_codes) %>%
-  left_join(township_agency_names)%>% 
-  left_join(tif_distrib, by=c("tax_code_num", "year", "tax_code_rate")) %>%
-  
-  filter(agency_name %in% class8Townships$agency_name) %>% 
-  mutate(exempt_EAV = (exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
-         exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate) ,
-         in_TIF = ifelse(tax_code_num %in% unique_tif_taxcodes$tax_code_num, 1, 0),
-         tax_base_current = ifelse(in_TIF==1, (eav-exempt_EAV)*(1-tax_code_distribution_pct/100), eav-exempt_EAV),
-         tax_base_noexemps = ifelse(in_TIF==1, (eav)*(1-tax_code_distribution_pct/100), eav),
-         ResidentialProps = ifelse(major_class_code %in% c("2", "3", "9"), "Residential", "Commercial"),
-         PropType = case_when(
-           major_class_code %in% c("3","9") ~ "Residential (C3&C9)",
-           major_class_code == "2" ~ "Residential (C1)",
-           TRUE~ "Commercial-Industrial"))
-
-C8_exemptions
-```
-
-```{r}
-TC_bills_current <- read_csv("./Output/2_Summed_Bills_by_Taxcode_and_Class.csv") %>% 
-  filter(class != "0") %>% 
-  mutate(tax_code = as.character(tax_code),
-         class = as.character(class))
-
-class_dict$class_code <- as.character(class_dict$class_code)
- 
-
-taxcodes_current <- TC_bills_current %>% 
-  left_join(township_tax_codes, by = c("tax_code" = "tax_code_num")) %>%
-  left_join(muni_tax_codes) %>%   
-  left_join(township_agency_names) %>% #  by = c("tax_code" = "tax_code_num")) %>%
-  left_join(muni_agency_names)  %>%  
-  filter(agency_name %in% class8Townships$agency_name) 
-
-
-Current_Taxrates <- taxcodes_current %>% 
-
-  #left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
-#  filter(!agency_num %in% cross_county_lines) %>%
-  group_by(agency_name, short_name, agency_num) %>%
-  summarize(TownshipLevy = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by tax districts with current exemptions in place
-            nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
-            TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),  
-            Exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE), 
-            Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE)) %>%
-
-  mutate(tax_rate_current = TownshipLevy/nonTIF_EAV_post_exemps,
-         nonTIF_EAV_pre_exemps = nonTIF_EAV_post_exemps + Exempt_EAV,
-         taxrate_new = TownshipLevy/nonTIF_EAV_pre_exemps,
-         taxrate_change = tax_rate_current-taxrate_new) %>% 
-  select(short_name, taxrate_change, tax_rate_current, taxrate_new, everything()) %>% 
-  arrange(desc(tax_rate_current))
-
-
-
-
-
-Current_Taxrates
-
-Current_Taxrates %>% 
-  mutate(#rev_forgone = Exempt_EAV*taxrate_new,
-         # taxrate if there were no exemptions applied to taxable EAV. 
-         # external funding source covers "forgone revenue" to prevent the indirect effect of higher tax rates on all property classes
-         rev_collected_new = nonTIF_EAV_post_exemps*taxrate_new,
-         rev_collected_current = nonTIF_EAV_post_exemps*tax_rate_current,
-         LevyGap = rev_collected_current-rev_collected_new) %>% 
-  select(short_name, LevyGap, rev_collected_new, rev_collected_current, TownshipLevy, everything())
-
-
-
-Current_Taxrates %>% 
-  mutate(#rev_forgone = Exempt_EAV*taxrate_new,
-         # taxrate if there were no exemptions applied to taxable EAV. 
-         # external funding source covers "forgone revenue" to prevent the indirect effect of higher tax rates on all property classes
-         rev_collected_new = nonTIF_EAV_post_exemps*taxrate_new,
-         rev_collected_current = nonTIF_EAV_post_exemps*tax_rate_current,
-         LevyGap = rev_collected_current-rev_collected_new) %>% 
-  select(short_name, LevyGap, rev_collected_new, rev_collected_current, TownshipLevy, everything()) %>% 
-  ungroup() %>% 
-  summarize(C8_TS_Cost = sum(LevyGap, na.rm = TRUE))
-
-
-
-taxcodes_current %>% 
-
-  #left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
-#  filter(!agency_num %in% cross_county_lines) %>%
- # group_by(agency_name, short_name, agency_num) %>%
-  mutate(TownshipLevy = final_tax_to_dist, # amount billed by tax districts with current exemptions in place
-            nonTIF_EAV_post_exemps = final_tax_to_dist/(tax_code_rate/100),
-            TIF_increment_EAV = final_tax_to_tif/(tax_code_rate/100),  
-            Exempt_EAV = tax_amt_exe/(tax_code_rate/100), 
-            Total_EAV = (tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100)) %>%
-
-  mutate(tax_rate_current = TownshipLevy/nonTIF_EAV_post_exemps,
-         nonTIF_EAV_pre_exemps = nonTIF_EAV_post_exemps + Exempt_EAV,
-         taxrate_new = TownshipLevy/nonTIF_EAV_pre_exemps,
-         taxrate_change = tax_rate_current-taxrate_new,
-         rev_collected = nonTIF_EAV_post_exemps * taxrate_new, # if exemptions were granted but tax rate did not go up to meet levy gap
-         gap = round(TownshipLevy-rev_collected) # external funds needed to avoid raising tax rates
-         ) %>% 
-  select(short_name, tax_code, gap, TownshipLevy, rev_collected, everything()) %>% 
-  arrange(desc(tax_rate_current))
-
-
-
-taxcodes_current %>% 
-
-  #left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
-#  filter(!agency_num %in% cross_county_lines) %>%
- # group_by(agency_name, short_name, agency_num) %>%
-  mutate(TownshipLevy = final_tax_to_dist, # amount billed by tax districts with current exemptions in place
-            nonTIF_EAV_post_exemps = final_tax_to_dist/(tax_code_rate/100),
-            TIF_increment_EAV = final_tax_to_tif/(tax_code_rate/100),  
-            Exempt_EAV = tax_amt_exe/(tax_code_rate/100), 
-            Total_EAV = (tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100)) %>%
-
-  mutate(tax_rate_current = TownshipLevy/nonTIF_EAV_post_exemps,
-         nonTIF_EAV_pre_exemps = nonTIF_EAV_post_exemps + Exempt_EAV,
-         taxrate_new = TownshipLevy/nonTIF_EAV_pre_exemps,
-         taxrate_change = tax_rate_current-taxrate_new,
-         rev_collected = nonTIF_EAV_post_exemps * taxrate_new, # if exemptions were granted but tax rate did not go up to meet levy gap
-         gap = round(TownshipLevy-rev_collected) # external funds needed to avoid raising tax rates
-         ) %>% 
-  select(short_name, tax_code, gap, TownshipLevy, rev_collected, everything()) %>% 
-  arrange(desc(tax_rate_current)) %>%
-  summarize(total_gap = sum(gap, na.rm = TRUE))
-```
-
-For townships that had  Class 8 incentive property classes within their tax codes, $440 million in external revenue is needed to prevent the unintended effects of exemptions (i.e. \$440 million necessary to prevent the increase in tax rates necessary to collect enough revenue for taxing districts' levies). This shift in tax burden occurs due to the increased tax rate necessary to meet the taxing districts' levies after the taxable EAV is decreased.  
-
-The "cost" of exemptions in Townships that receive class 8 incentives is \$440 million. This value was calculated using the current taxable EAV in the townships (non-TIF increment, post exemption taxable EAV) and multiplied by the hypothetical tax rate if there were no exemptions. Instead of raising the tax rate to collect the rest of the necessary revenue to meet the levies requested, external revenue is transferred to the taxing districts. This prevents the need to raise tax rates on all property classes and prevents the unintended effects of providing exemptions that have been occurring within Cook County. 
-
-
-```{r}
-Current_Taxrates %>% 
-  mutate(rev_forgone = Exempt_EAV*taxrate_new,
-         # taxrate if there were no exemptions applied to taxable EAV. 
-         # external funding source covers "forgone revenue" to prevent the indirect effect of higher tax rates on all property classes
-         rev_collected = nonTIF_EAV_post_exemps*taxrate_new) %>% 
-  select(short_name, rev_forgone, rev_collected, TownshipLevy, everything()) %>%
-  # mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
-  full_join(township_shp, by = c("short_name" = "NAME")) %>%
-  ggplot(aes(fill = rev_forgone)) + 
+burden_table %>% 
+  filter(major_class_code == 2) %>%
+  full_join(township_shp, by = c("township_name" = "name")) %>%
+  ggplot(aes(fill = burden_current )) + 
   geom_sf(aes(geometry = geometry), color = "black") + 
-  labs(title = "External Funds Needed to Prevent Exemption Externalities",
-       subtitle = "Gap between Levy and Revenue Collected",
-       
-       caption = "Amount of revenue collected is the taxable EAV after exemptions * hypothetical 
-       \"no exemption\" tax rate.Additional money must come from somewhere in order 
-       to meet the  taxing districts' levies if tax rates are not raised."
-  ) +
+  labs(title = "Current C2 Tax Burden", 
+       caption = "Tax Burden is the amount of the Levy revenue collected paid by C2 properties"
+    ) +
     theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
     scale_fill_steps2(
@@ -725,230 +542,8 @@ Current_Taxrates %>%
   #                      n.breaks = 6,
   show.limits=TRUE,
   na.value = NA,
-                        name = "Additional Revenue Needed",
-  labels = scales::dollar)
+                        name = "Tax Burden",
+  labels = scales::percent)
 ```
 
-
-
-## Class 8 Incentive Townships (5 Townships)
-
-
-Include only Bloom, Bremen, Calumet, Rich, Thornton. 
-
-
-```{r}
-
-C8_ships <- c("TOWN BLOOM", "TOWN BREMEN", "TOWN CALUMET", "TOWN RICH", "TOWN THORNTON")
-
-
-exemptions_by_class_per_TC <- read_csv("./Output/3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>% 
-  mutate(class_code = as.character(class_code)) %>%
-  filter(class_code >=800 & class_code <900) %>%
-  left_join(class_dict) %>%
-  mutate(tax_code_num = as.character(tax_code_num)) %>%
-  left_join(township_tax_codes) %>%
-  full_join(township_agency_names) %>%
-  filter(agency_name %in%  C8_ships) %>%
-
-  #.left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
-
-  # merge with TIF distrib table to calculate the percent of the EAV that goes to the TIF vs the district
-  left_join(tif_distrib, by=c("tax_code_num", "year", "tax_code_rate")) %>%
-  mutate(exempt_EAV = (exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
-         exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate) ,
-         in_TIF = ifelse(tax_code_num %in% unique_tif_taxcodes$tax_code_num, 1, 0),
-         tax_base_current = ifelse(in_TIF==1, (eav-exempt_EAV)*(1-tax_code_distribution_pct/100), eav-exempt_EAV),
-         tax_base_noexemps = ifelse(in_TIF==1, (eav)*(1-tax_code_distribution_pct/100), eav),
-         ResidentialProps = ifelse(major_class_code %in% c("2", "3", "9"), "Residential", "Commercial"),
-         PropType = case_when(
-           major_class_code %in% c("3","9") ~ "Residential (C3&C9)",
-           major_class_code == "2" ~ "Residential (C1)",
-           TRUE~ "Commercial-Industrial"))
-
-exemptions_by_class_per_TC
-
-class8Townships = read_csv("./Output/3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>% 
-  mutate(class_code = as.character(class_code)) %>%
-  filter(class_code >=800 & class_code <900) %>%
-  left_join(class_dict) %>%
-  mutate(tax_code_num = as.character(tax_code_num)) %>%
-  left_join(township_tax_codes) %>%
-  left_join(township_agency_names)%>% 
-    filter(agency_name %in%  C8_ships) %>%
-
-  distinct(agency_name)
-
-
-C8_exemptions <- read_csv("./Output/3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>% 
-  mutate(class_code = as.character(class_code)) %>%
-  filter(class_code !=0) %>%
-  left_join(class_dict) %>%
-  mutate(tax_code_num = as.character(tax_code_num)) %>%
-  left_join(township_tax_codes) %>%
-  left_join(township_agency_names)%>% 
-  left_join(tif_distrib, by=c("tax_code_num", "year", "tax_code_rate")) %>%
-    filter(agency_name %in%  C8_ships) %>%
-
-  
- # filter(agency_name %in% class8Townships$agency_name) %>% 
-  mutate(exempt_EAV = (exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
-         exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate) ,
-         in_TIF = ifelse(tax_code_num %in% unique_tif_taxcodes$tax_code_num, 1, 0),
-         tax_base_current = ifelse(in_TIF==1, (eav-exempt_EAV)*(1-tax_code_distribution_pct/100), eav-exempt_EAV),
-         tax_base_noexemps = ifelse(in_TIF==1, (eav)*(1-tax_code_distribution_pct/100), eav),
-         ResidentialProps = ifelse(major_class_code %in% c("2", "3", "9"), "Residential", "Commercial"),
-         PropType = case_when(
-           major_class_code %in% c("3","9") ~ "Residential (C3&C9)",
-           major_class_code == "2" ~ "Residential (C1)",
-           TRUE~ "Commercial-Industrial"))
-
-C8_exemptions
-```
-```{r}
-TC_bills_current <- read_csv("./Output/2_Summed_Bills_by_Taxcode_and_Class.csv") %>% 
-  filter(class != "0") %>% 
-  mutate(tax_code = as.character(tax_code),
-         class = as.character(class))
-
-class_dict$class_code <- as.character(class_dict$class_code)
- 
-
-taxcodes_current <- TC_bills_current %>% 
-  left_join(township_tax_codes, by = c("tax_code" = "tax_code_num")) %>%
-  left_join(muni_tax_codes) %>%   
-  left_join(township_agency_names) %>% #  by = c("tax_code" = "tax_code_num")) %>%
-  left_join(muni_agency_names)  %>%  
-    filter(agency_name %in%  C8_ships)# %>%
-
- # filter(agency_name %in% class8Townships$agency_name) 
-
-
-Current_Taxrates <- taxcodes_current %>% 
-
-  #left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
-#  filter(!agency_num %in% cross_county_lines) %>%
-  group_by(agency_name, short_name, agency_num) %>%
-  summarize(TownshipLevy = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by tax districts with current exemptions in place
-            nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
-            TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),  
-            Exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE), 
-            Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE)) %>%
-
-  mutate(tax_rate_current = TownshipLevy/nonTIF_EAV_post_exemps,
-         nonTIF_EAV_pre_exemps = nonTIF_EAV_post_exemps + Exempt_EAV,
-         taxrate_new = TownshipLevy/nonTIF_EAV_pre_exemps,
-         taxrate_change = tax_rate_current-taxrate_new) %>% 
-  select(short_name, taxrate_change, tax_rate_current, taxrate_new, everything()) %>% 
-  arrange(desc(tax_rate_current))
-
-
-
-
-
-Current_Taxrates
-
-Current_Taxrates %>% 
-  mutate(#rev_forgone = Exempt_EAV*taxrate_new,
-         # taxrate if there were no exemptions applied to taxable EAV. 
-         # external funding source covers "forgone revenue" to prevent the indirect effect of higher tax rates on all property classes
-         rev_collected_new = nonTIF_EAV_post_exemps*taxrate_new,
-         rev_collected_current = nonTIF_EAV_post_exemps*tax_rate_current,
-         LevyGap = rev_collected_current-rev_collected_new) %>% 
-  select(short_name, LevyGap, rev_collected_new, rev_collected_current, TownshipLevy, everything())
-
-
-
-Current_Taxrates %>% 
-  mutate(#rev_forgone = Exempt_EAV*taxrate_new,
-         # taxrate if there were no exemptions applied to taxable EAV. 
-         # external funding source covers "forgone revenue" to prevent the indirect effect of higher tax rates on all property classes
-         rev_collected_new = nonTIF_EAV_post_exemps*taxrate_new,
-         rev_collected_current = nonTIF_EAV_post_exemps*tax_rate_current,
-         LevyGap = rev_collected_current-rev_collected_new) %>% 
-  select(short_name, LevyGap, rev_collected_new, rev_collected_current, TownshipLevy, everything()) %>% 
-  ungroup() %>% 
-  summarize(C8_TS_Cost = sum(LevyGap, na.rm = TRUE))
-
-
-
-taxcodes_current %>% 
-
-  #left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
-#  filter(!agency_num %in% cross_county_lines) %>%
- # group_by(agency_name, short_name, agency_num) %>%
-  mutate(TownshipLevy = final_tax_to_dist, # amount billed by tax districts with current exemptions in place
-            nonTIF_EAV_post_exemps = final_tax_to_dist/(tax_code_rate/100),
-            TIF_increment_EAV = final_tax_to_tif/(tax_code_rate/100),  
-            Exempt_EAV = tax_amt_exe/(tax_code_rate/100), 
-            Total_EAV = (tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100)) %>%
-
-  mutate(tax_rate_current = TownshipLevy/nonTIF_EAV_post_exemps,
-         nonTIF_EAV_pre_exemps = nonTIF_EAV_post_exemps + Exempt_EAV,
-         taxrate_new = TownshipLevy/nonTIF_EAV_pre_exemps,
-         taxrate_change = tax_rate_current-taxrate_new,
-         rev_collected = nonTIF_EAV_post_exemps * taxrate_new, # if exemptions were granted but tax rate did not go up to meet levy gap
-         gap = round(TownshipLevy-rev_collected) # external funds needed to avoid raising tax rates
-         ) %>% 
-  select(short_name, tax_code, gap, TownshipLevy, rev_collected, everything()) %>% 
-  arrange(desc(tax_rate_current))
-
-
-
-taxcodes_current %>% 
-
-  #left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
-#  filter(!agency_num %in% cross_county_lines) %>%
- # group_by(agency_name, short_name, agency_num) %>%
-  mutate(TownshipLevy = final_tax_to_dist, # amount billed by tax districts with current exemptions in place
-            nonTIF_EAV_post_exemps = final_tax_to_dist/(tax_code_rate/100),
-            TIF_increment_EAV = final_tax_to_tif/(tax_code_rate/100),  
-            Exempt_EAV = tax_amt_exe/(tax_code_rate/100), 
-            Total_EAV = (tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100)) %>%
-
-  mutate(tax_rate_current = TownshipLevy/nonTIF_EAV_post_exemps,
-         nonTIF_EAV_pre_exemps = nonTIF_EAV_post_exemps + Exempt_EAV,
-         taxrate_new = TownshipLevy/nonTIF_EAV_pre_exemps,
-         taxrate_change = tax_rate_current-taxrate_new,
-         rev_collected = nonTIF_EAV_post_exemps * taxrate_new, # if exemptions were granted but tax rate did not go up to meet levy gap
-         gap = round(TownshipLevy-rev_collected) # external funds needed to avoid raising tax rates
-         ) %>% 
-  select(short_name, tax_code, gap, TownshipLevy, rev_collected, everything()) %>% 
-  arrange(desc(tax_rate_current)) %>%
-  summarize(total_gap = sum(gap, na.rm = TRUE))
-```
-
-For the 5 townships listed as receiving Class 8 Incentives, $195 million in external revenue is needed to prevent the unintended effects of exemptions (i.e. \$195 million necessary to prevent the increase in tax rates necessary to collect enough revenue for taxing districts' levies). This shift in tax burden occurs due to the increased tax rate necessary to meet the taxing districts' levies after the taxable EAV is decreased.  
-
-The "cost" of exemptions in Townships that receive class 8 incentives is \$195 million. This value was calculated using the current taxable EAV in the townships (non-TIF increment, post exemption taxable EAV) and multiplied by the hypothetical tax rate if there were no exemptions. Instead of raising the tax rate to collect the rest of the necessary revenue to meet the levies requested, external revenue is transferred to the taxing districts. This prevents the need to raise tax rates on all property classes and prevents the unintended effects of providing exemptions that have been occurring within Cook County. 
-
-
-```{r}
-Current_Taxrates %>% 
-  mutate(rev_forgone = Exempt_EAV*taxrate_new,
-         # taxrate if there were no exemptions applied to taxable EAV. 
-         # external funding source covers "forgone revenue" to prevent the indirect effect of higher tax rates on all property classes
-         rev_collected = nonTIF_EAV_post_exemps*taxrate_new) %>% 
-  select(short_name, rev_forgone, rev_collected, TownshipLevy, everything()) %>%
-  # mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
-  full_join(township_shp, by = c("short_name" = "NAME")) %>%
-  ggplot(aes(fill = rev_forgone)) + 
-  geom_sf(aes(geometry = geometry), color = "black") + 
-  labs(title = "External Funds Needed to Prevent Exemption Externalities",
-       subtitle = "Gap between Levy and Revenue Collected",
-       caption = "Amount of revenue collected is the taxable EAV after exemptions * hypothetical 
-       \"no exemption\" tax rate.Additional money must come from somewhere in order 
-       to meet the  taxing districts' levies if tax rates are not raised."
-  ) +
-    theme_void() + 
-  theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
-    scale_fill_steps2(
-    high = "darkblue", low = "black",  #  guide = "legend",
-    #  midpoint = median(Current_Taxrates$tax_rate_current),
-  #                      n.breaks = 6,
-  show.limits=TRUE,
-  na.value = NA,
-                        name = "Additional Revenue Needed",
-  labels = scales::dollar)
-```
 
