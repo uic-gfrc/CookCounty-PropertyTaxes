@@ -1,0 +1,70 @@
+---
+title: 'Get and Prepare Data'
+---
+
+```{r setup, warning=FALSE, message=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, 
+                      message = FALSE)
+
+library(tidyverse)
+```
+
+## Access and Summarize Data from PTAXSIM
+
+Bills were originally pulled from PTAXSIM and summed to the PIN level in files `1_...rmd` and `2...rmd`. Exemption data per PIN was pulled from PTAXSIM in file `3_.....rmd`. These were then joined together in `4c_.....` to create the `4c_joined_pins...` CSV.
+
+These files ended up being the building blocks for creating the `ptax_pull_loop.R` file that pulls the data for all the years and aggregates it in various ways.
+
+When looking at tax bill or assessed value distributions at the PIN or parcel level, the joined PIN data containing the taxbills and exemption information for the relevant year must be used. Download `4C_joined_PINs` file from [Box link here:](https://uofi.box.com/s/cvp7pdjkx8kth7o0vg9itpra3z8vfkzq). I would then move it from the download file into your R project and then the file paths should work with few to zero edits.
+
+```{r helper-file}
+#| code-fold: false
+#| 
+setwd("..")   # set directory above current one (set to parent directory)
+source("helper_tc_muninames.R")
+```
+
+General steps for data prep:
+
+1.  Pull tax bill data for all PINs. Summarize the tax bills to the PIN level.\
+2.  Pull all exemption data from the `pin` data table in PTAXSIM database.\
+3.  Join PIN level observations.\
+
+-   Need data at PIN level for individual level bill change calculations.
+
+4.  Create or join other variables.
+
+```{r, eval=FALSE, include = TRUE}
+setwd("..") 
+source("ptax_pull_loop.R")
+```
+
+Note: `exe_abate` is NOT included in the `all_exemptions` variable.
+
+```{r}
+#ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "../ptaxsim.db/ptaxsim-2021.0.4.db")
+
+muni_summary <- read_csv("../Output/ptaxsim_muni_level_2006-2021.csv")
+
+muni_MC_summary <- read_csv("../Output/ptaxsim_muni_MC_2006-2021.csv")
+
+MC_TC <- read_csv("../Output/ptaxsim_TC_MC_summaries_2006-2021.csv") %>% filter(year == 2021)
+```
+
+`final_tax_to_dist` has the amount that each PIN pays to taxing agencies for services. When summed up to the municipality, township, neighborhood, etc. level, then it becomes the aggregate levy for the taxing agencies taxing the parcels within the geography specified. 
+
+```{r}
+#| code-fold: false
+
+head(muni_summary)
+head(muni_MC_summary)
+head(MC_TC)
+
+muni_summary %>% filter(year == 2021) %>%
+  summarise(zeros = sum(zero_bills))
+
+
+muni_MC_summary %>% filter(year == 2021 & major_class_code == 2) %>%
+  summarise(zeros = sum(zero_bills))
+  
+```
