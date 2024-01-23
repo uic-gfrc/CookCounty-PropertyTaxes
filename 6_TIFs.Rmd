@@ -82,21 +82,33 @@ tif_distribution <- DBI::dbGetQuery(
   "
   )
 
-tif_distribution <- left_join(tif_distribution,agency_names)
-
-write_csv(tif_distribution, "tif_distribution.csv")
 
 TIFs <- DBI::dbGetQuery(
   ptaxsim_db_conn,
-  "SELECT DISTINCT agency_num, agency_name, minor_type
+  "SELECT DISTINCT *
   FROM agency_info
   WHERE minor_type = 'TIF'
   "
   ) %>%
   mutate(first6 = str_sub(agency_num,1,6),
          first5 = str_sub(agency_num,1,5)
-         ) %>%
-  select(-minor_type)
+         )
+
+
+tif_distribution <- left_join(tif_distribution, TIFs)
+
+
+# TIFs <- DBI::dbGetQuery(
+#   ptaxsim_db_conn,
+#   "SELECT DISTINCT agency_num, agency_name, minor_type
+#   FROM agency_info
+#   WHERE minor_type = 'TIF'
+#   "
+#   ) %>%
+#   mutate(first6 = str_sub(agency_num,1,6),
+#          first5 = str_sub(agency_num,1,5)
+#          ) %>%
+#   select(-minor_type)
 
 muni_agency_names <- DBI::dbGetQuery(
   ptaxsim_db_conn,
