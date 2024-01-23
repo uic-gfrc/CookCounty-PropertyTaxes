@@ -1,0 +1,513 @@
+---
+title: 'Exemption Progressivity'
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+    code_download: yes
+---
+
+```{r setup, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+#renv::install("ccao-data/ptaxsim")
+library(tidyverse)
+library(data.table)
+library(gstat)
+library(ptaxsim)
+library(glue)
+
+
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "../ptaxsim.db/ptaxsim-2021.0.4.db")
+
+```
+
+```{r}
+setwd("..")   # set directory above current one (set to parent directory)
+source("helper_tc_muninames.R")
+```
+
+```{r}
+cross_county_lines <- c("030440000", "030585000", "030890000", "030320000", "031280000","030080000", "030560000", "031120000", "030280000", "030340000","030150000","030050000", "030180000","030500000","031210000")
+
+
+
+
+muni_TC_fullyCook <- muni_tax_codes %>%
+  filter(!agency_num %in% cross_county_lines)
+
+
+```
+
+If munis that cross county lines are included, singfam_pins has 855,051 pins. When excluded, it decreases to 816,085 pins.
+
+```{r read-files}
+class_dict <- read_csv("../Necessary_Files/class_dict_singlefamcodes.csv") %>% 
+  mutate(class_code = as.character(class_code)) # change variable type to character so the join works.
+
+nicknames <- readxl::read_xlsx("../Necessary_Files/muni_shortnames.xlsx")
+
+joined_pins <- read_csv("../Output/4C_joined_PINs_bills_and_exemptions.csv")
+
+# muni_taxrates <- read_csv("../Output/4C_muni_taxrates.csv")
+
+
+```
+
+For the different exemption scenarios, we created new exemption variables for alternate exemption amounts that can be subtracted from a properties equalized AV.
+
+-   ex. For `exe_neg10` all exemption amounts are equal to zero.
+-   For `exe_0`, This variable should be the same as the current tax system since we did not add or remove any exempt EAV to the PIN. If the EAV for a PIN is less than 10000 EAV and they did claim the general homestead exemption, then their exempt EAV is equal to their EAV.
+-   If the exempt EAV allowable for the GHE was increased to 20,000 EAV, then the variable `exe_plus10` is used.
+
+```{r recode-exemptions}
+joined_pins <- joined_pins %>% 
+  left_join(class_dict) %>%
+  
+  ## Create variables for alternate exemption amounts that can be subtracted from a properties equalized AV
+  mutate(exe_neg10 = 0,
+         
+      # exe_0 implies no additoinal or removed EAV. Current tax system. 
+         exe_0 = ifelse(eav < 10000 & exe_homeowner!=0, eav, 
+                             ifelse(eav>10000 & exe_homeowner!=0, 10000, 0 )),  # no change in current exemptions
+         exe_plus10 = ifelse(eav < 20000 & exe_homeowner!=0, eav, 
+                             ifelse(eav>20000 & exe_homeowner!=0, 20000, 0 )),
+         exe_plus20 = ifelse(eav < 30000 & exe_homeowner!=0, eav, 
+                             ifelse(eav>30000 & exe_homeowner!=0, 30000, 0 ) ),
+         exe_plus30 = ifelse(eav < 40000 & exe_homeowner!=0, eav, 
+                             ifelse(eav>40000 & exe_homeowner!=0, 40000, 0) ),
+         exe_plus40 = ifelse(eav < 50000 & exe_homeowner!=0, eav, 
+                             ifelse(eav>50000 & exe_homeowner!=0, 50000, 0) ),
+         mil_home = ifelse(major_class_code == 2 & av*10 > 1000000, 1, 0))
+
+
+# all pins in munis fully within cook county that are some form of single-family, detached home
+singfam_pins <- joined_pins %>% 
+ # filter(tax_code %in% muni_TC_fullyCook$tax_code_num) %>% # excludes county line crossing munis
+  filter(Option2 == "Single-Family")
+```
+
+## Finding and Comparing "Median Properties"
+
+Major Class 2 properties are all property classes that begin with a 2 (i.e. classes 200 through 299).
+
+Single-family homes are a subset of major class 2 properties. The specific property classes included are listed below:
+
+| Property Class | Description                                                                                                             |
+|----------------|-------------------------------------------------------------------------------------------------------------------------|
+| 202            | One story residence, any age, up to 999 sq. ft. 203 One story residence, any age, 1,000 to 1,800 sq. ft.                |
+| 204            | One story residence, any age, 1,801 sq. ft. and over 205 Two or more story residence, over 62 years, up to 2,200 sq. ft |
+| 206            | Two or more story residence, over 62 years, 2,201 to 4,999 sq. ft.                                                      |
+| 207            | Two or more story residence, up to 62 years, up to 2,000 sq. ft.                                                        |
+| 208            | Two or more story residence, up to 62 years, 3,801 to 4,999 sq. ft.                                                     |
+| 209            | Two or more story residence, any age, 5,000 sq. ft. and over                                                            |
+| 234            | Split level residence, with a lower level below grade, all ages, all sizes                                              |
+| 278            | Two or more story residence, up to 62 years, 2,001 to 3,800 sq. ft                                                      |
+
+: Single Family Property Classes
+
+Cook County Stats:
+
+-   25th percentile of PIN AV is \$14,155 in Cook County (i.e., 25% of homes have AVs less than 14K and 75% have AVs more than 14K)
+-   50th percentile of PIN AV is \$21,003
+-   75th percentile of PIN AV is \$31,417
+
+For class 2 residential properties, there are 29,060 "million dollar homes", 1362 homes valued above \$3 million and 346 homes valued over \$5 million.[^exemption_progressivity-1]
+
+[^exemption_progressivity-1]: These amounts are based on the assessor's valuation of properties, not sales data.
+
+For single family homes:
+
+-   711 PINs with AVs over \$300,000 (a \$3 million dollar home)
+-   132 PINs with AVs over \$500,000 (a \$5 million dollar home)
+-   16,342 PINs with AVs over \$100,000 (a \$1 million dollar home)
+
+```{r include = FALSE}
+singfam_pins %>% filter(av > 100000) %>% summarize(count = n())
+singfam_pins %>% filter(av > 300000) %>% summarize(count = n())
+singfam_pins %>% filter(av > 500000) %>% summarize(count = n())
+
+
+joined_pins %>% filter(major_class_code == 2 & av > 100000) %>% 
+  summarize(count = n())
+joined_pins %>% filter(major_class_code == 2 &av > 300000) %>% summarize(count = n())
+joined_pins %>% filter(major_class_code == 2 &av > 500000) %>% summarize(count = n())
+```
+
+```{r, out.width="50%", fig.show='hold'}
+joined_pins %>%
+  #  filter(av < 1000000) %>% # just to see the histogram better
+#  filter(av < 500000) %>% # just to see the histogram better
+  filter(av < 300000) %>% # just to see the histogram better
+  
+  ggplot( aes(x=av)) +
+  geom_histogram(bins = 50)  +
+  theme_classic()+
+  # coord_flip()+
+  labs(title = "Cook County Class 2 Residential PIN Distribution of AV", 
+       x = "Assessed Value ($)", y="# of Pins", 
+       caption = "Dropped 1362 PINs with AVs over $300,000 for better visual of histogram bins.") +
+  scale_x_continuous(label = scales::dollar)+
+  scale_y_continuous(label = scales::comma)
+singfam_pins %>%
+  #  filter(av < 1000000) %>% # just to see the histogram better
+#  filter(av < 500000) %>% # just to see the histogram better
+  filter(av < 300000) %>% # just to see the histogram better
+  
+  ggplot( aes(x=av)) +
+  geom_histogram(bins = 50)  +
+  theme_classic()+
+  # coord_flip()+
+  labs(title = "Cook County Single-Family PIN Distribution of AV", 
+       x = "Assessed Value ($)", y="# of Pins", 
+       caption = "Dropped 711 PINs with AVs over $300,000 for better visual of histogram bins.") +
+  scale_x_continuous(label = scales::dollar)+
+  scale_y_continuous(label = scales::comma)
+```
+
+```{r create-sing-fam-quartiles}
+
+q = c(.10, .25, .5, .75, .9, .99)
+
+
+muni_ranked <- joined_pins %>% ## cook county single family properties rannked by AV
+  filter(Option2 == "Single-Family") %>%
+  filter(tax_code %in% muni_TC_fullyCook$tax_code_num) %>% # excludes county line crossing munis
+  arrange(av) %>%
+  summarize(
+    count_pins = n(), 
+            min = min(av),
+            quant10 = round(quantile(av, probs = q[1])), 
+            quant25 = round(quantile(av, probs = q[2])), 
+            quant50 = round(quantile(av, probs = q[3])),
+            quant75 = round(quantile(av, probs = q[4])),
+            quant90 = round(quantile(av, probs = q[5])),
+            quant99 = round(quantile(av, probs = q[6])),
+            max = max(av)
+           )
+
+munis_ranked <- munis_ranked %>%
+  filter(major_class_code == 2) %>%
+  filter(tax_code %in% muni_TC_fullyCook$tax_code_num) %>%
+  inner_join(muni_quartiles, by = "agency_name") %>%
+  mutate(rank = case_when(
+    av > (quant10-500) & (av<quant10+500) ~ "q10",
+    av > (quant25-500) & (av<quant25+500) ~ "q25",
+    av > (quant50-500) & (av<quant50+500) ~ "q50",
+    av > (quant75-500) & (av<quant75+500) ~ "q75",
+    av > (quant90-500) & (av<quant90+500) ~ "q90",
+    av > (quant99-500) & (av<quant99+500) ~ "q99")) %>%
+  select(clean_name, rank, av, pin, class, everything())
+
+
+```
+
+```{r scenario-calculations}
+
+# Calculates tax rates for all exemption scenarios.
+scenario_calcs <- joined_pins %>%    
+  left_join(nicknames) %>%
+  group_by(clean_name) %>%
+
+    summarize(MuniLevy = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by munis with current exemptions in place
+            current_nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
+            current_TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),  
+            current_Exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE), 
+            current_GHE = sum(exe_homeowner, na.rm=TRUE),
+            Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE),
+            exe_neg10 = sum(exe_neg10),
+            exe_0 = sum(exe_0), # no change, for comparison
+            exe_plus10 = sum(exe_plus10),
+            exe_plus20 = sum(exe_plus20),
+            exe_plus30 = sum(exe_plus30),
+            exe_plus40 = sum(exe_plus40),
+            mil_home = sum(mil_home)) %>%
+
+  # remove all GHE (up to 10,000 EAV added back to base per PIN), 
+  # add exe_homeowner back to taxable base
+  mutate(neg10_taxable_eav = Total_EAV - current_TIF_increment_EAV - current_Exempt_EAV + current_GHE,    # adds GHE exempt EAV back to taxable base and decreases tax rates
+         plus10_taxable_eav = Total_EAV - current_TIF_increment_EAV - current_Exempt_EAV + current_GHE - exe_plus10, # will increase tax rates
+         plus20_taxable_eav = Total_EAV - current_TIF_increment_EAV - current_Exempt_EAV + current_GHE - exe_plus20,
+         plus30_taxable_eav = Total_EAV - current_TIF_increment_EAV - current_Exempt_EAV + current_GHE - exe_plus30,
+         plus40_taxable_eav = Total_EAV - current_TIF_increment_EAV - current_Exempt_EAV + current_GHE - exe_plus40,
+         scenario_noexemptions_taxable_eav = Total_EAV - current_TIF_increment_EAV) %>%
+  
+  mutate(tr_neg10 = MuniLevy / neg10_taxable_eav,
+         tr_nochange = MuniLevy / current_nonTIF_EAV_post_exemps,
+         tr_plus10 = MuniLevy / plus10_taxable_eav,
+         tr_plus20 = MuniLevy / plus20_taxable_eav,
+         tr_plus30 = MuniLevy / plus30_taxable_eav,
+         tr_plus40 = MuniLevy / plus40_taxable_eav, 
+         tax_rate_current = MuniLevy/current_nonTIF_EAV_post_exemps,
+         taxrate_noexemps = MuniLevy /(Total_EAV - current_TIF_increment_EAV  ),
+         taxrate_noTIFs = MuniLevy / (Total_EAV - current_Exempt_EAV),
+         taxrate_noTIFs_orExemps = MuniLevy / Total_EAV) %>%
+  select(clean_name, MuniLevy, tr_neg10:taxrate_noTIFs_orExemps, everything())
+
+scenario_taxrates <- scenario_calcs %>%  select(clean_name, MuniLevy, tr_neg10:taxrate_noTIFs_orExemps) 
+
+scenario_taxrates
+```
+
+## Current Progressivity by Municipality
+
+For those that DID claim the exemption, calculate ratio of:
+
+$$ 
+\frac {25th percentile tax bill}{25th percentile Class 2 AV} : \frac {75th percentile tax bill}{75th percentile Class 2 AV}
+$$
+
+Graph the ratio points for all munis.
+
+### Current Bill / AV graphs
+
+The property tax bill divided by the assessed value is just the tax composite tax rate for the municipality.
+
+```{r}
+munis_billchange <-  munis_ranked %>% 
+  left_join(nicknames) %>% 
+ # left_join(muni_quartiles) %>%
+  group_by(clean_name) %>%
+  left_join(scenario_taxrates) %>%
+  arrange(av) %>%
+
+    mutate(
+   # ## Made negative tax bills!! ## #
+         
+         bill_neg10 = tr_neg10*(equalized_AV-all_exemptions+ exe_homeowner -exe_neg10),
+         bill_current = cur_comp_TC_rate/100*(equalized_AV-all_exemptions),
+         bill_plus10 =  tr_plus10*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus10),
+         bill_plus20 = tr_plus20*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus20),
+         bill_plus30 = tr_plus30*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus30),
+         bill_plus40 = tr_plus40*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus40),
+    
+    # ## make bills $1 if they had been negative.    
+         bill_neg10 = ifelse(bill_neg10 < 1, 1, bill_neg10),
+         bill_current = ifelse(bill_current < 1, 1, bill_current),
+         bill_plus10 = ifelse(bill_plus10 < 1, 1, bill_plus10),
+         bill_plus20 = ifelse(bill_plus20 < 1, 1, bill_plus20),
+         bill_plus30 = ifelse(bill_plus30 < 1, 1, bill_plus30),
+         bill_plus40 = ifelse(bill_plus40 < 1, 1, bill_plus40)
+         )%>%
+  mutate(
+         zerodol_bills_ghe0 = ifelse(bill_neg10 < 5, 1, 0),
+         zerodol_bills_current = ifelse(bill_current < 5, 1, 0),
+         zerodol_bills_ghe20 = ifelse(bill_plus10 < 5, 1, 0),
+         zerodol_bills_ghe30 = ifelse(bill_plus20 < 5, 1, 0),
+         zerodol_bills_ghe40 = ifelse(bill_plus30 < 5, 1, 0),
+         zerodol_bills_ghe50 = ifelse(bill_plus40 < 5, 1, 0)
+  )
+```
+
+```{r}
+
+ratios <- munis_ranked %>% 
+  filter(has_HO_exemp == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
+  mutate(currbill_to_AV_25 = ifelse(rank == "q25", mean_bill_cur/median_AV, NA)) %>%
+  mutate(currbill_to_AV_75 = ifelse(rank == "q75", mean_bill_cur/median_AV, NA)) %>% 
+  group_by(clean_name) %>%
+  summarize(currbill_to_AV_25 = max(currbill_to_AV_25, na.rm=TRUE),
+            currbill_to_AV_75 = max(currbill_to_AV_75, na.rm=TRUE)) %>%
+  mutate(muni_ratio_25to75 = currbill_to_AV_25/currbill_to_AV_75)
+
+
+  ggplot(data = ratios, aes(y = currbill_to_AV_25, x = currbill_to_AV_75, label = clean_name)) + 
+  geom_abline(intercept = 0, slope = 1) +
+  geom_point(aes(alpha = .5)) + 
+  geom_text(nudge_x = .03, nudge_y=0.01, size = 3, check_overlap = TRUE)+ 
+  theme_classic() + 
+    scale_y_continuous(limits = c(0, .6))+
+
+  scale_x_continuous(limits = c(0, .6))+
+  theme(legend.position = "none")
+
+  
+
+ratios %>% filter(currbill_to_AV_25<.3) %>%
+  ggplot(aes(y = currbill_to_AV_25, x = currbill_to_AV_75, label = clean_name)) + 
+  geom_abline(intercept = 0, slope = 1) +
+  geom_point(aes(alpha = .5)) + 
+  geom_text(nudge_x = .02, nudge_y=0.0, size = 2.4, check_overlap = TRUE)+ 
+  theme_classic() + 
+  theme(legend.position = "none")
+
+
+ratios %>% filter(currbill_to_AV_25<.2) %>%
+  ggplot(aes(y = currbill_to_AV_25, x = currbill_to_AV_75, label = clean_name)) + 
+  geom_abline(intercept = 0, slope = 1) +
+  geom_point(aes(alpha = .5)) + 
+  geom_text(nudge_x = .02, nudge_y=0.00, size = 2.4, check_overlap = TRUE)+ 
+  theme_classic() + 
+  theme(legend.position = "none")
+```
+
+### Hypothetical Bill after removing GHE
+
+```{r}
+
+new_ratios<- munis_billchange %>% 
+  filter(has_HO_exemp == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
+  mutate(newbill_to_AV_25 = ifelse(rank == "q25", mean_bill_new/median_AV, NA)) %>%
+  mutate(newbill_to_AV_75 = ifelse(rank == "q75", mean_bill_new/median_AV, NA)) %>% 
+  group_by(clean_name) %>%
+  summarize(newbill_to_AV_25 = max(newbill_to_AV_25, na.rm=TRUE),
+            newbill_to_AV_75 = max(newbill_to_AV_75, na.rm=TRUE)) %>%
+  mutate(muni_ratio_25to75 = newbill_to_AV_25/newbill_to_AV_75)
+
+
+ggplot(data = new_ratios, aes(y = newbill_to_AV_25, x = newbill_to_AV_75, label = clean_name)) + 
+  geom_abline(intercept = 0, slope = 1) +
+  geom_point(aes(alpha = .5)) + 
+  geom_text(nudge_x = .03, nudge_y=0.01, size = 3, check_overlap = TRUE)+ 
+  theme_classic() + 
+    scale_y_continuous(limits = c(0, .6))+
+
+  scale_x_continuous(limits = c(0, .6))+
+  theme(legend.position = "none")
+
+  
+
+new_ratios %>% filter(newbill_to_AV_25<.3) %>%
+  ggplot(aes(y = newbill_to_AV_25, x = newbill_to_AV_75, label = clean_name)) + 
+  geom_abline(intercept = 0, slope = 1) +
+  geom_point(aes(alpha = .5)) + 
+  geom_text(nudge_x = .02, nudge_y=0.0, size = 2.4, check_overlap = TRUE)+ 
+  theme_classic() + 
+  theme(legend.position = "none")
+
+
+new_ratios %>% filter(newbill_to_AV_25<.2) %>%
+  ggplot(aes(y = newbill_to_AV_25, x = newbill_to_AV_75, label = clean_name)) + 
+  geom_abline(intercept = 0, slope = 1) +
+  geom_point(aes(alpha = .5)) + 
+  geom_text(nudge_x = .02, nudge_y=0.00, size = 2.4, check_overlap = TRUE)+ 
+  theme_classic() + 
+  theme(legend.position = "none")
+```
+
+## Median Residential Property in each Municipality
+
+Assessed Value is used to identify the quartile breaks within each municipality for single-family properties. These break points will then be used to look at how the tax bill changes for properties with AVs at the 25th percentile, 50th percentile, and 75th percentile.
+
+The assessed value and original equalized assessed values come from the `pin` data table within PTAXSIM. This table also has every type of exemption that the property received and the amount of EAV that was exempt due to the exemption.
+
+#### Select Municipalities
+
+```{r}
+chosen3 <- muni_quartiles %>% 
+  left_join(nicknames) %>% 
+  filter(clean_name %in% c("Dolton", "Chicago", "Glencoe"))
+# chosen3
+
+chosen3_ranked <- joined_pins %>%
+  inner_join(chosen3, by = "agency_name") %>%
+  mutate(rank = case_when(
+    av > (quant10-500) & (av<quant10+500) ~ "q10",
+    av > (quant25-500) & (av<quant25+500) ~ "q25",
+    av > (quant50-500) & (av<quant50+500) ~ "q50",
+    av > (quant75-500) & (av<quant75+500) ~ "q75",
+    av > (quant90-500) & (av<quant90+500) ~ "q90",
+    av > (quant99-500) & (av<quant99+500) ~ "q99")) %>%
+  select(clean_name, rank, av, pin, class, everything())
+
+
+chosen3_billchange <-  chosen3_ranked %>% 
+  group_by(clean_name, rank)%>%
+  arrange(av) %>%
+ # group_by(agency_name, has_HO_exemp) %>% 
+  mutate(#taxable_eav = final_tax_to_dist / tax_code_rate,
+    # current bill = current tax rate * portion of levy billed
+         bill_current = (final_tax_to_dist + final_tax_to_tif),
+         bill_noexemps =  new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
+         bill_change = bill_noexemps - bill_current) %>%
+  group_by(clean_name, rank, has_HO_exemp) %>% 
+  summarize(median_AV = round(median(av)),
+            median_EAV = round(median(eav)),
+            # median_bill_cur = median(bill_current),
+            # median_bill_new = median(bill_noexemps),
+            # median_change = median(bill_change),
+            mean_bill_cur = round(mean(bill_current, na.rm=TRUE)),
+            mean_bill_new = round(mean(bill_noexemps, na.rm=TRUE)),
+            mean_change = round(mean(bill_change, na.rm=TRUE)),
+            perceived_savings = median(tax_amt_exe),
+            cur_comp_TC_rate = round(mean(cur_comp_TC_rate), digits = 2),
+            new_comp_TC_rate = round(mean(new_comp_TC_rate), digits = 2),
+            pincount=n()
+) %>%
+  arrange(has_HO_exemp, rank)
+
+#chosen3_billchange
+
+
+joined_pins %>%
+  left_join(nicknames) %>%
+  filter(Option2 == "Single-Family") %>%
+  filter(av < 500000) %>% # remove the couple really extreme outliers in Chicago
+  filter(clean_name %in% c("Dolton", "Chicago", "Glencoe", "Oak Park")) %>%
+  ggplot( aes(y=av, group = clean_name, fill = clean_name)) +
+  geom_boxplot()+
+ # facet_wrap(~agency_name, nrow=4) +
+ coord_flip() +
+  theme_bw()  +
+    theme(axis.text.x = element_blank(), 
+        axis.ticks.x = element_blank()) +
+  labs(title = "Distribution of Residential Properties AV", y = "Assessed Value ($)") +
+  scale_y_continuous(label = scales::dollar) 
+```
+
+```{r}
+#install.packages("ggridges")
+library(ggridges)
+
+joined_pins %>%
+  left_join(nicknames) %>%
+  filter(Option2 == "Single-Family") %>%
+  filter(av < 300000) %>% # remove the couple really extreme outliers in Chicago
+ filter(clean_name %in% c("Dolton", "Chicago", "Glencoe", "Riverside", "Oak Park")) %>%
+  ggplot( aes(x = av, y= clean_name, fill = clean_name ) )+
+  geom_density_ridges( aes(x = av, y=clean_name, fill = clean_name) )+
+  viridis::scale_fill_viridis(discrete = T, name = "")+
+  #facet_wrap(~agency_name, ncol=4) +
+#  coord_flip() +
+  theme_ridges() + 
+  theme(#axis.text.x = element_blank(), 
+ #       axis.ticks.x = element_blank(,
+ legend.position = "none") +
+  labs(title = "Distribution of Residential Properties' AV", 
+       x = "Assessed Value", y= "" ) +
+  scale_x_continuous(label = scales::dollar)
+
+```
+
+```{r}
+
+chosen3_billchange %>% 
+  pivot_wider(id_cols = c(clean_name, has_HO_exemp), 
+              names_from = "rank", values_from = "mean_change") %>%
+    mutate(Claimed_Exemption= ifelse(has_HO_exemp == 0 , "Didn't Claim Exemption", "Did Claim Exemption"))
+
+# chosen3_billchange %>% 
+#   pivot_wider(id_cols = c(clean_name, has_HO_exemp, rank), 
+#               names_from = "rank", values_from = "mean_change") %>%
+#     mutate(Claimed_Exemption= ifelse(has_HO_exemp == 0 , "Didn't Claim Exemption", "Did Claim Exemption")) %>%
+#   select(Municipality=clean_name, "Claimed_Exemption", "q25", "q50", "q75")
+```
+
+##### Bill change for those that Did Not Claim Exemptions:
+
+```{r}
+chosen3_billchange %>% 
+  filter(has_HO_exemp == 0 & !is.na(rank)) %>%
+  select(Municipality = clean_name, "AV Percentile" = rank, "AV" = median_AV, "Average Current Bill" = mean_bill_cur, "Average New Bill" = mean_bill_new, "Tax Bill Change" = mean_change, "Perceived Savings" = perceived_savings, "# Pins in AV Range" = pincount, cur_comp_TC_rate, new_comp_TC_rate, everything())
+```
+
+##### Bill Change for those that did claim the General Homestead Exemption
+
+```{r}
+chosen3_summarytable <- chosen3_billchange %>% 
+  filter(has_HO_exemp == 1 & !is.na(rank)) %>%
+  arrange(clean_name, rank) %>%
+  select(Municipality = clean_name, "AV Percentile" = rank, "AV" = median_AV, "Average Current Bill" = mean_bill_cur, "Average New Bill" = mean_bill_new, "Tax Bill Change" = mean_change, "Perceived Savings" = perceived_savings, "# Pins in AV Range" = pincount, cur_comp_TC_rate, new_comp_TC_rate, everything())
+
+chosen3_summarytable
+```
