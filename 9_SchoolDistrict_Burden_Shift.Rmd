@@ -53,281 +53,134 @@ elem_schools_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/servi
 
 ```
 
+
+
 **Data Prep**
+```{r}
+
+
+
+base_url <- "https://datacatalog.cookcountyil.gov/resource/tx2p-k2g9.json"
+
+# Grab all PINs with township variables
+
+pins_2021 <- GET(
+  base_url,
+  query = list(
+    year = 2021,
+    `$select` = paste0(c("pin", "class", "township_code", "township_name",
+                         "nbhd_code", "census_puma_geoid",
+                         
+                         "school_elementary_district_name",
+                         "school_elementary_district_geoid"),
+                        # "ward_num", 
+                        # "ward_chicago_2021",
+                       #  "chicago_community_area_name", "chicago_community_area_num",
+                       #  "tax_cook_municipality_name", "tax_cook_municipality_number"
+                     #  ),
+   collapse = ","),
+    `$limit` = 500000000L
+  )
+)
+
+pins_2021 <- fromJSON(rawToChar(pins_2021$content))
+
+```
 
 Pull all agency names that exist, then use agency numbers associated with SCHOOL types to pull only the `school_agency_names` object.
 
 There are 946 unique taxing agencies that existed in 2021.
 
-```{r agency-dt}
-# has EAV values, extensions by agency_num
-agency_dt <- DBI::dbGetQuery(
-  ptaxsim_db_conn,
-  "SELECT *
-  FROM agency
-  WHERE year = 2021
-  "
-)
+```{r}
+joined_pins <- read_csv("./Output/4C_joined_PINs_bills_and_exemptions.csv")
 
-# grabs all unique muni names. Would be needed if creating a loop for calculating all munis
-# municipality names and their agency number
-muni_agency_names <- DBI::dbGetQuery(
-  ptaxsim_db_conn,
-  "SELECT DISTINCT agency_num, agency_name, minor_type
-  FROM agency_info
-  WHERE minor_type = 'MUNI'
-  OR agency_num = '020060000'  
-
-  "
-)
-
-school_names_elem <- DBI::dbGetQuery(
-  ptaxsim_db_conn,
-  "SELECT DISTINCT agency_num, agency_name, minor_type
-  FROM agency_info
-  WHERE minor_type = 'ELEMENTARY' 
-  "
-)
-
-muni_agency_names <- muni_agency_names %>% 
-    mutate(first6 = str_sub(agency_num,1,6),
-         first5 = str_sub(agency_num,1,5)) %>% 
-  select(-minor_type)
-
-
-
-#Makes a list of ALL taxing agencies, including TIFs, SSAs, etc.
-
-# all agency names, numbers, and types
-# includes TIF and non-TIF agencies
-all_taxing_agencies <- DBI::dbGetQuery(
-  ptaxsim_db_conn,
-  "SELECT agency_num, agency_name, major_type, minor_type
-  FROM agency_info
-  "
-) %>%
-  mutate(first6 = str_sub(agency_num,1,6),
-         first5 = str_sub(agency_num,1,5))
-
-
-muni_agency_nums<- all_taxing_agencies %>% 
-  filter(minor_type %in% c("MUNI") | 
-           agency_num == "020060000") %>%
-   select(agency_num)
-
-school_agency_nums<- all_taxing_agencies %>% 
-  filter(minor_type %in% c("ELEMENTARY")) %>%
-   select(agency_num)
-
-
-
-muni_tax_codes <- DBI::dbGetQuery(
-  ptaxsim_db_conn,
-  glue_sql("
-  SELECT*
-  FROM tax_code
-  WHERE agency_num IN ({muni_agency_names$agency_num*})
-  AND year = 2021
-  ",
-  .con = ptaxsim_db_conn
-  )
-)# %>% select(-agency_rate)
-
-
-school_tax_codes <- DBI::dbGetQuery(
-  ptaxsim_db_conn,
-  glue_sql("
-  SELECT*
-  FROM tax_code
-  WHERE agency_num IN ({school_names_elem$agency_num*})
-  AND year = 2021
-  ",
-  .con = ptaxsim_db_conn
-  )
-)
-
-
-# Agency number and agency name for all TIFs
-TIF_agencies <- DBI::dbGetQuery(
-  ptaxsim_db_conn,
-  "SELECT DISTINCT agency_num, agency_name, major_type, minor_type
-  FROM agency_info
-  WHERE minor_type = 'TIF'
-  "
-)
-
-unique_tif_taxcodes <- DBI::dbGetQuery(
-  ptaxsim_db_conn, 
-  glue_sql("
-  SELECT DISTINCT tax_code_num
-  FROM tax_code
-  WHERE agency_num IN ({TIF_agencies$agency_num*})
-  AND year = 2021
-  ",
-  .con = ptaxsim_db_conn
-  )
-)
-
-
-
-## Read in summarized tax code level data for exemptions and taxbills.
-taxbills_by_Class_per_TC <- read_csv("2_Summed_Bills_by_Taxcode_and_Class.csv")  %>% 
-  mutate(tax_code = as.character(tax_code)) 
-
-
-exemptions_by_class_per_TC <- read_csv("3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>%
-    mutate(tax_code_num = as.character(tax_code_num))
-
-tif_distrib <- DBI::dbGetQuery(
-  ptaxsim_db_conn, 
-  glue_sql("
-  SELECT *
-  FROM tif_distribution
-  WHERE tax_code_num IN ({muni_tax_codes$tax_code_num*})
-  AND year = 2021
-  ",
-  .con = ptaxsim_db_conn
-  )
-) %>% mutate(tax_code_num = as.character(tax_code_num))
-
-
-
-all_taxing_agencies <- all_taxing_agencies %>% 
-  left_join(muni_agency_names, by = c("first5", "first6")) %>% 
-   left_join(school_names_elem) # %>% 
-  # rename(muni_name =  agency_name.y,
-  #       muni_num = agency_num.y,
-  #       agency_name = agency_name.x,
-  #       agency_num = agency_num.x)
-
-
-# combine taxing agency names and agency type to data table that has eav and extension values
-agency_data <- right_join(agency_dt, all_taxing_agencies) %>% 
-  # get rid of unneeded columns to make table outputs smaller
-  select(-c(cty_dupage_eav:cty_livingston_eav, lim_numerator, lim_denominator)) %>% # drop some of the unused variables
-  arrange(agency_num)
+joined_pins <- left_join(joined_pins, pins_2021, by = c("pin"))
 ```
 
 
 # Proportion of Residential Land in School Districts {.tabset .tabset-pills}
 
-using the pin data from ptaxsim, I calculate the eav of all properties, exempt EAV, the current taxbase, and taxbase if there were not exemptions
 
--   exempt EAV (summed from all exemption types)
-
--   current taxbase (using the `tif_distrib` table and percent of taxcode rev that goes to the tif). If a taxcode is a TIF taxcode, then do (EAV-exempt EAV) \* (1-%rev that goes to TIF). If the tax code is not a TIF tax code, then use the EAV-exempt EAV.
-
--   tax base without exemptions: If a taxcode is a TIF taxcode, then do EAV \* (1-%rev that goes to TIF). If the tax code is not a TIF tax code, then use the eav
-
-> Joining problem: in `muni_agency_names`, Cicero is called "TOWN CICERO", in map shapefile it is called "CITY OF CICERO".
-
-```{r}
-
-# chi_hoods <- read_sf("https://data.cityofchicago.org/resource/igwz-8jzy.json")
-
-class_dict <- read_csv("class_dict_expanded.csv")
-
-# use exemptions in tax codes to summarize EAV. 
-# More accurate that calculating it from revenue collected.tax rate in tax bill data
-exemptions_by_class_per_TC <- read_csv("3_Exemptions_Details_output-ClassTaxcodeExemps.csv") %>% 
-  filter(class_code != "0") %>%
-  left_join(class_dict) %>%
-  mutate(tax_code_num = as.character(tax_code_num)) %>%
-  left_join(school_tax_codes) %>%
-  full_join(school_names_elem) %>%
-  #.left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
-
-  # merge with TIF distrib table to calculate the percent of the EAV that goes to the TIF vs the district
-  left_join(tif_distrib, by=c("tax_code_num", "year", "tax_code_rate")) %>%
-  mutate(exempt_EAV = (exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
-         exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate) ,
-         in_TIF = ifelse(tax_code_num %in% unique_tif_taxcodes$tax_code_num, 1, 0),
-         tax_base_current = ifelse(in_TIF==1, (eav-exempt_EAV)*(1-tax_code_distribution_pct/100), eav-exempt_EAV),
-         tax_base_noexemps = ifelse(in_TIF==1, (eav)*(1-tax_code_distribution_pct/100), eav),
-         ResidentialProps = ifelse(major_class_code %in% c("2", "3", "9"), "Residential", "Commercial"),
-         PropType = case_when(
-           major_class_code %in% c("3","9") ~ "Residential (C3&C9)",
-           major_class_code == "2" ~ "Residential (C1)",
-           TRUE~ "Commercial-Industrial"))
-         
-```
 
 __Exemptions within each Elementary School District:__
 
 
 Percent Residential is the Residential EAV outside of TIFs / School District EAV outside of TIFs.
 
+```{r pct-exempt}
+pct_exempt_MC <- joined_pins %>% 
+  group_by(school_elementary_district_name, school_elementary_district_geoid) %>%
+  mutate(total_eav = sum(eav), # eav from pin table. "original" eav before exemptions or tifs
+         nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate/100)),
+        # nonTIF_EAV_pre_exemps = sum(final_tax_to_dist +  )
+         pin_count  = n(),
+         township_exemptEAV = sum(all_exemptions)) %>%
+  ungroup() %>%
+  group_by(school_elementary_district_name, school_elementary_district_geoid, major_class_code, total_eav, pin_count, township_exemptEAV, nonTIF_EAV_post_exemps) %>%
+  summarize(MC_eav =  sum(eav),
+            mc_pc = n(),
+            MC_exemptions = sum(all_exemptions),
+            MC_nonTIF_EAV_post_exemps = sum(final_tax_to_dist / (tax_code_rate/100) ),
+            
+) %>%
+  mutate(
+         pct_eav_MC = MC_eav / total_eav,
+       #  pct_pins_w_exe = mc_pc / pin_count,
+        exemps_per_resPIN =  MC_exemptions / mc_pc)
 
-```{r}
-
-### Shows the amount in rental vs owner occupied residential properties ### 
-
-# grouped_exemptions <- exemptions_by_class_per_TC %>% 
-#   filter(!is.na(agency_name)) %>%
-#   # group_by(agency_name, major_class_code, major_class_type, ResidentialProps, PropType) %>%
-#   group_by(PropType, agency_name, agency_num.x, Alea_cat)%>%
-#   summarize(eav = sum(eav),
-#             exempt_EAV = sum(exempt_EAV, exe_abate, na.rm=TRUE),
-#             tax_base_current = sum(tax_base_current, na.rm=TRUE),
-#             tax_base_noexemps = sum(tax_base_noexemps, na.rm=TRUE)) %>% ungroup() %>% 
-#   select(agency_name, eav, exempt_EAV, everything()) %>% arrange(agency_name)
-# 
-# grouped_exemptions 
-
-
-
-grouped_exemptions <- exemptions_by_class_per_TC %>% 
-  filter(!is.na(agency_name)) %>%
-  # group_by(agency_name, major_class_code, major_class_type, ResidentialProps, PropType) %>%
-  group_by(PropType, agency_name, agency_num.x)%>%
-  summarize(eav = sum(eav),
-            exempt_EAV = sum(exempt_EAV, exe_abate, na.rm=TRUE),
-            tax_base_current = sum(tax_base_current, na.rm=TRUE),
-            tax_base_noexemps = sum(tax_base_noexemps, na.rm=TRUE)) %>% ungroup() %>% 
-  select(agency_name, eav, exempt_EAV, everything()) %>% arrange(agency_name)
-
-grouped_exemptions 
-# calculate totals with ONLY EAV outside of TIFs
-elementary_district_eav <- grouped_exemptions %>%  
-  group_by(agency_name, agency_num.x) %>% 
-  summarize(school_EAV_includesTIF = sum(eav), # all EAV in the municipality that exists
-            school_tax_base_current=sum(tax_base_current), # taxable EAV based on current exemptions
-            school_tax_base_noexemps = sum(tax_base_noexemps)) %>%  # taxable EAV pre-exemptions
-  ungroup() 
-
-perc_residential <- full_join(grouped_exemptions, elementary_district_eav) %>% 
-  filter(PropType == "Residential (C1)") %>% 
-  
-  mutate(percent_residential = eav / school_EAV_includesTIF)# %>% select()
+pct_exempt_MC
 
 
-perc_residential
-
-```
+pct_exempt_MC %>% ungroup() %>% anti_join(elem_schools_shp, by = c( "school_elementary_district_name" = "AGENCY_DESCRIPTION") ) %>% distinct(school_elementary_district_name)
 
 
 
-## Residential (Class 2, 3, & 9)
-
-
-The median amount of EAV from residentical parcels is `r scales::percent(median(perc_residential$percent_residential))`.
-
-```{r}
-# class 2, 3, 9 combined
-perc_residential %>% 
-  #group_by(ResidentialProps)%>%
-  mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
-  # left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
-  full_join(elem_schools_shp, by =  c("agency_num.x" = "agency_num")) %>%
-  ggplot(aes(fill = percent_residential)) + 
+pct_exempt_MC %>% 
+  filter(major_class_code == 2) %>%
+  full_join(elem_schools_shp, by = c( "school_elementary_district_name" = "AGENCY_DESCRIPTION") ) %>%
+  ggplot(aes(fill = exemps_per_resPIN)) + 
   geom_sf(aes(geometry = geometry), color = "black") + 
-  labs(title = "Residential EAV /  Total EAV", caption = "The median school district outside of Chicago has 65.7% of its EAV from Class 2 Residential Properties") +
-  theme_classic() + 
+  labs(title = "Average Exempt EAV for Residential PINs in Elementary School Dist", 
+     #  caption = "The median township has 67.2% of its EAV from Class 2 Residential Properties"
+     ) +
+  theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
   scale_fill_steps2(
     high = "darkblue", low = "black",  #  guide = "legend",
-    midpoint = median(perc_residential$percent_residential),
-    #                      n.breaks = 6,
+    #midpoint = median(pct_residential$pct_eav_MC),
+    show.limits=TRUE,
+    na.value = NA,
+    name = "Exempt EAV",
+    labels = scales::dollar)
+```
+
+Chicago has 353 elementary school districts...? Woah. 
+
+```{r}
+pct_eav_MC <- joined_pins %>% 
+  group_by(school_elementary_district_name, school_elementary_district_geoid) %>%
+  mutate(total_eav =  sum(eav)) %>%
+  ungroup() %>%
+  group_by(school_elementary_district_name, school_elementary_district_geoid, major_class_code, total_eav) %>%
+  summarize(MC_eav =  sum(eav)) %>%
+  mutate(
+         pct_eav_MC = MC_eav / total_eav )
+
+pct_residential <- pct_eav_MC %>% filter(major_class_code == 2)
+  
+pct_eav_MC %>% 
+  filter(major_class_code == 2) %>%
+  full_join(elem_schools_shp, by = c( "school_elementary_district_name" = "AGENCY_DESCRIPTION") ) %>%
+  ggplot(aes(fill = pct_eav_MC)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  labs(title = "Residential EAV /  Total EAV in Elem. District", 
+       #caption = "The median township has 67.2% of its EAV from Class 2 Residential Properties"
+       ) +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
+  scale_fill_steps2(
+    high = "darkblue", low = "black",  #  guide = "legend",
+   # midpoint = median(pct_residential$pct_eav_MC),
     show.limits=TRUE,
     na.value = NA,
     name = "% Residential",
@@ -337,135 +190,5 @@ perc_residential %>%
 
 
 
-# Taxable Base and Land Use
-
-Tax base in the tables above are the total EAV outside of TIF areas.
-
-```{r}
-TC_bills_current <- read_csv("2_Summed_Bills_by_Taxcode_and_Class.csv") %>% 
-  filter(class != "0") %>% 
-  mutate(tax_code = as.character(tax_code),
-         class = as.character(class))
-
-class_dict$class_code <- as.character(class_dict$class_code)
- 
-
-taxcodes_current <- TC_bills_current %>% 
-  filter(tax_code %in% school_tax_codes$tax_code_num) %>% 
-  left_join(school_tax_codes, by = c("tax_code" = "tax_code_num")) %>%
-  left_join(muni_tax_codes) %>%   
-  left_join(school_names_elem) %>% #  by = c("tax_code" = "tax_code_num")) %>%
-  left_join(muni_agency_names)  
-
-Current_Taxrates <- taxcodes_current %>% 
-
-  #left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
-#  filter(!agency_num %in% cross_county_lines) %>%
-  group_by(agency_name, agency_num) %>%
-  summarize(SchoolLevy = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by tax districts with current exemptions in place
-            nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
-            TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),  
-            Exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE), 
-            Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE)) %>%
-
-  mutate(tax_rate_current = SchoolLevy/nonTIF_EAV_post_exemps,
-         nonTIF_EAV_pre_exemps = nonTIF_EAV_post_exemps + Exempt_EAV,
-         taxrate_new = SchoolLevy/nonTIF_EAV_pre_exemps,
-         taxrate_change = tax_rate_current-taxrate_new) %>% 
-  select(agency_name, taxrate_change, tax_rate_current, taxrate_new, everything()) %>% 
-  arrange(desc(tax_rate_current))
-
-# land_use <- taxcodes_current %>% 
-#   left_join(muni_agency_names) %>% 
-#   left_join(Current_Taxrates) %>%
-#   left_join(class_dict, by = c("class" = "class_code")) %>%
-# 
-#   mutate(class_1dig = str_sub(class, 1, 1),
-#     ResidentialProps = ifelse(class_1dig %in% c("2", "3", "9"), "Residential", "Non-Residential")) %>%
-#   #        PropType = case_when(
-#   #          major_class_code %in% c("3","9") ~ "Multi-Family",
-#   #          major_class_code == "2" ~ "Single-Family",
-#   #          TRUE ~ "Commercial-Industrial")) %>%
-#   group_by(clean_name, Alea_cat, agency_num, tax_rate_current, taxrate_new, taxrate_change, agency_name) %>% 
-#   
-#   # All of the values calculated below are AFTER exemptions have been removed
-#   summarize(taxrev_from_proptype = sum(final_tax_to_dist, na.rm = TRUE),
-#             nonTIF_EAV = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
-#             TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),
-#             Exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE),
-#             Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE) ) %>% ungroup()
-
-Current_Taxrates
-
-
-write_csv(Current_Taxrates, "elem_schooldist_comprates.csv")
-```
-
-Current composite tax rates for each elementary school district are above. Table also includes the new tax rate if there were no exemptions, the levy (aka amount collected by the district from final_tax_to_dist variable), EAV outside of TIFs, amount of exempt EAV, and additional variables.
-
-Below: Take EAV values within each property type, join it with muni level EAV values, and calculate ...
-
-```{r}
-# 
-# grouped_exemptions <- exemptions_by_class_per_TC %>% 
-#    # group_by(agency_name, major_class_code, major_class_type, ResidentialProps, PropType) %>%
-#   group_by(clean_name, Alea_cat, agency_name) %>%
-#   summarize(eav = sum(eav),
-#            exempt_EAV = sum(exempt_EAV, exe_abate, na.rm=TRUE),
-#          tax_base_current = sum(tax_base_current, na.rm=TRUE),
-#          tax_base_noexemps = sum(tax_base_noexemps, na.rm=TRUE)) %>% ungroup()
-#   
-
-# calculate totals with ONLY EAV outside of TIFs
-elem_dist_eav <- grouped_exemptions %>%  
-  group_by(agency_name, agency_num.x) %>% 
-  summarize(school_EAV_includesTIF = sum(eav), # all EAV in the municipality that exists
-            school_tax_base_current=sum(tax_base_current), # taxable EAV based on current exemptions
-            school_tax_base_noexemps = sum(tax_base_noexemps)) %>%  # taxable EAV pre-exemptions
-  ungroup() 
-
-pct_property_types <- left_join(grouped_exemptions, elem_dist_eav) %>% 
- # filter(ResidentialProps == "Alea_cat") %>% 
-  mutate(pct_PropType = eav / school_EAV_includesTIF)# %>% select()
-
-pct_property_types
-
-
-burden_table <- pct_property_types %>% 
-  left_join(Current_Taxrates) %>%
-  mutate(rev_collected_current = tax_base_current * tax_rate_current,
-         rev_collected_new = tax_base_noexemps*taxrate_new,
-         burden_current = rev_collected_current/SchoolLevy,
-         burden_noexemps = rev_collected_new/SchoolLevy, 
-         burden_change = burden_noexemps- burden_current,
-         burden_noexemps = ifelse(burden_noexemps >1, 1, burden_noexemps)) %>%
-  mutate(burden_current = ifelse(is.na(burden_current), 0, burden_current),
-         burden_noexemps = ifelse(is.na(burden_noexemps), 0, burden_noexemps)) %>%
-  mutate(burden_noexemps = ifelse(burden_noexemps>1, 1, burden_noexemps),
-         burden_current = ifelse(burden_current>1, 1, burden_current)) %>%
-  mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) )
-
-
-burden_shift <- burden_table # only to not change code below in graphs. 
-```
-
-```{r}
-Current_Taxrates %>% 
-  mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
-  full_join(elem_schools_shp) %>%
-  ggplot(aes(fill = tax_rate_current)) + 
-  geom_sf(aes(geometry = geometry), color = "black") + 
-  labs(title = "Composite Tax Rate within School Districts (Elementary)", 
-       caption = "The median school district outside of Chicago has composite tax rate around 12.3%") +
-  theme_classic() + 
-  theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
-  scale_fill_steps2(
-    high = "darkblue", low = "black",  #  guide = "legend",
-    midpoint = median(Current_Taxrates$tax_rate_current),
-    show.limits=TRUE,
-    na.value = NA,
-    name = "Composite Tax Rate",
-    labels = scales::percent)
-```
 
 
