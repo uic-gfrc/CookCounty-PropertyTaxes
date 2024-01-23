@@ -986,6 +986,34 @@ nbh_data <- nbh_data %>%
 nbh_data
 ```
 
+
+```{r}
+library(scales)
+nbh_sum <- read_csv("./Output/nbh_summary.csv") %>%
+    mutate(nbhd_code = as.character(nbhd_code))
+
+nbh_MC_sum <- read_csv("./Output/nbh_MC_summary.csv") %>%
+    mutate(nbhd_code = as.character(nbhd_code))
+
+nbh_sum %>% 
+  full_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>% 
+  ggplot(aes(fill = round(nbh_res_exe/nbh_PC))) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  labs(title = "Average Exemptions/PIN in Neighborhoods", 
+  caption = "Excludes Abatements") +
+  theme_void() + 
+   theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+scale_fill_steps2(
+  high = "darkblue", low = "orange",
+  midpoint = round(median(nbh_sum$nbh_res_exe/nbh_sum$nbh_PC, na.rm = TRUE)),
+ nice.breaks = FALSE,
+  show.limits=TRUE,
+na.value = "gray",
+  name = "Exempt EAV per C2 PIN",
+  labels = scales::label_number(big.mark = ",")
+) 
+```
+
 ## Maps
 
 ```{r}
@@ -1090,3 +1118,142 @@ fig3 <- nbh_data %>%
 fig3
 
 ```
+
+# Incentive Properties and Appeals
+
+- av_mailed - Initial assessed values when mailed to property owners, after Desk Review  
+- av_certified - Assessed values after Assessor’s Office appeals  
+- av_board - Assessed values after Board of Review appeals  
+- av_clerk - Final assessed values used by the Clerk and Treasurer to calculate bills. Identical to av_board in 99.9% of cases   
+
+```{r}
+#incentive_pins <- read_csv("./Output/7_output_incentive_classes.csv")
+
+incentive_taxbills <- tax_bill(2008:2021, incentive_pins$pin, simplify = FALSE)
+# pin data for all years if in SFHA
+
+
+incent_pins_ptax <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql(
+  "SELECT*
+  FROM pin
+  WHERE pin IN ({incentive_pins$pin*})
+  ",
+  .con = ptaxsim_db_conn
+)) 
+```
+
+```{r}
+incent_pins_ptax <- incent_pins_ptax %>% 
+    mutate(major_class = str_sub(class, 1,1),
+         major_class_fct = case_when(
+           major_class == '0' ~ "0 & 1 - Vacant and Exempt",
+           major_class == '1' ~ "0 & 1 - Vacant and Exempt",
+           major_class == '2' ~ "2 - Residential",
+           major_class == '3' ~ "3 & 5 - Commercial",
+           major_class == '5' ~ "3 & 5 - Commercial",
+           major_class == '6' ~ "6, 7, 8 - Incentive",
+           major_class == '7' ~ "6, 7, 8 - Incentive",
+           major_class == '8' ~ "6, 7, 8 - Incentive",
+           TRUE ~ "Other"
+         ))
+  
+
+incent_pins_ptax %>%  group_by(year) %>%
+  summarize(pins_per_year = n(),
+            av_mailed = sum(av_mailed),
+            av_certified = sum(av_certified),
+            av_board = sum(av_board),
+            av_clerk = sum(av_clerk),
+          #  eav = sum(eav),
+           # eav_per_pin = eav/pins_per_year,
+            #av_per_pin = av/pins_per_year
+          ) %>%
+  ggplot() + 
+  geom_line(aes(x = year, y = av_mailed)) +
+ # geom_line(aes(x = year, y = av_clerk
+             #  ), color = "blue")+
+    geom_line(aes(x = year, y = av_certified
+               ), color = "green")+
+    geom_line(aes(x = year, y = av_board
+               ), color = "purple")+
+  theme_minimal() + 
+  scale_y_continuous(labels = scales::dollar) +
+  labs(title = "Incentive Properties & Appeals", subtitle = "Mailed AV and Clerk AV", caption = "Black is mailed, green is certified, purple is Board & Clerk AV",
+       y = "Assessed Value")
+```
+
+```{r}
+incent_pins_ptax %>% 
+  filter(av_mailed > av_clerk & 
+                              year == 2021) %>%
+  mutate(av_dif =  av_mailed - av_clerk) %>%
+  arrange(-av_dif) %>%
+  select(class, tax_code_num, av_dif, pin, everything())
+```
+```{r}
+#| label: fig-muni-avappeals
+#| column: page
+#| layout-ncol: 2
+#| fig-cap: "Appeals & Incentive Properties"
+
+
+
+# Add in names that merge with Muni shapefile names
+muni_pincounts_majorclass <- incent_pins_ptax %>% 
+  left_join(tc_muninames) %>%
+  filter(av_mailed > av_clerk & 
+                              year == 2021) %>%
+    mutate(av_dif =  av_mailed - av_clerk) %>%
+  group_by(clean_name, agency_name, shpfile_name) %>%
+  dplyr::summarize(#pin_count = n(),
+            av_dif = sum(av_dif))
+
+# table(muni_pincounts_majorclass$major_class_code) # Number of Munis with these major classes
+
+
+fig_muni_AV_w_chicago <- muni_pincounts_majorclass %>% 
+  filter(!is.na(shpfile_name) ) %>% 
+  full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
+  ggplot(aes(fill = av_dif) ) + 
+  geom_sf(aes(geometry = geometry),
+          color = "black",
+          lwd = .05)+ 
+ # labs(title = "Properties with Any Type of Incentive Class") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+  scale_fill_steps2(
+    high = "darkblue", low = "orange",
+    nice.breaks = FALSE,
+    show.limits=TRUE,
+    na.value = NA,
+    name = "AV Decrease from Appeals",
+    label = scales::dollar)
+
+fig_muni_AV_nochicago <- muni_pincounts_majorclass %>% 
+
+  filter(clean_name != "Chicago") %>% 
+  filter(!is.na(shpfile_name) ) %>% 
+  full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
+  ggplot(aes(fill = av_dif) ) + 
+  geom_sf(aes(geometry = geometry),
+          color = "black",
+          lwd = .05)+ 
+  labs(title = "Excludes Chicago") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+  scale_fill_steps2(
+    high = "darkblue", low = "orange",
+   nice.breaks = FALSE,
+    show.limits=TRUE,
+    na.value = NA,
+ # limits = c(0, 90000000),
+    name = "AV Decrease from Appeals",
+    label = scales::dollar)
+
+
+fig_muni_AV_w_chicago
+fig_muni_AV_nochicago
+```
+
