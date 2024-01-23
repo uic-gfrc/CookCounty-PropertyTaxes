@@ -26,7 +26,9 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 
 
 
-ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
+#ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
+
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2022.0.0.db")
 
 # link to the API output as a JSON file
 muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/politicalBoundary/MapServer/2/query?outFields=*&where=1%3D1&f=geojson")
@@ -58,8 +60,6 @@ residential_pins <- read_csv("./Output/7_output_residential_pins.csv")
 
 incentive_pins <- incentive_pins %>%  left_join(nicknames, by = "agency_name")
 
-
-TC_MC_sums <- read_csv("./Output/7_TC_MC_summaries.csv") 
 
 incentive_pins %>% 
  # left_join(nicknames, by = "agency_name") %>% 
@@ -1127,9 +1127,9 @@ fig3
 - av_clerk - Final assessed values used by the Clerk and Treasurer to calculate bills. Identical to av_board in 99.9% of cases   
 
 ```{r}
-#incentive_pins <- read_csv("./Output/7_output_incentive_classes.csv")
+incentive_pins <- read_csv("./Output/7_output_incentive_classes.csv")
 
-incentive_taxbills <- tax_bill(2008:2021, incentive_pins$pin, simplify = FALSE)
+incentive_taxbills <- tax_bill(2008:2022, incentive_pins$pin, simplify = FALSE)
 # pin data for all years if in SFHA
 
 
@@ -1145,6 +1145,10 @@ incent_pins_ptax <- DBI::dbGetQuery(
 ```
 
 ```{r}
+#| label: fig-av-stages
+#| fig-cap: "AV Stage Comparison"
+
+
 incent_pins_ptax <- incent_pins_ptax %>% 
     mutate(major_class = str_sub(class, 1,1),
          major_class_fct = case_when(
@@ -1160,15 +1164,35 @@ incent_pins_ptax <- incent_pins_ptax %>%
          ))
   
 
-incent_pins_ptax %>%  group_by(year) %>%
+incent_pins_ptax %>%  
+    filter(tax_code_num < 70000) %>%
+
+  group_by(year) %>%
   summarize(pins_per_year = n(),
             av_mailed = sum(av_mailed),
             av_certified = sum(av_certified),
             av_board = sum(av_board),
             av_clerk = sum(av_clerk),
-          #  eav = sum(eav),
-           # eav_per_pin = eav/pins_per_year,
-            #av_per_pin = av/pins_per_year
+          ) %>%
+  ggplot() + 
+  geom_line(aes(x = year, y = av_mailed)) +
+
+    geom_line(aes(x = year, y = av_certified
+               ), color = "green")+
+    geom_line(aes(x = year, y = av_board
+               ), color = "purple")+
+  theme_minimal() + 
+  scale_y_continuous(labels = scales::dollar) +
+  labs(title = "Incentive Properties & Appeals: Excludes Chicago", subtitle = "Mailed AV and Clerk AV", caption = "Black is mailed, green is certified, purple is Board & Clerk AV",
+       y = "Assessed Value")
+
+incent_pins_ptax %>%  
+  group_by(year) %>%
+  summarize(pins_per_year = n(),
+            av_mailed = sum(av_mailed),
+            av_certified = sum(av_certified),
+            av_board = sum(av_board),
+            av_clerk = sum(av_clerk),
           ) %>%
   ggplot() + 
   geom_line(aes(x = year, y = av_mailed)) +
@@ -1182,6 +1206,28 @@ incent_pins_ptax %>%  group_by(year) %>%
   scale_y_continuous(labels = scales::dollar) +
   labs(title = "Incentive Properties & Appeals", subtitle = "Mailed AV and Clerk AV", caption = "Black is mailed, green is certified, purple is Board & Clerk AV",
        y = "Assessed Value")
+
+
+
+incent_pins_ptax %>%  
+  filter(tax_code_num >= 70000) %>%
+  group_by(year) %>%
+  summarize(pins_per_year = n(),
+            av_mailed = sum(av_mailed),
+            av_certified = sum(av_certified),
+            av_board = sum(av_board),
+            av_clerk = sum(av_clerk),
+          ) %>%
+  ggplot() + 
+  geom_line(aes(x = year, y = av_mailed)) +
+    geom_line(aes(x = year, y = av_certified
+               ), color = "green")+
+    geom_line(aes(x = year, y = av_board
+               ), color = "purple")+
+  theme_minimal() + 
+  scale_y_continuous(labels = scales::dollar) +
+  labs(title = "Chicago only: Incentive Properties & Appeals", subtitle = "Mailed AV and Clerk AV", caption = "Black is mailed, green is certified, purple is Board & Clerk AV",
+       y = "Assessed Value")
 ```
 
 ```{r}
@@ -1191,18 +1237,28 @@ incent_pins_ptax %>%
   mutate(av_dif =  av_mailed - av_clerk) %>%
   arrange(-av_dif) %>%
   select(class, tax_code_num, av_dif, pin, everything())
+
+incent_pins_ptax %>% 
+  filter(av_mailed > av_clerk & 
+                              year == 2022) %>%
+  mutate(av_dif =  av_mailed - av_clerk) %>%
+  arrange(-av_dif) %>%
+  select(class, tax_code_num, av_dif, pin, everything())
 ```
 ```{r}
-#| label: fig-muni-avappeals
+#| label: fig-muni-avappeals-ty21
 #| column: page
 #| layout-ncol: 2
-#| fig-cap: "Appeals & Incentive Properties"
+#| fig-cap: "Tax Year 2021: Appeals & Incentive Properties"
 
+source("helper_tc_muninames_2022.R")
 
 
 # Add in names that merge with Muni shapefile names
 muni_pincounts_majorclass <- incent_pins_ptax %>% 
-  left_join(tc_muninames) %>%
+  left_join(tc_muninames, by = "tax_code_num") %>%
+  rename(year_ignore = year.y,
+         year = year.x) %>%
   filter(av_mailed > av_clerk & 
                               year == 2021) %>%
     mutate(av_dif =  av_mailed - av_clerk) %>%
@@ -1220,7 +1276,7 @@ fig_muni_AV_w_chicago <- muni_pincounts_majorclass %>%
   geom_sf(aes(geometry = geometry),
           color = "black",
           lwd = .05)+ 
- # labs(title = "Properties with Any Type of Incentive Class") +
+  labs(title = "Tax Year 2021") +
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank()) +
   scale_fill_steps2(
@@ -1240,7 +1296,7 @@ fig_muni_AV_nochicago <- muni_pincounts_majorclass %>%
   geom_sf(aes(geometry = geometry),
           color = "black",
           lwd = .05)+ 
-  labs(title = "Excludes Chicago") +
+  labs(title = "Tax Year 2021: Excludes Chicago") +
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank()) +
   scale_fill_steps2(
@@ -1257,3 +1313,66 @@ fig_muni_AV_w_chicago
 fig_muni_AV_nochicago
 ```
 
+```{r}
+#| label: fig-muni-avappeals-ty22
+#| column: page
+#| layout-ncol: 2
+#| fig-cap: "Tax Year 2022 Appeals & Incentive Properties"
+
+source("helper_tc_muninames_2022.R")
+
+
+# Add in names that merge with Muni shapefile names
+muni_pincounts_majorclass <- incent_pins_ptax %>% 
+  left_join(tc_muninames) %>%
+
+  filter(av_mailed > av_clerk & 
+                              year == 2022) %>%
+    mutate(av_dif =  av_mailed - av_clerk) %>%
+  group_by(clean_name, agency_name, shpfile_name) %>%
+  dplyr::summarize(#pin_count = n(),
+            av_dif = sum(av_dif))
+
+
+fig_muni_AV_w_chicago_2022 <- muni_pincounts_majorclass %>% 
+  filter(!is.na(shpfile_name) ) %>% 
+  full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
+  ggplot(aes(fill = av_dif) ) + 
+  geom_sf(aes(geometry = geometry),
+          color = "black",
+          lwd = .05)+ 
+  labs(title = "Tax Year 2022") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+  scale_fill_steps2(
+    high = "darkblue", low = "orange",
+    nice.breaks = FALSE,
+    show.limits=TRUE,
+    na.value = NA,
+    name = "AV Decrease from Appeals",
+    label = scales::dollar)
+
+fig_muni_AV_nochicago_2022 <- muni_pincounts_majorclass %>% 
+  filter(clean_name != "Chicago") %>% 
+  filter(!is.na(shpfile_name) ) %>% 
+  full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
+  ggplot(aes(fill = av_dif) ) + 
+  geom_sf(aes(geometry = geometry),
+          color = "black",
+          lwd = .05)+ 
+  labs(title = "Tax Year 2022: Excludes Chicago") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+  scale_fill_steps2(
+    high = "darkblue", low = "orange",
+   nice.breaks = FALSE,
+    show.limits=TRUE,
+    na.value = NA,
+ # limits = c(0, 90000000),
+    name = "AV Decrease from Appeals",
+    label = scales::dollar)
+
+
+fig_muni_AV_w_chicago_2022
+fig_muni_AV_nochicago_2022
+```
