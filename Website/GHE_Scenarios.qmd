@@ -872,7 +872,7 @@ scenario_taxrates %>%
   labs(x = "Municipality Composite Tax Rate", y = "Exemption Scenarios")
 ```
 
-## Ranked Properties and Muni Quartiles
+## Ranked Properties and Muni Quartiles - "Single-family Homes"
 
 ```{r}
 q = c(.25, .5, .75)
@@ -1001,6 +1001,7 @@ munis_billchange
 
 #write_csv(munis_billchange, "../Output/5b_muni_billchange_scenarios.csv")
 ```
+
 
 ### Case Studies in Red - 25 v 75 Percentile Homes
 
@@ -1187,13 +1188,275 @@ ggplot(data = new_ratios, aes(y = newbill_to_AV_25, x = newbill_to_AV_75, label 
                                       x = "", y = "")
 ```
 
-### 25 v 75 Percentile Homes
+### Redone using Major Class 2 instead of Single-family homes
 
 ```{r}
+q = c(.25, .5, .75)
+
+## ranks properties that are considered single family homes in order of AV for each Muni
+muni_quartiles <- joined_pins %>%
+filter(class >= 200 & class < 300) %>%  
+  filter(tax_code %in% muni_TC_fullyCook$tax_code_num) %>%
+  group_by(agency_name, clean_name) %>%
+  arrange(av) %>%
+  summarize(count_pins = n(), 
+            min = min(av),
+            quant25 = round(quantile(av, probs = q[1])), 
+            quant50 = round(quantile(av, probs = q[2])),
+            quant75 = round(quantile(av, probs = q[3])),
+            max = max(av)
+           ) %>% 
+  arrange( desc( quant50))
+muni_quartiles
+```
+
+```{r}
+## create rank variable for properties that fall within the quartiles +/- $500 range
+munis_ranked <- joined_pins  %>%
+filter(class >= 200 & class < 300) %>%
+  inner_join(muni_quartiles, by = c("agency_name", "clean_name")) %>% 
+  mutate(rank = case_when(
+    av > (quant25-500) & (av<quant25+500) ~ "q25",
+    av > (quant50-500) & (av<quant50+500) ~ "q50",
+    av > (quant75-500) & (av<quant75+500) ~ "q75")
+    ) %>%
+  select(clean_name, rank, av, pin, class, everything()) %>%
+  left_join(nicknames)
+
+
+
+
+munis_billchange <-  munis_ranked %>% 
+  group_by(clean_name, rank) %>%
+  left_join(scenario_taxrates) %>%
+  arrange(av) %>%
+ # group_by(agency_name, has_HO_exemp) %>% 
+  mutate(#taxable_eav = final_tax_to_dist / tax_code_rate,
+    # current bill = current tax rate * portion of levy billed
+    
+    
+   # ## Made negative tax bills!! ## #
+         
+         bill_neg10 = tr_neg10*(equalized_AV-all_exemptions+ exe_homeowner -exe_neg10),
+
+         bill_current = cur_comp_TC_rate/100*(equalized_AV-all_exemptions),
+         bill_plus10 =  tr_plus10*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus10),
+         bill_plus20 = tr_plus20*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus20),
+         bill_plus30 = tr_plus20*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus30),
+         bill_plus40 = tr_plus20*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus40),
+    
+    # ## make bills $1 if they had been negative.    
+         bill_neg10 = ifelse(bill_neg10 < 1, 1, bill_neg10),
+         bill_current = ifelse(bill_current < 1, 1, bill_current),
+         bill_plus10 = ifelse(bill_plus10 < 1, 1, bill_plus10),
+         bill_plus20 = ifelse(bill_plus20 < 1, 1, bill_plus20),
+         bill_plus30 = ifelse(bill_plus30 < 1, 1, bill_plus30),
+         bill_plus40 = ifelse(bill_plus40 < 1, 1, bill_plus40),
+         
+         )%>%
+  mutate(
+         zerodol_bills_ghe0 = ifelse(bill_neg10 < 5, 1, 0),
+         zerodol_bills_current = ifelse(bill_current < 5, 1, 0),
+         zerodol_bills_ghe20 = ifelse(bill_plus10 < 5, 1, 0),
+         zerodol_bills_ghe30 = ifelse(bill_plus20 < 5, 1, 0),
+         zerodol_bills_ghe40 = ifelse(bill_plus30 < 5, 1, 0),
+         zerodol_bills_ghe50 = ifelse(bill_plus40 < 5, 1, 0),
+  ) %>%
+  group_by(clean_name, rank, has_HO_exemp) %>% 
+  summarize(median_AV = round(median(av)),
+            median_EAV = round(median(eav)),
+            mean_bill_neg10 = round(mean(bill_neg10, na.rm=TRUE)),
+            mean_bill_cur = round(mean(bill_current, na.rm=TRUE)),
+            mean_bill_plus10 = round(mean(bill_plus10, na.rm=TRUE)),
+            mean_bill_plus20 = round(mean(bill_plus20, na.rm=TRUE)),
+            mean_bill_plus30 = round(mean(bill_plus30, na.rm=TRUE)),
+            mean_bill_plus40 = round(mean(bill_plus40, na.rm=TRUE)),
+            
+            # current perceived_savings = median(tax_amt_exe),
+            tr_neg10 = round(mean(tr_neg10*100), digits = 2), 
+            cur_comp_TC_rate = round(mean(cur_comp_TC_rate), digits = 2),
+            tr_plus10 = round(mean(tr_plus10*100), digits = 2),
+            tr_plus20 = round(mean(tr_plus20*100), digits = 2),
+            tr_plus30 = round(mean(tr_plus30*100), digits = 2),
+            tr_plus40 = round(mean(tr_plus40*100), digits = 2),
+            pincount=n(),
+            zerodol_bills_ghe0 = sum(zerodol_bills_ghe0),           
+            zerodol_bills_current = sum(zerodol_bills_current),
+            zerodol_bills_ghe20 = sum(zerodol_bills_ghe20),
+            zerodol_bills_ghe30 = sum(zerodol_bills_ghe30),
+            zerodol_bills_ghe40 = sum(zerodol_bills_ghe40),
+            zerodol_bills_ghe50 = sum(zerodol_bills_ghe50),
+
+
+  ) %>%
+  mutate(clean_name = ifelse(clean_name == "Hazelcrest", "Hazel Crest", clean_name)) %>%
+  arrange(has_HO_exemp, rank)
+
+
+munis_billchange <- munis_billchange %>% left_join(muni_quartiles)
+munis_billchange
+
+```
+
+```{r casestudies-inred-MC2props}
 #| layout-ncol: 3
 #| layout-nrow: 2
 #| column: page
 
+ratios<- munis_billchange %>% 
+  filter(has_HO_exemp == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
+  mutate(currbill_to_AV_25 = ifelse(rank == "q25", mean_bill_neg10/median_AV, NA)) %>%
+  mutate(currbill_to_AV_75 = ifelse(rank == "q75", mean_bill_neg10/median_AV, NA)) %>% 
+  group_by(clean_name) %>%
+  summarize(GHE_0_bill_to_AV_25 = max(currbill_to_AV_25, na.rm=TRUE),
+            GHE_0_bill_to_AV_75 = max(currbill_to_AV_75, na.rm=TRUE)) %>%
+  mutate(muni_ratio_25to75 = GHE_0_bill_to_AV_25/GHE_0_bill_to_AV_75) 
+
+
+ggplot(data = ratios, aes(y = GHE_0_bill_to_AV_25, x = GHE_0_bill_to_AV_75, label = clean_name)) + 
+  geom_abline(intercept = 0, slope = 1) +
+  geom_point(aes(alpha = .5)) + 
+  ggrepel::geom_label_repel(data = (ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(y = GHE_0_bill_to_AV_25, x = GHE_0_bill_to_AV_75, label = clean_name), size = 3)+
+    geom_point(data = (ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(y = GHE_0_bill_to_AV_25, x = GHE_0_bill_to_AV_75, color = "red"), size = 2)+
+  theme_classic() + 
+    scale_y_continuous(limits = c(0, .6), expand = c(0,0))+
+  scale_x_continuous(limits = c(0, .6), expand = c(0,0))+
+  theme(legend.position = "none") +
+  labs(title = "GHE = $0 EAV", x = "", y = "")
+
+ratios<- munis_billchange %>% 
+  filter(has_HO_exemp == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
+  mutate(currbill_to_AV_25 = ifelse(rank == "q25", mean_bill_cur/median_AV, NA)) %>%
+  mutate(currbill_to_AV_75 = ifelse(rank == "q75", mean_bill_cur/median_AV, NA)) %>% 
+  group_by(clean_name) %>%
+  summarize(currbill_to_AV_25 = max(currbill_to_AV_25, na.rm=TRUE),
+            currbill_to_AV_75 = max(currbill_to_AV_75, na.rm=TRUE)) %>%
+  mutate(muni_ratio_25to75 = currbill_to_AV_25/currbill_to_AV_75) %>% filter(muni_ratio_25to75 > 0.01)
+
+
+
+ggplot(data = ratios, aes(y = currbill_to_AV_25, x = currbill_to_AV_75, label = clean_name)) + 
+  geom_abline(intercept = 0, slope = 1) +
+  geom_point(data = ratios, aes(alpha = .5)) + 
+  ggrepel::geom_label_repel(data = (ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(y = currbill_to_AV_25, x = currbill_to_AV_75), size = 3, max.overlaps = Inf, point.padding = 0, # additional padding around each point
+    min.segment.length = 0, # draw all line segments
+    )+
+    geom_point(data = (ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(y = currbill_to_AV_25, x = currbill_to_AV_75, color = "red"), size = 2)+
+
+  theme_classic() +
+    scale_y_continuous(limits = c(0, .6), expand = c(0,0))+
+   scale_x_continuous(limits = c(0, .6), expand = c(0,0))+
+  theme(legend.position = "none") +
+  labs(title = "GHE = $10,000 EAV (Current)", x="", y="")
+
+
+new_ratios<- munis_billchange %>% 
+  filter(has_HO_exemp == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
+  mutate(newbill_to_AV_25 = ifelse(rank == "q25", mean_bill_plus10/median_AV, NA)) %>%
+  mutate(newbill_to_AV_75 = ifelse(rank == "q75", mean_bill_plus10/median_AV, NA)) %>% 
+  group_by(clean_name) %>%
+  summarize(newbill_to_AV_25 = max(newbill_to_AV_25, na.rm=TRUE),
+            newbill_to_AV_75 = max(newbill_to_AV_75, na.rm=TRUE)) %>%
+  mutate(muni_ratio_25to75 = newbill_to_AV_25/newbill_to_AV_75) %>% filter(muni_ratio_25to75 > 0.01)
+
+
+ggplot(data = new_ratios, aes(y = newbill_to_AV_25, x = newbill_to_AV_75, label = clean_name)) + 
+  geom_abline(intercept = 0, slope = 1) +
+  geom_point(data = new_ratios, aes(alpha = .5)) + 
+  ggrepel::geom_label_repel(data = (new_ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(y = newbill_to_AV_25, x = newbill_to_AV_75), size = 3, max.overlaps = Inf, point.padding = 0, # additional padding around each point
+    min.segment.length = 0, # draw all line segments
+    )+
+    geom_point(data = (new_ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(y = newbill_to_AV_25, x = newbill_to_AV_75, color = "red"), size = 2)+
+  theme_classic() + 
+  scale_y_continuous(limits = c(0, .6), expand = c(0,0))+
+  scale_x_continuous(limits = c(0, .6), expand = c(0,0))+
+  theme(legend.position = "none") + 
+  labs(title = "GHE = $20,000 EAV", x= "", y="")
+
+
+new_ratios<- munis_billchange %>% 
+  filter(has_HO_exemp == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
+  mutate(newbill_to_AV_25 = ifelse(rank == "q25", mean_bill_plus20/median_AV, NA)) %>%
+  mutate(newbill_to_AV_75 = ifelse(rank == "q75", mean_bill_plus20/median_AV, NA)) %>% 
+  group_by(clean_name) %>%
+  summarize(newbill_to_AV_25 = max(newbill_to_AV_25, na.rm=TRUE),
+            newbill_to_AV_75 = max(newbill_to_AV_75, na.rm=TRUE)) %>%
+  mutate(muni_ratio_25to75 = newbill_to_AV_25/newbill_to_AV_75) %>% filter(muni_ratio_25to75 > 0.01)
+
+
+ggplot(data = new_ratios, aes(y = newbill_to_AV_25, x = newbill_to_AV_75, label = clean_name)) + 
+  geom_abline(intercept = 0, slope = 1) +
+  geom_point(aes(alpha = .5)) + 
+  ggrepel::geom_label_repel(data = (new_ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(y = newbill_to_AV_25, x = newbill_to_AV_75), size = 3, max.overlaps = Inf, point.padding = 0, # additional padding around each point
+    min.segment.length = 0, # draw all line segments
+    )+
+    geom_point(data = (new_ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(y = newbill_to_AV_25, x = newbill_to_AV_75, color = "red"), size = 2)+
+  theme_classic() + 
+    scale_y_continuous(limits = c(0, .6), expand = c(0,0))+
+
+  scale_x_continuous(limits = c(0, .6), expand = c(0,0))+
+  theme(legend.position = "none") + 
+  labs(title = "GHE = $30,000 EAV",
+                                        x = "", y = "")
+
+new_ratios<- munis_billchange %>% 
+  filter(has_HO_exemp == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
+  mutate(newbill_to_AV_25 = ifelse(rank == "q25", mean_bill_plus30/median_AV, NA)) %>%
+  mutate(newbill_to_AV_75 = ifelse(rank == "q75", mean_bill_plus30/median_AV, NA)) %>% 
+  group_by(clean_name) %>%
+  summarize(newbill_to_AV_25 = max(newbill_to_AV_25, na.rm=TRUE),
+            newbill_to_AV_75 = max(newbill_to_AV_75, na.rm=TRUE)) %>%
+  mutate(muni_ratio_25to75 = newbill_to_AV_25/newbill_to_AV_75) %>% filter(muni_ratio_25to75 > 0.01)
+
+
+ggplot(data = new_ratios, aes(y = newbill_to_AV_25, x = newbill_to_AV_75, label = clean_name)) + 
+  geom_abline(intercept = 0, slope = 1) +
+  geom_point(aes(alpha = .5)) + 
+  ggrepel::geom_label_repel(data = (new_ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(y = newbill_to_AV_25, x = newbill_to_AV_75), size = 3, max.overlaps = Inf, point.padding = 0, # additional padding around each point
+    min.segment.length = 0, # draw all line segments
+    )+
+    geom_point(data = (new_ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(y = newbill_to_AV_25, x = newbill_to_AV_75, color = "red"), size = 2)+
+  theme_classic() + 
+    scale_y_continuous(limits = c(0, .6), expand = c(0,0))+
+
+  scale_x_continuous(limits = c(0, .6), expand = c(0,0))+
+  theme(legend.position = "none") + 
+  labs(title = "GHE = $40,000 EAV", 
+                                     x= "", y = "")
+
+
+new_ratios<- munis_billchange %>% 
+  filter(has_HO_exemp == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
+  mutate(newbill_to_AV_25 = ifelse(rank == "q25", mean_bill_plus40/median_AV, NA)) %>%
+  mutate(newbill_to_AV_75 = ifelse(rank == "q75", mean_bill_plus40/median_AV, NA)) %>% 
+  group_by(clean_name) %>%
+  summarize(newbill_to_AV_25 = max(newbill_to_AV_25, na.rm=TRUE),
+            newbill_to_AV_75 = max(newbill_to_AV_75, na.rm=TRUE)) %>%
+  mutate(muni_ratio_25to75 = newbill_to_AV_25/newbill_to_AV_75) %>% filter(muni_ratio_25to75 > 0.01)
+
+
+ggplot(data = new_ratios, aes(y = newbill_to_AV_25, x = newbill_to_AV_75, label = clean_name)) + 
+  geom_abline(intercept = 0, slope = 1) +
+  geom_point(aes(alpha = .5)) + 
+  ggrepel::geom_label_repel(data = (new_ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(y = newbill_to_AV_25, x = newbill_to_AV_75), size = 3, max.overlaps = Inf, point.padding = 0, # additional padding around each point
+    min.segment.length = 0, # draw all line segments
+    )+
+    geom_point(data = (new_ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(y = newbill_to_AV_25, x = newbill_to_AV_75, color = "red"), size = 2)+
+  theme_classic() + 
+    scale_y_continuous(limits = c(0, .6), expand = c(0,0))+
+
+  scale_x_continuous(limits = c(0, .6), expand = c(0,0))+
+  theme(legend.position = "none") + labs(title = "GHE = $50,000", 
+                                      x = "", y = "")
+```
+
+
+```{r ratios-without-labels, eval=FALSE, include=FALSE}
+#| layout-ncol: 3
+#| layout-nrow: 2
+#| column: page
+
+### 25 v 75 Percentile Homes
 
 ratios<- munis_billchange %>% 
   filter(has_HO_exemp == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
@@ -1340,12 +1603,12 @@ ggplot(data = new_ratios, aes(y = newbill_to_AV_25, x = newbill_to_AV_75, label 
 
 ### 90/10 deciles
 
-```{r}
+```{r MC2-10to90}
 q = c(.1, .5, .9)
 
 ## ranks properties that are considered single family homes in order of AV for each Muni
 muni_quartiles <- joined_pins %>%
-  filter(Option2 == "Single-Family") %>% 
+filter(class >= 200 & class < 300) %>%
   filter(tax_code %in% muni_TC_fullyCook$tax_code_num) %>%
   group_by(agency_name, clean_name) %>%
   arrange(av) %>%
@@ -1363,6 +1626,7 @@ muni_quartiles
 ```{r}
 ## create rank variable for properties that fall within the quartiles +/- $500 range
 munis_ranked <- joined_pins  %>%
+filter(class >= 200 & class < 300) %>%
   inner_join(muni_quartiles, by = c("agency_name", "clean_name")) %>% 
   mutate(rank = case_when(
     av > (quant10-500) & (av<quant10+500) ~ "q10",
@@ -1433,12 +1697,12 @@ munis_billchange
 ```
 
 ```{r}
-#| label: progressivity-90to10
+#| label: fig-progressivity-90to10
 #| layout-ncol: 3
 #| layout-nrow: 2
 #| column: page
 
-ratios<- munis_billchange %>% 
+ratios <- munis_billchange %>% 
   filter(has_HO_exemp == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
   mutate(currbill_to_AV_10 = ifelse(rank == "q10", mean_bill_neg10/median_AV, NA)) %>%
   mutate(currbill_to_AV_90 = ifelse(rank == "q90", mean_bill_neg10/median_AV, NA)) %>% 
@@ -1450,15 +1714,20 @@ ratios<- munis_billchange %>%
 
 ggplot(data = ratios, aes(y = GHE_0_bill_to_AV_10, x = GHE_0_bill_to_AV_90, label = clean_name)) + 
   geom_abline(intercept = 0, slope = 1) +
-  geom_point(aes(alpha = .5)) + 
-  geom_text(nudge_x = .03, nudge_y=0.01, size = 3, check_overlap = TRUE)+ 
-  theme_classic() + 
-    scale_y_continuous(limits = c(0, .6))+
+  geom_point(aes(alpha = .5)) +
+      ggrepel::geom_label_repel(data = (ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(y = GHE_0_bill_to_AV_10, x = GHE_0_bill_to_AV_90), size = 2, max.overlaps = Inf, point.padding = 0, # additional padding around each point
+    min.segment.length = 0, # draw all line segments
+    ) +
+  geom_point(data = (ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), 
+                     aes(y = GHE_0_bill_to_AV_10, x = GHE_0_bill_to_AV_90), color = "red", size=2) + 
 
-  scale_x_continuous(limits = c(0, .6))+
+  theme_classic() + 
+  scale_y_continuous(limits = c(0, .6), expand = c(0,0))+
+  scale_x_continuous(limits = c(0, .6), expand = c(0,0))+
   theme(legend.position = "none") +
   labs(title = "Reduced GHE Amount by 10,000 EAV (0 EAV exempt from GHE)",
        subtitle = "Other exemptions still in place")
+
 
 
 ratios<- munis_billchange %>% 
@@ -1470,17 +1739,20 @@ ratios<- munis_billchange %>%
             currbill_to_AV_90 = max(currbill_to_AV_90, na.rm=TRUE)) %>%
   mutate(muni_ratio_10to90 = currbill_to_AV_10/currbill_to_AV_90)
 
-
 ggplot(data = ratios, aes(y = currbill_to_AV_10, x = currbill_to_AV_90, label = clean_name)) + 
   geom_abline(intercept = 0, slope = 1) +
-  geom_point(aes(alpha = .5)) + 
-  geom_text(nudge_x = .03, nudge_y=0.01, size = 3, check_overlap = TRUE)+ 
+  geom_point(aes(alpha = .5)) +
+  ggrepel::geom_label_repel(data = (ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(y = currbill_to_AV_10, x = currbill_to_AV_90), size = 2, max.overlaps = Inf, point.padding = 0, # additional padding around each point
+    min.segment.length = 0, # draw all line segments
+    ) +
+  geom_point(data = (ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), 
+                     aes(y = currbill_to_AV_10, x = currbill_to_AV_90), color = "red", size=2) + 
   theme_classic() + 
-    scale_y_continuous(limits = c(0, .6))+
-
-  scale_x_continuous(limits = c(0, .6))+
+  scale_y_continuous(limits = c(0, .6), expand = c(0,0))+
+  scale_x_continuous(limits = c(0, .6), expand = c(0,0))+
   theme(legend.position = "none") +
-  labs(title = "Current GHE Amount (up to 10,000 EAV exempt per property)")
+  labs(title = "Current GHE Amount (up to 10,000 EAV exempt per property)", x="", y = "")
+
 
 
 new_ratios<- munis_billchange %>% 
@@ -1496,14 +1768,18 @@ new_ratios<- munis_billchange %>%
 ggplot(data = new_ratios, aes(y = newbill_to_AV_10, x = newbill_to_AV_90, label = clean_name)) + 
   geom_abline(intercept = 0, slope = 1) +
   geom_point(aes(alpha = .5)) + 
-  geom_text(nudge_x = .03, nudge_y=0.01, size = 3, check_overlap = TRUE)+ 
+  ggrepel::geom_label_repel(data = (new_ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(newbill_to_AV_10, x = newbill_to_AV_90), size = 2, max.overlaps = Inf, point.padding = 0, # additional padding around each point
+    min.segment.length = 0, # draw all line segments
+    ) +
+  geom_point(data = (new_ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), 
+                     aes(newbill_to_AV_10, x = newbill_to_AV_90), color = "red", size=2) + 
   theme_classic() + 
-  scale_y_continuous(limits = c(0, .6))+
-  scale_x_continuous(limits = c(0, .6))+
-  theme(legend.position = "none") + labs(title = "Increase GHE by 10,000 EAV (for up to 20,000 EAV exempt) ", 
+  scale_y_continuous(limits = c(0, .6), expand = c(0,0))+
+  scale_x_continuous(limits = c(0, .6), expand = c(0,0))+
+  theme(legend.position = "none") +
+  labs(title = "Increase GHE by 10,000 EAV (for up to 20,000 EAV exempt) ", 
                                          y = "10th percentile of homes, taxbill:AV",
-                                         x= "90th percentile of homes, taxbill:AV",
-                                         caption =  "Uses single-family properties. Exempt EAV up to 20K per property")
+                                         x= "90th percentile of homes, taxbill:AV")
 
 
 new_ratios<- munis_billchange %>% 
@@ -1518,16 +1794,19 @@ new_ratios<- munis_billchange %>%
 
 ggplot(data = new_ratios, aes(y = newbill_to_AV_10, x = newbill_to_AV_90, label = clean_name)) + 
   geom_abline(intercept = 0, slope = 1) +
-  geom_point(aes(alpha = .5)) + 
-  geom_text(nudge_x = .03, nudge_y=0.01, size = 3, check_overlap = TRUE)+ 
+  geom_point(aes(alpha = .5)) +
+  ggrepel::geom_label_repel(data = (new_ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(y = newbill_to_AV_10, x = newbill_to_AV_90), size = 2, max.overlaps = Inf, point.padding = 0, # additional padding around each point
+    min.segment.length = 0, # draw all line segments
+    ) +
+  geom_point(data = (new_ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), 
+                     aes(newbill_to_AV_10, x = newbill_to_AV_90), color = "red", size=2) + 
   theme_classic() + 
-    scale_y_continuous(limits = c(0, .6))+
-
-  scale_x_continuous(limits = c(0, .6))+
-  theme(legend.position = "none") + labs(title = "Increase GHE by 20,000 EAV (for up to 30,000 EAV exempt) ", 
+  scale_y_continuous(limits = c(0, .6), expand = c(0,0))+
+  scale_x_continuous(limits = c(0, .6), expand = c(0,0))+
+  theme(legend.position = "none") +
+  labs(title = "Increase GHE by 20,000 EAV (for up to 30,000 EAV exempt) ", 
                                          y = "10th percentile of homes, taxbill:AV",
-                                         x= "90th percentile of homes, taxbill:AV",
-                                         caption =  "Uses single-family properties. Exempt EAV up to 30K per property")
+                                         x= "90th percentile of homes, taxbill:AV")
 
 new_ratios<- munis_billchange %>% 
   filter(has_HO_exemp == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
@@ -1541,16 +1820,20 @@ new_ratios<- munis_billchange %>%
 
 ggplot(data = new_ratios, aes(y = newbill_to_AV_10, x = newbill_to_AV_90, label = clean_name)) + 
   geom_abline(intercept = 0, slope = 1) +
-  geom_point(aes(alpha = .5)) + 
-  geom_text(nudge_x = .03, nudge_y=0.01, size = 3, check_overlap = TRUE)+ 
+   geom_point(aes(alpha = .5)) + 
+  ggrepel::geom_label_repel(data = (new_ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(newbill_to_AV_10, x = newbill_to_AV_90), size = 2, max.overlaps = Inf, point.padding = 0, # additional padding around each point
+    min.segment.length = 0, # draw all line segments
+    ) +
+  geom_point(data = (new_ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), 
+                     aes(newbill_to_AV_10, x = newbill_to_AV_90), color = "red", size=2) + 
   theme_classic() + 
-    scale_y_continuous(limits = c(0, .6))+
-
-  scale_x_continuous(limits = c(0, .6))+
-  theme(legend.position = "none") + labs(title = "Increase GHE by 30,000 EAV (for up to 40,000 EAV exempt) ", 
+  scale_y_continuous(limits = c(0, .6), expand = c(0,0))+
+  scale_x_continuous(limits = c(0, .6), expand = c(0,0))+
+  theme(legend.position = "none") +
+  labs(title = "Increase GHE by 30,000 EAV (for up to 40,000 EAV exempt) ", 
                                          y = "10th percentile of homes, taxbill:AV",
-                                         x= "90th percentile of homes, taxbill:AV",
-                                         caption =  "Uses single-family properties. Exempt EAV up to 40K per property")
+                                         x= "90th percentile of homes, taxbill:AV"
+                                         )
 
 
 new_ratios<- munis_billchange %>% 
@@ -1565,24 +1848,28 @@ new_ratios<- munis_billchange %>%
 
 ggplot(data = new_ratios, aes(y = newbill_to_AV_10, x = newbill_to_AV_90, label = clean_name)) + 
   geom_abline(intercept = 0, slope = 1) +
-  geom_point(aes(alpha = .5)) + 
-  geom_text(nudge_x = .03, nudge_y=0.01, size = 3, check_overlap = TRUE)+ 
+    geom_point(aes(alpha = .5)) + 
+  ggrepel::geom_label_repel(data = (new_ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(newbill_to_AV_10, x = newbill_to_AV_90), size = 2, max.overlaps = Inf, point.padding = 0, # additional padding around each point
+    min.segment.length = 0, # draw all line segments
+    ) +
+  geom_point(data = (new_ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), 
+                     aes(newbill_to_AV_10, x = newbill_to_AV_90), color = "red", size=2) + 
   theme_classic() + 
-    scale_y_continuous(limits = c(0, .6))+
-
-  scale_x_continuous(limits = c(0, .6))+
-  theme(legend.position = "none") + labs(title = "Increase GHE by 40,000 EAV (for up to 50,000 EAV exempt) ", 
+  scale_y_continuous(limits = c(0, .6), expand = c(0,0))+
+  scale_x_continuous(limits = c(0, .6), expand = c(0,0))+
+  theme(legend.position = "none") +
+  labs(title = "Increase GHE by 40,000 EAV (for up to 50,000 EAV exempt) ", 
                                          y = "10th percentile of homes, taxbill:AV",
-                                         x= "90th percentile of homes, taxbill:AV",
-                                         caption =  "Uses single-family properties. Exempt EAV up to 50K per property")
+                                         x= "90th percentile of homes, taxbill:AV")
 ```
+
+
+
+```{r eval=FALSE, include=FALSE}
 
 #### 90/10 deciles - Bigger AV range
 
-Increased range of homes included in quantile to avoid having municipalities drop out if there were no tax bills. Not sure if it addresses the problem.
-
-```{r}
-
+#Increased range of homes included in quantile to avoid having municipalities drop out if there were no tax bills. Not sure if it addresses the problem.
 
 q = c(.1, .5, .9)
 
@@ -1601,9 +1888,7 @@ muni_quartiles <- joined_pins %>%
            ) %>% 
   arrange( desc( quant50))
 muni_quartiles
-```
 
-```{r}
 ## create rank variable for properties that fall within the quartiles +/- $500 range
 munis_ranked <- joined_pins  %>%
   inner_join(muni_quartiles, by = c("agency_name", "clean_name")) %>% 
@@ -1674,7 +1959,7 @@ munis_billchange <- munis_billchange %>% left_join(muni_quartiles)
 munis_billchange
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 #| label: progressivity-90to10-expanded
 #| layout-ncol: 3
 #| layout-nrow: 2
