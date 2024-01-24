@@ -92,9 +92,45 @@ Pull all agency names that exist, then use agency numbers associated with SCHOOL
 There are 946 unique taxing agencies that existed in 2021.
 
 ```{r}
-joined_pins <- read_csv("./Output/4C_joined_PINs_bills_and_exemptions.csv")
+joined_pins <- read_csv("./Output/4C_joined_PINs_bills_and_exemptions.csv") %>% mutate(tax_code_num = as.character(tax_code_num))
 
 joined_pins <- left_join(joined_pins, pins_2021, by = c("pin"))
+
+
+all_taxing_agencies <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT agency_num, agency_name, major_type, minor_type
+  FROM agency_info
+  "
+) %>%
+  mutate(first6 = str_sub(agency_num,1,6),
+         first5 = str_sub(agency_num,1,5))
+
+
+school_agency_nums<- all_taxing_agencies %>% 
+  filter(minor_type %in% c("ELEMENTARY")) %>%
+   select(agency_num)
+
+school_names_elem <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT DISTINCT agency_num, agency_name, minor_type
+  FROM agency_info
+  WHERE minor_type = 'ELEMENTARY' 
+  "
+)
+
+school_tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT*
+  FROM tax_code
+  WHERE agency_num IN ({school_names_elem$agency_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+  )
+
 ```
 
 
@@ -106,6 +142,9 @@ __Exemptions within each Elementary School District:__
 
 
 Percent Residential is the Residential EAV outside of TIFs / School District EAV outside of TIFs.
+
+> Uses parcel universe names to group and map. Doesn't match everything.
+
 
 ```{r pct-exempt}
 pct_exempt_MC <- joined_pins %>% 
@@ -190,5 +229,87 @@ pct_eav_MC %>%
 
 
 
+### Using ptaxsim taxcode and names to map
 
+```{r pct-exempt-ptaxsim}
+pct_exempt_MC <- joined_pins %>% 
+  left_join(school_tax_codes, by = c("tax_code_num")) %>%
+  left_join(school_names_elem, by = c("agency_num.y" = "agency_num"))%>%
+  group_by(agency_name.y, agency_num.y) %>%
+  mutate(total_eav = sum(eav), # eav from pin table. "original" eav before exemptions or tifs
+         nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate.y/100)),
+        # nonTIF_EAV_pre_exemps = sum(final_tax_to_dist +  )
+         pin_count  = n(),
+         township_exemptEAV = sum(all_exemptions)) %>%
+  ungroup() %>%
+  group_by(agency_name.y, agency_num.y, major_class_code, total_eav, pin_count, township_exemptEAV, nonTIF_EAV_post_exemps) %>%
+  summarize(MC_eav =  sum(eav),
+            mc_pc = n(),
+            MC_exemptions = sum(all_exemptions),
+            MC_nonTIF_EAV_post_exemps = sum(final_tax_to_dist / (tax_code_rate.y/100) ),
+            
+) %>%
+  mutate(
+         pct_eav_MC = MC_eav / total_eav,
+       #  pct_pins_w_exe = mc_pc / pin_count,
+        exemps_per_resPIN =  MC_exemptions / mc_pc)
+
+pct_exempt_MC
+
+
+
+pct_exempt_MC %>% 
+  filter(major_class_code == 2) %>%
+  full_join(elem_schools_shp, by = c( "agency_num.y" = "agency_num") ) %>%
+  ggplot(aes(fill = exemps_per_resPIN)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  labs(title = "Average Exempt EAV for Residential PINs in Elementary School Dist", 
+     #  caption = "The median township has 67.2% of its EAV from Class 2 Residential Properties"
+     ) +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
+  scale_fill_steps2(
+    high = "darkblue", low = "black",  #  guide = "legend",
+    #midpoint = median(pct_residential$pct_eav_MC),
+    show.limits=TRUE,
+    na.value = NA,
+    name = "Exempt EAV",
+    labels = scales::dollar)
+```
+
+
+```{r}
+
+pct_eav_MC <- joined_pins %>% 
+  left_join(school_tax_codes, by = c("tax_code_num")) %>%
+  left_join(school_names_elem, by = c("agency_num.y" = "agency_num"))%>%
+  group_by(agency_name.y, agency_num.y) %>%
+  mutate(total_eav = sum(eav)) %>%
+ ungroup() %>%
+  group_by(agency_name.y, agency_num.y, major_class_code, total_eav) %>%
+  summarize(MC_eav =  sum(eav)) %>%
+  mutate(
+         pct_eav_MC = MC_eav / total_eav )
+
+pct_eav_MC
+
+pct_residential <- pct_eav_MC %>% 
+  filter(major_class_code == 2)
+  
+pct_residential %>% 
+  full_join(elem_schools_shp, by = c( "agency_num.y" = "agency_num") ) %>%
+  ggplot(aes(fill = pct_eav_MC)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  labs(title = "Residential EAV /  Total EAV in Elem. District"
+       ) +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
+  scale_fill_steps2(
+    high = "darkblue", low = "black",  #  guide = "legend",
+    midpoint = median(pct_residential$pct_eav_MC),
+    show.limits = TRUE,
+    na.value = NA,
+    name = "% Residential",
+    labels = scales::percent)
+```
 
