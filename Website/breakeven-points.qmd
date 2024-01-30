@@ -27,9 +27,26 @@ library(flextable) # for formatted table output into Word documents
 library(kableExtra)
  
 nicknames <- readxl::read_excel("../Necessary_Files/muni_shortnames.xlsx")
+
 ```
 
-Bills were pulled from PTAXSIM amd summed to the pin level in files `1_...rmd` and `2...rmd`. Exemption data per PIN was pulled from PTAXSIM in file `3_.....rmd`.
+```{r eval=FALSE}
+
+theme_classic %+replace%
+  theme()
+theme_set(theme_classic)
+
+
+  theme(legend.position = "none",
+    panel.background = element_rect(fill='transparent'), #transparent panel bg
+    plot.background = element_rect(fill='transparent', color=NA), #transparent plot bg
+    panel.grid.major = element_blank(), #remove major gridlines
+    panel.grid.minor = element_blank(), #remove minor gridlines
+    legend.background = element_rect(fill='transparent'), #transparent legend bg
+  )
+```
+
+Bills were pulled from PTAXSIM and summed to the pin level in files `1_...rmd` and `2...rmd`. Exemption data per PIN was pulled from PTAXSIM in file `3_.....rmd`.
 
 ```{r}
 ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "../ptaxsim.db/ptaxsim-2021.0.4.db")
@@ -765,6 +782,8 @@ nobillchange %>%
 #| label: fig-breakevenToAV-notfiltered
 #| column: margin
 #| fig-cap: "Includes all municipalities"
+#| echo: FALSE
+
 
 nochange <- C2_munistats %>% 
   left_join(muni_taxrates) %>%
@@ -778,6 +797,7 @@ nochange %>%
              x = C2median_av, 
              label=clean_name
              )) +
+  geom_abline(intercept = 0, slope = 1, lty = 2, alpha = .4) +
   geom_point(aes(alpha = .5)) +
  # geom_smooth(method = "lm" )+
   geom_text(aes(y = (nochange_av-5000), x = (C2median_av)), size = 2)+
@@ -786,21 +806,27 @@ nochange %>%
   scale_y_continuous(labels = scales::dollar) +
   theme(legend.position = "none")+
   labs(y = " Breakeven Point", 
-       x = "Median AV - Class 2 Properties in Municipality", title = "Some highly valued homes would have lower tax bills if the GHE were eliminated", 
-       caption = "The breakeven point is the assessed values at which a major class 2 
-       property would not have their taxbill change if the GHE were eliminated.")
+       x = "Median AV - Class 2 Properties in Municipality", 
+      # title = "Some highly valued homes would have lower tax bills if the GHE were eliminated", 
+       #caption = "The breakeven point is the assessed values at which a major class 2 
+     #  property would not have their taxbill change if the GHE were eliminated."
+     )
 ```
 
 ```{r}
 #| label: fig-breakevenToAV-filtered-labeled
 #| fig-cap: "Excludes outliers: labeled"
 #| column: margin
+#| echo: FALSE
+
 nochange %>%
   filter(nochange_av < 300000) %>%
   ggplot(aes(y=nochange_av, 
              x = C2median_av, 
              label=clean_name
              )) +
+    geom_abline(intercept = 0, slope = 1, lty = 2, alpha = .4) +
+
   geom_point(aes(alpha = .5)) +
   
   geom_point(data = (nochange %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Riverdale","Dolton"))), aes(y = nochange_av, x = C2median_av, color = "red"), size = 3) +
@@ -810,7 +836,7 @@ nochange %>%
   scale_y_continuous(labels = scales::dollar) +
     theme(legend.position = "none") +
 
-  labs(title = "Municipalities' Median AV & Breakeven Point - Class 2 Properties Only",
+  labs(title = "Municipalities' Median AV & Breakeven Point \nClass 2 Properties Only",
     y = "Breakeven Point", 
        x = "Median AV")
 ```
@@ -819,60 +845,46 @@ nochange %>%
 #| label: fig-breakevenToAV-filtered
 #| fig-cap: "Excludes outliers. The breakeven point is the assessed values at which a major class 2 property would not have their taxbill change if the GHE were eliminated. Excludes outliers: University Park, Bedford Park, McCook, Hodgkins, and Rosemont. Class 2 properties that had claimed the GHE would have lower taxbills even if the GHE were removed if the AV is above the breakeven point."
 
+
 nochange %>%
   filter(nochange_av < 300000) %>%
   ggplot(aes(y=nochange_av, 
              x = C2median_av, 
              label=clean_name
              )) +
+  geom_abline(intercept = 0, slope = 1, lty = 2, alpha = .4) +
+
   geom_point(aes(alpha = .5)) +
   
   geom_point(data = (nochange %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Riverdale","Dolton"))), aes(y = nochange_av, x = C2median_av, color = "red"), size = 3) +
   ggrepel::geom_label_repel(data = (nochange %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Riverdale", "Dolton"))), aes(y = (nochange_av), x = (C2median_av)), size = 3)+
   theme_classic() +
+  #   theme(legend.position = "none",
+  #   panel.background = element_rect(fill='transparent'), #transparent panel bg
+  #   plot.background = element_rect(fill='transparent', color=NA), #transparent plot bg
+  #   panel.grid.major = element_blank(), #remove major gridlines
+  #   panel.grid.minor = element_blank(), #remove minor gridlines
+  #   legend.background = element_rect(fill='transparent'), #transparent legend bg
+  # ) + 
+  theme(panel.background = element_blank()) + 
   scale_x_continuous(labels = scales::dollar, expand = c(0,0), limits = c(0,170000) ) +
   scale_y_continuous(labels = scales::dollar, expand = c(0,0), limits = c(0,170000) ) +
     theme(legend.position = "none") +
 
-  labs(title = "Municipalities' Median AV & Breakeven Point - Class 2 Properties Only",
+  labs(title = "Municipalities' Median AV & Breakeven Point \nClass 2 Properties Only",
     y = "Breakeven Point", 
        x = "Median AV", 
  # caption = "The breakeven point is the assessed values at which a major class 2 property would not have their taxbill change if the 
  # GHE were eliminated. Excludes outliers: University Park, Bedford Park, McCook, Hodgkins, and Rosemont. Class 2 properties that had
  # claimed the GHE would have lower taxbills even if the GHE were removed if the AV is above the breakeven point."
  ) + coord_fixed()
+
+ggsave("breakevenpoint.svg", bg = "transparent")
 ```
 
 ```{r}
-#| label: fig-breakevenpoint-flippedaxes
-#| fig-cap: "Municipalities' Median AV & Breakeven Point - Class 2 Properties Only"
-#| 
-nochange %>%
-  filter(nochange_av < 300000) %>%
-  ggplot(aes(x = nochange_av, 
-             y = C2median_av, 
-             label=clean_name
-             )) +
-  geom_point(aes(alpha = .5)) +
-  
-  geom_point(data = (nochange %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Riverdale","Dolton"))), aes(x = nochange_av, y = C2median_av, color = "red"), size = 3) +
-  ggrepel::geom_label_repel(data = (nochange %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Riverdale", "Dolton"))), aes(x = (nochange_av), y = (C2median_av)), size = 3)+
-  theme_classic() +
-  scale_x_continuous(labels = scales::dollar, expand = c(0,0), limits = c(0,170000) ) +
-  scale_y_continuous(labels = scales::dollar, expand = c(0,0), limits = c(0,170000) ) +
-    theme(legend.position = "none") +
-
-  labs(
-    x = "Breakeven Point", 
-       y = "Median AV", 
- #caption = "The breakeven point is the assessed values at which a major class 2 property would not have their taxbill change if the 
- #GHE were eliminated. Excludes outliers: University Park, Bedford Park, McCook, Hodgkins, and Rosemont. Class 2 properties that had
-# claimed the GHE would have lower taxbills even if the GHE were removed if the AV is above the breakeven point."
-) + coord_fixed()
-```
-
-```{r}
-#| label: fig-breakevenToAV-casestudfies
+#| label: fig-breakevenToAV-casestudies
+#| echo: FALSE
 #| fig-cap: "Do tax bills still counter-intuitively fall when exemptions are eliminated: The case of Phoenix, Park Forest, and Riverdale."
 #| fig-subcap: "The breakeven point is the assessed values at which a major class 2 property would not have their taxbill change if the GHE were eliminated. Excludes outliers: University Park, Bedford Park, McCook, Hodgkins, and Rosemont. Class 2 properties that had claimed the GHE would have lower taxbills even if the GHE were removed if the AV is above the breakeven point."
 
@@ -883,6 +895,7 @@ nochange %>%
              label=clean_name
              )) +
   geom_point() +
+  geom_abline(aes(slope = 1, intercept = 0), lty = 2, alpha = .4)+
   geom_text(aes(y = (nochange_av-500), x = (C2median_av-100)), size = 3)+
   theme_classic() +
   scale_x_continuous(labels = scales::dollar, limits = c(0,20000)) +
@@ -957,19 +970,7 @@ nochange %>%
   scale_x_continuous(labels = scales::dollar) +
   labs(x= "AV of Class 2 Property w/ No Bill Change", y = "Composite Tax Rate Change (Percentage Points)", title = "AV of Residential Property 'Breakeven Point' & Composite Tax Rate Change 
        from Elimination of GHE")
-# 
-# nochange %>%
-#   select(agency_name,   nobillchange_propertyEAV, rate_change, everything()) %>%
-#   ggplot(aes(y=rate_change, x = C2median_av*10, label=agency_name)) +
-#   geom_point() +
-#   theme_classic() +
-#   scale_x_continuous(labels = scales::dollar) +
-#   labs(x= "Market Value of Class 2 Property 
-#        at 'Breakeven Point'", 
-#        y = "Composite Tax Rate Change 
-#        (Percentage Points)", 
-#        title = "Market Value of Residential Property 'Breakeven Point' & 
-#        Composite Tax Rate Change from Elimination of GHE")
+
 ```
 
 ## Class 2 Summary Tables

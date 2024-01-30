@@ -860,7 +860,14 @@ scenarios_long <- scenario_taxrates  %>%
 scenario_taxrates %>% 
   select(clean_name, MuniLevy, tr_neg10:taxrate_noTIFs_orExemps) %>%
   pivot_longer(cols = c(tr_neg10:taxrate_noTIFs_orExemps), names_to = "GHE_Amount") %>%
-  ggplot() + 
+  ggplot() +
+  theme(legend.background = element_rect(fill = "transparent"), 
+        legend.box.background = element_rect(fill = "transparent"), 
+        panel.background = element_rect(fill = "transparent"), 
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), 
+        plot.background = element_rect(fill = "transparent", 
+                                       color = NA) ) +
   geom_col(aes(x=value, y = GHE_Amount))
 
 scenario_taxrates %>% 
@@ -868,7 +875,14 @@ scenario_taxrates %>%
   select(clean_name, MuniLevy, tr_neg10:taxrate_noTIFs_orExemps) %>%
   pivot_longer(cols = c(tr_neg10:taxrate_noTIFs_orExemps), names_to = "GHE_Amount") %>%
   ggplot() + 
-  geom_col(aes(x=value, y = GHE_Amount, fill = clean_name), position = "dodge")  + 
+  geom_col(aes(x=value, y = GHE_Amount, fill = clean_name), position = "dodge")  +
+  theme(legend.background = element_rect(fill = "transparent"), 
+        legend.box.background = element_rect(fill = "transparent"), 
+        panel.background = element_rect(fill = "transparent"), 
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), 
+        plot.background = element_rect(fill = "transparent", 
+                                       color = NA) ) +
   labs(x = "Municipality Composite Tax Rate", y = "Exemption Scenarios")
 ```
 
@@ -1009,7 +1023,9 @@ munis_billchange
 #| label: fig-currenttaxsystem
 #| fig-cap: "25th & 75th Percentile AV Properties (Class 2 Only): Ratio of Tax Bill to AV"
 #| fig-subcap: "Current GHE Amount (up to 10,000 EAV exempt per property)"
-#| 
+
+
+
 ratios <- munis_billchange %>% 
   filter(has_HO_exemp == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
   mutate(currbill_to_AV_25 = ifelse(rank == "q25", mean_bill_cur/median_AV, NA)) %>%
@@ -1022,7 +1038,7 @@ ratios <- munis_billchange %>%
 
 
 ggplot(data = ratios, aes(y = currbill_to_AV_25, x = currbill_to_AV_75, label = clean_name)) + 
-  geom_abline(intercept = 0, slope = 1) +
+  geom_abline(intercept = 0, slope = 1, lty = 2, alpha = .4) +
   geom_point(data = ratios, aes(alpha = .5)) + 
   ggrepel::geom_label_repel(data = (ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(y = currbill_to_AV_25, x = currbill_to_AV_75), size = 2, max.overlaps = Inf, point.padding = 0, # additional padding around each point
     min.segment.length = 0, # draw all line segments
@@ -1030,10 +1046,41 @@ ggplot(data = ratios, aes(y = currbill_to_AV_25, x = currbill_to_AV_75, label = 
     geom_point(data = (ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(y = currbill_to_AV_25, x = currbill_to_AV_75, color = "red"), size = 2)+
 
   theme_classic() +
+  theme(legend.background = element_rect(fill = "transparent"), 
+        legend.box.background = element_rect(fill = "transparent"), 
+        panel.background = element_rect(fill = "transparent"), 
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), 
+        plot.background = element_rect(fill = "transparent", 
+                                       color = NA) ) +
     scale_y_continuous(limits = c(0, .6), expand = c(0,0))+
    scale_x_continuous(limits = c(0, .6), expand = c(0,0))+
   theme(legend.position = "none") +
-  labs(title="", y="25th Percentile AV", x="75th Percentile AV", subtitle = "GHE = $10,000 EAV") + coord_fixed()
+  labs(title="", y="Tax Burden as a Share of AV \n(25th Percentile)", x="Tax Burden as a Share of AV \n(75th Percentile)", subtitle = "Current Tax System, GHE = 10,000 EAV") + coord_fixed()
+```
+
+
+```{r truncated}
+ggplot(data = ratios, aes(y = currbill_to_AV_25, x = currbill_to_AV_75, label = clean_name)) + 
+  geom_abline(intercept = 0, slope = 1, lty = 2, alpha = .4) +
+  geom_point(data = ratios, aes(alpha = .5)) + 
+  ggrepel::geom_label_repel(data = (ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(y = currbill_to_AV_25, x = currbill_to_AV_75), size = 2, max.overlaps = Inf, point.padding = 0, # additional padding around each point
+    min.segment.length = 0, # draw all line segments
+    )+
+    geom_point(data = (ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(y = currbill_to_AV_25, x = currbill_to_AV_75, color = "red"), size = 2)+
+
+  theme_classic() +
+  theme(legend.background = element_rect(fill = "transparent"), 
+        legend.box.background = element_rect(fill = "transparent"), 
+        panel.background = element_rect(fill = "transparent"), 
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), 
+        plot.background = element_rect(fill = "transparent", 
+                                       color = NA) ) +
+    scale_y_continuous(limits = c(0.1, .55), expand = c(0,0))+
+   scale_x_continuous(limits = c(0.1, .55), expand = c(0,0))+
+  theme(legend.position = "none") +
+  labs(title="", y="Tax Burden as a Share of AV \n(25th Percentile)", x="Tax Burden as a Share of AV \n(75th Percentile)", subtitle = "Current Tax System, GHE = 10,000 EAV") + coord_fixed()
 ```
 
 ```{r casestudies-inred}
@@ -1052,7 +1099,7 @@ ratios<- munis_billchange %>%
 
 
 ggplot(data = ratios, aes(y = GHE_0_bill_to_AV_25, x = GHE_0_bill_to_AV_75, label = clean_name)) + 
-  geom_abline(intercept = 0, slope = 1) +
+  geom_abline(intercept = 0, slope = 1, lty = 2, alpha = .4) +
   geom_point(aes(alpha = .5)) + 
   ggrepel::geom_label_repel(data = (ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(y = GHE_0_bill_to_AV_25, x = GHE_0_bill_to_AV_75, label = clean_name), size = 3)+
     geom_point(data = (ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(y = GHE_0_bill_to_AV_25, x = GHE_0_bill_to_AV_75, color = "red"), size = 2)+
@@ -1074,7 +1121,7 @@ ratios<- munis_billchange %>%
 
 
 ggplot(data = ratios, aes(y = currbill_to_AV_25, x = currbill_to_AV_75, label = clean_name)) + 
-  geom_abline(intercept = 0, slope = 1) +
+  geom_abline(intercept = 0, slope = 1, lty = 2, alpha = .4) +
   geom_point(data = ratios, aes(alpha = .5)) + 
   ggrepel::geom_label_repel(data = (ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(y = currbill_to_AV_25, x = currbill_to_AV_75), size = 3, max.overlaps = Inf, point.padding = 0, # additional padding around each point
     min.segment.length = 0, # draw all line segments
@@ -1099,7 +1146,7 @@ new_ratios<- munis_billchange %>%
 
 
 ggplot(data = new_ratios, aes(y = newbill_to_AV_25, x = newbill_to_AV_75, label = clean_name)) + 
-  geom_abline(intercept = 0, slope = 1) +
+  geom_abline(intercept = 0, slope = 1, lty = 2, alpha = .4) +
   geom_point(data = new_ratios, aes(alpha = .5)) + 
   ggrepel::geom_label_repel(data = (new_ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(y = newbill_to_AV_25, x = newbill_to_AV_75), size = 3, max.overlaps = Inf, point.padding = 0, # additional padding around each point
     min.segment.length = 0, # draw all line segments
@@ -1123,7 +1170,7 @@ new_ratios<- munis_billchange %>%
 
 
 ggplot(data = new_ratios, aes(y = newbill_to_AV_25, x = newbill_to_AV_75, label = clean_name)) + 
-  geom_abline(intercept = 0, slope = 1) +
+  geom_abline(intercept = 0, slope = 1, lty = 2, alpha = .4) +
   geom_point(aes(alpha = .5)) + 
   ggrepel::geom_label_repel(data = (new_ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(y = newbill_to_AV_25, x = newbill_to_AV_75), size = 3, max.overlaps = Inf, point.padding = 0, # additional padding around each point
     min.segment.length = 0, # draw all line segments
@@ -1148,7 +1195,7 @@ new_ratios<- munis_billchange %>%
 
 
 ggplot(data = new_ratios, aes(y = newbill_to_AV_25, x = newbill_to_AV_75, label = clean_name)) + 
-  geom_abline(intercept = 0, slope = 1) +
+  geom_abline(intercept = 0, slope = 1, lty = 2, alpha = .4) +
   geom_point(aes(alpha = .5)) + 
   ggrepel::geom_label_repel(data = (new_ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(y = newbill_to_AV_25, x = newbill_to_AV_75), size = 3, max.overlaps = Inf, point.padding = 0, # additional padding around each point
     min.segment.length = 0, # draw all line segments
@@ -1174,7 +1221,7 @@ new_ratios<- munis_billchange %>%
 
 
 ggplot(data = new_ratios, aes(y = newbill_to_AV_25, x = newbill_to_AV_75, label = clean_name)) + 
-  geom_abline(intercept = 0, slope = 1) +
+  geom_abline(intercept = 0, slope = 1, lty = 2, alpha = .4) +
   geom_point(aes(alpha = .5)) + 
   ggrepel::geom_label_repel(data = (new_ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(y = newbill_to_AV_25, x = newbill_to_AV_75), size = 3, max.overlaps = Inf, point.padding = 0, # additional padding around each point
     min.segment.length = 0, # draw all line segments
@@ -1697,7 +1744,6 @@ munis_billchange
 ```
 
 ```{r}
-#| label: fig-progressivity-90to10
 #| layout-ncol: 3
 #| layout-nrow: 2
 #| column: page
@@ -1713,7 +1759,7 @@ ratios <- munis_billchange %>%
 
 
 ggplot(data = ratios, aes(y = GHE_0_bill_to_AV_10, x = GHE_0_bill_to_AV_90, label = clean_name)) + 
-  geom_abline(intercept = 0, slope = 1) +
+  geom_abline(intercept = 0, slope = 1, lty = 2, alpha = .4) +
   geom_point(aes(alpha = .5)) +
       ggrepel::geom_label_repel(data = (ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(y = GHE_0_bill_to_AV_10, x = GHE_0_bill_to_AV_90), size = 2, max.overlaps = Inf, point.padding = 0, # additional padding around each point
     min.segment.length = 0, # draw all line segments
@@ -1740,7 +1786,7 @@ ratios<- munis_billchange %>%
   mutate(muni_ratio_10to90 = currbill_to_AV_10/currbill_to_AV_90)
 
 ggplot(data = ratios, aes(y = currbill_to_AV_10, x = currbill_to_AV_90, label = clean_name)) + 
-  geom_abline(intercept = 0, slope = 1) +
+  geom_abline(intercept = 0, slope = 1, lty = 2, alpha = .4) +
   geom_point(aes(alpha = .5)) +
   ggrepel::geom_label_repel(data = (ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(y = currbill_to_AV_10, x = currbill_to_AV_90), size = 2, max.overlaps = Inf, point.padding = 0, # additional padding around each point
     min.segment.length = 0, # draw all line segments
@@ -1766,7 +1812,7 @@ new_ratios<- munis_billchange %>%
 
 
 ggplot(data = new_ratios, aes(y = newbill_to_AV_10, x = newbill_to_AV_90, label = clean_name)) + 
-  geom_abline(intercept = 0, slope = 1) +
+  geom_abline(intercept = 0, slope = 1, lty = 2, alpha = .4) +
   geom_point(aes(alpha = .5)) + 
   ggrepel::geom_label_repel(data = (new_ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(newbill_to_AV_10, x = newbill_to_AV_90), size = 2, max.overlaps = Inf, point.padding = 0, # additional padding around each point
     min.segment.length = 0, # draw all line segments
@@ -1793,7 +1839,7 @@ new_ratios<- munis_billchange %>%
 
 
 ggplot(data = new_ratios, aes(y = newbill_to_AV_10, x = newbill_to_AV_90, label = clean_name)) + 
-  geom_abline(intercept = 0, slope = 1) +
+  geom_abline(intercept = 0, slope = 1, lty = 2, alpha = .4) +
   geom_point(aes(alpha = .5)) +
   ggrepel::geom_label_repel(data = (new_ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(y = newbill_to_AV_10, x = newbill_to_AV_90), size = 2, max.overlaps = Inf, point.padding = 0, # additional padding around each point
     min.segment.length = 0, # draw all line segments
@@ -1819,7 +1865,7 @@ new_ratios<- munis_billchange %>%
 
 
 ggplot(data = new_ratios, aes(y = newbill_to_AV_10, x = newbill_to_AV_90, label = clean_name)) + 
-  geom_abline(intercept = 0, slope = 1) +
+  geom_abline(intercept = 0, slope = 1, lty = 2, alpha = .4) +
    geom_point(aes(alpha = .5)) + 
   ggrepel::geom_label_repel(data = (new_ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(newbill_to_AV_10, x = newbill_to_AV_90), size = 2, max.overlaps = Inf, point.padding = 0, # additional padding around each point
     min.segment.length = 0, # draw all line segments
@@ -1847,7 +1893,7 @@ new_ratios<- munis_billchange %>%
 
 
 ggplot(data = new_ratios, aes(y = newbill_to_AV_10, x = newbill_to_AV_90, label = clean_name)) + 
-  geom_abline(intercept = 0, slope = 1) +
+  geom_abline(intercept = 0, slope = 1, lty = 2, alpha = .4) +
     geom_point(aes(alpha = .5)) + 
   ggrepel::geom_label_repel(data = (new_ratios %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Glencoe", "Riverdale", "Dolton", "Markham", "Chicago Heights", "Hazel Crest", "Phoenix"))), aes(newbill_to_AV_10, x = newbill_to_AV_90), size = 2, max.overlaps = Inf, point.padding = 0, # additional padding around each point
     min.segment.length = 0, # draw all line segments
