@@ -1,0 +1,52 @@
+---
+title: "Summary Tables"
+---
+
+```{r setup, warning=FALSE, message=FALSE}
+#| code-fold: TRUE
+
+
+
+library(tidyverse)
+library(ptaxsim)
+library(DBI)
+library(httr)
+library(jsonlite)
+library(glue)
+library(sf)
+
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/politicalBoundary/MapServer/2/query?outFields=*&where=1%3D1&f=geojson")
+
+
+nicknames <- readxl::read_excel("../Necessary_Files/muni_shortnames.xlsx")
+```
+
+## Composite Tax Rates for Municipalities
+
+![](images/Composite_Rate_Change.png)
+
+```{r}
+#| code-fold: true
+
+
+muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006-2021.csv") %>% filter(year == 2021) %>% left_join(nicknames)
+
+MuniLevel_CompRates <- muni_sums %>% select(clean_name, cur_comp_muni_rate, new_comp_muni_rate, tif_share, zero_bills, total_bill_current) %>%
+  mutate(cur_comp_muni_rate = cur_comp_muni_rate/100,
+new_comp_muni_rate = new_comp_muni_rate / 100 )
+
+#install.packages("DT")
+library(DT)
+
+datatable(MuniLevel_CompRates, rownames = FALSE,
+          colnames = c('Municipality' = 'clean_name', 'Current Comp. Rate' = 'cur_comp_muni_rate', 'Hypothetical Rate' = 'new_comp_muni_rate', '%Rev to TIF' = 'tif_share', 'Count of $0 Tax Bills' = 'zero_bills', 'Composite Levy' = 'total_bill_current'),
+          caption = "Table 1: Current and Hypothetical Composite Tax Rates if GHE $0") %>%
+  formatPercentage(c('Current Comp. Rate', 'Hypothetical Rate', '%Rev to TIF'), digits = 2) %>%  
+  formatCurrency('Composite Levy', digits = 0)
+```
+
+## Tax Burden Shift from Current GHE
+
+![](images/clipboard-2721715046.png)
