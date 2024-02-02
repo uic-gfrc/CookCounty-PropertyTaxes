@@ -1,0 +1,217 @@
+---
+title: "Combining Map Geographies"
+format: html
+editor: visual
+---
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+
+library(tidyverse)
+library(DBI)
+library(data.table)
+library(ggspatial)
+library(gstat)
+library(here)
+library(httr)
+library(jsonlite)
+library(ptaxsim)
+library(sf)
+library(stars)
+library(glue)
+
+# Create the DB connection with the default name expected by PTAXSIM functions
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
+
+
+options(digits=4, scipen = 999)
+
+library(sf)
+library(jsonlite)
+library(httr)
+
+# link to the API output as a JSON file
+muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/politicalBoundary/MapServer/2/query?outFields=*&where=1%3D1&f=geojson")
+
+
+township_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/politicalBoundary/MapServer/3/query?outFields=*&where=1%3D1&f=geojson")
+
+wards_shp <- read_sf("https://data.cityofchicago.org/resource/p293-wvbd.geojson")
+```
+
+You can add options to executable code like this
+
+```{r}
+
+base_url <- "https://datacatalog.cookcountyil.gov/resource/tx2p-k2g9.json"
+
+# Grab all PINs with townsip variables
+
+pins_2021 <- GET(
+  base_url,
+  query = list(
+    year = 2021,
+  #  property_city != "CHICAGO",
+   # property_city = "ROGERS PARK",
+    `$select` = paste0(c("pin", "class", "township_code", "township_name", "cook_municipality_name",
+                         "ward_num",
+                         "nbhd_code", "census_puma_geoid"),
+   collapse = ","),
+    `$limit` = 500000000L
+  )
+)
+
+# chi_pins_2021 <- GET(
+#   base_url,
+#   query = list(
+#     year = 2021,
+#     property_city = "CHICAGO",
+#     `$select` = paste0(c("pin", "class", "township_code", "township_name", "property_city", 
+#                          "ward_num",
+#                          "nbhd_code", "census_puma_geoid"),
+#    collapse = ","),
+#     `$limit` = 500000000L
+#   )
+# )
+
+pins_2021 <- fromJSON(rawToChar(pins_2021$content))
+
+#chi_pins_2021 <- fromJSON(rawToChar(chi_pins_2021$content))
+
+# table(pins_2021$nbhd_code)
+```
+
+12,397 pins in Rogers Park in tax year 2021.
+
+```{r}
+
+source("helper_tc_muninames.R")
+
+joined_pins <- read_csv("./Output/4C_joined_PINs_bills_and_exemptions.csv") %>% mutate(tax_code_num = as.character(tax_code_num))
+
+joined_pins <- left_join(joined_pins, pins_2021, by = c("pin")) 
+
+joined_pins <- joined_pins %>% left_join(tc_muninames, by = "tax_code_num")
+
+joined_pins <- joined_pins %>% 
+  mutate(area_name = ifelse(!is.na(ward_num), ward_num, shpfile_name) )
+
+table(joined_pins$area_name)
+
+
+pct_exempt_MC <- joined_pins %>% 
+  group_by(area_name) %>%
+  rename(tax_code_rate = tax_code_rate.x) %>%
+  mutate(total_eav = sum(eav), # eav from pin table. "original" eav before exemptions or tifs
+         nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate/100)),
+         pin_count  = n(),
+         township_exemptEAV = sum(all_exemptions)) %>%
+  ungroup() %>%
+  group_by(area_name, major_class_code, total_eav, pin_count, township_exemptEAV, nonTIF_EAV_post_exemps) %>%
+  summarize(MC_eav =  sum(eav),
+            mc_pc = n(),
+            MC_exemptions = sum(all_exemptions),
+            MC_nonTIF_EAV_post_exemps = sum(final_tax_to_dist / (tax_code_rate/100) ),
+            
+) %>%
+  mutate(
+         pct_eav_MC = MC_eav / total_eav,
+       #  pct_pins_w_exe = mc_pc / pin_count,
+        exemps_per_resPIN =  MC_exemptions / mc_pc)
+
+# <- pct_exempt_MC %>% filter(!is.na(area_name))
+
+# wardmap <- pct_exempt_MC %>% 
+#   full_join(muni_ward, by = c( "ward_num" = "ward_id") ) %>%
+#   ggplot(aes(fill = exemps_per_resPIN)) + 
+#   geom_sf(aes(geometry = geometry), color = "black") + 
+# 
+#   labs(title = "Average Exempt EAV for Residential PINs", 
+#      #  caption = "The median township has 67.2% of its EAV from Class 2 Residential Properties"
+#      ) +
+#   theme_void() + 
+#   theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
+#   scale_fill_steps2(
+#     high = "darkblue", low = "black",  #  guide = "legend",
+#     #midpoint = median(pct_residential$pct_eav_MC),
+#     show.limits=TRUE,
+#     na.value = NA,
+#     name = "Exempt EAV",
+#     labels = scales::dollar)
+# 
+# wardmap
+```
+
+> need to create an area_name variable that all observations have, group and summarize by that variable. join to combined shapefile using area_name
+
+```{r combo-munis-wards-map}
+muni_shp_small <- muni_shp %>% 
+  group_by(OBJECTID) %>%
+  mutate(MUNICIPALITY = ifelse(is.na(MUNICIPALITY), "Unincorporated", MUNICIPALITY)) %>%
+  filter(MUNICIPALITY != "Chicago") %>%
+  select(MUNICIPALITY, geometry, AGENCY_DESC, OBJECTID) %>%
+    rename(area_name = MUNICIPALITY) %>%
+    mutate(area_name = ifelse(is.na(area_name), AGENCY_DESC, area_name) )
+
+wards_shp_small <- wards_shp %>%  
+  select(ward, geometry) %>%
+  rename(area_name = ward) %>%
+  mutate(AGENCY_DESC = NA, 
+         OBJECTID=NA)
+
+muni_ward <- rbind(muni_shp_small, wards_shp_small) 
+
+
+pct_exempt_MC %>% 
+ # filter(major_class_code == 2) %>%
+  anti_join(muni_ward, by = c( "area_name" = "area_name") )
+
+
+
+wardmap <- pct_exempt_MC %>% 
+  filter(major_class_code == 2) %>%
+  full_join(muni_ward, by = c( "area_name" = "area_name") ) %>%
+  ggplot(aes(fill = exemps_per_resPIN)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+
+  labs(title = "Average Exempt EAV for Residential PINs", 
+     #  caption = "The median township has 67.2% of its EAV from Class 2 Residential Properties"
+     ) +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
+  scale_fill_steps2(
+    high = "darkblue", low = "black",  #  guide = "legend",
+    #midpoint = median(pct_residential$pct_eav_MC),
+    show.limits=TRUE,
+    na.value = "pink",
+    name = "Exempt EAV",
+    labels = scales::dollar)
+
+wardmap
+```
+
+Missing:
+
+Evanston
+
+```{r eval=FALSE}
+forest_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/fpdcc/MapServer/4/query?outFields=*&where=1%3D1&f=geojson")
+
+
+forest_shp %>% 
+  #filter(major_class_code == 2) %>%
+  #full_join(muni_ward, by = c( "area_name" = "area_name") ) %>%
+  ggplot(
+   aes()
+    ) + 
+  geom_sf(aes(geometry = geometry),fill = "darkgreen", color = "black") + theme_void()
+
+rivers_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/planimetry/MapServer/6/query?outFields=*&where=1%3D1&f=geojson")
+
+rivers_shp %>% 
+  ggplot(
+   aes()
+    ) + 
+  geom_sf(aes(geometry = geometry),color = "blue") + theme_void()
+```
