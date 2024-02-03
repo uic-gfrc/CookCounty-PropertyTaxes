@@ -50,3 +50,50 @@ datatable(MuniLevel_CompRates, rownames = FALSE,
 ## Tax Burden Shift from Current GHE
 
 ![](images/clipboard-2721715046.png)
+
+```{r}
+#| code-fold: true
+
+
+MC_sums <- read_csv("../Output/ptaxsim_muni_MC_2006-2021.csv") %>% filter(year == 2021) %>% left_join(nicknames)
+
+MC_burden <- MC_sums %>% group_by(clean_name) %>%
+  mutate(muni_eav = sum(eav),
+         muni_levy = sum(total_bill_current)
+         ) %>%
+  ungroup() %>%
+  mutate(pct_eav = eav / muni_eav,
+         pct_taxburden = total_bill_current / muni_levy)
+
+current_burden_c2 <- MC_burden %>% filter(major_class_code == 2) %>% select(clean_name, pct_eav, pct_taxburden)
+
+datatable(current_burden_c2, rownames = FALSE,
+          colnames = c('Municipality' = 'clean_name', "C2 EAV/Muni EAV" = 'pct_eav', 'C2 Tax Collected / Muni Levy' = 'pct_taxburden' ),
+          caption = "Table 2: Current Share of Taxable EAV and Share of Levy Paid by Class 2 Properties") %>%
+  formatPercentage(c(2,3), digits = 2) 
+
+```
+
+```{r}
+#| code-fold: true
+
+
+MC_burden %>%
+     # mutate(burden_current = ifelse(burden_current>1, 1, burden_current)) %>%
+
+     filter(major_class_code == 2) %>%
+  mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
+  left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+
+  ggplot(aes(fill = pct_taxburden)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  theme_classic() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+  # scale_fill_gradientn(
+   scale_fill_stepsn(colors = c("#ffffcc","#a1dab4" ,"#41b6c4","#2c7fb8", "#253494"),
+                        show.limits=TRUE, n.breaks = 6,
+                        name = "Burden with \nExemptions", labels = scales::percent
+                    )+
+  labs(title = "Current share of property tax burden", 
+       subtitle = "for Class = 2 Property Types")
+```
