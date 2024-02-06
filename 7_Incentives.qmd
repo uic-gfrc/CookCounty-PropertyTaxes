@@ -1119,6 +1119,101 @@ fig3
 
 ```
 
+# Abatements
+
+### Map
+
+```{r}
+nbh_sum <- read_csv("./Output/nbh_summary.csv") %>%
+    mutate(nbhd_code = as.character(nbhd_code),
+           township_code = str_sub(nbhd_code, 1,2))
+
+nbh_MC_sum <- read_csv("./Output/nbh_MC_summary.csv") %>%
+    mutate(nbhd_code = as.character(nbhd_code))
+
+nbh_sum %>% 
+  full_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>% 
+  ggplot(aes(fill = nbh_exe_abate/nbh_PC)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  labs(title = "Average Abatement/PIN", 
+  caption = "Abatements from exe_abate variable") +
+  theme_void() + 
+   theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+scale_fill_steps2(
+  high = "darkblue", low = "orange",
+  midpoint = median(nbh_sum$nbh_exe_abate/nbh_sum$nbh_PC, na.rm = TRUE),
+ nice.breaks = FALSE,
+  show.limits=TRUE,
+na.value = "gray",
+  name = "Exempt EAV",
+  labels = scales::number
+) 
+
+nbh_sum %>% 
+  full_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>% 
+  ggplot(aes(fill = nbh_exe_abate) ) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  labs(title = "Exempt EAV from Abatements in Assessor Neighborhoods", 
+  caption = "Abatements  comes from exe_abate in PTAXSIM data.") +
+  theme_void() + 
+   theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+scale_fill_steps2(
+  high = "darkblue", low = "orange",
+ # midpoint = mean(nbh_sum$nbh_exe_abate),
+ nice.breaks = FALSE,
+  show.limits=TRUE,
+na.value = NA,
+  name = "Exempt EAV",
+  labels = scales::number
+)
+
+nbh_sum %>% 
+  full_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>% 
+  ggplot(aes(fill = nbh_PC ) ) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  labs(title = "# PINs with Abatements in each Assessor Neighborhood", 
+  caption = "Abatements comes from exe_abate in PTAXSIM data.") +
+  theme_void() + 
+   theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+scale_fill_steps2(
+  high = "darkblue", low = "orange",
+ nice.breaks = FALSE,
+  show.limits=TRUE,
+na.value = NA,
+  name = "# PINs",
+  labels = scales::number
+
+)
+
+```
+
+```{r}
+nbh_MC_sum %>%
+    group_by(nbhd_code) %>%
+    summarize(pct_taxable_EAV = nbh_nonTIF_EAV_post_exemps /Total_EAV
+  ) %>%
+ arrange(pct_taxable_EAV) %>%
+  full_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>% 
+  ggplot(aes(fill = pct_taxable_EAV)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  labs(title = "Percent of EAV that is taxable by taxing districts",
+       caption = "Non-taxable EAV includes TIF EAV above the frozen EAV 
+       and tax exempt EAV due to various exemptions") +
+  theme_void() + 
+   theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+scale_fill_steps2(
+  high = "darkblue", low = "white",
+# midpoint = median(pct_taxable_EAV, na.rm = TRUE),
+ nice.breaks = FALSE,
+  show.limits=TRUE,
+na.value = "gray",
+  name = "Percent EAV taxable",
+  labels = scales::percent
+) 
+```
+
+
+
 # Incentive Properties and Appeals
 
 - av_mailed - Initial assessed values when mailed to property owners, after Desk Review  
