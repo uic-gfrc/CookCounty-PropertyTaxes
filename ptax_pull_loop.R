@@ -16,7 +16,7 @@ library(glue)
 # Create the DB connection with the default name expected by PTAXSIM functions
 
 # AWM filepath:
-ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2022.0.0.db")
 
 # MVH filepath:
 # ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "ptaxsim.db")
@@ -29,7 +29,7 @@ nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
 
  # Set years for loop to run.
  
-years <-(2006:2021)
+years <-(2006:2022)
 
  # Create empty dataframes for the loop to populate.
 
