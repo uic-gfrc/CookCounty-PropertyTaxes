@@ -44,6 +44,7 @@ tc_mc_summaries <- NULL
 tc_class_summaries <- NULL
 
 
+
 # Loop Start --------------------------------------------------------------
 
 
@@ -85,7 +86,6 @@ for(i in years){
     select(-agency_rate) %>% 
     left_join(nicknames) %>% 
     select(-c(minor_type, short_name, 
-             # `Column1`, `Most recent reassessed`,
               agency_number))
   
   
@@ -525,16 +525,19 @@ for(i in years){
   rm(tc_class_summaries2)
   
   
-} 
+  
+}
+
+
+ 
 
 # Export CSVs ------------------------------------------------------------
 
-write_csv(muni_level_summary, "./Output/ptaxsim_muni_level_2006-2021.csv")
-write_csv(muni_MC_summary, "./Output/ptaxsim_muni_MC_2006-2021.csv")
-write_csv(muni_class_summary, "./Output/ptaxsim_muni_class_summaries_2006-2021.csv")
+write_csv(muni_level_summary, "./Output/ptaxsim_muni_level_2006-2022.csv")
+write_csv(muni_MC_summary, "./Output/ptaxsim_muni_MC_2006-2022.csv")
+write_csv(muni_class_summary, "./Output/ptaxsim_muni_class_summaries_2006-2022.csv")
 
 
-write_csv(tc_mc_summaries, "./Output/ptaxsim_TC_MC_summaries_2006-2021.csv")
-write_csv(tc_class_summaries, "./Output/ptaxsim_TC_Class_summaries_2006-2021.csv")
-
+write_csv(tc_mc_summaries, "./Output/ptaxsim_TC_MC_summaries_2006-2022.csv")
+write_csv(tc_class_summaries, "./Output/ptaxsim_TC_Class_summaries_2006-2022.csv")
 
