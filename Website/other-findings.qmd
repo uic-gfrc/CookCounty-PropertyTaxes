@@ -23,9 +23,30 @@ muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/poli
 
 nicknames <- readxl::read_excel("../Necessary_Files/muni_shortnames.xlsx")
 
-muni_sums <- read_csv("../Output/ptaxsim_muni_MC_2006-2021.csv") %>% filter(year == 2021) %>% left_join(nicknames)
+```
 
-fig_data <- muni_sums %>% 
+```{r}
+muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006-2021.csv") %>% filter(year == 2021) %>% left_join(nicknames)
+
+MuniLevel_CompRates <- muni_sums %>% select(clean_name, cur_comp_muni_rate, new_comp_muni_rate, tif_share, zero_bills, total_bill_current) %>%
+  mutate(cur_comp_muni_rate = cur_comp_muni_rate/100,
+new_comp_muni_rate = new_comp_muni_rate / 100 )
+
+#install.packages("DT")
+library(DT)
+
+datatable(MuniLevel_CompRates, rownames = FALSE,
+          colnames = c('Municipality' = 'clean_name', 'Current Comp. Rate' = 'cur_comp_muni_rate', 'Hypothetical Rate' = 'new_comp_muni_rate', '%Rev to TIF' = 'tif_share', 'Count of $0 Tax Bills' = 'zero_bills', 'Composite Levy' = 'total_bill_current'),
+          caption = "Table 1: Current and Hypothetical Composite Tax Rates if GHE $0") %>%
+  formatPercentage(c('Current Comp. Rate', 'Hypothetical Rate', '%Rev to TIF'), digits = 2) %>%  
+  formatCurrency('Composite Levy', digits = 0)
+          
+```
+
+```{r}
+muni_MC_sums <- read_csv("../Output/ptaxsim_muni_MC_2006-2021.csv") %>% filter(year == 2021) %>% left_join(nicknames)
+
+fig_data <- muni_MC_sums %>% 
   group_by(clean_name, agency_name) %>%
   mutate(total_eav = sum(equalized_av)) %>%
   ungroup() %>%
@@ -53,8 +74,6 @@ fig_data %>%
   labels = scales::percent)
 ```
 
-
-
 ### Composite Tax Rates
 
 ```{r}
@@ -78,32 +97,31 @@ Current_Taxrates <- taxcodes_current %>%
   arrange(desc(tax_rate_current))
 
 
-
-land_use <- taxcodes_current %>% 
-  left_join(muni_agency_names) %>% 
-  left_join(Current_Taxrates) %>%
-  left_join(class_dict, by = c("class" = "class_code")) %>%
-  
-#  mutate(class_1dig = str_sub(class, 1, 1),
-#    ResidentialProps = ifelse(class_1dig %in% c("2", "3", "9"), "Residential", "Non-Residential")) %>%
-  #        PropType = case_when(
-  #          major_class_code %in% c("3","9") ~ "Multi-Family",
-  #          major_class_code == "2" ~ "Single-Family",
-  #          TRUE ~ "Commercial-Industrial")) %>%
-  group_by(clean_name, major_class_code, agency_num, tax_rate_current, taxrate_new, taxrate_change, agency_name) %>% 
-  
-  # All of the values calculated below are AFTER exemptions have been removed
-  summarize(taxrev_from_proptype = sum(final_tax_to_dist, na.rm = TRUE),
-            nonTIF_EAV = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
-            TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),
-            Exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE),
-            Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE) ) %>% ungroup()
-
-land_use %>% filter(clean_name %in% c( "Dolton", "Chicago", "Winnetka")) %>% select(-agency_name)
+# 
+# land_use <- taxcodes_current %>% 
+#   left_join(muni_agency_names) %>% 
+#   left_join(Current_Taxrates) %>%
+#   left_join(class_dict, by = c("class" = "class_code")) %>%
+#   
+# #  mutate(class_1dig = str_sub(class, 1, 1),
+# #    ResidentialProps = ifelse(class_1dig %in% c("2", "3", "9"), "Residential", "Non-Residential")) %>%
+#   #        PropType = case_when(
+#   #          major_class_code %in% c("3","9") ~ "Multi-Family",
+#   #          major_class_code == "2" ~ "Single-Family",
+#   #          TRUE ~ "Commercial-Industrial")) %>%
+#   group_by(clean_name, major_class_code, agency_num, tax_rate_current, taxrate_new, taxrate_change, agency_name) %>% 
+#   
+#   # All of the values calculated below are AFTER exemptions have been removed
+#   summarize(taxrev_from_proptype = sum(final_tax_to_dist, na.rm = TRUE),
+#             nonTIF_EAV = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
+#             TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),
+#             Exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE),
+#             Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE) ) %>% ungroup()
+# 
+# land_use %>% filter(clean_name %in% c( "Dolton", "Chicago", "Winnetka")) %>% select(-agency_name)
 
 
 ```
-
 
 ```{r Figure-AWM1}
 # made in Excel originally
@@ -203,7 +221,7 @@ Current_Taxrates %>%
 
 ## Percent of Residential EAV that is tax exempt
 
-For this document, residential EAV includes Class 2 properties only. Residential property can be in and outside of a TIF. Any EAV greater than the frozen EAV within a TIF becomes TIF revenue when it is taxed.  We try to only include the frozen EAV and non-TIF EAV in our residential calculations. 
+For this document, residential EAV includes Class 2 properties only. Residential property can be in and outside of a TIF. Any EAV greater than the frozen EAV within a TIF becomes TIF revenue when it is taxed. We try to only include the frozen EAV and non-TIF EAV in our residential calculations.
 
 ```{r}
 exemptions_to_class2EAV_ratios <- perc_residential %>% 
@@ -321,9 +339,6 @@ The Total EAV for Cook County `r scales::dollar(sum(perc_residential$muni_EAV_in
 The current taxable EAV for Cook County `r scales::dollar(sum(perc_residential$muni_tax_base_current))`.
 
 The hypothetical taxable EAV for Cook County `r scales::dollar(sum(perc_residential$muni_tax_base_noexemps))`.
-
-
-
 
 ## Average exempt EAV per PIN in tax year 2021
 
