@@ -6,9 +6,9 @@ format:
     code-fold: true
 ---
 
-<!--Assessor neighborhoods are 5 digits: first 2 for the township, last 3 are for the neighborhood within the township. These do not resemble the neighborhoods that many of us may think of but are instead of groups of properties with similar characteristics **(that are taxed in similar rates? double check)**-->
+<!--Assessor neighborhoods are 5 digits: first 2 for the township, last 3 are for the neighborhood within the township. These do not resemble the neighborhoods that many of us may think of but are instead of groups of properties with similar characteristics -->
 
-<!--Pull pins, neighborhood codes, property class, assessment triad, and other variables from Parcel Universe using the GET() command. Pulls data from online API, not PTAXSIM database. I am using this instead of PTAXSIM because neighborhood codes are not included in PTAXSIM tables: Tax codes are the smallest unit of measurement. **NOTE: Tax codes and neighborhoods do not appear to share borders?**-->
+<!--Pull pins, neighborhood codes, property class, assessment triad, and other variables from Parcel Universe using the GET() command. Pulls data from online API, not PTAXSIM database. I am using this instead of PTAXSIM because neighborhood codes are not included in PTAXSIM tables: Tax codes are the smallest unit of measurement. -->
 # Using Assessor Neighborhoods
 
 ```{r setup, warning = FALSE, message = FALSE}
@@ -31,10 +31,10 @@ NBHs <- read_sf("https://datacatalog.cookcountyil.gov/resource/pcdw-pxtg.geojson
 ## Aggregating pin data to new shapes
 
 -   ::: {.callout-note appearance="minimal"}
-    Assessor neighborhoods are 5 digits: first 2 for the township, last 3 are for the neighborhood within the township. These do not resemble the neighborhoods that many of us may think of but are instead of groups of properties with similar characteristics **(that are taxed in similar rates? double check)**
+    Assessor neighborhoods are 5 digits: first 2 for the township, last 3 are for the neighborhood within the township. These do not resemble the neighborhoods that many of us may think of but are instead of groups of properties with similar characteristics
     :::
 
-Pull pins, neighborhood codes, property class, assessment triad, and other variables from Parcel Universe using the GET() command. Pulls data from online API, not PTAXSIM database. I am using this instead of PTAXSIM because neighborhood codes are not included in PTAXSIM tables: Tax codes are the smallest unit of measurement. **NOTE: Tax codes and neighborhoods do not appear to share borders?**
+Pull pins, neighborhood codes, property class, assessment triad, and other variables from Parcel Universe using the GET() command. Pulls data from online API, not PTAXSIM database. I am using this instead of PTAXSIM because neighborhood codes are not included in PTAXSIM tables: Tax codes are the smallest unit of measurement.
 
 
 ### Map
@@ -81,6 +81,23 @@ scale_fill_steps2(
 na.value = NA,
   name = "Dollars",
   labels = scales::dollar
+)
+
+nbh_sum %>% 
+
+  full_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>% 
+  ggplot(aes(fill = nbh_PC ) ) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  labs(title = "# PINs with Abatements in each Assessor Neighborhood", 
+  caption = "Abatements comes from exe_abate in PTAXSIM data.") +
+  theme_void() + 
+   theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+scale_fill_steps2(
+  high = "darkblue", low = "orange",
+ nice.breaks = FALSE,
+  show.limits=TRUE,
+na.value = NA,
+  name = "# PINs"
 )
 
 nbh_sum %>% 
