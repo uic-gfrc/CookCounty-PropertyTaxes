@@ -4,7 +4,7 @@ format: html
 editor: visual
 ---
 
-```{r setup}
+```{r setup,  warning = FALSE, message = FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
 
@@ -40,7 +40,6 @@ township_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/
 wards_shp <- read_sf("https://data.cityofchicago.org/resource/p293-wvbd.geojson")
 ```
 
-You can add options to executable code like this
 
 ```{r}
 
@@ -97,7 +96,7 @@ joined_pins <- joined_pins %>% left_join(tc_muninames, by = "tax_code_num")
 joined_pins <- joined_pins %>% 
   mutate(area_name = ifelse(!is.na(ward_num), ward_num, shpfile_name) )
 
-table(joined_pins$area_name)
+# table(joined_pins$area_name)
 
 
 pct_exempt_MC <- joined_pins %>% 
@@ -146,6 +145,10 @@ pct_exempt_MC <- joined_pins %>%
 > need to create an area_name variable that all observations have, group and summarize by that variable. join to combined shapefile using area_name
 
 ```{r combo-munis-wards-map}
+#| code-fold: true
+#| eval: false
+
+
 muni_shp_small <- muni_shp %>% 
   group_by(OBJECTID) %>%
   mutate(MUNICIPALITY = ifelse(is.na(MUNICIPALITY), "Unincorporated", MUNICIPALITY)) %>%
@@ -181,15 +184,22 @@ wardmap <- pct_exempt_MC %>%
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+# +#+
   scale_fill_steps2(
-    high = "darkblue", low = "black",  #  guide = "legend",
+    high = "#001E62", low = "black",  #  guide = "legend",
     #midpoint = median(pct_residential$pct_eav_MC),
     show.limits=TRUE,
-    na.value = "pink",
+    na.value = "#F2F7EB",
     name = "Exempt EAV",
     labels = scales::dollar)
 
 wardmap
+
+ggsave(plot = wardmap, "./avg_exe_EAV_forResPINs.png")
+
 ```
+
+
+![](images/combo-munis-wards-map-1.png)
+
 
 Missing:
 
