@@ -1,10 +1,9 @@
 ---
-title: "Summary Tables"
+title: "Whitepaper Figures and Supporting Tables"
 ---
 
 ```{r setup, warning=FALSE, message=FALSE}
 #| code-fold: TRUE
-
 
 
 library(tidyverse)
@@ -14,6 +13,7 @@ library(httr)
 library(jsonlite)
 library(glue)
 library(sf)
+library(DT)
 
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 
@@ -33,17 +33,23 @@ nicknames <- readxl::read_excel("../Necessary_Files/muni_shortnames.xlsx")
 
 muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006-2021.csv") %>% filter(year == 2021) %>% left_join(nicknames)
 
-MuniLevel_CompRates <- muni_sums %>% select(clean_name, cur_comp_muni_rate, new_comp_muni_rate, tif_share, zero_bills, total_bill_current) %>%
+MuniLevel_CompRates <- muni_sums %>% 
+  select(clean_name, cur_comp_muni_rate, new_comp_muni_rate, tif_share, zero_bills, final_tax_to_dist) %>%
   mutate(cur_comp_muni_rate = cur_comp_muni_rate/100,
-new_comp_muni_rate = new_comp_muni_rate / 100 )
-
-#install.packages("DT")
-library(DT)
+new_comp_muni_rate = new_comp_muni_rate / 100 ,
+rate_change = cur_comp_muni_rate - new_comp_muni_rate) %>%
+  select(clean_name, rate_change, cur_comp_muni_rate, new_comp_muni_rate, final_tax_to_dist) %>% arrange(desc(rate_change))
 
 datatable(MuniLevel_CompRates, rownames = FALSE,
-          colnames = c('Municipality' = 'clean_name', 'Current Comp. Rate' = 'cur_comp_muni_rate', 'Hypothetical Rate' = 'new_comp_muni_rate', '%Rev to TIF' = 'tif_share', 'Count of $0 Tax Bills' = 'zero_bills', 'Composite Levy' = 'total_bill_current'),
+          colnames = c('Municipality' = 'clean_name', 'Composite Tax Rate Change'='rate_change', 'Current Comp. Rate' = 'cur_comp_muni_rate', 'Hypothetical Rate' = 'new_comp_muni_rate', 
+                       #'%Rev to TIF' = 'tif_share', 'Count of $0 Tax Bills' = 'zero_bills', 
+                       'Composite Levy' = 'final_tax_to_dist'),
           caption = "Table 1: Current and Hypothetical Composite Tax Rates if GHE $0") %>%
-  formatPercentage(c('Current Comp. Rate', 'Hypothetical Rate', '%Rev to TIF'), digits = 2) %>%  
+  formatPercentage(c('Current Comp. Rate', 'Hypothetical Rate', 
+                    # '%Rev to TIF'
+                    'Composite Tax Rate Change'
+                     ), 
+                   digits = 2) %>%  
   formatCurrency('Composite Levy', digits = 0)
 ```
 
@@ -55,23 +61,79 @@ datatable(MuniLevel_CompRates, rownames = FALSE,
 #| code-fold: true
 
 
-MC_sums <- read_csv("../Output/ptaxsim_muni_MC_2006-2021.csv") %>% filter(year == 2021) %>% left_join(nicknames)
+MC_sums <- read_csv("../Output/ptaxsim_muni_MC_2006-2021.csv") %>% 
+  filter(year == 2021) %>% 
+  left_join(nicknames)
 
-MC_burden <- MC_sums %>% group_by(clean_name) %>%
+MC_burden <- MC_sums %>% 
+  mutate(hyp_taxable_eav = current_taxable_eav + exe_homeowner,
+         class_taxes_current = current_taxable_eav * (cur_comp_muni_rate/100)
+     ) %>%
+  group_by(clean_name) %>%
   mutate(muni_eav = sum(eav),
-         muni_levy = sum(total_bill_current)
-         ) %>%
+         muni_levy = sum(final_tax_to_dist),
+         hyp_muni_taxableEAV = sum(hyp_taxable_eav)
+  ) %>%
   ungroup() %>%
-  mutate(pct_eav = eav / muni_eav,
-         pct_taxburden = total_bill_current / muni_levy)
+  mutate(new_comp_rate = muni_levy / hyp_muni_taxableEAV,
+         class_taxes_hyp = hyp_taxable_eav * (new_comp_rate),
+         pct_eav = eav / muni_eav,
+         # pct_taxburden_current = total_bill_current / muni_levy,
+         # pct_taxburden_ghe0 = new_taxable_eav / muni_levy,
+         pct_taxburden_current = class_taxes_current / muni_levy,
+         pct_taxburden_ghe0 = class_taxes_hyp / muni_levy,
+         burden_shift = (pct_taxburden_current - pct_taxburden_ghe0)*100)
 
-current_burden_c2 <- MC_burden %>% filter(major_class_code == 2) %>% select(clean_name, pct_eav, pct_taxburden)
+
+current_burden_c2 <- MC_burden %>% 
+  filter(major_class_code == 2) %>% 
+  select(clean_name, pct_eav, burden_shift,  pct_taxburden_current, pct_taxburden_ghe0) %>% arrange(pct_eav)
+
 
 datatable(current_burden_c2, rownames = FALSE,
-          colnames = c('Municipality' = 'clean_name', "C2 EAV/Muni EAV" = 'pct_eav', 'C2 Tax Collected / Muni Levy' = 'pct_taxburden' ),
-          caption = "Table 2: Current Share of Taxable EAV and Share of Levy Paid by Class 2 Properties") %>%
-  formatPercentage(c(2,3), digits = 2) 
+          colnames = c('Municipality' = 'clean_name', 'Burden Shift, Pct Pt Change' = 'burden_shift', "C2 EAV/Muni EAV" = 'pct_eav', 'Current Tax Burden\nC2 Tax Collected / Muni Levy' = 'pct_taxburden_current', "Hypothetical Tax Burden\nHyp. C2 Tax Collected / Muni Levy" = 'pct_taxburden_ghe0'),
+          caption = "Table 2: Current Share of Taxable EAV and Share of Levy Paid by Class 2 Properties"
+           ) %>%
+  formatPercentage(c(2,4,5), digits = 2) %>%
+  formatRound(c(3), digits = 2)
 
+
+```
+
+```{r}
+MC_burden <- MC_sums %>% 
+  mutate(hyp_taxable_eav = current_taxable_eav + all_exemptions,
+         class_taxes_current = current_taxable_eav * (cur_comp_muni_rate/100)
+     ) %>%
+  group_by(clean_name) %>%
+  mutate(muni_eav = sum(eav),
+         muni_levy = sum(final_tax_to_dist),
+         hyp_muni_taxableEAV = sum(hyp_taxable_eav)
+  ) %>%
+  ungroup() %>%
+  mutate(new_comp_rate = muni_levy / hyp_muni_taxableEAV,
+         class_taxes_hyp = hyp_taxable_eav * (new_comp_rate),
+         pct_eav = eav / muni_eav,
+         # pct_taxburden_current = total_bill_current / muni_levy,
+         # pct_taxburden_ghe0 = new_taxable_eav / muni_levy,
+         pct_taxburden_current = class_taxes_current / muni_levy,
+         pct_taxburden_noexemps = class_taxes_hyp / muni_levy,
+         burden_shift = (pct_taxburden_current - pct_taxburden_noexemps)*100)
+
+
+current_burden_c2 <- MC_burden %>% 
+  filter(major_class_code == 2) %>% 
+  select(clean_name, pct_eav, burden_shift, pct_taxburden_current, pct_taxburden_noexemps) %>%
+  arrange(pct_eav)
+
+
+datatable(current_burden_c2, rownames = FALSE,
+          colnames = c('Municipality' = 'clean_name', "C2 EAV/Muni EAV" = 'pct_eav','Burden Shift, Pct Pt Change' = 'burden_shift',  'Current Tax Burden\nC2 Tax Collected / Muni Levy' = 'pct_taxburden_current', "Hypothetical Tax Burden\nHyp. C2 Tax Collected / Muni Levy" = 'pct_taxburden_noexemps'),
+          caption = "Table 3: Tax Burden Shifted by Residential Exemptions
+          \n(All Exemption types except abatements)."
+           ) %>%
+  formatPercentage(c(2,4,5), digits = 2) %>%
+  formatRound(c(3), digits = 2)
 ```
 
 ```{r}
@@ -83,16 +145,21 @@ MC_burden %>%
 
      filter(major_class_code == 2) %>%
   mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
-  left_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
 
-  ggplot(aes(fill = pct_taxburden)) + 
+  ggplot(aes(fill = pct_taxburden_current)) + 
   geom_sf(aes(geometry = geometry), color = "black") + 
-  theme_classic() + 
+  theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
   # scale_fill_gradientn(
    scale_fill_stepsn(colors = c("#ffffcc","#a1dab4" ,"#41b6c4","#2c7fb8", "#253494"),
-                        show.limits=TRUE, n.breaks = 6,
-                        name = "Burden with \nExemptions", labels = scales::percent
+                        show.limits=TRUE, 
+                     limits = c(0,1),
+                     na.value = "gray70",
+                     n.breaks = 6,
+                        name = "Burden with \nExemptions", 
+                     labels = scales::percent
+                     
                     )+
   labs(title = "Current share of property tax burden", 
        subtitle = "for Class = 2 Property Types")
