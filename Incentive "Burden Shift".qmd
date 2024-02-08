@@ -4,9 +4,9 @@ format: docx
 editor: visual
 ---
 
-Load in some preliminary data and R packages.
+# Preliminary Setup
 
-```{r setup, warning = FALSE, message = FALSE}
+```{r setup, warning = FALSE, output = FALSE}
 
 library(tidyverse)
 library(ptaxsim)
@@ -18,8 +18,6 @@ library(sf)
 
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 
-#ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
-
 ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2022.0.0.db")
 
 # link to the API output as a JSON file
@@ -29,7 +27,7 @@ muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/poli
 #muni_shp <- read_json("muni_shp.json")
 nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
 
-class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv") %>% 
+class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv") %>%
   mutate(class_code = as.character(class_code))
 
 NBHs <- read_sf("https://datacatalog.cookcountyil.gov/resource/pcdw-pxtg.geojson")
@@ -44,9 +42,9 @@ class8township <- c("Bloom", "Bremen","Calumet","Rich", "Thornton")
 
 # Identify Useful Municipality
 
-```{r}
+```{r, echo = F}
 
-source("helper_tc_muninames.R")
+source("helper_tc_muninames.R") #modified the helperfile to generate this QMD. Did not save or push the change.
 
 incentive_pins <- read_csv("./Output/7_output_incentive_classes.csv")
 
@@ -56,17 +54,15 @@ incentive_pins <- incentive_pins %>%  left_join(nicknames, by = "agency_name")
 
 
 incentive_pins %>% 
- # left_join(nicknames, by = "agency_name") %>% 
   reframe(IncentiveProp_PINcount = n(),
           IncentiveProp_MuniAV = sum(av),
           .by=c(clean_name)) %>% 
   rename(
          Municipality = clean_name) %>%
     mutate(Municipality = ifelse(is.na(Municipality), "Unincorporated", Municipality)) %>%
-  arrange(Municipality)
+  arrange(desc(IncentiveProp_PINcount))
 
 incentive_pins %>% 
-#  left_join(nicknames, by = "agency_name") %>%
   filter(class > 599 & class < 900) %>% 
   group_by(clean_name, major_class_code) %>%
   summarize(pincount = n()) %>%
@@ -80,7 +76,24 @@ incentive_pins %>%
 
 ```
 
+Arrange by mean value of incentive.
+
 ```{r}
+
+incentive_pins %>% 
+  reframe(IncentiveProp_PINcount = n(),
+          IncentiveProp_MuniAV = sum(av),
+          AvgIncent = IncentiveProp_MuniAV/IncentiveProp_PINcount,
+          .by=c(clean_name)) %>% 
+  rename(
+         Municipality = clean_name) %>%
+    mutate(Municipality = ifelse(is.na(Municipality), "Unincorporated", Municipality)) %>%
+  arrange(desc(AvgIncent))
+
+
+```
+
+```{r, echo = F}
 
 incentive_pins %>% 
   filter(class > 599 & class < 900) %>% 
@@ -100,7 +113,6 @@ pin_data <- read_csv("./Output/4C_joined_PINs_bills_and_exemptions.csv")
 
 ```
 
-
 ```{r}
 
 muni_taxrates <- pin_data %>% 
@@ -113,23 +125,27 @@ muni_taxrates <- pin_data %>%
     pins_in_muni = n(),
     muni_current_exemptions = sum(all_exemptions, na.rm = TRUE),
     muni_HO_exemps = sum(exe_homeowner, na.rm = TRUE),
-    muni_comp_rate = mean(tax_code_rate, na.rm = TRUE), # Changed from first() to mean() on Nov 1
-    final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # used as LEVY amount!! 
+    muni_comp_rate = mean(tax_code_rate, na.rm = TRUE),
+    final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE),
     final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
     tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), 
     tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), 
     tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE),
-    rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE), # not used
-    rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE), # not used
-    rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE), # not used
-    tif_share = mean(tif_share, na.rm=TRUE), # not used
+    rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE),
+    rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE),
+    rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE),
+    tif_share = mean(tif_share, na.rm=TRUE),
   ) %>%
   
   rename(cur_comp_TC_rate = muni_comp_rate) %>%
+  
   mutate(current_muni_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100),
          new_muni_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100) + muni_HO_exemps) %>%
+  
   mutate(new_comp_TC_rate = (final_tax_to_dist / new_muni_taxable_eav)*100) %>%
+  
   mutate(new_comp_TC_rate = ifelse(is.nan(new_comp_TC_rate), cur_comp_TC_rate, new_comp_TC_rate)) %>%
+  
   select(clean_name, cur_comp_TC_rate, new_comp_TC_rate, current_muni_taxable_eav, new_muni_taxable_eav, everything())
 
 muni_taxrates 
@@ -139,7 +155,8 @@ muni_taxrates
 #| column: page
 
 prop_class_sums <- pin_data %>% 
-    left_join(nicknames, by = "agency_name") %>%
+    
+  left_join(nicknames, by = "agency_name") %>%
 
   group_by(clean_name, major_class_code, major_class_type )  %>%
   
@@ -150,27 +167,31 @@ prop_class_sums <- pin_data %>%
     pins_in_class = n(),
     current_exemptions = sum(all_exemptions, na.rm = TRUE),
     HO_exemps = sum(exe_homeowner, na.rm = TRUE),
-    tax_code_rate = mean(tax_code_rate, na.rm = TRUE), # Changed from first() to mean() on Nov 1
-    final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # used as LEVY amount!! 
+    tax_code_rate = mean(tax_code_rate, na.rm = TRUE),
+    final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE),
     final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
     tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), 
     tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), 
     tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE),
-    rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE), # not used
-    rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE), # not used
-    rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE), # not used
-    tif_share = mean(tif_share, na.rm=TRUE), # not used
+    rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE),
+    rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE),
+    rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE),
+    tif_share = mean(tif_share, na.rm=TRUE),
   ) %>%
   
   mutate(total_bill_current = final_tax_to_dist + final_tax_to_tif) %>%
+  
   rename(cur_comp_TC_rate = tax_code_rate) %>%
+  
   mutate(current_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100),
          new_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100) + HO_exemps) %>%
+  
   mutate(new_comp_TC_rate = (final_tax_to_dist / new_taxable_eav)*100) %>%
+  
   mutate(new_comp_TC_rate = ifelse(is.nan(new_comp_TC_rate), cur_comp_TC_rate, new_comp_TC_rate)) %>%
+  
   select(clean_name, major_class_code, HO_exemps, current_exemptions, pins_in_class, current_taxable_eav, new_taxable_eav,  everything())
 
-# muni level by major_class summary
 prop_class_sums 
 
 prop_class_sums2 <- prop_class_sums %>%
@@ -185,9 +206,9 @@ prop_class_sums2 <- prop_class_sums %>%
          pct_av = av / muni_av,
          year = "2021"
   ) %>% 
+  
   mutate_at(vars(pct_pins, pct_taxable_eav, pct_eq_eav, pct_av), funs(round(.,3)))
 
 prop_class_sums2  
 
 ```
-
