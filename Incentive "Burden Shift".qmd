@@ -75,10 +75,53 @@ incentive_pins %>%
   arrange(Municipality)
 
 ```
+Quick descriptive statistics.
+
+```{r}
+
+muniMerge <- agency_dt %>%
+  filter(year == 2021) %>%
+  select(agency_num, year, MuniEAV = cty_cook_eav, r = total_final_rate)
+
+incentive_pins %>%
+  group_by(clean_name) %>%
+  mutate(IncentiveProp_PINcount = n(),
+          IncentiveProp_MuniAV = sum(av),
+          AvgIncent = IncentiveProp_MuniAV/IncentiveProp_PINcount) %>%
+  select(year, class, av, eav, )
+
+```
+
 
 Arrange by mean value of incentive.
 
 ```{r}
+
+incentive_pins %>% 
+  reframe(IncentiveProp_PINcount = n(),
+          IncentiveProp_MuniAV = sum(av),
+          AvgIncent = IncentiveProp_MuniAV/IncentiveProp_PINcount,
+          .by=c(clean_name)) %>% 
+  rename(
+         Municipality = clean_name) %>%
+    mutate(Municipality = ifelse(is.na(Municipality), "Unincorporated", Municipality)) %>%
+  arrange(desc(AvgIncent))
+
+incentive_pins %>% 
+  reframe(IncentiveProp_PINcount = n(),
+          IncentiveProp_MuniAV = sum(av),
+          AvgIncent = IncentiveProp_MuniAV/IncentiveProp_PINcount,
+          .by=c(clean_name)) %>% 
+  rename(
+         Municipality = clean_name) %>%
+    mutate(Municipality = ifelse(is.na(Municipality), "Unincorporated", Municipality)) %>%
+  arrange(desc(AvgIncent))
+
+```
+
+Visualization of above.
+
+```{r, eval = F}
 
 incentive_pins %>% 
   reframe(IncentiveProp_PINcount = n(),
