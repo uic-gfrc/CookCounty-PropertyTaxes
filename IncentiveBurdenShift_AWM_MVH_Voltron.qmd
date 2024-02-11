@@ -1,12 +1,16 @@
 ---
 title: "Burden Shift from Incentive Properties in [xx]"
-format: docx
-editor: visual
+format: 
+  html:
+    df-print: paged
+    code-fold: true
+    code-download: true
+    toc: true
 ---
 
 # Preliminary Setup
 
-```{r setup, warning = FALSE, output = FALSE}
+```{r setup, warning = FALSE, message=FALSE}
 
 library(tidyverse)
 library(ptaxsim)
@@ -18,10 +22,10 @@ library(sf)
 
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 
-
 ```
 
 ```{r}
+nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
 
 MC_sums <- read_csv("./Output/ptaxsim_muni_MC_2006-2021.csv") %>% 
   filter(year == 2021) %>% 
@@ -37,7 +41,7 @@ incentive_sums <- MC_sums %>%
             final_tax_to_dist = sum(final_tax_to_dist),
             current_rate_mean = mean(cur_comp_muni_rate),
             current_taxable_eav = sum(current_taxable_eav),
-            current_rate_med = median(cur_comp_muni_rate),
+            current_rate = median(cur_comp_muni_rate),
             currentRateMode = mode(cur_comp_muni_rate))%>%
   mutate(new_av = ifelse(incentive == "Incentive", av*2.5, av), ## See below!
     new_taxable_eav = ifelse(incentive ==  "Incentive", current_taxable_eav * 2.5 , current_taxable_eav))
