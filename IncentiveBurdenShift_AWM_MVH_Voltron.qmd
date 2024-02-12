@@ -1,39 +1,58 @@
 ---
-title: "Burden Shift from Incentive Properties in [xx]"
+title: "Burden Shift from Incentive Properties in [xx]" 
 format: 
   html:
     df-print: paged
     code-fold: true
     code-download: true
     toc: true
+    toc-location: left
+    fig-cap-location: top
 ---
 
 # Preliminary Setup
 
+Load packages (which I think we can cut down). Cut down on digits?
+
 ```{r setup, warning = FALSE, message=FALSE}
 
 library(tidyverse)
-library(ptaxsim)
-library(DBI)
-library(httr)
-library(jsonlite)
-library(glue)
-library(sf)
+#library(ptaxsim)
+#library(DBI)
+#library(httr)
+#library(jsonlite)
+#library(glue)
+#library(sf)
 
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 
+options(scipen = 999)
+
+options(digits = 2)
+
 ```
 
+Read in and merge data.
+
 ```{r}
+
 nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
 
 MC_sums <- read_csv("./Output/ptaxsim_muni_MC_2006-2021.csv") %>% 
   filter(year == 2021) %>% 
-  left_join(nicknames) #Need to find the nicknames file.
+  left_join(nicknames)
+
+eqfact <- 3.0027
+```
+
+Calculate rates, old tax base, and new tax base.
+
+```{r}
 
 incentive_sums <- MC_sums %>%
   mutate(
-         incentive = ifelse(major_class_code %in% c("6A","6B", "6C", "7A","7B","7C","8"), "Incentive", "Non-Incentive")) %>% #double check there are no other incentives? Yea.
+    incentive = ifelse(major_class_code %in% c("6A","6B", "6C", "7A","7B","7C","8"), "Incentive", "Non-Incentive")
+    ) %>%
   group_by(clean_name, incentive) %>%
   summarize(av = sum(av),
             eav = sum(eav),
@@ -41,11 +60,17 @@ incentive_sums <- MC_sums %>%
             final_tax_to_dist = sum(final_tax_to_dist),
             current_rate_mean = mean(cur_comp_muni_rate),
             current_taxable_eav = sum(current_taxable_eav),
-            current_rate = median(cur_comp_muni_rate),
-            currentRateMode = mode(cur_comp_muni_rate))%>%
-  mutate(new_av = ifelse(incentive == "Incentive", av*2.5, av), ## See below!
-    new_taxable_eav = ifelse(incentive ==  "Incentive", current_taxable_eav * 2.5 , current_taxable_eav))
-## Stopped Reading Here ##
+            current_rate = median(cur_comp_muni_rate)) %>%
+  mutate(new_av = ifelse(incentive == "Incentive", av*2.5, av),
+    new_taxable_eav = ifelse(incentive ==  "Incentive", new_av*eqfact, current_taxable_eav))
+
+
+```
+
+Generate tax rates.
+
+```{r}
+
 incentive_sums <- incentive_sums %>% 
   group_by(clean_name) %>% 
   mutate(munilevy = sum(final_tax_to_dist),
@@ -54,23 +79,26 @@ incentive_sums <- incentive_sums %>%
   ungroup() %>%
   mutate(new_comp_rate = munilevy / new_muni_taxable_eav * 100)
 
+```
 
+Let's figure out what this part of the code does!
 
+```{r}
 
 burden <- incentive_sums %>% 
-
-  mutate(group_taxes_hyp = new_taxable_eav * (new_comp_rate),
-         group_taxes_cur = current_taxable_eav * current_rate,
-         pct_eav = eav / cur_muni_taxable_eav) %>%
   mutate(
-         pct_taxburden_current = group_taxes_cur / munilevy,
-         pct_taxburden_no_incent = group_taxes_hyp / munilevy,
-         burden_shift = (pct_taxburden_current - pct_taxburden_no_incent)*100)
+    group_taxes_hyp = new_taxable_eav * (new_comp_rate),
+    group_taxes_cur = current_taxable_eav * current_rate,
+    pct_eav = eav / cur_muni_taxable_eav,
+    pct_taxburden_current = group_taxes_cur / munilevy,
+    pct_taxburden_no_incent = group_taxes_hyp / munilevy,
+    burden_shift = (pct_taxburden_current - pct_taxburden_no_incent)*100
+  )
 
 burden
 ```
 
-Check algebra.
+Check algebra: **Algebra checked!**
 
 ```{r, eval = FALSE}
 
