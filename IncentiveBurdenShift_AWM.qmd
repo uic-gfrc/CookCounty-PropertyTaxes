@@ -70,5 +70,101 @@ burden <- incentive_sums %>%
          pct_taxburden_no_incent = group_taxes_hyp / munilevy,
          burden_shift = (pct_taxburden_current - pct_taxburden_no_incent)*100)
 
-burden
+burden %>% select(Municipality = clean_name, current_rate, new_comp_rate, pct_taxburden_current, pct_taxburden_no_incent )
+```
+
+## Change in Composite Tax Rate 
+```{r}
+
+# as a dot graph ## 
+
+order <- burden %>%  
+  as_tibble() %>% 
+  filter(incentive == "Incentive") %>% 
+  # summarize( 
+  #           clean_name = unique(clean_name), 
+  #           current_rate = unique(current_rate), 
+  #           new_comp_rate = unique(new_comp_rate)) %>% 
+  arrange(current_rate) %>%
+  select(clean_name, current_rate)
+
+head(order)
+burden %>% 
+  # filter(tax_rate_current < (median(tax_rate_current))+0.002 & tax_rate_current > (median(tax_rate_current))-0.002 |
+  #  (tax_rate_current > 0.25 | tax_rate_current < 0.08 )) %>%
+  #          (tax_rate_current < (median(tax_rate_current))+0.005 & tax_rate_current > (median(tax_rate_current))-0.005 )) %>% 
+  #filter(PropType == "Single-Family") %>%
+  filter(incentive == "Incentive") %>%
+  #ungroup() %>% 
+  select(clean_name, current_rate, new_comp_rate) %>% 
+  pivot_longer(c("current_rate", "new_comp_rate"), 
+               names_to = "type", values_to = "tax_rate") %>% 
+  left_join(order) %>%
+  ggplot(aes(x = tax_rate, y= reorder(clean_name, current_rate)))+
+  
+  geom_line(aes(group = clean_name))+ 
+ # geom_hline(yintercept = 3.5, linetype = 2)+
+ # geom_hline(yintercept = 13.5, linetype = 2) +
+  geom_point(aes(color=type), size=3 )+
+  theme_minimal() + 
+  theme( 
+    legend.title = element_blank(),
+    plot.title.position = "plot",
+    #   panel.background = element_rect(fill='transparent'), #transparent panel bg
+    plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
+  )+
+  scale_color_brewer(palette="Paired", labels = c("Incentives", "No Incentives"), direction = 1)+
+  
+  labs(title = "Difference in Composite Tax Rate if Assessed at 25%",
+       subtitle = "Ordered by Current Composite Tax Rate", x = "Composite Tax Rate (%)", y = "" , 
+       caption = "For the highest, median, and lowest municipality composite tax rates")
+```
+
+
+## Change in Tax Burden
+
+```{r}
+
+# as a dot graph ## 
+
+order <- burden %>%  
+  as_tibble() %>% 
+  filter(incentive == "Incentive") %>% 
+  # summarize( 
+  #           clean_name = unique(clean_name), 
+  #           current_rate = unique(current_rate), 
+  #           new_comp_rate = unique(new_comp_rate)) %>% 
+  arrange(pct_taxburden_current) %>%
+  select(clean_name, pct_taxburden_current)
+
+head(order)
+burden %>% 
+  # filter(tax_rate_current < (median(tax_rate_current))+0.002 & tax_rate_current > (median(tax_rate_current))-0.002 |
+  #  (tax_rate_current > 0.25 | tax_rate_current < 0.08 )) %>%
+  #          (tax_rate_current < (median(tax_rate_current))+0.005 & tax_rate_current > (median(tax_rate_current))-0.005 )) %>% 
+  #filter(PropType == "Single-Family") %>%
+  filter(incentive == "Incentive") %>%
+  #ungroup() %>% 
+  select(clean_name, pct_taxburden_current, pct_taxburden_no_incent) %>% 
+  pivot_longer(c("pct_taxburden_current", "pct_taxburden_no_incent"), 
+               names_to = "type", values_to = "tax_rate") %>% 
+  left_join(order) %>%
+  ggplot(aes(x = tax_rate, y= reorder(clean_name, pct_taxburden_current)))+
+  
+  geom_line(aes(group = clean_name))+ 
+ # geom_hline(yintercept = 3.5, linetype = 2)+
+ # geom_hline(yintercept = 13.5, linetype = 2) +
+  geom_point(aes(color=type), size=3 )+
+  theme_minimal() + 
+  theme( 
+    legend.title = element_blank(),
+    plot.title.position = "plot",
+    #   panel.background = element_rect(fill='transparent'), #transparent panel bg
+    plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
+  )+
+  scale_color_brewer(palette="Paired", labels = c("Incentives", "No Incentives"), direction = 1)+
+  
+  labs(title = "Difference in Tax Burden if Assessed at 25%",
+       subtitle = "Ordered by Current Tax Burden", x = "% of Levy Paid", y = "" , 
+       caption = "")
 ```
