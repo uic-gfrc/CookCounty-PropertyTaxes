@@ -18,19 +18,23 @@ leftjoin_pins <- left_join(incentive_pins, access_db, by= c("pin" = "Concat PIN"
   select(pin, Status, `Start Year`, class, Notes )
 
 
-# 3652 unique pins. Left join adds duplicate entries from Access files 
+# 4146 unique pins. Left join adds duplicate entries from Access files 
+# 
 # two different status entries creates additional rows when joined
 leftjoin_pins %>%
   distinct(pin) %>%
   count()
 
-  
+# 3984  
 innerjoin_pins <- inner_join(incentive_pins, access_db, by= c("pin" = "Concat PIN")) %>%
   select(pin, Status, `Start Year`, class, Notes )
 
+innerjoin_pins 
+
 nojoin_pins <- anti_join(incentive_pins, access_db, by= c("pin" = "Concat PIN"))
-# 457 incentive PINs from 2021 are not found in the Access files
-## Need to add Class C and L PINs to Access file! 
+# 457 incentive PINs from 2021 are not found in the Access files w/o 7C, C, & L
+
+# 162 PINs not in Access
 
 
 nojoin_pins2 <- anti_join(access_db, incentive_pins, by= c("Concat PIN" = "pin"))
