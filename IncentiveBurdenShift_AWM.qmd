@@ -34,23 +34,80 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 
 nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
 
+
+MuniLevel <- read_csv("./Output/ptaxsim_muni_level_2006-2021.csv") %>%
+  filter(year == 2021) %>%
+  left_join(nicknames) %>% 
+  select(clean_name, cur_comp_muni_rate) %>%
+  rename(cur_munilevel_rate = cur_comp_muni_rate)
+
+
 MC_sums <- read_csv("./Output/ptaxsim_muni_MC_2006-2021.csv") %>% 
   filter(year == 2021) %>% 
-  left_join(nicknames)
+  left_join(nicknames) 
 
+eqfact21 <- 3.0027 #2021 CC Equalization Factor
+```
+
+```{r}
 incentive_sums <- MC_sums %>%
+  left_join(MuniLevel) %>%
   mutate(
-         incentive = ifelse(major_class_code %in% c("6A","6B", "6C", "7A","7B","7C","8"), "Incentive", "Non-Incentive")) %>%
-  group_by(clean_name, incentive) %>%
+         incentive = ifelse(major_class_code %in% c("6A","6B", "6C", "7A","7B","7C","8"), "Incentive", "Non-Incentive"),
+         incent_type = ifelse(major_class_code %in% c("6A","6B", "6C"), "Industrial", ifelse(major_class_code %in% c("7A","7B","7C", "8"), "Commercial", "Not Incentive Prop"))) %>%
+  group_by(clean_name, incentive, cur_munilevel_rate) %>%
   summarize(av = sum(av),
             eav = sum(eav),
             pins_in_muni = sum(pins_in_muni),
             final_tax_to_dist = sum(final_tax_to_dist),
-            current_rate = mean(cur_comp_muni_rate),
+           # current_rate = mean(cur_comp_muni_rate),
             current_taxable_eav = sum(current_taxable_eav))%>%
   mutate(new_av = ifelse(incentive == "Incentive", av*2.5, av),
     new_taxable_eav = ifelse(incentive ==  "Incentive", current_taxable_eav * 2.5 , current_taxable_eav))
+```
 
+
+```{r}
+incentive_sums2 <- MC_sums %>%
+  left_join(MuniLevel) %>%
+  mutate(
+         incentive = ifelse(major_class_code %in% c("6A","6B", "6C", "7A","7B","7C","8"), "Incentive", "Non-Incentive"),
+         incent_type = ifelse(major_class_code %in% c("6A","6B", "6C"), "Industrial", ifelse(major_class_code %in% c("7A","7B","7C", "8"), "Commercial", "Not Incentive Prop"))) %>%
+  group_by(clean_name, incent_type, cur_munilevel_rate) %>%
+  summarize(av = sum(av),
+            eav = sum(eav),
+            pins_in_muni = sum(pins_in_muni),
+            final_tax_to_dist = sum(final_tax_to_dist),
+           # current_rate = mean(cur_comp_muni_rate),
+            current_taxable_eav = sum(current_taxable_eav))%>%
+  mutate(new_av = ifelse(incent_type != "Not Incentive Prop", av*2.5, av),
+    new_taxable_eav = ifelse(incent_type !=  "Not Incentive Prop", current_taxable_eav * 2.5 , current_taxable_eav))
+
+incentive_sums2 <- incentive_sums2 %>% 
+  group_by(clean_name) %>% 
+  mutate(munilevy = sum(final_tax_to_dist),
+         cur_muni_taxable_eav = sum(current_taxable_eav),
+         new_muni_taxable_eav = sum(new_taxable_eav)) %>%
+  ungroup() %>%
+  mutate(new_comp_rate = munilevy / new_muni_taxable_eav * 100)
+
+
+burden2 <- incentive_sums2 %>% 
+  mutate(group_taxes_hyp = new_taxable_eav * (new_comp_rate),
+         group_taxes_cur = current_taxable_eav * cur_munilevel_rate,
+         pct_eav = eav / cur_muni_taxable_eav) %>%
+  mutate(
+    pct_taxburden_current = group_taxes_cur / munilevy,
+    pct_taxburden_no_incent = group_taxes_hyp / munilevy,
+    burden_shift = round(pct_taxburden_current - pct_taxburden_no_incent, digits = 2 ),
+    av_change_perPIN = ifelse(incent_type %in% c("Commercial", "Industrial"), (new_av - av)/pins_in_muni, NA))
+
+burden2 %>% arrange(clean_name) %>% select(clean_name, incent_type, burden_shift)
+
+```
+
+
+```{r}
 incentive_sums <- incentive_sums %>% 
   group_by(clean_name) %>% 
   mutate(munilevy = sum(final_tax_to_dist),
@@ -63,63 +120,94 @@ incentive_sums <- incentive_sums %>%
 
 
 burden <- incentive_sums %>% 
-
   mutate(group_taxes_hyp = new_taxable_eav * (new_comp_rate),
-         group_taxes_cur = current_taxable_eav * current_rate,
+         group_taxes_cur = current_taxable_eav * cur_munilevel_rate,
          pct_eav = eav / cur_muni_taxable_eav) %>%
-  mutate(
-         pct_taxburden_current = group_taxes_cur / munilevy,
-         pct_taxburden_no_incent = group_taxes_hyp / munilevy,
-         burden_shift = (pct_taxburden_current - pct_taxburden_no_incent))
+    mutate(rate_change = cur_munilevel_rate - new_comp_rate) %>%
 
-burden %>% select(Municipality = clean_name, current_rate, new_comp_rate, pct_taxburden_current, pct_taxburden_no_incent )
+  mutate(
+    pct_taxburden_current = group_taxes_cur / munilevy,
+    pct_taxburden_no_incent = group_taxes_hyp / munilevy,
+    
+    burden_shift = round(pct_taxburden_current - pct_taxburden_no_incent, digits = 2 ),
+    av_change_perPIN = ifelse(incentive == "Incentive", (new_av - av)/pins_in_muni, NA))
+```
+
+
+```{r}
+#| code-fold: true
+#| column: screen
+#| tbl-cap: "Incentive Properties (Combined) Tax Rates and Burden"
+
+burden %>% 
+  filter(incentive == "Incentive" & clean_name != "NA") %>%
+  select(Municipality = clean_name, cur_munilevel_rate, new_comp_rate, pct_taxburden_current, pct_taxburden_no_incent) %>% 
+  mutate_if(is.numeric, ~round(., 1))
+
 ```
 
 ## Change in Composite Tax Rate 
 ```{r}
 
 # as a dot graph ## 
-
+# create order of dots
 order <- burden %>%  
   as_tibble() %>% 
   filter(incentive == "Incentive") %>% 
-  # summarize( 
-  #           clean_name = unique(clean_name), 
-  #           current_rate = unique(current_rate), 
-  #           new_comp_rate = unique(new_comp_rate)) %>% 
-  arrange(current_rate) %>%
-  select(clean_name, current_rate)
+  arrange( rate_change) %>%
+  select(clean_name, cur_munilevel_rate, new_comp_rate)
 
-head(order)
+# make dot graph
 burden %>% 
-  # filter(tax_rate_current < (median(tax_rate_current))+0.002 & tax_rate_current > (median(tax_rate_current))-0.002 |
-  #  (tax_rate_current > 0.25 | tax_rate_current < 0.08 )) %>%
-  #          (tax_rate_current < (median(tax_rate_current))+0.005 & tax_rate_current > (median(tax_rate_current))-0.005 )) %>% 
-  #filter(PropType == "Single-Family") %>%
-  filter(incentive == "Incentive") %>%
-  #ungroup() %>% 
-  select(clean_name, current_rate, new_comp_rate) %>% 
-  pivot_longer(c("current_rate", "new_comp_rate"), 
+  filter(incentive == "Incentive" & clean_name != "NA") %>%
+  select(clean_name, cur_munilevel_rate, new_comp_rate, rate_change) %>% 
+  pivot_longer(c("cur_munilevel_rate", "new_comp_rate"), 
                names_to = "type", values_to = "tax_rate") %>% 
   left_join(order) %>%
-  ggplot(aes(x = tax_rate, y= reorder(clean_name, current_rate)))+
-  
+  ggplot(aes(x = tax_rate, y= reorder(clean_name, rate_change)))+
   geom_line(aes(group = clean_name))+ 
- # geom_hline(yintercept = 3.5, linetype = 2)+
- # geom_hline(yintercept = 13.5, linetype = 2) +
   geom_point(aes(color=type), size=3 )+
   theme_minimal() + 
   theme( 
     legend.title = element_blank(),
     plot.title.position = "plot",
-    #   panel.background = element_rect(fill='transparent'), #transparent panel bg
     plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
   )+
   scale_color_brewer(palette="Paired", labels = c("Incentives", "No Incentives"), direction = 1)+
   
   labs(title = "Difference in Composite Tax Rate if Assessed at 25%",
-       subtitle = "Ordered by Current Composite Tax Rate", x = "Composite Tax Rate (%)", y = "" , 
-       caption = "For the highest, median, and lowest municipality composite tax rates")
+       subtitle = "Ordered by Comp. Rate Change", x = "Composite Tax Rate (%)", y = "")
+```
+```{r}
+
+# as a dot graph ## 
+# create order of dots
+order <- burden %>%  
+  as_tibble() %>% 
+  filter(incentive == "Incentive") %>% 
+  arrange(cur_munilevel_rate) %>%
+  select(clean_name, cur_munilevel_rate)
+
+# make dot graph
+burden %>% 
+  filter(incentive == "Incentive" & clean_name != "NA") %>%
+  select(clean_name, cur_munilevel_rate, new_comp_rate) %>% 
+  pivot_longer(c("cur_munilevel_rate", "new_comp_rate"), 
+               names_to = "type", values_to = "tax_rate") %>% 
+  left_join(order) %>%
+  ggplot(aes(x = tax_rate, y= reorder(clean_name, cur_munilevel_rate)))+
+  geom_line(aes(group = clean_name))+ 
+  geom_point(aes(color=type), size=3 )+
+  theme_minimal() + 
+  theme( 
+    legend.title = element_blank(),
+    plot.title.position = "plot",
+    plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
+  )+
+  scale_color_brewer(palette="Paired", labels = c("Incentives", "No Incentives"), direction = 1)+
+  
+  labs(title = "Difference in Composite Tax Rate if Assessed at 25%",
+       subtitle = "Ordered by Current Composite Tax Rate", x = "Composite Tax Rate (%)", y = "")
 ```
 
 
@@ -132,21 +220,11 @@ burden %>%
 order <- burden %>%  
   as_tibble() %>% 
   filter(incentive == "Incentive") %>% 
-  # summarize( 
-  #           clean_name = unique(clean_name), 
-  #           current_rate = unique(current_rate), 
-  #           new_comp_rate = unique(new_comp_rate)) %>% 
   arrange(pct_taxburden_current) %>%
   select(clean_name, pct_taxburden_current)
 
-head(order)
 burden %>% 
-  # filter(tax_rate_current < (median(tax_rate_current))+0.002 & tax_rate_current > (median(tax_rate_current))-0.002 |
-  #  (tax_rate_current > 0.25 | tax_rate_current < 0.08 )) %>%
-  #          (tax_rate_current < (median(tax_rate_current))+0.005 & tax_rate_current > (median(tax_rate_current))-0.005 )) %>% 
-  #filter(PropType == "Single-Family") %>%
-  filter(incentive == "Incentive") %>%
-  #ungroup() %>% 
+  filter(incentive == "Incentive" & clean_name !="NA") %>%
   select(clean_name, pct_taxburden_current, pct_taxburden_no_incent) %>% 
   pivot_longer(c("pct_taxburden_current", "pct_taxburden_no_incent"), 
                names_to = "type", values_to = "tax_rate") %>% 
@@ -154,19 +232,50 @@ burden %>%
   ggplot(aes(x = tax_rate, y= reorder(clean_name, pct_taxburden_current)))+
   
   geom_line(aes(group = clean_name))+ 
- # geom_hline(yintercept = 3.5, linetype = 2)+
- # geom_hline(yintercept = 13.5, linetype = 2) +
   geom_point(aes(color=type), size=3 )+
   theme_minimal() + 
   theme( 
     legend.title = element_blank(),
     plot.title.position = "plot",
-    #   panel.background = element_rect(fill='transparent'), #transparent panel bg
     plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
   )+
   scale_color_brewer(palette="Paired", labels = c("Incentives", "No Incentives"), direction = 1)+
   
-  labs(title = "Difference in Tax Burden if Assessed at 25%",
+  labs(title = "Tax Burden for Incentive Properties if Assessed at 25%",
+       subtitle = "Ordered by Current Tax Burden", x = "% of Levy Paid", y = "" , 
+       caption = "")
+```
+
+
+```{r}
+
+# as a dot graph ## 
+
+order <- burden2 %>%  
+  as_tibble() %>% 
+  filter(incent_type == "Industrial") %>% 
+  arrange(pct_taxburden_current) %>%
+  select(clean_name, pct_taxburden_current)
+
+burden2 %>% 
+  filter(incent_type == "Industrial" & clean_name !="NA") %>%
+  select(clean_name, pct_taxburden_current, pct_taxburden_no_incent) %>% 
+  pivot_longer(c("pct_taxburden_current", "pct_taxburden_no_incent"), 
+               names_to = "type", values_to = "tax_rate") %>% 
+  left_join(order) %>%
+  ggplot(aes(x = tax_rate, y= reorder(clean_name, pct_taxburden_current)))+
+  
+  geom_line(aes(group = clean_name))+ 
+  geom_point(aes(color=type), size=3 )+
+  theme_minimal() + 
+  theme( 
+    legend.title = element_blank(),
+    plot.title.position = "plot",
+    plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
+  )+
+  scale_color_brewer(palette="Paired", labels = c("Incentives", "No Incentives"), direction = 1)+
+  
+  labs(title = "Tax Burden for Industrial Properties if Assessed at 25%",
        subtitle = "Ordered by Current Tax Burden", x = "% of Levy Paid", y = "" , 
        caption = "")
 ```

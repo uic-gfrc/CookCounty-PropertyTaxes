@@ -46,6 +46,9 @@ eqfact21 <- 3.0027 #2021 CC Equalization Factor
 
 Calculate rates, old tax base, and new tax base.
 
+`totTax` includes TIF revenue.
+`final_tax_to_dist` is what is used for the Levy calculations. 
+
 ```{r, warning = FALSE}
 
 incentive_sums <- MC_sums %>%
@@ -54,19 +57,19 @@ incentive_sums <- MC_sums %>%
   ungroup() %>%
   mutate(
     incentive = ifelse(major_class_code %in% c("6A","6B", "6C", "7A","7B","7C","8"), "Incentive", "Non-Incentive")
-    ) %>%
+  ) %>%
   #group_by(clean_name, incentive) %>%
   summarize(av = sum(av),
             eav = sum(eav),
             pins_in_muni = sum(pins_in_muni),
-           # final_tax_to_dist = sum(final_tax_to_dist),
+            final_tax_to_dist = sum(final_tax_to_dist),
             current_taxable_eav = sum(current_taxable_eav),
-           totTax = sum(total_bill_current),
+            totTax = sum(total_bill_current), # includes TIF revenue! 
             current_rate,
             .by = c(clean_name, incentive)) %>%
   mutate(new_av = ifelse(incentive == "Incentive", av*2.5, av),
-    new_taxable_eav = ifelse(incentive ==  "Incentive", new_av*eqfact21, current_taxable_eav)) %>%
-  distinct()
+         new_taxable_eav = ifelse(incentive ==  "Incentive", new_av*eqfact21, current_taxable_eav)) 
+# %>% distinct()
 
 
 ```
