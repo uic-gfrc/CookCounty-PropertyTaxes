@@ -10,6 +10,7 @@ options(scipen = 999)
 
 
 # PTAXSIM incentive properties --------------------------------------------
+# Pulled from PTAXSIM - Al PINs from 2021, filtered by class_code between 600&900
 # 3652 PINs in 2021
 incentive_pins <- read_csv("./Output/7_output_incentive_classes.csv") %>%
     mutate(
@@ -29,13 +30,18 @@ incentive_pins <- read_csv("./Output/7_output_incentive_classes.csv") %>%
 access_db <- read_excel("incentivePINs_accessDB_2.xlsx")
 
 
-
+# create a keypin variable based on smallest PIN to compare to keypin used by assessor
 first_pins <- access_db %>% 
-  arrange(Status_cleaned) %>%
+  arrange(Status_cleaned,`Concat PIN`) %>%
   group_by(CONTROL) %>% 
-  mutate(keypin = first(`Concat PIN`)) %>% 
-  mutate(pin = `Concat PIN`) %>% 
-  select(pin, keypin, CONTROL) %>%
+  mutate( keypin = first(`Concat PIN`),
+         pin = `Concat PIN`,
+         n_PINs_inControl = n(),
+         class = first(Class)
+         ) %>% 
+  select(pin, 
+         keypin, CONTROL, n_PINs_inControl, class) %>% 
+  arrange(CONTROL, keypin, pin,)
 
 
 ## Join PTAXSIM incentive properties to CMAP incentive data
@@ -49,9 +55,11 @@ incentive_pins %>% group_by(keypin) %>% summarize(pin_count = n()) %>% arrange(-
 # 1,253 incentive projects based on keypins.
 
 
-commerc_prop_keys <- read_csv("./Necessary_Files/Assessor_-_Commercial_Valuation_Data_20240212.csv") %>%
-  filter(year == 2021 #& !is.na(pins)
-         ) %>% 
+commerc_prop_keys <- read_csv("./Necessary_Files/Assessor_-_Commercial_Valuation_Data_20240212.csv") 
+
+commerc_prop_keys <- commerc_prop_keys%>%
+ # filter(#year == 2021 #& !is.na(pins)
+  #       ) %>% 
   select(clean_pin, clean_keypin, keypin, pins, `class(es)`) %>%
   mutate(
     first_digit = str_sub(`class(es)`, 1, 1),
@@ -64,7 +72,9 @@ commerc_prop_keys <- read_csv("./Necessary_Files/Assessor_-_Commercial_Valuation
    clean_keypin = gsub("-","", clean_keypin),
    
     clean_keypin = gsub(" ","", clean_keypin),
-    classes = as.character(`class(es)`)
+    classes = as.character(`class(es)`),
+   first_digit = str_sub(`class(es)`, 1, 1),
+   
     #kingpin = str_pad(kingpin, 13, "left"),
   ) %>% 
   arrange(desc(clean_keypin))
