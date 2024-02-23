@@ -1,5 +1,5 @@
 ---
-title: "Burden Shift from Incentive Properties in [xx]" 
+title: "Burden Shift from Incentive Properties" 
 format: 
   html:
     df-print: paged
@@ -12,7 +12,7 @@ format:
 
 ---
 
-# Preliminary Setup
+**Preliminary Setup**
 
 ```{r setup, warning = FALSE, output = FALSE}
 
@@ -55,19 +55,80 @@ incentive_sums <- MC_sums %>%
   mutate(
          incentive = ifelse(major_class_code %in% c("6A","6B", "6C", "7A","7B","7C","8"), "Incentive", "Non-Incentive"),
          incent_type = ifelse(major_class_code %in% c("6A","6B", "6C"), "Industrial", ifelse(major_class_code %in% c("7A","7B","7C", "8"), "Commercial", "Not Incentive Prop"))) %>%
-  group_by(clean_name, incentive, cur_munilevel_rate) %>%
+  group_by(year, clean_name, incentive, cur_munilevel_rate) %>%
   summarize(av = sum(av),
             eav = sum(eav),
-            pins_in_muni = sum(pins_in_muni),
+            pins_in_muni = sum(pins_in_muni), # all pins
+            incent_pins = n(),
             final_tax_to_dist = sum(final_tax_to_dist),
-           # current_rate = mean(cur_comp_muni_rate),
             current_taxable_eav = sum(current_taxable_eav))%>%
   mutate(new_av = ifelse(incentive == "Incentive", av*2.5, av),
     new_taxable_eav = ifelse(incentive ==  "Incentive", current_taxable_eav * 2.5 , current_taxable_eav))
+
+incentive_sums 
+
+incentive_sums %>% 
+  filter(incentive == "Incentive") %>% arrange(-incent_pins)
+
+
 ```
 
 
-```{r}
+```{r commer_indust_incents}
+
+incentive_pins2 <- MC_sums %>%
+  mutate(
+         incentive = ifelse(major_class_code %in% c("6A","6B", "6C", "7A","7B","7C","8"), "Incentive", "Non-Incentive"),
+         incent_type = ifelse(major_class_code %in% c("6A","6B", "6C"), "Industrial", ifelse(major_class_code %in% c("7A","7B","7C", "8"), "Commercial", "Not Incentive Prop"))) %>%
+  group_by(year, clean_name, incent_type) %>%
+  summarize(av = sum(av),
+            eav = sum(eav),
+            pins_in_muni = n(),
+            final_tax_to_dist = sum(final_tax_to_dist),
+            current_taxable_eav = sum(current_taxable_eav)) %>%
+  mutate(new_av = ifelse(incent_type != "Not Incentive Prop", av*2.5, av),
+    new_taxable_eav = ifelse(incent_type !=  "Not Incentive Prop", current_taxable_eav * 2.5 , current_taxable_eav))
+
+incentive_pins2
+
+```
+
+
+```{r AleaCatsToGroup}
+
+# PTAXSIM incentive properties --------------------------------------------
+# Pulled from PTAXSIM - Al PINs from 2021, filtered by class_code between 600&900
+# 3652 PINs in 2021
+incentive_pins <- read_csv("./Output/7_output_incentive_classes.csv") %>%
+    mutate(
+      # pin = as.character(pin), 
+      # pin = str_pad(pin, 13, "left"),
+         parcel = str_sub(pin, 1, 10),
+         block = str_sub(pin, 1, 7)) 
+
+
+
+incentive_Aleacats <- incentive_pins %>%
+  left_join(nicknames)%>%
+  mutate(
+         incentive = ifelse(major_class_code %in% c("6A","6B", "6C", "7A","7B","7C","8"), "Incentive", "Non-Incentive"),
+         incent_type = ifelse(major_class_code %in% c("6A","6B", "6C"), "Industrial", ifelse(major_class_code %in% c("7A","7B","7C", "8"), "Commercial", "Not Incentive Prop"))) %>%
+  group_by(clean_name, Alea_cat) %>%
+  summarize(av = sum(av),
+            eav = sum(eav),
+            pins_in_muni = n()) %>%
+  left_join(MuniLevel) %>%
+  mutate(
+           # final_tax_to_dist = sum(final_tax_to_dist),
+           current_rev_collected = round(cur_munilevel_rate * eav ),
+           # current_taxable_eav = sum(current_taxable_eav)
+          )
+
+incentive_Aleacats
+```
+
+
+```{r commer_indust_incents}
 incentive_sums2 <- MC_sums %>%
   left_join(MuniLevel) %>%
   mutate(
