@@ -9,9 +9,6 @@ format:
     toc-location: left
     fig-cap-location: top
     fig-height: 10
-
-project:
-  output-dir: ./quarto_doc_output
 ---
 
 **Preliminary Setup**
@@ -256,7 +253,7 @@ burden %>%
 
 ## Change in Tax Burden
 
-```{r}
+```{r incentiveprops}
 
 # as a dot graph ## 
 
@@ -290,7 +287,7 @@ burden %>%
 ```
 
 
-```{r}
+```{r industrialburden}
 
 # as a dot graph ## 
 
@@ -316,9 +313,44 @@ burden2 %>%
     plot.title.position = "plot",
     plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
   )+
-  scale_color_brewer(palette="Paired", labels = c("Incentives", "No Incentives"), direction = 1)+
+  scale_color_brewer(palette="Accent", labels = c("Incentives", "No Incentives"), direction = 1)+
   
   labs(title = "Tax Burden for Industrial Properties if Assessed at 25%",
+       subtitle = "Ordered by Current Tax Burden", x = "% of Levy Paid", y = "" , 
+       caption = "")
+```
+
+
+```{r commercialburden}
+
+# as a dot graph ## 
+
+order <- burden2 %>%  
+  as_tibble() %>% 
+  filter(incent_type == "Commercial") %>% 
+  arrange(pct_taxburden_current) %>%
+  select(clean_name, pct_taxburden_current)
+
+burden2 %>% 
+  filter(incent_type == "Commercial" & clean_name !="NA") %>%
+  select(clean_name, pct_taxburden_current, pct_taxburden_no_incent) %>% 
+  pivot_longer(c("pct_taxburden_current", "pct_taxburden_no_incent"), 
+               names_to = "type", values_to = "tax_rate") %>% 
+  left_join(order) %>%
+  ggplot(aes(x = tax_rate, y= reorder(clean_name, pct_taxburden_current)))+
+  
+  geom_line(aes(group = clean_name))+ 
+  geom_point(aes(color=type), size=3 )+
+  theme_minimal() + 
+  theme( 
+    legend.title = element_blank(),
+    plot.title.position = "plot",
+    plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
+  )+
+  scale_x_continuous(limits = c(0, 60)) + 
+  scale_color_brewer(palette = "Dark2", labels = c("Incentives", "No Incentives"), direction = 1)+
+  
+  labs(title = "Tax Burden for Commercial Properties if Assessed at 25%",
        subtitle = "Ordered by Current Tax Burden", x = "% of Levy Paid", y = "" , 
        caption = "")
 ```
