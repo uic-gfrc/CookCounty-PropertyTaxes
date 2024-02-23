@@ -4,20 +4,14 @@ library(DBI)
 library(httr)
 library(jsonlite)
 library(glue)
+library(sf)
 library(readxl)
 
-options(scipen = 999)
+incentive_pins <- read_csv("./Output/7_output_incentive_classes.csv")
 
+access_db <- read_excel("incentivePINs_accessDB.xlsx")  %>% 
+  arrange((Status_cleaned) ) 
 
-# PTAXSIM incentive properties --------------------------------------------
-# Pulled from PTAXSIM - Al PINs from 2021, filtered by class_code between 600&900
-# 3652 PINs in 2021
-incentive_pins <- read_csv("./Output/7_output_incentive_classes.csv") %>%
-    mutate(
-      # pin = as.character(pin), 
-      # pin = str_pad(pin, 13, "left"),
-         parcel = str_sub(pin, 1, 10),
-         block = str_sub(pin, 1, 7))  
 
 
 # Incentive PINs Each Year ------------------------------------------------
@@ -186,22 +180,25 @@ table(incentive_pins$keypin_com_props2)
 
  
 
+
 leftjoin_pins <- left_join(incentive_pins, access_db, by= c("pin" = "Concat PIN")) %>%
   select(pin, Status, `Start Year`, class, Notes )
 
 
-# 4146 unique pins. Left join adds duplicate entries from Access files 
-# 
+# 3652 unique pins. Left join adds duplicate entries from Access files 
 # two different status entries creates additional rows when joined
-incentive_pins %>%
-  distinct(pin)
+leftjoin_pins %>%
+  distinct(pin) %>%
+  count()
 
-# 3984  
+  
 innerjoin_pins <- inner_join(incentive_pins, access_db, by= c("pin" = "Concat PIN")) %>%
   select(pin, Status, `Start Year`, class, Notes )
 
-innerjoin_pins 
-
 nojoin_pins <- anti_join(incentive_pins, access_db, by= c("pin" = "Concat PIN"))
-# 162 PINs not in Access incentive PINs from 2021 are not found in the Access
+# 457 incentive PINs from 2021 are not found in the Access files
+## Need to add Class C and L PINs to Access file! 
+
+
+nojoin_pins2 <- anti_join(access_db, incentive_pins, by= c("Concat PIN" = "pin"))
 
