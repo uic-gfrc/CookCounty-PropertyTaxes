@@ -1,3 +1,4 @@
+# Setup Packages ----------------------------------------------------------
 library(tidyverse)
 library(ptaxsim)
 library(DBI)
@@ -7,53 +8,37 @@ library(glue)
 library(sf)
 library(readxl)
 
-incentive_pins <- read_csv("./Output/7_output_incentive_classes.csv")
 
-access_db <- read_excel("incentivePINs_accessDB.xlsx")  %>% 
-  arrange((Status_cleaned) ) 
+# Incentive PINs Each Year from PTAXSIM ------------------------------------------------
 
 
-
-# Incentive PINs Each Year ------------------------------------------------
-
-library(ptaxsim)
-library(DBI)
-library(glue)
-
-ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2022.0.0.db")
-
-cook_pins <- DBI::dbGetQuery(
-  ptaxsim_db_conn,
-  glue_sql(
-  "SELECT DISTINCT *
-  FROM pin
-  ",
-  .con = ptaxsim_db_conn
-  ))
+ptax_pins <- read_csv("./Output/incentivePINs_allyears.csv") # file created in helper_pull_incentivepins_allyears.R
 
 
-cook_pins <- cook_pins %>% filter(class > 599 & class < 900)
-cook_pins %>% group_by(year) %>% summarize(incentive_count = n())
+ptax_pins %>% group_by(pin) %>% summarize(count = n()) %>% arrange(-count)
+# 5858 incentive PINs have existed at some point in time.
+ptax_pins %>% group_by(year) %>% summarize(incentive_count = n())
+# 4383 existed in 2022. 
+# 3652 existed in 2021, etc.
 
-
-pin_classes <- cook_pins %>% group_by(pin, class) %>% distinct()
-
-cook_pins %>% group_by(pin) %>% summarize(count = n()) %>% arrange(-count)
-cook_pins %>% group_by(pin) %>% summarize(count = n()) %>% filter(count > 16)
+ptax_pins %>% group_by(pin) %>% summarize(count = n()) %>% filter(count > 16)
 # 632 PINs have existed AND been incentive properties for all years in database.
 
 
-cook_pins %>% 
+ptax_pins %>% 
   pivot_wider(id_cols = c(pin), names_from = "year", values_from =  "class") %>%
   mutate(change = as.numeric(`2021`)-as.numeric(`2006`)) %>% 
   filter(change !=0
   )
+# at least 47 incentive PINs changed incentive class type over the years
+
+
 
 
 # CMAP DATABASE -----------------------------------------------------------
 # combined PIN tables into 1 file
 # 10,275 obs from copying/pasting PIN tables into one table.
-# 3677 unique "Controls" (synonimous with Key PIN I think)
+# 3677 unique "Controls" (synonymous with Key PIN I think)
 # Includes all incentive PINs, even from old projects
 # excel tab: 'incentive PINs (ever)' 
 access_db <- read_excel("incentivePINs_accessDB_2.xlsx")
@@ -62,37 +47,85 @@ access_db <- read_excel("incentivePINs_accessDB_2.xlsx")
 # create a keypin variable based on smallest PIN to compare to keypin used by assessor
 # ideally, each CONTROL variable would have its own Key PIN.
 access_db <- access_db %>% 
-  arrange(Status_cleaned,`Concat PIN`) %>%
+  arrange(Status_cleaned, `Concat PIN`) %>% # `Status Cleaned` was manually created in Excel & based off of the `Status` variable.
   group_by(CONTROL, Status_cleaned) %>% 
-  mutate(keypin = first(`Concat PIN`),
+  mutate(keypin = first(`Concat PIN`), # ideally grabs lowest PIN since that appears to mostly be how the assessor does it. But not always. 
          pin = `Concat PIN`,
          n_PINs_inControlGroup = n(),  # Can include the same PIN multiple times!! 
-         class = first(Class),
+         keypin_class = first(Class),
          parcel = str_sub(pin, 1, 10),
          block = str_sub(pin, 1, 7)
          ) %>% 
-  select(pin, keypin, CONTROL, n_PINs_inControlGroup, class, Status_cleaned, parcel, block) %>% 
+  select(pin, keypin, CONTROL, n_PINs_inControlGroup, keypin_class, Status_cleaned, parcel, block,  everything()) %>% 
   arrange(CONTROL, keypin, pin)
 
 ## Good start of making access database comparable to keypin database of assessor valuation data
 
 
+# Join PTAXSIM & Data from CMAP -------------------------------------------
+
 ## Join PTAXSIM incentive properties to CMAP incentive data
 # CMAP incentive PINs appear multiple times in database
-incentive_pins <- left_join(incentive_pins, access_db, by = c("pin" = "pin") )
+incentive_pins <- left_join(ptax_pins, access_db, by = c("pin" = "pin"), relationship = "many-to-many" )
+
+# 3652 unique pins?
+# 5,869 unique pins?
+# Left join adds duplicate entries from Access files 
+# two different status entries creates additional rows when joined
+incentive_pins %>%
+  distinct(pin) %>%
+  count()
+
+# Join PTAXSIM PINs & CMAP access db  -------------------------------------
+
+innerjoin_pins <- inner_join(ptax_pins, access_db, by= c("pin" = "Concat PIN")) %>%
+  select(pin, Status, `Start Year`, class, Notes )
+
+nojoin_pins <- anti_join(ptax_pins, access_db, by= c("pin" = "Concat PIN"))
+
+nojoin_pins2 <- anti_join(access_db, incentive_pins, by= c("Concat PIN" = "pin"))
+
+
 
 incentive_pins %>% group_by(CONTROL) %>% summarize(pin_count = n()) %>% arrange(-pin_count)
 # 1,284 incentive projects
 # 2149 obs
+# 2775 CONTROL variables when using all incentive pins ever from ptaxsim (instead of only 2021)
 
-incentive_pins %>% group_by(keypin) %>% summarize(pin_count = n()) %>% arrange(-pin_count)
+incentive_pins %>% group_by(year, keypin) %>% summarize(pin_count = n()) %>% arrange(-pin_count)
 # 1,253 incentive projects based on keypins.
 # 1,967 obs
+# 2,651 key pins ever
 
 
-# 
+incentive_pins %>% group_by(year, CONTROL) %>% summarize(pin_count = n()) %>% arrange(-pin_count)
+
+
+
+# Control = 7028 has 153 pins associated with it. Started in 2013. Tax Year 2023 is its first ramp up year. 
+# CostCo at Hastings and Ashland in Chicago, Class 7b
+# PINs are primarily in blocks 1719221 & 1719215
+# PINs do exist in PTAXSIM database 
+
+
+# Control = 7007 has 64 PINs but the project is expired. 
+# was for LAWNDALE PLAZA SHOPPING CENTER
+# incentive PINs do exist in 2006, 2007, and 2008 before it expired. 
+
+
+anti_join(ptax_pins, access_db, by = "pin") %>% filter(year < 2020) %>% group_by(pin) %>% summarize(n = n())
+# 946 PINs existed in either the ptaxsim database or the cmap database.
+# Makes sense since there was a huge increase in incentive PINs in the last tax year (2022)
+# access database was last updated in end of 2020 
+# 84 PINs didn't match if using pre 2020 PINs
+ 
+
+
 # # Commercial Valuation Dataset - Cook County Data Portal ------------------
-# 
+
+## NEED TO DOWNLOAD WHOLE FILE AND THEN CLEAN AND FILTER IT.
+## NOT DONE YET - AWM 02/23/2024
+
 # commerc_prop_keys <- read_csv("./Necessary_Files/Assessor_-_Commercial_Valuation_Data_20240212.csv") 
 # 
 # commerc_prop_keys <- commerc_prop_keys%>%
@@ -118,7 +151,7 @@ incentive_pins %>% group_by(keypin) %>% summarize(pin_count = n()) %>% arrange(-
 #   arrange(desc(clean_keypin))
 
 
-# Commercial Valuation Dataset - Cook County Data Portal ------------------
+## Filtered Commercial Valuation Dataset - Cook County Data Portal ------------------
 
 ## Manually selected all property options that began with a 6, 7, or 8, for any year (2021, 2022, and 2023)
 ## using online Cook County data portal
@@ -129,20 +162,6 @@ prefiltered <- prefiltered %>%
    keypin_concat = str_pad(keypin_concat, 14, "left", pad = "0"))  %>%
   select(keypin_concat:`class(es)`)
 
-# #### Assign Unique ID ######
-# library(data.table)
-# 
-# setDT(prefiltered)[, Unique_ID := .GRP, by = keypin_concat]
-# prefiltered <- prefiltered %>% arrange(keypin_concat)
-# 
-# prefiltered$pin = 1
-# 
-# nrow(prefiltered) # 306
-# 
-# for (i in 1:306){
-#   prefiltered$pin_num[[i + 1]] = ifelse(prefiltered$Unique_ID[[i + 1]] != prefiltered$Unique_ID[[i]], 1, 
-#                                  (prefiltered$pin_num[[i]] + 1))
-# }
 
 table(prefiltered$year)
 
@@ -153,52 +172,50 @@ keypins <- unique(prefiltered$keypin_concat)
 # 306 unique keypins from CCAO property valuation
 
 
-joined_dbs <- anti_join(prefiltered, incentive_pins, by = c("keypin_concat" = "pin") )
+joined_dbs <- left_join(prefiltered, incentive_pins, by = c("keypin_concat" = "keypin") )
 
-pins_pivot<- prefiltered %>% select(keypin_concat, pins) %>%
-  muatate(pin[i] = str_split(pins, pattern = ","))
 
-  pivot_wider(id_cols = keypin_concat, values_from = "pins" , names_from = "pins", 
-              names_sep = ",")
+new_projects <- anti_join(prefiltered, incentive_pins, by = c("keypin_concat" = "keypin") )
 
+
+pins_pivot <- prefiltered %>% 
+  mutate(pins = tolower(pins)) %>%
+  select(keypin_concat, keypin, pins) %>%
+  mutate(has_range = ifelse(str_detect(pins,"thru"), 1, 0),
+  pins = str_replace_all(pins, ",,", ",")) %>%
+  mutate(pins2 = str_split(pins, pattern = ",")) %>%
+  unnest(pins2) %>%
+  mutate( pins2 = trimws(pins2) ) %>%
+  filter(!is.na(pins2) | pins2 == " ") %>%
+  mutate(pins3 = str_split(pins2, pattern = " ")) %>%
+  unnest(pins3) %>%
+  mutate(check_me = ifelse(str_length(pins3)<14, 1, 0))
+# 657 obs
+
+# write_csv(pins_pivot, "./Output/manually_cleaned_incentive_pins.csv")
+
+# 707 obs after manually adding pins with weird formatting
+pins_pivot_cleaned <- read.csv("./Output/manually_cleaned_incentive_pins.csv") %>%
+  mutate(keypin_concat = as.character(keypin_concat)) %>%
+  mutate(keypin_concat2 = str_pad(keypin_concat, 14, "left", pad = "0"))
+
+pins_pivot_cleaned <- pins_pivot_cleaned %>% 
+  mutate(check_me = ifelse(str_length(pins3) < 14, 1, 0)) %>% 
+  filter(check_me == 0)
+# 696 obs
+
+pins_pivot_cleaned %>% group_by(keypin_concat) %>% summarize(n = n()) %>% arrange(-n)
+# 216 key pins (aka projects)
+    
 
 incentive_pins <- incentive_pins %>% 
   mutate(keypin_com_props = ifelse(pin %in% keypins, 1, 0),
          #kingpin = ifelse(pin %in% cleanpins, 1, 0),
-         keypin_com_props2 = ifelse(pin ==keypin, 1, 0)) %>%
+         keypin_com_props2 = ifelse(pin == keypin, 1, 0)) %>%
   select(year,CONTROL, keypin, keypin_com_props, keypin_com_props2, pin, everything())
 
 table(incentive_pins$keypin_com_props)
 table(incentive_pins$keypin_com_props2)
-
-
-
-
-#joined_dbs <- left_join(incentive_pins, commerc_prop_keys, by = c("pin" = "clean_keypin") ) %>%
- # select(year, clean_keypin, pin, everything())
-
-
  
 
-
-leftjoin_pins <- left_join(incentive_pins, access_db, by= c("pin" = "Concat PIN")) %>%
-  select(pin, Status, `Start Year`, class, Notes )
-
-
-# 3652 unique pins. Left join adds duplicate entries from Access files 
-# two different status entries creates additional rows when joined
-leftjoin_pins %>%
-  distinct(pin) %>%
-  count()
-
-  
-innerjoin_pins <- inner_join(incentive_pins, access_db, by= c("pin" = "Concat PIN")) %>%
-  select(pin, Status, `Start Year`, class, Notes )
-
-nojoin_pins <- anti_join(incentive_pins, access_db, by= c("pin" = "Concat PIN"))
-# 457 incentive PINs from 2021 are not found in the Access files
-## Need to add Class C and L PINs to Access file! 
-
-
-nojoin_pins2 <- anti_join(access_db, incentive_pins, by= c("Concat PIN" = "pin"))
 
