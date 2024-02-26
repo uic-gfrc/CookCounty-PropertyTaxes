@@ -24,6 +24,11 @@ ptax_pins %>% group_by(year) %>% summarize(incentive_count = n())
 ptax_pins %>% group_by(pin) %>% summarize(count = n()) %>% filter(count > 16)
 # 632 PINs have existed AND been incentive properties for all years in database.
 
+ptax_pins %>% mutate(parcel = str_sub(pin, 1, 10) ) %>%
+  group_by(parcel) %>% summarize(count = n())
+
+ptax_pins %>% mutate(block = str_sub(pin, 1, 7) ) %>%
+  group_by(block) %>% summarize(count = n())
 
 ptax_pins %>% 
   pivot_wider(id_cols = c(pin), names_from = "year", values_from =  "class") %>%
@@ -38,7 +43,9 @@ ptax_pins %>%
 # CMAP DATABASE -----------------------------------------------------------
 # combined PIN tables into 1 file
 # 10,275 obs from copying/pasting PIN tables into one table.
-# 3677 unique "Controls" (synonymous with Key PIN I think)
+# 9,209 unique PINs
+# 9023 unique parcels
+# 3679 unique "Controls" (synonymous with Key PIN I think)
 # Includes all incentive PINs, even from old projects
 # excel tab: 'incentive PINs (ever)' 
 access_db <- read_excel("incentivePINs_accessDB_2.xlsx")
@@ -61,29 +68,36 @@ access_db <- access_db %>%
 
 ## Good start of making access database comparable to keypin database of assessor valuation data
 
+access_db %>% group_by(pin) %>% summarize(count = n())
 
 # Join PTAXSIM & Data from CMAP -------------------------------------------
 
 ## Join PTAXSIM incentive properties to CMAP incentive data
 # CMAP incentive PINs appear multiple times in database
 incentive_pins <- left_join(ptax_pins, access_db, by = c("pin" = "pin"), relationship = "many-to-many" )
-
-# 3652 unique pins?
-# 5,869 unique pins?
 # Left join adds duplicate entries from Access files 
 # two different status entries creates additional rows when joined
+
 incentive_pins %>%
   distinct(pin) %>%
-  count()
+  count()    # 5,869 unique pins
 
-# Join PTAXSIM PINs & CMAP access db  -------------------------------------
+incentive_pins %>%
+  distinct(parcel) %>%
+  count()    # 4,808 parcels
 
+
+# keep only PINs that existed in both databases
 innerjoin_pins <- inner_join(ptax_pins, access_db, by= c("pin" = "Concat PIN")) %>%
   select(pin, Status, `Start Year`, class, Notes )
 
+# Find pins that didn't exist in both. 
 nojoin_pins <- anti_join(ptax_pins, access_db, by= c("pin" = "Concat PIN"))
+nojoin_pins %>% group_by(year) %>% summarize(count = n())
+# almost all PINs that didn't match came from last 2 years
 
 nojoin_pins2 <- anti_join(access_db, incentive_pins, by= c("Concat PIN" = "pin"))
+nojoin_pins2 %>% group_by(CONTROL) %>% summarize(count = n())
 
 
 
