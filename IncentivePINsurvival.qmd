@@ -1,7 +1,12 @@
 ---
 title: "Incentive Survival Over Time"
 author: "MVH"
-format: html
+format: 
+  html:
+    df-print: paged
+    code-fold: true
+    code-download: true
+    toc: true
 ---
 
 ```{r setup, warning = FALSE, output = FALSE}
@@ -29,6 +34,13 @@ incPINs2011 <- incPINs %>%
 
 inc2011List <- as.list(incPINs2011$pin)
 
+```
+
+```{r}
+#| code-fold: true
+#| column: screen
+#| tbl-cap: "2021 Incentive Properties (Combined)"
+
 incPINs2011 %>%
   summarize(
     n = n(), av= sum(av_clerk),
@@ -47,46 +59,122 @@ incPINs2021 <- incPINs %>%
 
 inc2021List <- as.list(incPINs2021$pin)
 
+```
+
+```{r}
+#| code-fold: true
+#| column: screen
+#| tbl-cap: "2021 Incentive Properties by Class"
+
 incPINs2021 %>%
   summarize(
-    n = n(), sum(av_clerk),
+    n = n(), sumAV = sum(av_clerk),
     .by = c("class")
   ) %>%
   distinct() %>%
   arrange(-n)
-```
-
-```{r}
-
-incPINsSurvive11to21 <- left_join(incPINs2011, incPINs2021, by = "pin", copy = FALSE)
 
 ```
 
 ```{r}
 
-#incPINsSurvive11to21 <- incPINsSurvive11to21 %>%
-#  filter(!is.na(av_clerk.y)) %>%
-#  rename(class2011 = class.x,
- #        class2021 = class.y)
+incPINsSurvive21from11 <- left_join(incPINs2021, incPINs2011, by = "pin", keep = FALSE)
 
-incPINsSurvive11to21 %>%
-  mutate(classChange = as.numeric(if_else(class2011 == class2021, "1", "0"))) %>%
+```
+
+```{r}
+
+incPINsSurvive21from11 <- incPINsSurvive21from11 %>%
+ filter(!is.na(av_clerk.y)) %>%
+  rename(class2011 = class.x,
+         class2021 = class.y)
+
+incPINsSurvive21from11 %>%
+  mutate(classChange = as.numeric(if_else(class2021 != class2021, "1", "0"))) %>%
   group_by(class2011) %>%
-  summarize(n = n(), sumAV2011 = sum(av_clerk.x), sumAV2021 = sum(av_clerk.y), Changed_Class = sum(classChange)) %>%
+  summarize(n = n(), Changed_Class = sum(classChange), sumAV2011 = sum(av_clerk.x), sumAV2021 = sum(av_clerk.y)) %>%
   distinct() %>%
   arrange(-n)
 
-incPINsSurvive11to21 %>%
-  mutate(classChange = as.factor(if_else(class2011 = class2021, "1", "0"))) %>%
+incPINsSurvive21from11 %>%
+  mutate(classChange = as.numeric(if_else(class2011 != class2021, "1", "0"))) %>%
   group_by(class2021) %>%
-  summarize(n = n(), sumAV2011 = sum(av_clerk.x), sumAV2021 = sum(av_clerk.y)) %>%
+  summarize(n = n(), Changed_Class = sum(classChange), sumAV2011 = sum(av_clerk.x), sumAV2021 = sum(av_clerk.y)) %>%
   distinct() %>%
   arrange(-n)
+```
+
+```{r}
+#| code-fold: true
+#| column: screen
+#| tbl-cap: "2021 Incentive Properties That Changed Class since 2011"
+
+incPINsSurvive21from11 %>%
+  mutate(classChange = as.numeric(if_else(class2011 != class2021, "1", "0"))) %>%
+  group_by(class = class2021) %>%
+  summarize(n = n(), Changed_Class = sum(classChange), sumAV2011 = sum(av_clerk.x), sumAV2021 = sum(av_clerk.y)) %>%
+  distinct() %>%
+  arrange(-n)
+
+```
+
+```{r}
+
+
 ```
 
 Ignoring class
 
 ```{r}
 
+ptax_pins <- read_csv("./Output/incentivePINs_allyears.csv") # file created in helper_pull_incentivepins_allyears.R
 
+
+ptax_pins %>% group_by(pin) %>% summarize(count = n()) %>% arrange(-count)
+# 5858 incentive PINs have existed at some point in time.
+ptax_pins %>% group_by(year) %>% summarize(incentive_count = n())
+# 4383 existed in 2022. 
+# 3652 existed in 2021, etc.
+
+ptax_pins %>% group_by(pin) %>% summarize(count = n()) %>% filter(count > 16)
+# 632 PINs have existed AND been incentive properties for all years in database.
+
+ptax_pins %>% mutate(parcel = str_sub(pin, 1, 10) ) %>%
+  group_by(parcel) %>% summarize(count = n())
+
+ptax_pins %>% mutate(block = str_sub(pin, 1, 7) ) %>%
+  group_by(block) %>% summarize(count = n())
+
+ptax_pivot_changed <- ptax_pins %>% 
+  pivot_wider(id_cols = c(pin), names_from = "year", values_from =  "class") %>%
+  mutate(change = ifelse(as.numeric(`2021`)-as.numeric(`2006`) != 0,
+                         1, 0))%>% 
+  filter(change !=0)
+
+ptax_pivot_changed
+```
+
+```{r}
+
+ptax_pins %>% 
+  group_by(year) %>% 
+  summarize(incentive_count = n()) %>%
+  ggplot(aes(x = year, y = incentive_count)) +
+  geom_col() +
+  labs(
+    title = "Incentive PINs by Year"
+  )
+```
+
+```{r}
+#| code-fold: true
+#| column: screen
+#| tbl-cap: "2021 Incentive Properties That Changed Class since 2011"
+
+ptax_pivot_changed %>%
+  rename(class = '2021') %>%
+  filter(!is.na(class)) %>%
+  summarize(n = n(),
+            .by = class) %>%
+  arrange(-n)
 ```
