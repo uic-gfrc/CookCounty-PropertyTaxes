@@ -1,0 +1,92 @@
+---
+title: "Incentive Survival Over Time"
+author: "MVH"
+format: html
+---
+
+```{r setup, warning = FALSE, output = FALSE}
+
+library(tidyverse)
+
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+options(scipen = 999)
+
+```
+
+```{r}
+
+incPINs <- read_csv("./Output/incentivePINs_allyears.csv")
+```
+
+```{r}
+
+incPINs2011 <- incPINs %>%
+  filter(year == 2011) %>%
+  filter(between(class, 600, 899)) %>%
+  mutate(pinYear = 2011) %>%
+  select(pin, pinYear, year, class, av_clerk)
+
+inc2011List <- as.list(incPINs2011$pin)
+
+incPINs2011 %>%
+  summarize(
+    n = n(), av= sum(av_clerk),
+    .by = c("class")
+  ) %>%
+  arrange(-n)
+```
+
+```{r}
+
+incPINs2021 <- incPINs %>%
+  filter(year == 2021) %>%
+  filter(between(class, 600, 899)) %>%
+  mutate(pinYear = 2021) %>%
+  select(pin, year, class, av_clerk)
+
+inc2021List <- as.list(incPINs2021$pin)
+
+incPINs2021 %>%
+  summarize(
+    n = n(), sum(av_clerk),
+    .by = c("class")
+  ) %>%
+  distinct() %>%
+  arrange(-n)
+```
+
+```{r}
+
+incPINsSurvive11to21 <- left_join(incPINs2011, incPINs2021, by = "pin", copy = FALSE)
+
+```
+
+```{r}
+
+#incPINsSurvive11to21 <- incPINsSurvive11to21 %>%
+#  filter(!is.na(av_clerk.y)) %>%
+#  rename(class2011 = class.x,
+ #        class2021 = class.y)
+
+incPINsSurvive11to21 %>%
+  mutate(classChange = as.numeric(if_else(class2011 == class2021, "1", "0"))) %>%
+  group_by(class2011) %>%
+  summarize(n = n(), sumAV2011 = sum(av_clerk.x), sumAV2021 = sum(av_clerk.y), Changed_Class = sum(classChange)) %>%
+  distinct() %>%
+  arrange(-n)
+
+incPINsSurvive11to21 %>%
+  mutate(classChange = as.factor(if_else(class2011 = class2021, "1", "0"))) %>%
+  group_by(class2021) %>%
+  summarize(n = n(), sumAV2011 = sum(av_clerk.x), sumAV2021 = sum(av_clerk.y)) %>%
+  distinct() %>%
+  arrange(-n)
+```
+
+Ignoring class
+
+```{r}
+
+
+```
