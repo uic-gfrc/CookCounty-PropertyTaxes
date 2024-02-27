@@ -15,14 +15,18 @@ library(readxl)
 ptax_pins <- read_csv("./Output/incentivePINs_allyears.csv") # file created in helper_pull_incentivepins_allyears.R
 
 
-ptax_pins %>% group_by(pin) %>% summarize(count = n()) %>% arrange(-count)
-# 5858 incentive PINs have existed at some point in time.
-ptax_pins %>% group_by(year) %>% summarize(incentive_count = n())
+ptax_pins %>% group_by(pin) %>% summarize(count = n()) %>% 
+  arrange(-count)
+# 5869 incentive PINs have existed at some point in time.
+ptax_pins %>% filter(class > 599 & class < 900) %>% group_by(year) %>% summarize(incentive_count = n())
 # 4383 existed in 2022. 
 # 3652 existed in 2021, etc.
 
 ptax_pins %>% group_by(pin) %>% summarize(count = n()) %>% filter(count > 16)
 # 632 PINs have existed AND been incentive properties for all years in database.
+# 4,654 PINs existed during every year (doesn't matter what property class)
+
+# 5869-4654 PINs created since 2006 ~ 1200 new PINs
 
 ptax_pins %>% mutate(parcel = str_sub(pin, 1, 10) ) %>%
   group_by(parcel) %>% summarize(count = n())
@@ -30,13 +34,14 @@ ptax_pins %>% mutate(parcel = str_sub(pin, 1, 10) ) %>%
 ptax_pins %>% mutate(block = str_sub(pin, 1, 7) ) %>%
   group_by(block) %>% summarize(count = n())
 
-ptax_pins %>% 
+pin_change <- ptax_pins %>% 
   pivot_wider(id_cols = c(pin), names_from = "year", values_from =  "class") %>%
   mutate(change = as.numeric(`2021`)-as.numeric(`2006`)) %>% 
   filter(change !=0
   )
+pin_change
 # at least 47 incentive PINs changed incentive class type over the years
-
+# became 3,132 PINs after merging more complete file in.
 
 
 
