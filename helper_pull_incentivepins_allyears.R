@@ -20,30 +20,38 @@ cook_pins <- DBI::dbGetQuery(
   .con = ptaxsim_db_conn
   ))
 
-# Change to numeric.
-
-cook_pins <- cook_pins %>%
-  mutate(class = as.numeric(class))
 
 ## Limit to just incentive major classes (6, 7, 8)
 ## ~46k obs (PIN-YEAR combos)
 
-ever_incent <- cook_pins %>%
-  filter(between(class, 600, 899)) %>%
-  select(pin) %>%
-  distinct()
 
-ever_incent_pins <- as.list(ever_incent$pin)
+cook_pins <- cook_pins %>% 
+  filter(class > 599 & class < 900)
+
+# get distinct pins
+distinct_pins <- cook_pins %>% 
+  select(pin) %>%     
+  distinct(pin)   # 5,869 distinct pins
+
+# 45,724 obs. (PIN-YEAR combos)
 
 ## But we want those PINs as obs. for all years, even if they weren't classified
 ## as an incentive in that time.
 
 ## Use incentive PIN list to get all obs.
 
-incent_pins <- cook_pins %>%
-  filter(pin %in% ever_incent_pins)
+incentive_pins <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql(
+  "SELECT DISTINCT *
+   FROM pin
+   WHERE pin IN ({distinct_pins$pin*})
+  ",
+  .con = ptaxsim_db_conn
+  ))
+
 
 ## Write CSV to Output Folder
 
-write_csv(cook_pins, "./Output/incentivePINs_allyears.csv")
+write_csv(incentive_pins, "./Output/incentivePINs_allyears.csv")
 
