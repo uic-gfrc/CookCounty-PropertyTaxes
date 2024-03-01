@@ -50,7 +50,7 @@ pin_change
 # 10,275 obs from copying/pasting PIN tables into one table.
 # 9,209 unique PINs
 # 9023 unique parcels
-# 3679 unique "Controls" (synonymous with Key PIN I think)
+# 3679 unique "Controls" (synonymous with Key PIN I think) aka "Projects"
 # Includes all incentive PINs, even from old projects
 # excel tab: 'incentive PINs (ever)' 
 access_db <- read_excel("incentivePINs_accessDB_2.xlsx")
@@ -120,18 +120,6 @@ incentive_pins %>% group_by(year, keypin) %>% summarize(pin_count = n()) %>% arr
 incentive_pins %>% group_by(year, CONTROL) %>% summarize(pin_count = n()) %>% arrange(-pin_count)
 
 
-
-# Control = 7028 has 153 pins associated with it. Started in 2013. Tax Year 2023 is its first ramp up year. 
-# CostCo at Hastings and Ashland in Chicago, Class 7b
-# PINs are primarily in blocks 1719221 & 1719215
-# PINs do exist in PTAXSIM database 
-
-
-# Control = 7007 has 64 PINs but the project is expired. 
-# was for LAWNDALE PLAZA SHOPPING CENTER
-# incentive PINs do exist in 2006, 2007, and 2008 before it expired. 
-
-
 anti_join(ptax_pins, access_db, by = "pin") %>% filter(year < 2020) %>% group_by(pin) %>% summarize(n = n())
 # 946 PINs existed in either the ptaxsim database or the cmap database.
 # Makes sense since there was a huge increase in incentive PINs in the last tax year (2022)
@@ -142,53 +130,59 @@ anti_join(ptax_pins, access_db, by = "pin") %>% filter(year < 2020) %>% group_by
 
 # # Commercial Valuation Dataset - Cook County Data Portal ------------------
 
-## NEED TO DOWNLOAD WHOLE FILE AND THEN CLEAN AND FILTER IT.
-## NOT DONE YET - AWM 02/23/2024
-
+## DOWNLOADED WHOLE FILE AND NOW NEED TO CLEAN AND FILTER IT.
+## NOT DONE YET - AWM 03/01/2024
+# old file that was filtered for only 1 year:
 # commerc_prop_keys <- read_csv("./Necessary_Files/Assessor_-_Commercial_Valuation_Data_20240212.csv") 
-# 
-# commerc_prop_keys <- commerc_prop_keys%>%
-#  # filter(#year == 2021 #& !is.na(pins)
-#   #       ) %>% 
-#   select(clean_pin, clean_keypin, keypin, pins, `class(es)`) %>%
-#   mutate(
-#     first_digit = str_sub(`class(es)`, 1, 1),
-#    # clean_pin = as.character(clean_pin),
-#    # clean_pin = str_pad(clean_pin, 13, "left"),
-#    # keypin = as.character(keypin),
-#    keypin = gsub("-","", keypin),
-#    keypin = gsub(" ","", keypin),
-#    keypin = str_pad(keypin, 13, "left"),
-#    clean_keypin = gsub("-","", clean_keypin),
-#    
-#     clean_keypin = gsub(" ","", clean_keypin),
-#     classes = as.character(`class(es)`),
-#    first_digit = str_sub(`class(es)`, 1, 1),
-#    
-#     #kingpin = str_pad(kingpin, 13, "left"),
-#   ) %>% 
-#   arrange(desc(clean_keypin))
+
+# downloaded entire file from data portal. No prefiltering:
+comval <- read_csv("./Necessary_Files/Assessor_-_Commercial_Valuation_Data_20240301.csv") %>% 
+  filter(keypin > 0 & keypin != "TOTAL PINS")
+#  63,142 observations for 2021, 2022, and 2023. Includes all commercial property
+
+comval <- comval %>% mutate(class_char = as.character(`class(es)`),
+                            first_dig = str_sub(`class(es)`, 1, 1),
+                            first_dig_chr = str_sub(`class(es)`, 1, 1)) %>% 
+  filter((first_dig > 5 & first_dig < 9) | (first_dig_chr > 5 & first_dig_chr < 9) )
+
+comval <- comval %>% 
+  mutate(keypin_concat = as.character(keypin),
+         keypin_concat = str_remove_all(keypin_concat, "-"),
+         keypin_concat = str_pad(keypin_concat, 14, "left", pad = "0"),
+         class_4dig = str_sub(`class(es)`, 1, 4),
+         class_3dig = str_remove_all(class_4dig, "[-,]"))  %>%
+  select(keypin_concat, class_3dig, pins, `class(es)`, everything()) %>%
+  filter()
+# 1831 obs
+
+table(comval$year)
+
+table(comval$class_3dig)
+table(comval$first_dig)
+
+
+keypins <- unique(comval$keypin_concat)
+
 
 
 ## Filtered Commercial Valuation Dataset - Cook County Data Portal ------------------
 
-## Manually selected all property options that began with a 6, 7, or 8, for any year (2021, 2022, and 2023)
-## using online Cook County data portal
-prefiltered <- readxl::read_excel("./Necessary_Files/Manual_filter_assessorscommercialproperty.xlsx")
-
-prefiltered <- prefiltered %>% 
-  mutate(keypin_concat = as.character(keypin_concat), 
-   keypin_concat = str_pad(keypin_concat, 14, "left", pad = "0"))  %>%
-  select(keypin_concat:`class(es)`)
-
-
-table(prefiltered$year)
-
-table(prefiltered$`class(es)`)
-
-
-keypins <- unique(prefiltered$keypin_concat)
-# 306 unique keypins from CCAO property valuation
+# ## Manually selected all property options that began with a 6, 7, or 8, for any year (2021, 2022, and 2023)
+# ## using online Cook County data portal
+# prefiltered <- readxl::read_excel("./Necessary_Files/Manual_filter_assessorscommercialproperty.xlsx")
+# # 306 
+# 
+# prefiltered <- prefiltered %>% 
+#   mutate(keypin_concat = as.character(keypin_concat), 
+#    keypin_concat = str_pad(keypin_concat, 14, "left", pad = "0"))  %>%
+#   select(keypin_concat:`class(es)`)
+# 
+# table(prefiltered$year)
+# 
+# table(prefiltered$`class(es)`)
+# 
+# keypins <- unique(prefiltered$keypin_concat)
+# # 306 unique keypins from CCAO property valuation
 
 
 joined_dbs <- left_join(prefiltered, incentive_pins, by = c("keypin_concat" = "keypin") )
