@@ -120,6 +120,15 @@ incentive_pins %>% group_by(keypin, year) %>% summarize(pin_count = n()) %>% arr
 
 incentive_pins %>% group_by(year, CONTROL) %>% summarize(pin_count = n()) %>% arrange(-pin_count)
 
+incentive_pins <- incentive_pins %>% 
+  mutate(keypin_com_props = ifelse(pin %in% keypins, 1, 0),
+         #kingpin = ifelse(pin %in% cleanpins, 1, 0),
+         keypin_com_props2 = ifelse(pin == keypin, 1, 0)) %>%
+  select(year,CONTROL, keypin, keypin_com_props, keypin_com_props2, pin, everything())
+
+table(incentive_pins$keypin_com_props)
+table(incentive_pins$keypin_com_props2)
+
 
 anti_join(ptax_pins, access_db, by = "pin") %>% filter(year < 2020) %>% group_by(pin) %>% summarize(n = n()) %>% arrange(-n)
 # 946 PINs existed in either the ptaxsim database or the cmap database.
@@ -131,8 +140,6 @@ anti_join(ptax_pins, access_db, by = "pin") %>% filter(year < 2020) %>% group_by
 
 # # Commercial Valuation Dataset - Cook County Data Portal ------------------
 
-## DOWNLOADED WHOLE FILE AND NOW NEED TO CLEAN AND FILTER IT.
-## NOT DONE YET - AWM 03/01/2024
 # old file that was filtered for only 1 year:
 # commerc_prop_keys <- read_csv("./Necessary_Files/Assessor_-_Commercial_Valuation_Data_20240212.csv") 
 
@@ -197,11 +204,11 @@ pins_pivot <- comval %>%
   mutate(check_me = ifelse(str_length(pins3)<14, 1, 0))
 # 3,131 obs
 
-
-
 # write_csv(pins_pivot, "./Output/manually_cleaned_incentive_pins_AWM.csv")
 
-# 707 obs after manually adding pins with weird formatting
+
+
+# OLD - 707 obs after manually adding pins with weird formatting
 # 3201 obs after manually adding pins with weird formatting when using nonfiltered assessor commercial valuation file 
 pins_pivot_cleaned <- read.csv("./Output/manually_cleaned_incentive_pins_AWM.csv") %>%
   mutate(keypin_concat = as.character(keypin_concat)) %>%
@@ -210,10 +217,17 @@ pins_pivot_cleaned <- read.csv("./Output/manually_cleaned_incentive_pins_AWM.csv
 pins_pivot_cleaned <- pins_pivot_cleaned %>% 
   mutate(check_me = ifelse(str_length(pins3) < 14, 1, 0)) %>% 
   filter(check_me == 0)
-# 696 obs
+# OLD - 696 obs
 # 3170 obs
 
 
+pins_pivot_cleaned %>% group_by(keypin_concat) %>% summarize(n = n()) %>% arrange(-n)
+# OLD - 216 key pins (aka projects)
+# 1831 key pins (aka projects)
+
+pins_pivot_cleaned <- pins_pivot_cleaned %>% 
+  mutate(pin_cleaned = str_remove_all(pins3, "-")) %>%
+  select(keypin_concat, pin_cleaned,keypin_concat2, everything())
 
 ## Filtered Commercial Valuation Dataset - Cook County Data Portal ------------------
 # ## Manually selected all property options that began with a 6, 7, or 8, for any year (2021, 2022, and 2023)
@@ -252,29 +266,52 @@ pins_pivot_cleaned <- pins_pivot_cleaned %>%
 # # 657 obs
 
 # write_csv(pins_pivot, "./Output/manually_cleaned_incentive_pins.csv")
+# 
+# # 707 obs after manually adding pins with weird formatting
+# pins_pivot_cleaned <- read.csv("./Output/manually_cleaned_incentive_pins.csv") %>%
+#   mutate(keypin_concat = as.character(keypin_concat)) %>%
+#   mutate(keypin_concat2 = str_pad(keypin_concat, 14, "left", pad = "0"))
+# 
+# pins_pivot_cleaned <- pins_pivot_cleaned %>% 
+#   mutate(check_me = ifelse(str_length(pins3) < 14, 1, 0)) %>% 
+#   filter(check_me == 0)
+# # 696 obs
+#
+# pins_pivot_cleaned %>% group_by(keypin_concat) %>% summarize(n = n()) %>% arrange(-n)
+# # 216 key pins (aka projects)
+#     
+# 
+# incentive_pins <- incentive_pins %>% 
+#   mutate(keypin_com_props = ifelse(pin %in% keypins, 1, 0),
+#          #kingpin = ifelse(pin %in% cleanpins, 1, 0),
+#          keypin_com_props2 = ifelse(pin == keypin, 1, 0)) %>%
+#   select(year,CONTROL, keypin, keypin_com_props, keypin_com_props2, pin, everything())
+# 
+# table(incentive_pins$keypin_com_props)
+# table(incentive_pins$keypin_com_props2)
+#  
 
-# 707 obs after manually adding pins with weird formatting
-pins_pivot_cleaned <- read.csv("./Output/manually_cleaned_incentive_pins.csv") %>%
-  mutate(keypin_concat = as.character(keypin_concat)) %>%
-  mutate(keypin_concat2 = str_pad(keypin_concat, 14, "left", pad = "0"))
-
-pins_pivot_cleaned <- pins_pivot_cleaned %>% 
-  mutate(check_me = ifelse(str_length(pins3) < 14, 1, 0)) %>% 
-  filter(check_me == 0)
-# 696 obs
-
-pins_pivot_cleaned %>% group_by(keypin_concat) %>% summarize(n = n()) %>% arrange(-n)
-# 216 key pins (aka projects)
-    
-
-incentive_pins <- incentive_pins %>% 
-  mutate(keypin_com_props = ifelse(pin %in% keypins, 1, 0),
-         #kingpin = ifelse(pin %in% cleanpins, 1, 0),
-         keypin_com_props2 = ifelse(pin == keypin, 1, 0)) %>%
-  select(year,CONTROL, keypin, keypin_com_props, keypin_com_props2, pin, everything())
-
-table(incentive_pins$keypin_com_props)
-table(incentive_pins$keypin_com_props2)
- 
 
 
+
+
+
+# Join PTAXSIM db with Online Commercial Valuation dataset ----------------
+
+ptax_pins <- ptax_pins %>% filter(class > 599 & class < 900)
+
+
+joined <- ptax_pins %>% left_join(pins_pivot_cleaned, by = c("pin" = "pin_cleaned")) 
+
+joined <- joined %>% select(year, pin, keypin_concat, av_mailed, av_clerk, everything())
+
+pins2021 <- joined %>% filter(year == 2021)
+
+pins2021 %>% group_by(keypin_concat) %>% summarize(n = n()) %>% arrange(-n)
+# 1763 projects, 788 NAs
+
+
+pins2019 <- joined %>% filter(year == 2019)
+
+pins2019 %>% group_by(keypin_concat) %>% summarize(n = n()) %>% arrange(-n)
+# 1576 projects, 855 NAs that didn't have keypins?
