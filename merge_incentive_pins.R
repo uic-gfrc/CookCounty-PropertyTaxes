@@ -43,7 +43,8 @@ pin_change
 # at least 47 incentive PINs changed incentive class type over the years
 # became 3,132 PINs after merging more complete file in.
 
-
+ptax_pins <- ptax_pins %>% filter(class > 599 & class < 900)
+# 45,724 obs
 
 # CMAP DATABASE -----------------------------------------------------------
 # combined PIN tables into 1 file
@@ -73,7 +74,7 @@ access_db <- access_db %>%
 
 ## Good start of making access database comparable to keypin database of assessor valuation data
 
-access_db %>% group_by(pin) %>% summarize(count = n())
+# access_db %>% group_by(pin) %>% summarize(count = n())
 
 # Join PTAXSIM & Data from CMAP -------------------------------------------
 
@@ -92,17 +93,14 @@ incentive_pins %>%
   count()    # 4,808 parcels
 
 
-# keep only PINs that existed in both databases
-innerjoin_pins <- inner_join(ptax_pins, access_db, by= c("pin" = "Concat PIN")) %>%
-  select(pin, Status, `Start Year`, class, Notes )
+# # keep only PINs that existed in both databases
+# innerjoin_pins <- inner_join(ptax_pins, access_db, by= c("pin" = "Concat PIN")) %>%
+#   select(pin, Status, `Start Year`, class, Notes )
 
-# Find pins that didn't exist in both. 
-nojoin_pins <- anti_join(ptax_pins, access_db, by= c("pin" = "Concat PIN"))
-nojoin_pins %>% group_by(year) %>% summarize(count = n())
-# almost all PINs that didn't match came from last 2 years
-
-nojoin_pins2 <- anti_join(access_db, incentive_pins, by= c("Concat PIN" = "pin"))
-nojoin_pins2 %>% group_by(CONTROL) %>% summarize(count = n())
+# # # Find pins that didn't exist in both. 
+# nojoin_pins <- anti_join(ptax_pins, access_db, by= c("pin" = "Concat PIN"))
+# nojoin_pins %>% group_by(year) %>% summarize(count = n())
+# # almost all PINs that didn't match came from last 2 years
 
 
 
@@ -111,20 +109,23 @@ incentive_pins %>% group_by(CONTROL) %>% summarize(pin_count = n()) %>% arrange(
 # 2149 obs
 # 2775 CONTROL variables when using all incentive pins ever from ptaxsim (instead of only 2021)
 
-incentive_pins %>% group_by(year, keypin) %>% summarize(pin_count = n()) %>% arrange(-pin_count)
+
+# group by created keypin variable. Uses lowest pin if multiple PINs exist within a CONTROL / project
+incentive_pins %>% group_by(keypin, year) %>% summarize(pin_count = n()) %>% arrange(-pin_count)
 # 1,253 incentive projects based on keypins.
 # 1,967 obs
-# 2,651 key pins ever
+# 2,641 key pins ever. Does not increase group count when grouping by year or keypin. 
+# That means keypins do not exist over multiple years in commercial valuation dataset.
 
 
 incentive_pins %>% group_by(year, CONTROL) %>% summarize(pin_count = n()) %>% arrange(-pin_count)
 
 
-anti_join(ptax_pins, access_db, by = "pin") %>% filter(year < 2020) %>% group_by(pin) %>% summarize(n = n())
+anti_join(ptax_pins, access_db, by = "pin") %>% filter(year < 2020) %>% group_by(pin) %>% summarize(n = n()) %>% arrange(-n)
 # 946 PINs existed in either the ptaxsim database or the cmap database.
 # Makes sense since there was a huge increase in incentive PINs in the last tax year (2022)
 # access database was last updated in end of 2020 
-# 84 PINs didn't match if using pre 2020 PINs
+# 94 PINs didn't match if using pre 2020 PINs. Not too bad. 
  
 
 
@@ -144,16 +145,22 @@ comval <- comval %>% mutate(class_char = as.character(`class(es)`),
                             first_dig = str_sub(`class(es)`, 1, 1),
                             first_dig_chr = str_sub(`class(es)`, 1, 1)) %>% 
   filter((first_dig > 5 & first_dig < 9) | (first_dig_chr > 5 & first_dig_chr < 9) )
+# 1831 obs
 
+
+## Clean up / create a class variable using the first class that appears for each keypin
 comval <- comval %>% 
+  # an odd ball that showed up with a class == 60. searched it and manually adding it and then removing it just to document it.
+  mutate(`class(es)` = ifelse(keypin_concat == "17313100110000", "522", `class(es)`)) %>%
+  
   mutate(keypin_concat = as.character(keypin),
          keypin_concat = str_remove_all(keypin_concat, "-"),
          keypin_concat = str_pad(keypin_concat, 14, "left", pad = "0"),
          class_4dig = str_sub(`class(es)`, 1, 4),
          class_3dig = str_remove_all(class_4dig, "[-,]"))  %>%
-  select(keypin_concat, class_3dig, pins, `class(es)`, everything()) %>%
-  filter()
-# 1831 obs
+  filter(class_3dig>599) %>% # remove the oddball
+  select(keypin_concat, class_3dig, pins, `class(es)`, everything()) 
+# 1830 obs
 
 table(comval$year)
 
@@ -164,9 +171,51 @@ table(comval$first_dig)
 keypins <- unique(comval$keypin_concat)
 
 
+joined_dbs <- comval %>% select(-c(year,studiounits:`4brunits`)) %>%
+  left_join(incentive_pins, by = c("keypin_concat" = "keypin") ) %>%
+  select(keypin_concat, class_3dig, pin, year, av_mailed, av_certified, CONTROL, keypin_class, everything() )
+# 26946 obs
+
+
+joined_dbs2 <- comval %>% select(-c(year,studiounits:`4brunits`)) %>%
+  right_join(incentive_pins, by = c("keypin_concat" = "keypin") ) %>%
+  select(keypin_concat, class_3dig, pin, year, av_mailed, av_certified, CONTROL, keypin_class, everything() )
+
+
+
+pins_pivot <- comval %>% 
+  mutate(pins = tolower(pins)) %>%
+  select(keypin_concat, keypin, pins) %>%
+  mutate(has_range = ifelse(str_detect(pins,"thru"), 1, 0),
+         pins = str_replace_all(pins, ",,", ",")) %>%
+  mutate(pins2 = str_split(pins, pattern = ",")) %>%
+  unnest(pins2) %>%
+  mutate( pins2 = trimws(pins2) ) %>%
+  filter(!is.na(pins2) | pins2 == " ") %>%
+  mutate(pins3 = str_split(pins2, pattern = " ")) %>%
+  unnest(pins3) %>%
+  mutate(check_me = ifelse(str_length(pins3)<14, 1, 0))
+# 3,131 obs
+
+
+
+# write_csv(pins_pivot, "./Output/manually_cleaned_incentive_pins_AWM.csv")
+
+# 707 obs after manually adding pins with weird formatting
+# 3201 obs after manually adding pins with weird formatting when using nonfiltered assessor commercial valuation file 
+pins_pivot_cleaned <- read.csv("./Output/manually_cleaned_incentive_pins_AWM.csv") %>%
+  mutate(keypin_concat = as.character(keypin_concat)) %>%
+  mutate(keypin_concat2 = str_pad(keypin_concat, 14, "left", pad = "0"))
+
+pins_pivot_cleaned <- pins_pivot_cleaned %>% 
+  mutate(check_me = ifelse(str_length(pins3) < 14, 1, 0)) %>% 
+  filter(check_me == 0)
+# 696 obs
+# 3170 obs
+
+
 
 ## Filtered Commercial Valuation Dataset - Cook County Data Portal ------------------
-
 # ## Manually selected all property options that began with a 6, 7, or 8, for any year (2021, 2022, and 2023)
 # ## using online Cook County data portal
 # prefiltered <- readxl::read_excel("./Necessary_Files/Manual_filter_assessorscommercialproperty.xlsx")
@@ -183,27 +232,24 @@ keypins <- unique(comval$keypin_concat)
 # 
 # keypins <- unique(prefiltered$keypin_concat)
 # # 306 unique keypins from CCAO property valuation
-
-
-joined_dbs <- left_join(prefiltered, incentive_pins, by = c("keypin_concat" = "keypin") )
-
-
-new_projects <- anti_join(prefiltered, incentive_pins, by = c("keypin_concat" = "keypin") )
-
-
-pins_pivot <- prefiltered %>% 
-  mutate(pins = tolower(pins)) %>%
-  select(keypin_concat, keypin, pins) %>%
-  mutate(has_range = ifelse(str_detect(pins,"thru"), 1, 0),
-  pins = str_replace_all(pins, ",,", ",")) %>%
-  mutate(pins2 = str_split(pins, pattern = ",")) %>%
-  unnest(pins2) %>%
-  mutate( pins2 = trimws(pins2) ) %>%
-  filter(!is.na(pins2) | pins2 == " ") %>%
-  mutate(pins3 = str_split(pins2, pattern = " ")) %>%
-  unnest(pins3) %>%
-  mutate(check_me = ifelse(str_length(pins3)<14, 1, 0))
-# 657 obs
+# 
+# joined_dbs <- left_join(prefiltered, incentive_pins, by = c("keypin_concat" = "keypin") )
+# 
+# new_projects <- anti_join(prefiltered, incentive_pins, by = c("keypin_concat" = "keypin") )
+# 
+# pins_pivot <- prefiltered %>% 
+#   mutate(pins = tolower(pins)) %>%
+#   select(keypin_concat, keypin, pins) %>%
+#   mutate(has_range = ifelse(str_detect(pins,"thru"), 1, 0),
+#   pins = str_replace_all(pins, ",,", ",")) %>%
+#   mutate(pins2 = str_split(pins, pattern = ",")) %>%
+#   unnest(pins2) %>%
+#   mutate( pins2 = trimws(pins2) ) %>%
+#   filter(!is.na(pins2) | pins2 == " ") %>%
+#   mutate(pins3 = str_split(pins2, pattern = " ")) %>%
+#   unnest(pins3) %>%
+#   mutate(check_me = ifelse(str_length(pins3)<14, 1, 0))
+# # 657 obs
 
 # write_csv(pins_pivot, "./Output/manually_cleaned_incentive_pins.csv")
 
