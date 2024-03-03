@@ -14,8 +14,9 @@ library(readxl)
 
 ptax_pins <- read_csv("./Output/incentivePINs_allyears.csv") # file created in helper_pull_incentivepins_allyears.R
 
+unique_ptax <- ptax_pins %>% select(pin) %>% distinct()
 
-ptax_pins %>% group_by(pin) %>% summarize(count = n()) %>% 
+ptax_pins %>% group_by(pin) %>% summarpinptax_pins %>% group_by(pin) %>% summarize(count = n()) %>% 
   arrange(-count)
 # 5869 incentive PINs have existed at some point in time.
 ptax_pins %>% filter(class > 599 & class < 900) %>% group_by(year) %>% summarize(incentive_count = n())
@@ -57,6 +58,12 @@ ptax_pins <- ptax_pins %>% filter(class > 599 & class < 900)
 access_db <- read_excel("incentivePINs_accessDB_2.xlsx")
 
 
+missing <- c("n/a", "N/A", "NA")
+
+access_db <- access_db %>% 
+  mutate(startyear_clean = ifelse(`Start Year` %in% missing, NA, `Start Year`))
+
+
 # create a keypin variable based on smallest PIN to compare to keypin used by assessor
 # ideally, each CONTROL variable would have its own Key PIN.
 access_db <- access_db %>% 
@@ -71,6 +78,12 @@ access_db <- access_db %>%
          ) %>% 
   select(pin, keypin, CONTROL, n_PINs_inControlGroup, keypin_class, Status_cleaned, parcel, block,  everything()) %>% 
   arrange(CONTROL, keypin, pin)
+
+
+unique_cmap <- access_db %>% ungroup() %>%
+  select(`Concat PIN`, CONTROL, startyear_clean) %>% distinct()
+
+
 
 ## Good start of making access database comparable to keypin database of assessor valuation data
 
@@ -229,6 +242,10 @@ pins_pivot_cleaned <- pins_pivot_cleaned %>%
   mutate(pin_cleaned = str_remove_all(pins3, "-")) %>%
   select(keypin_concat, pin_cleaned,keypin_concat2, everything())
 
+
+unique_comval <- pins_pivot_cleaned %>% select(pins3, keypin_concat) %>% distinct()
+unique_comval <- unique_comval %>% mutate(pin = str_remove_all(pins3, "-"))
+
 ## Filtered Commercial Valuation Dataset - Cook County Data Portal ------------------
 # ## Manually selected all property options that began with a 6, 7, or 8, for any year (2021, 2022, and 2023)
 # ## using online Cook County data portal
@@ -315,3 +332,16 @@ pins2019 <- joined %>% filter(year == 2019)
 
 pins2019 %>% group_by(keypin_concat) %>% summarize(n = n()) %>% arrange(-n)
 # 1576 projects, 855 NAs that didn't have keypins?
+
+
+# Create PIN Crosswalk for Project and Keypin -----------------------------
+
+
+# Combine unique incentive PINs that have existed ever, The CONTROL variable from CMAP,
+# and the keypin from the experimental commercial valuation dataset 
+
+unique_ptax
+
+unique_comval
+
+unique_cmap
