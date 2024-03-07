@@ -1,0 +1,143 @@
+---
+title: "Incentive PINs Over Time"
+subtitle: "Tax Years 2011 through 2021"
+format: 
+  html:
+    df-print: paged
+    code-fold: true
+    code-download: true
+    toc: true
+    toc-location: left
+---
+
+# Data Preparation
+
+```{r setup, warning = FALSE, output = FALSE}
+
+library(tidyverse)
+
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+```
+
+# Loading Incentive PIN Data
+
+Data on incentive-class PINs was pulled from the PTAXSIM DB through the "helper_tc_muninames.R" helper file and the incentive data frame written to ".Output/7_output_incentive_classes.csv"
+
+```{r}
+ptax_pins <- read_csv("./Output/incentivePINs_allyears.csv") # file created in helper_pull_incentivepins_allyears.R
+```
+
+## Trends in Incentive PINs Over Time
+
+`r ptax_pins %>% group_by(pin) %>% summarize(n = n()) ` 
+
+5858 incentive PINs have existed at some point in time.
+ 
+```{r}
+#| layout-ncol: 2
+
+ptax_pins %>% filter(between(class, 600,900) ) %>% group_by(year) %>% summarize(incentive_count = n())
+# 4383 existed in 2022. 
+# 3652 existed in 2021, etc.
+ptax_pins %>% filter(between(class, 600,900) ) %>% group_by(year) %>% summarize(incentive_count = n()) %>% ggplot() +geom_col(aes(y = incentive_count, x = year)) +   labs(
+    title = "Incentive PINs by Year") + theme_classic()
+
+
+#ptax_pins %>% filter(between(class, 600,900) ) %>% group_by(pin) %>% summarize(count = n()) %>% filter(count > 16)
+# 632 PINs have existed AND been incentive properties for all years in database.
+
+# ptax_pins %>% mutate(parcel = str_sub(pin, 1, 10) ) %>%
+#  group_by(parcel) %>% summarize(count = n())
+
+# ptax_pins %>% mutate(block = str_sub(pin, 1, 7) ) %>%
+#  group_by(block) %>% summarize(count = n())
+```
+
+
+```{r}
+ptax_pivot_changed <- ptax_pins %>% 
+  pivot_wider(id_cols = c(pin), names_from = "year", values_from =  "class") %>%
+  mutate(change = ifelse(as.numeric(`2021`)-as.numeric(`2006`) != 0,
+                         1, 0))%>% 
+  filter(change !=0)
+
+ptax_pivot_changed
+```
+
+
+```{r}
+
+ptax_pins %>% filter(class > 599 & class < 900) %>% group_by(pin, class) %>% 
+  summarize(count = n(),
+            first_year = first(year),
+            last_year = last(year)) %>% 
+  arrange(-count)
+# 5869 incentive PINs have existed at some point in time.
+# 6,178 groups exist when grouping by pin and class
+# implying that some incentive PINs change property classes over time
+
+
+ptax_pins %>% group_by(pin) %>% summarize(count = n()) %>% filter(count > 16)
+# 632 PINs have existed AND been incentive properties for all years in database.
+# 4,654 PINs existed during every year (doesn't matter what property class)
+
+# 5869-4654 PINs created since 2006 ~ 1200 new PINs
+
+pin_change <- ptax_pins %>% 
+  pivot_wider(id_cols = c(pin), names_from = "year", values_from =  "class") %>%
+  mutate(change = as.numeric(`2021`)-as.numeric(`2006`)) %>% 
+  filter(change !=0)
+
+pin_change
+
+
+##  Grouped by PIN and 1st digit of class (aka major class) -----------------
+unique_ptax_MC <- ptax_pins %>% 
+  mutate(majorclass = str_sub(class, 1, 1)) %>%
+  group_by(pin, majorclass) %>% 
+  summarize(count = n(),
+            first_year = first(year),
+            last_year = last(year)) %>% ungroup()
+
+unique_ptax_w_MC <- unique_ptax_MC %>% 
+  group_by(pin) %>%
+  mutate(var2 = cumsum(row_number() == 1 | (majorclass != dplyr::lag(majorclass)))) %>% 
+  ungroup()
+
+
+unique_ptax_wide_MC <- unique_ptax_w_MC %>%
+  pivot_wider(id_cols = "pin",
+              names_from = var2,
+              values_from = c(majorclass, count, first_year, last_year))
+
+
+## Grouped by PIN and class ----------------------------------------------
+unique_ptax_w_class <- ptax_pins %>% 
+  group_by(pin, class) %>% 
+  summarize(count = n(),
+            first_year = first(year),
+            last_year = last(year)) %>% 
+  ungroup() %>%
+  arrange(pin, first_year)
+
+  
+unique_ptax_w_class <- unique_ptax_w_class %>% group_by(pin) %>%
+  mutate(var2 = cumsum(row_number() == 1 | (class != dplyr::lag(class))))
+
+
+unique_ptax_wide <- unique_ptax_w_class %>%
+  pivot_wider(id_cols = "pin",
+              names_from = var2,
+              values_from = c(class, count, first_year, last_year))
+
+
+
+```
+
+```{r}
+unique_ptax_wide_MC
+
+unique_ptax_wide
+```
+
