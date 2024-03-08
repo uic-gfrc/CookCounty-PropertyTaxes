@@ -30,17 +30,20 @@ ptax_pins <- read_csv("./Output/incentivePINs_allyears.csv") # file created in h
 
 ## Trends in Incentive PINs Over Time
 
-`r ptax_pins %>% group_by(pin) %>% summarize(n = n()) ` 
+`r ptax_pins %>% distinct(pin) %>% summarize(n = n())` distinct PINs have existed with an incentive property class at some point in time. 
 
-5858 incentive PINs have existed at some point in time.
+Only 1,527 PINs were incentive property classes in 2006.   
+4,383 PINs had incentive classification by 2022.   
+
  
 ```{r}
 #| layout-ncol: 2
+#| column: page
 
-ptax_pins %>% filter(between(class, 600,900) ) %>% group_by(year) %>% summarize(incentive_count = n())
+ptax_pins %>% filter(between(class, 600,899) ) %>% group_by(year) %>% summarize(incentive_count = n())
 # 4383 existed in 2022. 
 # 3652 existed in 2021, etc.
-ptax_pins %>% filter(between(class, 600,900) ) %>% group_by(year) %>% summarize(incentive_count = n()) %>% ggplot() +geom_col(aes(y = incentive_count, x = year)) +   labs(
+ptax_pins %>% filter(between(class, 600,899) ) %>% group_by(year) %>% summarize(incentive_count = n()) %>% ggplot() +geom_col(aes(y = incentive_count, x = year)) +   labs(
     title = "Incentive PINs by Year") + theme_classic()
 
 
@@ -58,17 +61,28 @@ ptax_pins %>% filter(between(class, 600,900) ) %>% group_by(year) %>% summarize(
 ```{r}
 ptax_pivot_changed <- ptax_pins %>% 
   pivot_wider(id_cols = c(pin), names_from = "year", values_from =  "class") %>%
-  mutate(change = ifelse(as.numeric(`2021`)-as.numeric(`2006`) != 0,
+  mutate(change = ifelse(as.numeric(`2022`)-as.numeric(`2006`) != 0,
                          1, 0))%>% 
   filter(change !=0)
 
 ptax_pivot_changed
+
+ptax_pivot_changed_wNAs <- ptax_pins %>% 
+  filter(between(class, 600,899)) %>%
+  pivot_wider(id_cols = c(pin), names_from = "year", values_from =  "class") %>%
+  mutate(change = ifelse(as.numeric(`2022`)-as.numeric(`2006`) != 0,
+                         1, 0))%>% 
+  filter(change !=0)
+
+ptax_pivot_changed_wNAs
 ```
 
 
 ```{r}
 
-ptax_pins %>% filter(class > 599 & class < 900) %>% group_by(pin, class) %>% 
+ptax_pins %>% 
+  filter(class > 599 & class < 900) %>% 
+  group_by(pin, class) %>% 
   summarize(count = n(),
             first_year = first(year),
             last_year = last(year)) %>% 
@@ -78,18 +92,13 @@ ptax_pins %>% filter(class > 599 & class < 900) %>% group_by(pin, class) %>%
 # implying that some incentive PINs change property classes over time
 
 
-ptax_pins %>% group_by(pin) %>% summarize(count = n()) %>% filter(count > 16)
+ptax_pins %>% 
+  filter(class > 599 & class < 900) %>% 
+  group_by(pin) %>% summarize(count = n()) %>% filter(count > 16)
 # 632 PINs have existed AND been incentive properties for all years in database.
 # 4,654 PINs existed during every year (doesn't matter what property class)
 
-# 5869-4654 PINs created since 2006 ~ 1200 new PINs
-
-pin_change <- ptax_pins %>% 
-  pivot_wider(id_cols = c(pin), names_from = "year", values_from =  "class") %>%
-  mutate(change = as.numeric(`2021`)-as.numeric(`2006`)) %>% 
-  filter(change !=0)
-
-pin_change
+# 5869-4654 = around 1200 PINs created since 2006
 
 
 ##  Grouped by PIN and 1st digit of class (aka major class) -----------------
@@ -141,3 +150,189 @@ unique_ptax_wide_MC
 unique_ptax_wide
 ```
 
+```{r}
+pins_pivot_cleaned <- read.csv("./Output/manually_cleaned_incentive_pins_AWM.csv") %>%
+  mutate(keypin_concat = as.character(keypin_concat)) %>%
+  mutate(keypin_concat2 = str_pad(keypin_concat, 14, "left", pad = "0"))
+
+pins_pivot_cleaned <- pins_pivot_cleaned %>% 
+  mutate(check_me = ifelse(str_length(pins3) < 14, 1, 0)) %>% 
+  filter(check_me == 0)
+# OLD count - 696 obs
+# 3170 obs
+
+
+# number of pins associated with the key pin
+pins_pivot_cleaned %>% group_by(keypin_concat) %>% summarize(n = n()) %>% arrange(-n)
+# OLD - 216 key pins (aka projects)
+# 1831 key pins (aka projects)
+
+pins_pivot_cleaned <- pins_pivot_cleaned %>% 
+  mutate(pin_cleaned = str_remove_all(pins3, "-")) %>%
+  select(keypin_concat, pin_cleaned) %>%
+  mutate(keypin_concat = as.character(keypin_concat),
+         keypin_concat = str_pad(keypin_concat, 14, side = "left", pad = "0"))
+
+
+unique_comval <- pins_pivot_cleaned %>% select(pin_cleaned, keypin_concat) %>% 
+  distinct() %>%
+  mutate(keypin_concat = as.character(keypin_concat),
+         keypin_concat = str_pad(keypin_concat, 14, side = "left", pad = "0"))
+```
+
+
+```{r}
+# Create PIN Crosswalk for Project and Keypin -----------------------------
+
+
+# Combine unique incentive PINs that have existed ever, The CONTROL variable from CMAP,
+# and the keypin from the experimental commercial valuation dataset 
+
+head(unique_ptax_wide)
+
+head(unique_comval)
+
+cleanjoin <- full_join(unique_ptax_wide, unique_comval, by = c("pin" = "pin_cleaned"))
+# 6,064 obs
+
+cleanjoin <- cleanjoin %>% select(keypin = keypin_concat, pin, 
+                                  class_1, first_year_1, last_year_1, yrs_existed_1 = count_1,
+                                  class_2, first_year_2, last_year_2, yrs_existed_2 = count_2,
+                                  class_3, first_year_3, last_year_3, yrs_existed_3 = count_3,
+                                  class_4, first_year_4, last_year_4, yrs_existed_4 = count_4,
+                                  class_5, first_year_5, last_year_5, yrs_existed_5 = count_5,
+                                  class_6, first_year_6, last_year_6, yrs_existed_6 = count_6,
+
+                                  )
+# cleanjoin %>% distinct(pin)         
+# 6062 distinct pins
+
+# write_csv(cleanjoin, "./Output/project_pins_wide.csv")
+
+ cleanjoin %>% filter(is.na(first_year_1))       
+# 193 obs are missing "first_year" variable for its first occurrence
+# meaning that they do not exist as incentives in the PTAXSIM database.
+# BUT they are associated with an incentive project where all the pins are not incentive PINs
+ 
+# non-incentive PINs get in there from unnesting the comval dataset in previous steps
+```
+
+193 observations are missing the `first_year` variable for the first occurrence, that means they were not a PIN that was in the ptaxsim incentive pins.   
+Non-incentive PINs get in there from unnesting the comval dataset in previous steps Since the `comval` data includes incentive and nonincentive properties associated with the project.   
+
+
+```{r PINcrosswalk}
+# comval dataset included all pins associated with a keypin but does not clarify which pin is which class type
+nonincent_pins <- cleanjoin %>% filter(is.na(first_year_1))       # 183 obs are missing "years existed" variable.
+# these PINs are associated with incentive projects, but were not classified as incentive PINs.
+
+cleanjoin <- cleanjoin %>% filter(!is.na(first_year_1))    # 5871 remaining unique PINs that were incentives in PTAXSIM database at some point
+cleanjoin %>% distinct(pin)                                 # 5869 unique pins
+```
+
+
+```{r}
+# now take the ones taht didn't merge with the comval data and bring in the CMAP data?
+nokeypins <- cleanjoin %>% filter(is.na(keypin))
+
+cleanjoin <- cleanjoin %>% filter(!is.na(keypin))
+# 2973 pins joined nicely between ptaxsim and comval 
+
+nokeypins # 2898 pins do not have key pins 
+#(probably expired before 2021 when comval dataset begins recording data)
+```
+
+
+
+```{r}
+access_db <- readxl::read_excel("./Necessary_Files/incentivePINs_accessDB_2.xlsx")
+
+
+missing <- c("n/a", "N/A", "NA")
+
+access_db <- access_db %>% 
+  mutate(startyear_clean = ifelse(`Start Year` %in% missing, NA, `Start Year`))
+
+#table(access_db$Status_cleaned)
+#access_db_filtered <- access_db %>% filter(Status_cleaned != c("Void", "Excluded", "Divided", "Not Incentive Property", "No Matching Record"))
+
+keypinless_join <-nokeypins %>% 
+  inner_join(access_db, by = c("pin" = "Concat PIN")) %>% 
+  select(CONTROL, pin, class_1:yrs_existed_6) %>%
+  rename(keypin = CONTROL)
+
+keypinless_join # 2401 
+
+#cmap_groups <- 
+  
+keypinless_join %>% group_by(keypin) %>% summarize(n=n()) %>% arrange(-n)
+# 1,089 groups
+```
+
+```{r}
+both_groups <- rbind(cleanjoin, keypinless_join)
+```
+
+
+```{r}
+both_groups %>% group_by(pin) %>% mutate(n=n())  %>% arrange(-n) %>% filter(n>1)
+
+both_groups %>% group_by(keypin) %>% summarize(n=n()) %>% arrange(-n)
+
+```
+
+```{r}
+# create a keypin variable based on smallest PIN to compare to keypin used by assessor
+# ideally, each CONTROL variable would have its own Key PIN.
+access_db <- access_db %>% 
+  arrange(Status_cleaned, `Concat PIN`) %>% # `Status Cleaned` was manually created in Excel & based off of the `Status` variable.
+  group_by(CONTROL, Status_cleaned) %>% 
+  mutate(keypin = first(`Concat PIN`), # ideally grabs lowest PIN since that appears to mostly be how the assessor does it. But not always. 
+         n_PINs_inControlGroup = n(),  # Can include the same PIN multiple times!! 
+         keypin_class = first(Class)) %>%
+  ungroup() %>% 
+  mutate(pin = `Concat PIN`,
+         parcel = str_sub(pin, 1, 10),
+         block = str_sub(pin, 1, 7)
+         ) %>% 
+  select(pin, keypin, CONTROL, n_PINs_inControlGroup, keypin_class, Status_cleaned, parcel, block,  everything()) %>% 
+  arrange(CONTROL, keypin, pin)
+
+access_db %>% distinct(block) %>% summarize(n = n())
+# 2172 unique blocks
+
+access_db %>% ungroup() %>% distinct(pin) %>% summarize(n = n())
+# 9205 unique pins
+
+unique_cmap <- access_db %>% 
+  ungroup() %>%
+  reframe(pin, CONTROL, Class, Status_cleaned, startyear_clean, .by = pin) %>%
+ # select(pin, CONTROL, Class, Status_cleaned, startyear_clean) %>% 
+  distinct() %>% 
+  arrange(pin)
+
+
+unique_access <- access_db %>% 
+  group_by(pin) %>%
+  mutate(var2 = cumsum(row_number() == 1 | (CONTROL != dplyr::lag(CONTROL)))) %>% 
+  arrange(pin) %>% ungroup() %>% filter(!is.na(var2))
+
+
+unique_access_wide <- unique_access %>%
+  pivot_wider(id_cols = "pin",
+              names_from = var2,
+              values_from = c(CONTROL, Class, Status_cleaned, startyear_clean))
+
+unique_access %>% filter(is.na(var2))%>%summarize(n=n)
+
+```
+
+
+
+
+```{r PINcrosswalk}
+cleanjoin2 <- full_join(cleanjoin, unique_cmap)
+
+# write.csv(cleanjoin, "./Output/incentive_crosswalk.csv")
+
+```
