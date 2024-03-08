@@ -323,15 +323,41 @@ unique_access_wide <- unique_access %>%
               names_from = var2,
               values_from = c(CONTROL, Class, Status_cleaned, startyear_clean))
 
-unique_access %>% filter(is.na(var2))%>%summarize(n=n)
+unique_access %>% filter(is.na(var2))%>%summarize(n=n())
 
 ```
 
 
+# projects in 2022
+
+```{r}
+incentpins_2022 <- read_csv("./Output/incentivePINs_allyears.csv") %>% filter(year == 2022)
+
+projects <- both_groups %>% select(keypin, pin) %>% distinct()
+
+incentpins_2022 <- incentpins_2022 %>% left_join(projects, by = "pin") %>% select(keypin, pin, class, everything())
+incentpins_2022
+```
 
 
-```{r PINcrosswalk}
-cleanjoin2 <- full_join(cleanjoin, unique_cmap)
+```{r}
+source("helper_tc_muninames_2022.R")
+
+incent_projects_2022 <- incentpins_2022 %>% group_by(keypin) %>%
+  summarize(tax_code_num = as.character(first(tax_code_num)), 
+            tax_bill_total = sum(tax_bill_total),
+           av_mailed = sum(av_mailed), av_certified = sum(av_certified), av_board = sum(av_board), av_clerk = sum(av_clerk), exe_abate = sum(exe_abate), pins_inproject = n() ) %>% left_join(tc_muninames)
+
+incent_projects_2022 %>% 
+  group_by(clean_name) %>%   
+  summarize(tax_code_num = as.character(first(tax_code_num)), 
+            tax_bill_total = sum(tax_bill_total),
+           av_mailed = sum(av_mailed), av_certified = sum(av_certified), av_board = sum(av_board), av_clerk = sum(av_clerk), exe_abate = sum(exe_abate), projects_inMuni = n(),pins_inMuni = sum(pins_inproject) )
+```
+
+
+```{r}
+#cleanjoin2 <- full_join(cleanjoin, unique_cmap)
 
 # write.csv(cleanjoin, "./Output/incentive_crosswalk.csv")
 
