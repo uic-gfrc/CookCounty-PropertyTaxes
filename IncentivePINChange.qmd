@@ -1,13 +1,9 @@
 ---
 title: "Incentive PINs Over Time"
-subtitle: "Tax Years 2011 through 2021"
 format: 
-  html:
+  html: 
     df-print: paged
     code-fold: true
-  #  code-download: true
-    toc: true
-   # toc-location: left
 ---
 
 # Data Preparation
@@ -32,15 +28,12 @@ ptax_pins <- read_csv("./Output/incentivePINs_allyears.csv")
 
 ## Trends in Incentive PINs Over Time
 
-`r ptax_pins %>% distinct(pin) %>% summarize(n = n())` distinct PINs have existed with an incentive property class at some point in time. 
+Only 1,527 PINs were incentive property classes in 2006.\
+4,383 PINs had incentive classification by 2022.
 
-Only 1,527 PINs were incentive property classes in 2006.   
-4,383 PINs had incentive classification by 2022.   
-
- 
 ```{r}
-#| layout-ncol: 2
 #| column: page
+#| layout-ncol: 2
 
 ptax_pins %>% filter(between(class, 600,899) ) %>% group_by(year) %>% summarize(incentive_count = n())
 # 4383 existed in 2022. 
@@ -58,7 +51,6 @@ ptax_pins %>% filter(between(class, 600,899) ) %>% group_by(year) %>% summarize(
 # ptax_pins %>% mutate(block = str_sub(pin, 1, 7) ) %>%
 #  group_by(block) %>% summarize(count = n())
 ```
-
 
 ```{r}
 #| column: page
@@ -82,14 +74,15 @@ ptax_pivot_changed_wNAs <- ptax_pins %>%
 ptax_pivot_changed_wNAs
 ```
 
-- 632 PINs have had an incentive class that has not changed since 2006 (i.e. the earliest tax year in PTAXSIM)  
+-   632 PINs have had an incentive class that has not changed since 2006 (i.e. the earliest tax year in PTAXSIM)
 
-
-- 4,654 PINs existed during every year (doesn't matter what property class they were)
-  - implies the division, splitting, or creation of PINs over time 
-
+-   4,654 PINs existed during every year (doesn't matter what property class they were)
+-   implies the division, splitting, or creation of PINs over time
 
 ```{r}
+#| layout-ncol: 2
+
+
 ptax_pins %>% 
   filter(class > 599 & class < 900) %>% 
   group_by(pin, class) %>% 
@@ -110,13 +103,10 @@ ptax_pins %>%
 # 5869-4654 = around 1200 PINs created since 2006
 ```
 
-
 ```{r}
 #| label: tbl-pinchange-byMajorClass
-#| tbl-cap: "PINs that had an Incentive Class at some Point in Time" 
-#| tbl-subcap: "Shows when PIN changes major class property type"
+#| tbl-cap: "PINs (by Major Class) that had an Incentive Class at some Point in Time" 
 
-##  Grouped by PIN and 1st digit of class (aka major class) -----------------
 unique_ptax_MC <- ptax_pins %>% 
   mutate(majorclass = str_sub(class, 1, 1)) %>%
   group_by(pin, majorclass) %>% 
@@ -140,13 +130,10 @@ unique_ptax_wide_MC
 
 ```
 
-
 ```{r}
 #| label: tbl-pinchange
 #| tbl-cap: "PINs that had an Incentive Class at some Point in Time" 
 
-
-## Grouped by PIN and class ----------------------------------------------
 unique_ptax_w_class <- ptax_pins %>% 
   group_by(pin, class) %>% 
   summarize(count = n(), # number of years the PIN shows up in the data set
@@ -177,7 +164,6 @@ unique_ptax_wide
 
 
 ```
-
 
 ```{r}
 # read in the cleaned file with keypins and pins from the commercial valuation dataset
@@ -236,7 +222,6 @@ unique_comval %>% group_by(keypin_concat) %>% summarize(n = n()) %>% arrange(-n)
 
 ```{r}
 #| column: page
-#| layout-ncol: 2
 
 # Combine unique incentive PINs that have existed ever, The CONTROL variable from CMAP,
 # and the keypin from the experimental commercial valuation dataset 
@@ -246,16 +231,12 @@ head(unique_ptax_wide)
 head(unique_comval)
 ```
 
-
 ```{r}
 cleanjoin <- full_join(unique_ptax_wide, unique_comval, by = c("pin" = "pin_cleaned"))
 # 5871 obs
 
 clean_join <- cleanjoin %>% mutate(parcel = str_sub(pin, 1, 10),
                      block = str_sub(pin, 1, 7))
-
-# write_csv(cleanjoin, "./Output/project_pins_wide.csv")
-
 ```
 
 ```{r}
@@ -274,8 +255,7 @@ cleanjoin <- cleanjoin %>% filter(!is.na(keypin_concat)) %>% mutate(needs_keypin
 # Projects in 2022
 
 ```{r}
-incentpins_2022 <- # read_csv("./Output/incentivePINs_allyears.csv") %>% 
-  unique_ptax_w_class %>%
+incentpins_2022 <- unique_ptax_w_class %>%
         filter(class > 599 & class < 900) %>%
   filter(last_year == 2022) %>%  # implies still existed in 2022
   left_join(unique_comval, by = c("pin" = "pin_cleaned") ) %>%
@@ -310,8 +290,6 @@ incentpins_2022 %>%
   filter(is.na(keypin_concat)) # 1400+ parcels missing keypins
 ```
 
-
-
 Lets try seeing if the access file passed on to use from CMAP has project identifiers we can match to some pins.
 
 ```{r eval=FALSE, include=FALSE}
@@ -340,7 +318,6 @@ access_db %>% ungroup() %>% distinct(pin) %>% summarize(n = n())
 unique_cmap <- access_db %>% 
   ungroup() %>%
   reframe(pin, CONTROL, Class, Status_cleaned, startyear_clean, .by = pin) %>%
- # select(pin, CONTROL, Class, Status_cleaned, startyear_clean) %>% 
   distinct() %>% 
   arrange(pin)
 
@@ -359,7 +336,6 @@ unique_access_wide <- unique_access %>%
 unique_access %>% filter(is.na(var2)) %>% summarize(n=n())
 
 ```
-
 
 ```{r}
 access_db <- readxl::read_excel("./Necessary_Files/incentivePINs_accessDB_2.xlsx")
@@ -407,22 +383,6 @@ keypinless_join %>% arrange(pin, keypin) %>%
 ```
 
 
-```{r eval=FALSE, include=FALSE}
-keypinless_join %>% 
-  arrange(pin, keypin) %>%
-  group_by(pin) %>%
-  mutate(n=n(), # number of times the PIN shows up in the access database
-            first_project = first(keypin),
-            last_project = last(keypin)
-         ) %>%
-  arrange(block) %>% 
-  select(-c(Status, 'Start Year':is_keypin_online))
-# 408 additional project IDs
-# still have 767 PINs that don't have a project ID
- 
-```
-
-
 ```{r}
 project_pins_accessDB <- keypinless_join %>% 
   arrange(pin, keypin) %>%
@@ -438,19 +398,16 @@ project_pins_accessDB <- keypinless_join %>%
 project_pins_accessDB
 ```
 
-
 ```{r}
 # there are 345 project identifiers for the 716 pins that
 project_pins_accessDB %>% group_by(keypin_concat) %>% summarize(pincount = n())
 ```
 
+
 ```{r}
 both_groups <- rbind(comval_projects_2022, project_pins_accessDB)
-```
 
 
-
-```{r}
 source("helper_tc_muninames_2022.R")
 
 
@@ -473,7 +430,7 @@ incentpins_2022 %>% arrange(-tax_bill_total)
 
 ```
 
-3,731 PINs merged nicely with a project identifier. 
+3,731 PINs merged nicely with a project identifier.
 
 ```{r}
 #| label: tbl-incentivepins
@@ -481,16 +438,10 @@ incentpins_2022 %>% arrange(-tax_bill_total)
 #| column: page
 
 incentpins_2022
-# nokeypin_pins <- incentpins_2022 %>% filter(keypin == "No KeyPIN") %>% arrange(-tax_bill_total)
-# nokeypin_pins
-# 
-# incentpins_2022 %>% filter(keypin != "No KeyPIN")  %>% arrange(-tax_bill_total)
 ```
-
 
 ```{r}
 #| label: tbl-incentiveprojects
-#| tbl-cap: "Incentive Project Values"
 #| column: page
 
 
@@ -511,11 +462,10 @@ datatable(incent_projects_2022, rownames= FALSE, colnames = c('Keypin' = 'keypin
   formatCurrency(c('Project Tax Bill', 'AV Mailed', 'AV Certified', 'AV Board', 'AV Clerk'), digits = 0)
 ```
 
-
-```{r eval=FALSE}
+```{r}
 #| label: tbl-projectsummary
-#| tbl-cap: "Project Level: Summed AV and Taxbills of PINs within a Project"
 #| column: page
+#| tbl-cap: "Project Level: Summed AV and Taxbills of PINs within a Project"
 
 projectlevelsummary <- incent_projects_2022 %>% 
     filter(class > 599 & class < 900) %>%
@@ -531,32 +481,34 @@ projectlevelsummary <- incent_projects_2022 %>%
 
 
 datatable(projectlevelsummary,
-          rownames= FALSE, 
+          rownames= FALSE,
           colnames = c('Municipality' = 'clean_name', 'Class'='class', 'Keypin' = 'keypin', 'Tax Code' = 'tax_code_num', 'Project Tax Bill' = 'project_taxbill', 'AV Mailed' = 'proj_av_mailed', 'AV Certified' = 'proj_av_certified', 'AV Board' = 'proj_av_board', 'AV Clerk' = 'proj_av_clerk', 'Abatements' = 'proj_exe_abate', 'PIN Count per Project' = 'pins_inproject')) %>%
  # formatRound(c(3), digits = 0) %>%
   formatCurrency(c('Project Tax Bill', 'AV Mailed', 'AV Certified', 'AV Board', 'AV Clerk'), digits = 0)
 ```
 
-```{r eval=FALSE}
-#| label: tbl-munilevel_projects
-#| tbl-cap: "Incentive Projects in Municipalities"
+```{r}
+#| label: tbl-munilevel-projects
 #| column: page
-
+#| tbl-cap: "Incentive Projects in Municipalities"
 
 muni_projects <- incent_projects_2022 %>% 
   filter(class > 599 & class < 900) %>%
   group_by(clean_name) %>%   
   summarize(# tax_code_num = as.character(first(tax_code_num)), 
           muni_incentive_taxes_collected = sum(tax_bill_total),
-           muni_av_mailed = sum(av_mailed), muni_av_certified = sum(av_certified), muni_av_board = sum(av_board), muni_av_clerk = sum(av_clerk), muni_exe_abate = sum(exe_abate), projects_inMuni = n(), pins_inMuni = sum(pins_inproject) ) %>% 
-  select(clean_name, #keypin,
-         muni_incentive_taxes_collected, muni_av_mailed, muni_av_clerk, everything())
+           muni_av_mailed = sum(av_mailed),
+          muni_av_certified = sum(av_certified), 
+          muni_av_board = sum(av_board), 
+          muni_av_clerk = sum(av_clerk),
+          muni_exe_abate = sum(exe_abate),
+          projects_inMuni = n(),
+          pins_inMuni = sum(pins_inproject) ) %>% 
+  select(clean_name, muni_incentive_taxes_collected, muni_av_mailed, muni_av_clerk, everything())
 
 datatable(muni_projects,
-          rownames= FALSE, 
+          rownames= FALSE,
           colnames = c('Municipality' = 'clean_name', 'Incentive Projects Taxes Collected' = 'muni_incentive_taxes_collected', 'AV Mailed' = 'muni_av_mailed', 'AV Certified' = 'muni_av_certified', 'AV Board' = 'muni_av_board', 'AV Clerk' = 'muni_av_clerk', 'Abatements' = 'muni_exe_abate', '# Incent. Projects in Muni' = 'projects_inMuni', '# PINs in Muni with Incentives' = 'pins_inMuni')) %>%
  # formatRound(c(3), digits = 0) %>%
   formatCurrency(c('Incentive Projects Taxes Collected', 'AV Mailed', 'AV Certified', 'AV Board', 'AV Clerk'), digits = 0)
 ```
-
-
