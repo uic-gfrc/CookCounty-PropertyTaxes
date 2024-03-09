@@ -5,9 +5,9 @@ format:
   html:
     df-print: paged
     code-fold: true
-    code-download: true
+  #  code-download: true
     toc: true
-    toc-location: left
+   # toc-location: left
 ---
 
 # Data Preparation
@@ -63,7 +63,7 @@ ptax_pins %>% filter(between(class, 600,899) ) %>% group_by(year) %>% summarize(
 ```{r}
 #| column: page
 #| layout-ncol: 2
-#| 
+
 ptax_pivot_changed <- ptax_pins %>% 
   pivot_wider(id_cols = c(pin), names_from = "year", values_from =  "class") %>%
   mutate(change = ifelse(as.numeric(`2022`)-as.numeric(`2006`) != 0,
@@ -257,6 +257,7 @@ clean_join <- cleanjoin %>% mutate(parcel = str_sub(pin, 1, 10),
 # write_csv(cleanjoin, "./Output/project_pins_wide.csv")
 
 ```
+
 ```{r}
 # now take the ones that didn't merge with the comval data and bring in the CMAP data?
 nokeypins <- cleanjoin %>% filter(is.na(keypin_concat))
@@ -264,7 +265,7 @@ nokeypins <- cleanjoin %>% filter(is.na(keypin_concat))
 #(probably expired before 2021 when comval dataset begins recording data)
 
 
-cleanjoin <- cleanjoin %>% filter(!is.na(keypin_concat))
+cleanjoin <- cleanjoin %>% filter(!is.na(keypin_concat)) %>% mutate(needs_keypin = 0)
 # 2973 pins joined nicely between ptaxsim and comval 
 
 
@@ -286,6 +287,12 @@ incentpins_2022 %>%
       filter(class > 599 & class < 900) %>%
   filter(is.na(keypin_concat))
 # 1483 missing keypin
+
+comval_projects_2022 <- incentpins_2022 %>%   
+  filter(class > 599 & class < 900) %>%
+  filter(!is.na(keypin_concat)) %>% 
+  mutate(needs_keypin = 0 ) %>% select(pin, keypin_concat, needs_keypin)
+
 ```
 
 We could attempt to make project IDs that were based only on the idea of incentive PINs in close proximity to other incentive PINs by grouping by Parcel (first 10-digits of PIN) or Block (first 7-digits of PIN)
@@ -306,83 +313,6 @@ incentpins_2022 %>%
 
 
 Lets try seeing if the access file passed on to use from CMAP has project identifiers we can match to some pins.
-
-```{r}
-access_db <- readxl::read_excel("./Necessary_Files/incentivePINs_accessDB_2.xlsx")
-
-
-missing <- c("n/a", "N/A", "NA")
-
-access_db <- access_db %>% 
-  mutate(startyear_clean = ifelse(`Start Year` %in% missing, NA, `Start Year`))
-
-#table(access_db$Status_cleaned)
-#access_db_filtered <- access_db %>% filter(Status_cleaned != c("Void", "Excluded", "Divided", "Not Incentive Property", "No Matching Record"))
-
-needs_keypin<- incentpins_2022 %>% 
-      filter(class > 599 & class < 900) %>%
-  filter(is.na(keypin_concat))
-# 1483 obs need a project ID
-
-keypinless_join <- needs_keypin %>% 
-  left_join(access_db, by = c("pin" = "Concat PIN")) %>% 
-  select(CONTROL, pin, everything()) %>%
-  rename(keypin = CONTROL, yrs_exist_inPTAX = count)
-
-keypinless_join # 2401 
-
-
-keypinless_join %>% arrange(pin, keypin) %>%
-  group_by(pin) %>% 
-  summarize(n=n(), # number of times the PIN shows up in the access database
-            first_project = first(keypin),
-            last_project = last(keypin))  %>% 
-  arrange(first_project)
-# 1483 unique PINs still
-
-
-## Visually inspected to see if pins
-keypinless_join %>% arrange(pin, keypin) %>%
-  group_by(pin) %>% 
-  summarize(n=n(), # number of times the PIN shows up in the access database
-            first_project = first(keypin),
-            last_project = last(keypin))  %>% 
-  arrange(first_project) %>% 
-  filter(n>1)
-# 106 pins show up in multiple projects as their project or status changed.
-
-
-keypinless_join %>% arrange(pin, keypin) %>%
-  group_by(pin) %>% 
-  mutate(n=n(), # number of times the PIN shows up in the access database
-            first_project = first(keypin),
-            last_project = last(keypin)) %>% 
-  arrange(block) %>% select(-c(Status, 'Start Year':is_keypin_online))
-# 408 additional project IDs
-# still have 767 PINs that don't have a project ID
-
-
-keypinless_join %>% arrange(pin, keypin) %>%
-  group_by(pin) %>% 
-  summarize(n=n(), # number of times the PIN shows up in the access database
-            first_project = first(keypin),
-            last_project = last(keypin)) %>% 
-  filter(is.na(first_project)) %>% select(pin) %>% 
-  distinct()
-# there are 1483 distinct PINs that needed projects
-```
-
-```{r}
-both_groups <- rbind(cleanjoin, keypinless_join)
-```
-
-
-```{r eval=FALSE, include=FALSE}
-both_groups %>% group_by(pin) %>% mutate(n=n())  %>% arrange(-n) %>% filter(n>1)
-
-both_groups %>% group_by(keypin) %>% summarize(n=n()) %>% arrange(-n)
-
-```
 
 ```{r eval=FALSE, include=FALSE}
 # create a keypin variable based on smallest PIN to compare to keypin used by assessor
@@ -431,7 +361,92 @@ unique_access %>% filter(is.na(var2)) %>% summarize(n=n())
 ```
 
 
-# projects in 2022
+```{r}
+access_db <- readxl::read_excel("./Necessary_Files/incentivePINs_accessDB_2.xlsx")
+
+
+missing <- c("n/a", "N/A", "NA")
+
+access_db <- access_db %>% 
+  mutate(startyear_clean = ifelse(`Start Year` %in% missing, NA, `Start Year`))
+
+#table(access_db$Status_cleaned)
+#access_db_filtered <- access_db %>% filter(Status_cleaned != c("Void", "Excluded", "Divided", "Not Incentive Property", "No Matching Record"))
+
+needs_keypin<- incentpins_2022 %>% 
+      filter(class > 599 & class < 900) %>%
+  filter(is.na(keypin_concat))
+# 1483 obs from PTAXSIM in 2022 need a project ID
+
+keypinless_join <- needs_keypin %>% 
+  left_join(access_db, by = c("pin" = "Concat PIN")) %>% 
+  select(CONTROL, pin, everything()) %>%
+  rename(keypin = CONTROL, yrs_exist_inPTAX = count)
+
+keypinless_join # 1600 
+
+
+keypinless_join %>% arrange(pin, keypin) %>%
+  group_by(pin) %>% 
+  summarize(n=n(), # number of times the PIN shows up in the access database
+            first_project = first(keypin),
+            last_project = last(keypin))  %>% 
+  arrange(first_project)
+# 1483 unique PINs still
+
+
+## Visually inspected to see if pins
+keypinless_join %>% arrange(pin, keypin) %>%
+  group_by(pin) %>% 
+  summarize(n=n(), # number of times the PIN shows up in the access database
+            first_project = first(keypin),
+            last_project = last(keypin))  %>% 
+  arrange(first_project) %>% 
+  filter(n>1)
+# 106 pins show up in multiple projects as their project or status changed.
+```
+
+
+```{r eval=FALSE, include=FALSE}
+keypinless_join %>% 
+  arrange(pin, keypin) %>%
+  group_by(pin) %>%
+  mutate(n=n(), # number of times the PIN shows up in the access database
+            first_project = first(keypin),
+            last_project = last(keypin)
+         ) %>%
+  arrange(block) %>% 
+  select(-c(Status, 'Start Year':is_keypin_online))
+# 408 additional project IDs
+# still have 767 PINs that don't have a project ID
+ 
+```
+
+
+```{r}
+project_pins_accessDB <- keypinless_join %>% 
+  arrange(pin, keypin) %>%
+  group_by(pin) %>% 
+  summarize(n=n(), # number of times the PIN shows up in the access database
+            #first_project = first(keypin),
+            keypin_concat = last(keypin)) %>% 
+  mutate(needs_keypin = ifelse(is.na(keypin_concat),1,0)) %>%
+  select(pin, keypin_concat, needs_keypin) %>% 
+  distinct() 
+# there are 1483 distinct PINs that needed projects
+# and 716 that now have identifiers
+project_pins_accessDB
+```
+
+
+```{r}
+# there are 345 project identifiers for the 716 pins that
+project_pins_accessDB %>% group_by(keypin_concat) %>% summarize(pincount = n())
+```
+
+```{r}
+both_groups <- rbind(comval_projects_2022, project_pins_accessDB)
+```
 
 
 
@@ -440,20 +455,21 @@ source("helper_tc_muninames_2022.R")
 
 
 projects <- both_groups %>% 
-  select(keypin, pin) %>% distinct() %>% 
-  mutate(keypin = ifelse(is.na(keypin),"No KeyPIN", as.character(keypin)))
+  select(keypin=keypin_concat, pin, needs_keypin) %>% distinct() %>% 
+  mutate(keypin = ifelse(is.na(keypin), as.character(pin), as.character(keypin)))
 
-incentpins_2022 <- incentpins_2022 %>% 
+incentpins_2022 <- ptax_pins %>% 
     filter(class > 599 & class < 900) %>%
+  filter(year == 2022) %>%
   left_join(projects, by = "pin") %>% 
-  mutate(keypin = ifelse(is.na(keypin),"No KeyPIN", as.character(keypin)),
-         tax_code_num = as.character(tax_code_num)) %>%
+  mutate(tax_code_num = as.character(tax_code_num)) %>%
+    left_join(tc_muninames) %>% 
   select(keypin, pin, class, tax_code_num, everything()) %>% select(-c(exe_homeowner:exe_vet_dis_ge70)) %>%
   left_join(tc_muninames) %>%
   mutate(clean_name = ifelse(is.na(clean_name), "Unincorporated", clean_name))
 
 
-incentpins_2022 %>% filter(keypin != "No KeyPIN")  %>% arrange(-tax_bill_total)
+incentpins_2022 %>% arrange(-tax_bill_total)
 
 ```
 
@@ -464,11 +480,11 @@ incentpins_2022 %>% filter(keypin != "No KeyPIN")  %>% arrange(-tax_bill_total)
 #| tbl-cap: "Incentive PIN Values"
 #| column: page
 
-
-nokeypin_pins <- incentpins_2022 %>% filter(keypin == "No KeyPIN") %>% arrange(-tax_bill_total)
-nokeypin_pins
-
-incentpins_2022 %>% filter(keypin != "No KeyPIN")  %>% arrange(-tax_bill_total)
+incentpins_2022
+# nokeypin_pins <- incentpins_2022 %>% filter(keypin == "No KeyPIN") %>% arrange(-tax_bill_total)
+# nokeypin_pins
+# 
+# incentpins_2022 %>% filter(keypin != "No KeyPIN")  %>% arrange(-tax_bill_total)
 ```
 
 
@@ -486,7 +502,7 @@ incent_projects_2022 <- incentpins_2022 %>%
            av_mailed = sum(av_mailed), av_certified = sum(av_certified), 
            av_board = sum(av_board), av_clerk = sum(av_clerk), 
            exe_abate = sum(exe_abate), pins_inproject = n() ) %>% 
-    left_join(tc_muninames) %>%
+  left_join(tc_muninames) %>%
   mutate(clean_name = ifelse(is.na(clean_name), "Unincorporated", clean_name))
 
 
@@ -496,7 +512,7 @@ datatable(incent_projects_2022, rownames= FALSE, colnames = c('Keypin' = 'keypin
 ```
 
 
-```{r}
+```{r eval=FALSE}
 #| label: tbl-projectsummary
 #| tbl-cap: "Project Level: Summed AV and Taxbills of PINs within a Project"
 #| column: page
@@ -521,7 +537,7 @@ datatable(projectlevelsummary,
   formatCurrency(c('Project Tax Bill', 'AV Mailed', 'AV Certified', 'AV Board', 'AV Clerk'), digits = 0)
 ```
 
-```{r}
+```{r eval=FALSE}
 #| label: tbl-munilevel_projects
 #| tbl-cap: "Incentive Projects in Municipalities"
 #| column: page
@@ -544,9 +560,3 @@ datatable(muni_projects,
 ```
 
 
-```{r}
-#cleanjoin2 <- full_join(cleanjoin, unique_cmap)
-
-# write.csv(cleanjoin, "./Output/incentive_crosswalk.csv")
-
-```
