@@ -15,6 +15,7 @@ format:
 ```{r setup, warning = FALSE, output = FALSE}
 
 library(tidyverse)
+library(DT)
 
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 
@@ -25,7 +26,8 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 Data on incentive-class PINs was pulled from the PTAXSIM DB through the "helper_tc_muninames.R" helper file and the incentive data frame written to ".Output/7_output_incentive_classes.csv"
 
 ```{r}
-ptax_pins <- read_csv("./Output/incentivePINs_allyears.csv") # file created in helper_pull_incentivepins_allyears.R
+# file created in helper_pull_incentivepins_allyears.R
+ptax_pins <- read_csv("./Output/incentivePINs_allyears.csv") 
 ```
 
 ## Trends in Incentive PINs Over Time
@@ -44,7 +46,7 @@ ptax_pins %>% filter(between(class, 600,899) ) %>% group_by(year) %>% summarize(
 # 4383 existed in 2022. 
 # 3652 existed in 2021, etc.
 ptax_pins %>% filter(between(class, 600,899) ) %>% group_by(year) %>% summarize(incentive_count = n()) %>% ggplot() +geom_col(aes(y = incentive_count, x = year)) +   labs(
-    title = "Incentive PINs by Year") + theme_classic()
+    title = "Incentive PIN Count by Year", x = "", y = "# Incentive PINs") + theme_classic()
 
 
 #ptax_pins %>% filter(between(class, 600,900) ) %>% group_by(pin) %>% summarize(count = n()) %>% filter(count > 16)
@@ -59,6 +61,9 @@ ptax_pins %>% filter(between(class, 600,899) ) %>% group_by(year) %>% summarize(
 
 
 ```{r}
+#| column: page
+#| layout-ncol: 2
+#| 
 ptax_pivot_changed <- ptax_pins %>% 
   pivot_wider(id_cols = c(pin), names_from = "year", values_from =  "class") %>%
   mutate(change = ifelse(as.numeric(`2022`)-as.numeric(`2006`) != 0,
@@ -77,9 +82,14 @@ ptax_pivot_changed_wNAs <- ptax_pins %>%
 ptax_pivot_changed_wNAs
 ```
 
+- 632 PINs have had an incentive class that has not changed since 2006 (i.e. the earliest tax year in PTAXSIM)  
+
+
+- 4,654 PINs existed during every year (doesn't matter what property class they were)
+  - implies the division, splitting, or creation of PINs over time 
+
 
 ```{r}
-
 ptax_pins %>% 
   filter(class > 599 & class < 900) %>% 
   group_by(pin, class) %>% 
@@ -97,9 +107,14 @@ ptax_pins %>%
   group_by(pin) %>% summarize(count = n()) %>% filter(count > 16)
 # 632 PINs have existed AND been incentive properties for all years in database.
 # 4,654 PINs existed during every year (doesn't matter what property class)
-
 # 5869-4654 = around 1200 PINs created since 2006
+```
 
+
+```{r}
+#| label: tbl-pinchange-byMajorClass
+#| tbl-cap: "PINs that had an Incentive Class at some Point in Time" 
+#| tbl-subcap: "Shows when PIN changes major class property type"
 
 ##  Grouped by PIN and 1st digit of class (aka major class) -----------------
 unique_ptax_MC <- ptax_pins %>% 
@@ -107,7 +122,8 @@ unique_ptax_MC <- ptax_pins %>%
   group_by(pin, majorclass) %>% 
   summarize(count = n(),
             first_year = first(year),
-            last_year = last(year)) %>% ungroup()
+            last_year = last(year)) %>% ungroup() %>%
+  arrange(pin, first_year)
 
 unique_ptax_w_MC <- unique_ptax_MC %>% 
   group_by(pin) %>%
@@ -120,66 +136,101 @@ unique_ptax_wide_MC <- unique_ptax_w_MC %>%
               names_from = var2,
               values_from = c(majorclass, count, first_year, last_year))
 
+unique_ptax_wide_MC
+
+```
+
+
+```{r}
+#| label: tbl-pinchange
+#| tbl-cap: "PINs that had an Incentive Class at some Point in Time" 
+
 
 ## Grouped by PIN and class ----------------------------------------------
 unique_ptax_w_class <- ptax_pins %>% 
   group_by(pin, class) %>% 
-  summarize(count = n(),
+  summarize(count = n(), # number of years the PIN shows up in the data set
             first_year = first(year),
             last_year = last(year)) %>% 
   ungroup() %>%
   arrange(pin, first_year)
 
-  
+# make a variable that goes up by 1 every time the property class changes 
 unique_ptax_w_class <- unique_ptax_w_class %>% group_by(pin) %>%
   mutate(var2 = cumsum(row_number() == 1 | (class != dplyr::lag(class))))
 
 
+# some PINs change properties 4 or even 5 times over the years
 unique_ptax_wide <- unique_ptax_w_class %>%
   pivot_wider(id_cols = "pin",
               names_from = var2,
-              values_from = c(class, count, first_year, last_year))
-
-
-
-```
-
-```{r}
-unique_ptax_wide_MC
+              values_from = c(class, count, first_year, last_year)) %>%  
+  select( pin, 
+          class_1, first_year_1, last_year_1, yrs_existed_1 = count_1,
+          class_2, first_year_2, last_year_2, yrs_existed_2 = count_2,
+          class_3, first_year_3, last_year_3, yrs_existed_3 = count_3,
+          class_4, first_year_4, last_year_4, yrs_existed_4 = count_4,
+          class_5, first_year_5, last_year_5, yrs_existed_5 = count_5,
+          class_6, first_year_6, last_year_6, yrs_existed_6 = count_6)
 
 unique_ptax_wide
+
+
 ```
+
 
 ```{r}
-pins_pivot_cleaned <- read.csv("./Output/manually_cleaned_incentive_pins_AWM.csv") %>%
+# read in the cleaned file with keypins and pins from the commercial valuation dataset
+comval_pins <- read.csv("./Output/manually_cleaned_incentive_pins_AWM.csv") %>%
   mutate(keypin_concat = as.character(keypin_concat)) %>%
-  mutate(keypin_concat2 = str_pad(keypin_concat, 14, "left", pad = "0"))
+  mutate(keypin_concat2 = str_pad(keypin_concat, 14, "left", pad = "0"),
+         pins_add = keypin_concat2) %>%
+    mutate(pin_cleaned = str_remove_all(pins3, "-")) 
+# 3201 obs
 
-pins_pivot_cleaned <- pins_pivot_cleaned %>% 
-  mutate(check_me = ifelse(str_length(pins3) < 14, 1, 0)) %>% 
+# not sure if all KeyPINs exist as their own PIN variable  (i.e. the keypin = pin)
+# so adding these step just in case
+# will create redundant rows but that is fine, we only keep unique occurrences later
+addinkeypin_PINs <- comval_pins %>% 
+  select(keypin_concat = keypin_concat2, # need matching variable names for row bind
+         pin_cleaned = pins_add)
+
+pins_pivot_cleaned <- comval_pins %>% 
+  select(keypin_concat, pin_cleaned)
+
+pins_pivot_cleaned <- rbind(pins_pivot_cleaned, addinkeypin_PINs)
+# 6402 obs but we know some are duplicates
+
+pins_pivot_cleaned <- pins_pivot_cleaned %>% unique()
+# 3659 obs! That's better
+
+
+# Get rid of non-incentive properties that came from the comval_pins dataset 
+pins_pivot_cleaned <- pins_pivot_cleaned %>%
+  filter(pin_cleaned %in% unique_ptax_wide$pin)    # get rid of non-incentive properties included from the keypin cleaning
+#3438 obs
+
+pins_pivot_cleaned <- pins_pivot_cleaned  %>%
+  mutate(keypin_concat = as.character(keypin_concat),
+         keypin_concat = str_pad(keypin_concat, 14, side = "left", pad = "0")) %>%
+  mutate(check_me = ifelse(str_length(pin_cleaned) < 14, 1, 0)) %>% 
   filter(check_me == 0)
-# OLD count - 696 obs
-# 3170 obs
+# 3438 obs
+# still has duplicate pins
 
+
+
+unique_comval <- pins_pivot_cleaned %>% 
+  select(pin_cleaned, keypin_concat) %>% 
+  distinct() 
+# 2973 pin-keypin combinations 
 
 # number of pins associated with the key pin
-pins_pivot_cleaned %>% group_by(keypin_concat) %>% summarize(n = n()) %>% arrange(-n)
-# OLD - 216 key pins (aka projects)
-# 1831 key pins (aka projects)
-
-pins_pivot_cleaned <- pins_pivot_cleaned %>% 
-  mutate(pin_cleaned = str_remove_all(pins3, "-")) %>%
-  select(keypin_concat, pin_cleaned) %>%
-  mutate(keypin_concat = as.character(keypin_concat),
-         keypin_concat = str_pad(keypin_concat, 14, side = "left", pad = "0"))
-
-
-unique_comval <- pins_pivot_cleaned %>% select(pin_cleaned, keypin_concat) %>% 
-  distinct() %>%
-  mutate(keypin_concat = as.character(keypin_concat),
-         keypin_concat = str_pad(keypin_concat, 14, side = "left", pad = "0"))
+unique_comval %>% group_by(keypin_concat) %>% summarize(n = n()) %>% arrange(-n)
+# 1831 key pins (aka projects) from the commercial valuation data set from assessors/cook data portal 
 ```
 
+2973 unique keypin and pin combinations.
 
 ```{r}
 # Create PIN Crosswalk for Project and Keypin -----------------------------
@@ -193,24 +244,30 @@ head(unique_ptax_wide)
 head(unique_comval)
 
 cleanjoin <- full_join(unique_ptax_wide, unique_comval, by = c("pin" = "pin_cleaned"))
-# 6,064 obs
+# 6,071 obs
 
-cleanjoin <- cleanjoin %>% select(keypin = keypin_concat, pin, 
-                                  class_1, first_year_1, last_year_1, yrs_existed_1 = count_1,
-                                  class_2, first_year_2, last_year_2, yrs_existed_2 = count_2,
-                                  class_3, first_year_3, last_year_3, yrs_existed_3 = count_3,
-                                  class_4, first_year_4, last_year_4, yrs_existed_4 = count_4,
-                                  class_5, first_year_5, last_year_5, yrs_existed_5 = count_5,
-                                  class_6, first_year_6, last_year_6, yrs_existed_6 = count_6,
-
-                                  )
+# comval introduces project PINs that were never incentive properties
+# remove them
+cleanjoin <- cleanjoin %>% filter(pin %in% ptax_pins$pin)
+# 5871 obs
+# 
+# cleanjoin <- cleanjoin %>%
+#   select(keypin = keypin_concat, pin,
+#          class_1, first_year_1, last_year_1, yrs_existed_1 = count_1,
+#          class_2, first_year_2, last_year_2, yrs_existed_2 = count_2,
+#          class_3, first_year_3, last_year_3, yrs_existed_3 = count_3,
+#          class_4, first_year_4, last_year_4, yrs_existed_4 = count_4,
+#          class_5, first_year_5, last_year_5, yrs_existed_5 = count_5,
+#          class_6, first_year_6, last_year_6, yrs_existed_6 = count_6,
+#          
+#   )
 # cleanjoin %>% distinct(pin)         
 # 6062 distinct pins
 
 # write_csv(cleanjoin, "./Output/project_pins_wide.csv")
 
  cleanjoin %>% filter(is.na(first_year_1))       
-# 193 obs are missing "first_year" variable for its first occurrence
+# 193 obs were missing "first_year" variable for its first occurrence
 # meaning that they do not exist as incentives in the PTAXSIM database.
 # BUT they are associated with an incentive project where all the pins are not incentive PINs
  
@@ -220,6 +277,7 @@ cleanjoin <- cleanjoin %>% select(keypin = keypin_concat, pin,
 193 observations are missing the `first_year` variable for the first occurrence, that means they were not a PIN that was in the ptaxsim incentive pins.   
 Non-incentive PINs get in there from unnesting the comval dataset in previous steps Since the `comval` data includes incentive and nonincentive properties associated with the project.   
 
+- These have now been removed by filtering in previous step. 
 
 ```{r PINcrosswalk}
 # comval dataset included all pins associated with a keypin but does not clarify which pin is which class type
@@ -227,18 +285,19 @@ nonincent_pins <- cleanjoin %>% filter(is.na(first_year_1))       # 183 obs are 
 # these PINs are associated with incentive projects, but were not classified as incentive PINs.
 
 cleanjoin <- cleanjoin %>% filter(!is.na(first_year_1))    # 5871 remaining unique PINs that were incentives in PTAXSIM database at some point
-cleanjoin %>% distinct(pin)                                 # 5869 unique pins
+
+#cleanjoin %>% distinct(pin)                                 # 5869 unique pins
 ```
 
 
 ```{r}
-# now take the ones taht didn't merge with the comval data and bring in the CMAP data?
-nokeypins <- cleanjoin %>% filter(is.na(keypin))
+# now take the ones that didn't merge with the comval data and bring in the CMAP data?
+nokeypins <- cleanjoin %>% filter(is.na(keypin_concat))
 
-cleanjoin <- cleanjoin %>% filter(!is.na(keypin))
+cleanjoin <- cleanjoin %>% filter(!is.na(keypin_concat))
 # 2973 pins joined nicely between ptaxsim and comval 
 
-nokeypins # 2898 pins do not have key pins 
+# nokeypins # 2898 pins do not have key pins 
 #(probably expired before 2021 when comval dataset begins recording data)
 ```
 
@@ -256,7 +315,7 @@ access_db <- access_db %>%
 #table(access_db$Status_cleaned)
 #access_db_filtered <- access_db %>% filter(Status_cleaned != c("Void", "Excluded", "Divided", "Not Incentive Property", "No Matching Record"))
 
-keypinless_join <-nokeypins %>% 
+keypinless_join <- nokeypins %>% 
   inner_join(access_db, by = c("pin" = "Concat PIN")) %>% 
   select(CONTROL, pin, class_1:yrs_existed_6) %>%
   rename(keypin = CONTROL)
@@ -274,21 +333,21 @@ both_groups <- rbind(cleanjoin, keypinless_join)
 ```
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 both_groups %>% group_by(pin) %>% mutate(n=n())  %>% arrange(-n) %>% filter(n>1)
 
 both_groups %>% group_by(keypin) %>% summarize(n=n()) %>% arrange(-n)
 
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 # create a keypin variable based on smallest PIN to compare to keypin used by assessor
 # ideally, each CONTROL variable would have its own Key PIN.
 access_db <- access_db %>% 
   arrange(Status_cleaned, `Concat PIN`) %>% # `Status Cleaned` was manually created in Excel & based off of the `Status` variable.
   group_by(CONTROL, Status_cleaned) %>% 
   mutate(keypin = first(`Concat PIN`), # ideally grabs lowest PIN since that appears to mostly be how the assessor does it. But not always. 
-         n_PINs_inControlGroup = n(),  # Can include the same PIN multiple times!! 
+         n_PINs_inControlGroup = n(),  
          keypin_class = first(Class)) %>%
   ungroup() %>% 
   mutate(pin = `Concat PIN`,
@@ -315,7 +374,7 @@ unique_cmap <- access_db %>%
 unique_access <- access_db %>% 
   group_by(pin) %>%
   mutate(var2 = cumsum(row_number() == 1 | (CONTROL != dplyr::lag(CONTROL)))) %>% 
-  arrange(pin) %>% ungroup() %>% filter(!is.na(var2))
+  arrange(pin, startyear_clean) %>% ungroup() %>% filter(!is.na(var2))
 
 
 unique_access_wide <- unique_access %>%
@@ -323,7 +382,7 @@ unique_access_wide <- unique_access %>%
               names_from = var2,
               values_from = c(CONTROL, Class, Status_cleaned, startyear_clean))
 
-unique_access %>% filter(is.na(var2))%>%summarize(n=n())
+unique_access %>% filter(is.na(var2)) %>% summarize(n=n())
 
 ```
 
@@ -331,28 +390,114 @@ unique_access %>% filter(is.na(var2))%>%summarize(n=n())
 # projects in 2022
 
 ```{r}
-incentpins_2022 <- read_csv("./Output/incentivePINs_allyears.csv") %>% filter(year == 2022)
+incentpins_2022 <- read_csv("./Output/incentivePINs_allyears.csv") %>% 
+  filter(year == 2022)
 
-projects <- both_groups %>% select(keypin, pin) %>% distinct()
+source("helper_tc_muninames_2022.R")
 
-incentpins_2022 <- incentpins_2022 %>% left_join(projects, by = "pin") %>% select(keypin, pin, class, everything())
-incentpins_2022
+
+projects <- both_groups %>% 
+  select(keypin, pin) %>% distinct() %>% 
+  mutate(keypin = ifelse(is.na(keypin),"No KeyPIN", as.character(keypin)))
+
+incentpins_2022 <- incentpins_2022 %>% 
+    filter(class > 599 & class < 900) %>%
+  left_join(projects, by = "pin") %>% 
+  mutate(keypin = ifelse(is.na(keypin),"No KeyPIN", as.character(keypin)),
+         tax_code_num = as.character(tax_code_num)) %>%
+  select(keypin, pin, class, tax_code_num, everything()) %>% select(-c(exe_homeowner:exe_vet_dis_ge70)) %>%
+  left_join(tc_muninames) %>%
+  mutate(clean_name = ifelse(is.na(clean_name), "Unincorporated", clean_name))
+
+
+incentpins_2022 %>% filter(keypin != "No KeyPIN")  %>% arrange(-tax_bill_total)
+
+```
+
+3,731 PINs merged nicely with a project identifier. 
+
+```{r}
+#| label: tbl-incentivepins
+#| tbl-cap: "Incentive PIN Values"
+#| column: page
+
+
+nokeypin_pins <- incentpins_2022 %>% filter(keypin == "No KeyPIN") %>% arrange(-tax_bill_total)
+nokeypin_pins
+
+incentpins_2022 %>% filter(keypin != "No KeyPIN")  %>% arrange(-tax_bill_total)
 ```
 
 
 ```{r}
-source("helper_tc_muninames_2022.R")
+#| label: tbl-incentiveprojects
+#| tbl-cap: "Incentive Project Values"
+#| column: page
 
-incent_projects_2022 <- incentpins_2022 %>% group_by(keypin) %>%
-  summarize(tax_code_num = as.character(first(tax_code_num)), 
+
+incent_projects_2022 <- incentpins_2022 %>%
+  group_by(keypin, tax_code_num) %>%
+  summarize(class = first(class), 
+            tax_code_num = as.character(first(tax_code_num)), 
             tax_bill_total = sum(tax_bill_total),
-           av_mailed = sum(av_mailed), av_certified = sum(av_certified), av_board = sum(av_board), av_clerk = sum(av_clerk), exe_abate = sum(exe_abate), pins_inproject = n() ) %>% left_join(tc_muninames)
+           av_mailed = sum(av_mailed), av_certified = sum(av_certified), 
+           av_board = sum(av_board), av_clerk = sum(av_clerk), 
+           exe_abate = sum(exe_abate), pins_inproject = n() ) %>% 
+    left_join(tc_muninames) %>%
+  mutate(clean_name = ifelse(is.na(clean_name), "Unincorporated", clean_name))
 
-incent_projects_2022 %>% 
+
+datatable(incent_projects_2022, rownames= FALSE, colnames = c('Keypin' = 'keypin', 'Class' = 'class', 'Tax Code' = 'tax_code_num', 'Project Tax Bill' = 'tax_bill_total', 'AV Mailed' = 'av_mailed', 'AV Certified' = 'av_certified', 'AV Board' = 'av_board', 'AV Clerk' = 'av_clerk', 'Abatements' = 'exe_abate', 'PIN Count per Project' = 'pins_inproject')) %>%
+ # formatRound(c(3), digits = 0) %>%
+  formatCurrency(c('Project Tax Bill', 'AV Mailed', 'AV Certified', 'AV Board', 'AV Clerk'), digits = 0)
+```
+
+
+```{r}
+#| label: tbl-projectsummary
+#| tbl-cap: "Project Level: Summed AV and Taxbills of PINs within a Project"
+#| column: page
+
+projectlevelsummary <- incent_projects_2022 %>% 
+    filter(class > 599 & class < 900) %>%
+
+  group_by(keypin, tax_code_num) %>%   
+  summarize(clean_name = first(clean_name), 
+            class = first(class),
+            tax_code_num = as.character(first(tax_code_num)), 
+        project_taxbill = sum(tax_bill_total),
+           proj_av_mailed = sum(av_mailed), proj_av_certified = sum(av_certified), proj_av_board = sum(av_board), proj_av_clerk = sum(av_clerk), proj_exe_abate = sum(exe_abate),pins_inproject = sum(pins_inproject) ) %>% select(clean_name, keypin, pins_inproject, project_taxbill, proj_av_mailed, proj_av_clerk, everything()) %>% 
+  #select(-c(agency_name, agency_num, year,shpfile_name)) %>% 
+  arrange(-proj_av_clerk)
+
+
+datatable(projectlevelsummary,
+          rownames= FALSE, 
+          colnames = c('Municipality' = 'clean_name', 'Class'='class', 'Keypin' = 'keypin', 'Tax Code' = 'tax_code_num', 'Project Tax Bill' = 'project_taxbill', 'AV Mailed' = 'proj_av_mailed', 'AV Certified' = 'proj_av_certified', 'AV Board' = 'proj_av_board', 'AV Clerk' = 'proj_av_clerk', 'Abatements' = 'proj_exe_abate', 'PIN Count per Project' = 'pins_inproject')) %>%
+ # formatRound(c(3), digits = 0) %>%
+  formatCurrency(c('Project Tax Bill', 'AV Mailed', 'AV Certified', 'AV Board', 'AV Clerk'), digits = 0)
+```
+
+```{r}
+#| label: tbl-munilevel_projects
+#| tbl-cap: "Incentive Projects in Municipalities"
+#| column: page
+
+
+muni_projects <- incent_projects_2022 %>% 
+  filter(class > 599 & class < 900) %>%
   group_by(clean_name) %>%   
-  summarize(tax_code_num = as.character(first(tax_code_num)), 
-            tax_bill_total = sum(tax_bill_total),
-           av_mailed = sum(av_mailed), av_certified = sum(av_certified), av_board = sum(av_board), av_clerk = sum(av_clerk), exe_abate = sum(exe_abate), projects_inMuni = n(),pins_inMuni = sum(pins_inproject) )
+  summarize(# tax_code_num = as.character(first(tax_code_num)), 
+          muni_incentive_taxes_collected = sum(tax_bill_total),
+           muni_av_mailed = sum(av_mailed), muni_av_certified = sum(av_certified), muni_av_board = sum(av_board), muni_av_clerk = sum(av_clerk), muni_exe_abate = sum(exe_abate), projects_inMuni = n(), pins_inMuni = sum(pins_inproject) ) %>% 
+  select(clean_name, #keypin,
+         muni_incentive_taxes_collected, muni_av_mailed, muni_av_clerk, everything())
+
+datatable(muni_projects,
+          rownames= FALSE, 
+          colnames = c('Municipality' = 'clean_name', 'Incentive Projects Taxes Collected' = 'muni_incentive_taxes_collected', 'AV Mailed' = 'muni_av_mailed', 'AV Certified' = 'muni_av_certified', 'AV Board' = 'muni_av_board', 'AV Clerk' = 'muni_av_clerk', 'Abatements' = 'muni_exe_abate', '# Incent. Projects in Muni' = 'projects_inMuni', '# PINs in Muni with Incentives' = 'pins_inMuni')) %>%
+ # formatRound(c(3), digits = 0) %>%
+  formatCurrency(c('Incentive Projects Taxes Collected', 'AV Mailed', 'AV Certified', 'AV Board', 'AV Clerk'), digits = 0)
 ```
 
 
