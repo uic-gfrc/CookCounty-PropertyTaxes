@@ -69,7 +69,10 @@ unique_ptax_MC <- ptax_pins %>%
   group_by(pin, majorclass) %>% 
   summarize(count = n(),
             first_year = first(year),
-            last_year = last(year)) %>% ungroup()
+            last_year = last(year)) %>% 
+  ungroup() %>% 
+  arrange(pin, first_year)
+
 
 unique_ptax_w_MC <- unique_ptax_MC %>% 
   group_by(pin) %>%
@@ -215,7 +218,7 @@ unique_comval <- pins_pivot_cleaned %>% select(pin_cleaned, keypin_concat) %>%
 # Combine unique incentive PINs that have existed ever, The CONTROL variable from CMAP,
 # and the keypin from the experimental commercial valuation dataset 
 
-head(unique_ptax)
+# head(unique_ptax)
 
 head(unique_ptax_wide)
 
@@ -238,6 +241,21 @@ write_csv(cleanjoin, "./Output/project_pins_wide.csv")
 # meaning that they do not exist as incentives in the PTAXSIM database.
 # BUT they are associated with an incentive project where all the pins are not incentive PINs
 # non-incentive PINs get in there from unnesting the comval dataset in previous steps
+
+
+
+
+cleanjoin_MC <- full_join(unique_ptax_wide_MC, unique_comval, by = c("pin" = "pin_cleaned"))
+
+cleanjoin_MC <- cleanjoin_MC %>% select(keypin = keypin_concat, pin, 
+                                  majorclass_1, first_year_1, last_year_1, yrs_existed_1 = count_1,
+                                  majorclass_2, first_year_2, last_year_2, yrs_existed_2 = count_2,
+                                  majorclass_3, first_year_3, last_year_3, yrs_existed_3 = count_3,
+                                  majorclass_4, first_year_4, last_year_4, yrs_existed_4 = count_4
+                                  )
+write_csv(cleanjoin_MC, "./Output/project_MC_pins_wide.csv")
+
+
 
 # comval dataset included all pins associated with a keypin but does not clarify which pin is which class type
 nonincent_pins <- cleanjoin %>% filter(is.na(years_existed))       # 183 obs are missing "years existed" variable.

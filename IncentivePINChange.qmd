@@ -232,9 +232,11 @@ unique_comval %>% group_by(keypin_concat) %>% summarize(n = n()) %>% arrange(-n)
 
 2973 unique keypin and pin combinations.
 
-```{r}
-# Create PIN Crosswalk for Project and Keypin -----------------------------
+# PIN to Project Crosswalk
 
+```{r}
+#| column: page
+#| layout-ncol: 2
 
 # Combine unique incentive PINs that have existed ever, The CONTROL variable from CMAP,
 # and the keypin from the experimental commercial valuation dataset 
@@ -242,66 +244,68 @@ unique_comval %>% group_by(keypin_concat) %>% summarize(n = n()) %>% arrange(-n)
 head(unique_ptax_wide)
 
 head(unique_comval)
-
-cleanjoin <- full_join(unique_ptax_wide, unique_comval, by = c("pin" = "pin_cleaned"))
-# 6,071 obs
-
-# comval introduces project PINs that were never incentive properties
-# remove them
-cleanjoin <- cleanjoin %>% filter(pin %in% ptax_pins$pin)
-# 5871 obs
-# 
-# cleanjoin <- cleanjoin %>%
-#   select(keypin = keypin_concat, pin,
-#          class_1, first_year_1, last_year_1, yrs_existed_1 = count_1,
-#          class_2, first_year_2, last_year_2, yrs_existed_2 = count_2,
-#          class_3, first_year_3, last_year_3, yrs_existed_3 = count_3,
-#          class_4, first_year_4, last_year_4, yrs_existed_4 = count_4,
-#          class_5, first_year_5, last_year_5, yrs_existed_5 = count_5,
-#          class_6, first_year_6, last_year_6, yrs_existed_6 = count_6,
-#          
-#   )
-# cleanjoin %>% distinct(pin)         
-# 6062 distinct pins
-
-# write_csv(cleanjoin, "./Output/project_pins_wide.csv")
-
- cleanjoin %>% filter(is.na(first_year_1))       
-# 193 obs were missing "first_year" variable for its first occurrence
-# meaning that they do not exist as incentives in the PTAXSIM database.
-# BUT they are associated with an incentive project where all the pins are not incentive PINs
- 
-# non-incentive PINs get in there from unnesting the comval dataset in previous steps
-```
-
-193 observations are missing the `first_year` variable for the first occurrence, that means they were not a PIN that was in the ptaxsim incentive pins.   
-Non-incentive PINs get in there from unnesting the comval dataset in previous steps Since the `comval` data includes incentive and nonincentive properties associated with the project.   
-
-- These have now been removed by filtering in previous step. 
-
-```{r PINcrosswalk}
-# comval dataset included all pins associated with a keypin but does not clarify which pin is which class type
-nonincent_pins <- cleanjoin %>% filter(is.na(first_year_1))       # 183 obs are missing "years existed" variable.
-# these PINs are associated with incentive projects, but were not classified as incentive PINs.
-
-cleanjoin <- cleanjoin %>% filter(!is.na(first_year_1))    # 5871 remaining unique PINs that were incentives in PTAXSIM database at some point
-
-#cleanjoin %>% distinct(pin)                                 # 5869 unique pins
 ```
 
 
 ```{r}
+cleanjoin <- full_join(unique_ptax_wide, unique_comval, by = c("pin" = "pin_cleaned"))
+# 5871 obs
+
+clean_join <- cleanjoin %>% mutate(parcel = str_sub(pin, 1, 10),
+                     block = str_sub(pin, 1, 7))
+
+# write_csv(cleanjoin, "./Output/project_pins_wide.csv")
+
+```
+```{r}
 # now take the ones that didn't merge with the comval data and bring in the CMAP data?
 nokeypins <- cleanjoin %>% filter(is.na(keypin_concat))
+# nokeypins # 2898 pins do not have key pins 
+#(probably expired before 2021 when comval dataset begins recording data)
+
 
 cleanjoin <- cleanjoin %>% filter(!is.na(keypin_concat))
 # 2973 pins joined nicely between ptaxsim and comval 
 
-# nokeypins # 2898 pins do not have key pins 
-#(probably expired before 2021 when comval dataset begins recording data)
+
+```
+
+# Projects in 2022
+
+```{r}
+incentpins_2022 <- # read_csv("./Output/incentivePINs_allyears.csv") %>% 
+  unique_ptax_w_class %>%
+        filter(class > 599 & class < 900) %>%
+  filter(last_year == 2022) %>%  # implies still existed in 2022
+  left_join(unique_comval, by = c("pin" = "pin_cleaned") ) %>%
+  mutate(parcel = str_sub(pin, 1, 10),
+         block = str_sub(pin, 1, 7))
+# 4385 obs
+
+incentpins_2022 %>% 
+      filter(class > 599 & class < 900) %>%
+  filter(is.na(keypin_concat))
+# 1483 missing keypin
+```
+
+We could attempt to make project IDs that were based only on the idea of incentive PINs in close proximity to other incentive PINs by grouping by Parcel (first 10-digits of PIN) or Block (first 7-digits of PIN)
+
+```{r eval=FALSE}
+# best guess at creating project-IDs: group by the block or parcel number.
+incentpins_2022 %>% 
+      filter(class > 599 & class < 900) %>%
+  group_by(block, keypin_concat) %>% summarize(n = n()) %>%
+  filter(is.na(keypin_concat)) # 400+ blocks missing keypins
+
+incentpins_2022 %>% 
+      filter(class > 599 & class < 900) %>%
+  group_by(parcel, keypin_concat) %>% summarize(n = n()) %>%
+  filter(is.na(keypin_concat)) # 1400+ parcels missing keypins
 ```
 
 
+
+Lets try seeing if the access file passed on to use from CMAP has project identifiers we can match to some pins.
 
 ```{r}
 access_db <- readxl::read_excel("./Necessary_Files/incentivePINs_accessDB_2.xlsx")
@@ -315,17 +319,57 @@ access_db <- access_db %>%
 #table(access_db$Status_cleaned)
 #access_db_filtered <- access_db %>% filter(Status_cleaned != c("Void", "Excluded", "Divided", "Not Incentive Property", "No Matching Record"))
 
-keypinless_join <- nokeypins %>% 
-  inner_join(access_db, by = c("pin" = "Concat PIN")) %>% 
-  select(CONTROL, pin, class_1:yrs_existed_6) %>%
-  rename(keypin = CONTROL)
+needs_keypin<- incentpins_2022 %>% 
+      filter(class > 599 & class < 900) %>%
+  filter(is.na(keypin_concat))
+# 1483 obs need a project ID
+
+keypinless_join <- needs_keypin %>% 
+  left_join(access_db, by = c("pin" = "Concat PIN")) %>% 
+  select(CONTROL, pin, everything()) %>%
+  rename(keypin = CONTROL, yrs_exist_inPTAX = count)
 
 keypinless_join # 2401 
 
-#cmap_groups <- 
-  
-keypinless_join %>% group_by(keypin) %>% summarize(n=n()) %>% arrange(-n)
-# 1,089 groups
+
+keypinless_join %>% arrange(pin, keypin) %>%
+  group_by(pin) %>% 
+  summarize(n=n(), # number of times the PIN shows up in the access database
+            first_project = first(keypin),
+            last_project = last(keypin))  %>% 
+  arrange(first_project)
+# 1483 unique PINs still
+
+
+## Visually inspected to see if pins
+keypinless_join %>% arrange(pin, keypin) %>%
+  group_by(pin) %>% 
+  summarize(n=n(), # number of times the PIN shows up in the access database
+            first_project = first(keypin),
+            last_project = last(keypin))  %>% 
+  arrange(first_project) %>% 
+  filter(n>1)
+# 106 pins show up in multiple projects as their project or status changed.
+
+
+keypinless_join %>% arrange(pin, keypin) %>%
+  group_by(pin) %>% 
+  mutate(n=n(), # number of times the PIN shows up in the access database
+            first_project = first(keypin),
+            last_project = last(keypin)) %>% 
+  arrange(block) %>% select(-c(Status, 'Start Year':is_keypin_online))
+# 408 additional project IDs
+# still have 767 PINs that don't have a project ID
+
+
+keypinless_join %>% arrange(pin, keypin) %>%
+  group_by(pin) %>% 
+  summarize(n=n(), # number of times the PIN shows up in the access database
+            first_project = first(keypin),
+            last_project = last(keypin)) %>% 
+  filter(is.na(first_project)) %>% select(pin) %>% 
+  distinct()
+# there are 1483 distinct PINs that needed projects
 ```
 
 ```{r}
@@ -389,10 +433,9 @@ unique_access %>% filter(is.na(var2)) %>% summarize(n=n())
 
 # projects in 2022
 
-```{r}
-incentpins_2022 <- read_csv("./Output/incentivePINs_allyears.csv") %>% 
-  filter(year == 2022)
 
+
+```{r}
 source("helper_tc_muninames_2022.R")
 
 
