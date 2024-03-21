@@ -1,3 +1,13 @@
+#########################################################################
+# Combines Commercial Valuation Data [a preliminary/experimental dataset!] 
+#        Downloaded on March 1st, 2024 from the Cook County Data Portal
+# Extracts keypin and pin variables to create a keypin-pin crosswalk
+#        to be used with data extracted from PTAXSIM
+# Initial steps of building panel data to examine commercial and industrial 
+#        property in Cook County
+#########################################################################
+
+
 library(tidyverse)
 library(ptaxsim)
 library(DBI) 
