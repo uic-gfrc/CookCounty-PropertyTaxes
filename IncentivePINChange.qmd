@@ -1,9 +1,10 @@
 ---
 title: "Incentive PINs Over Time"
 format: 
-  html: 
-    df-print: paged
+  html:
     code-fold: true
+    toc: true
+    df-print: paged
 ---
 
 # Data Preparation
@@ -24,6 +25,8 @@ Data on incentive-class PINs was pulled from the PTAXSIM DB through the "helper_
 ```{r}
 # file created in helper_pull_incentivepins_allyears.R
 ptax_pins <- read_csv("./Output/incentivePINs_allyears.csv") 
+class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv") 
+
 ```
 
 ## Trends in Incentive PINs Over Time
@@ -35,12 +38,6 @@ Only 1,527 PINs were incentive property classes in 2006.\
 #| column: page
 #| layout-ncol: 2
 
-ptax_pins %>% filter(between(class, 600,899) ) %>% group_by(year) %>% summarize(incentive_count = n())
-# 4383 existed in 2022. 
-# 3652 existed in 2021, etc.
-ptax_pins %>% filter(between(class, 600,899) ) %>% group_by(year) %>% summarize(incentive_count = n()) %>% ggplot() +geom_col(aes(y = incentive_count, x = year)) +   labs(
-    title = "Incentive PIN Count by Year", x = "", y = "# Incentive PINs") + theme_classic()
-
 
 #ptax_pins %>% filter(between(class, 600,900) ) %>% group_by(pin) %>% summarize(count = n()) %>% filter(count > 16)
 # 632 PINs have existed AND been incentive properties for all years in database.
@@ -50,16 +47,32 @@ ptax_pins %>% filter(between(class, 600,899) ) %>% group_by(year) %>% summarize(
 
 # ptax_pins %>% mutate(block = str_sub(pin, 1, 7) ) %>%
 #  group_by(block) %>% summarize(count = n())
+
+ptax_pins %>% filter(between(class, 600,899) ) %>% group_by(year) %>% summarize(incentive_count = n())
+# 4383 existed in 2022. 
+# 3652 existed in 2021, etc.
+
+
+ptax_pins %>% filter(between(class, 600,899) ) %>% group_by(year) %>% summarize(incentive_count = n()) %>% ggplot() +geom_col(aes(y = incentive_count, x = year)) +   labs(
+    title = "Incentive PIN Count by Year", x = "", y = "# Incentive PINs") + theme_classic()
+
+
+
 ```
 
 ```{r}
-#| column: page
+#| label: tbl-pinclass-changes
+#| tbl-cap: "PINs that change property class - Delete later, lagged Class method used elsewhere works better for identifying class changes"
+#| tbl-subcap:  
+#|     - "More exhaustive list of PINs that changed property classes"
+#|     - "Too narrow of a filter. Only PINs that existed every year, Classes 600-899"
 #| layout-ncol: 2
+#| column: screen
+
 
 ptax_pivot_changed <- ptax_pins %>% 
   pivot_wider(id_cols = c(pin), names_from = "year", values_from =  "class") %>%
-  mutate(change = ifelse(as.numeric(`2022`)-as.numeric(`2006`) != 0,
-                         1, 0))%>% 
+  mutate(change = ifelse(as.numeric(`2022`)-as.numeric(`2006`) != 0, 1, 0))%>% 
   filter(change !=0)
 
 ptax_pivot_changed
@@ -81,7 +94,9 @@ ptax_pivot_changed_wNAs
 
 ```{r}
 #| layout-ncol: 2
-
+#| label: tbl-years-pin-existed
+#| tbl-cap: "Identifying if a PIN existed all years in the database"
+#| tbl-subcap: ["Grouped by PIN and  Class", "Grouped by PIN"]
 
 ptax_pins %>% 
   filter(class > 599 & class < 900) %>% 
@@ -108,8 +123,9 @@ ptax_pins %>%
 #| tbl-cap: "PINs (by Major Class) that had an Incentive Class at some Point in Time" 
 
 unique_ptax_MC <- ptax_pins %>% 
-  mutate(majorclass = str_sub(class, 1, 1)) %>%
-  group_by(pin, majorclass) %>% 
+  left_join(class_dict, by = c("class" = "class_code")) %>%
+ # mutate(majorclass = str_sub(class, 1, 1)) %>%
+  group_by(pin, major_class_code) %>% 
   summarize(count = n(),
             first_year = first(year),
             last_year = last(year)) %>% ungroup() %>%
@@ -117,16 +133,17 @@ unique_ptax_MC <- ptax_pins %>%
 
 unique_ptax_w_MC <- unique_ptax_MC %>% 
   group_by(pin) %>%
-  mutate(var2 = cumsum(row_number() == 1 | (majorclass != dplyr::lag(majorclass)))) %>% 
+  mutate(var2 = cumsum(row_number() == 1 | (major_class_code != dplyr::lag(major_class_code)))) %>% 
   ungroup()
 
 
 unique_ptax_wide_MC <- unique_ptax_w_MC %>%
   pivot_wider(id_cols = "pin",
               names_from = var2,
-              values_from = c(majorclass, count, first_year, last_year))
+              values_from = c(major_class_code, count, first_year, last_year))
 
 unique_ptax_wide_MC
+#write_csv(unique_ptax_wide_MC)
 
 ```
 
@@ -166,6 +183,9 @@ unique_ptax_wide
 ```
 
 ```{r}
+#| label: tbl-comval-keypins
+#| tbl-cap: "Number of PINs Associated with each KeyPIN"
+
 # read in the cleaned file with keypins and pins from the commercial valuation dataset
 comval_pins <- read.csv("./Output/manually_cleaned_incentive_pins_AWM.csv") %>%
   mutate(keypin_concat = as.character(keypin_concat)) %>%
@@ -218,13 +238,15 @@ unique_comval %>% group_by(keypin_concat) %>% summarize(n = n()) %>% arrange(-n)
 
 2973 unique keypin and pin combinations.
 
+
+
 # PIN to Project Crosswalk
 
 ```{r}
 #| column: page
+#| label: tbl-unique-ptax-wide
+#| tbl-cap: "Unique PINs and their Property Class, Number of Years as Class Type, and Years that it was Each Class Type"
 
-# Combine unique incentive PINs that have existed ever, The CONTROL variable from CMAP,
-# and the keypin from the experimental commercial valuation dataset 
 
 head(unique_ptax_wide)
 
@@ -232,14 +254,17 @@ head(unique_comval)
 ```
 
 ```{r}
+
+# Combine unique incentive PINs that have existed ever, The CONTROL variable from CMAP,
+# and the keypin from the experimental commercial valuation dataset 
+
 cleanjoin <- full_join(unique_ptax_wide, unique_comval, by = c("pin" = "pin_cleaned"))
 # 5871 obs
 
 clean_join <- cleanjoin %>% mutate(parcel = str_sub(pin, 1, 10),
                      block = str_sub(pin, 1, 7))
-```
 
-```{r}
+
 # now take the ones that didn't merge with the comval data and bring in the CMAP data?
 nokeypins <- cleanjoin %>% filter(is.na(keypin_concat))
 # nokeypins # 2898 pins do not have key pins 
@@ -254,30 +279,92 @@ cleanjoin <- cleanjoin %>% filter(!is.na(keypin_concat)) %>% mutate(needs_keypin
 
 # Projects in 2022
 
+There were 4,385 incentive PINs in tax year 2022. Of those, 1,483 were missing key pins. 
+
 ```{r}
 incentpins_2022 <- unique_ptax_w_class %>%
         filter(class > 599 & class < 900) %>%
   filter(last_year == 2022) %>%  # implies still existed in 2022
   left_join(unique_comval, by = c("pin" = "pin_cleaned") ) %>%
   mutate(parcel = str_sub(pin, 1, 10),
-         block = str_sub(pin, 1, 7))
+         block = str_sub(pin, 1, 7),
+         township = str_sub(pin, 1, 2)) %>%
+  mutate(keypin_concat = ifelse(block >= 2919107 & block <= 2919120, "Amazon", keypin_concat ),
+         keypin_concat = ifelse(keypin_concat >= "2919100010000" & keypin_concat <= "29191050560000", "Amazon", keypin_concat) )
 # 4385 obs
 
 incentpins_2022 %>% 
       filter(class > 599 & class < 900) %>%
-  filter(is.na(keypin_concat))
-# 1483 missing keypin
+  filter(is.na(keypin_concat)) 
+# 1483 missing keypin - less now, 3/20/2024
+# 1,149 missing as of 3/21/2024
 
+```
+
+```{r include = FALSE}
+incentpins_2022 %>% 
+  group_by(block) %>% 
+  arrange((pin)) %>%
+  summarize(first_key = first(keypin_concat),
+            last_key = last(keypin_concat),
+            first_pin = first(pin),
+            last_pin = last(pin),
+            pin_count = n()
+            ) %>% arrange(desc(pin_count))
+```
+
+```{r include = FAKSE}
+incentpins_2022 %>% 
+ 
+
+  filter(block >= 2919107 & block <= 2919120) %>%        # 335 obs, 1 keypin, all in Thornton township
+  
+ # filter(block >= 2824202 & block <= 2824207) %>%        # 66 PINs, probably the ones in Harvey Muni / Bremen Township
+  
+  # range of remdiation parcels included in 2022 Notice from Clerks office
+  # common address: 160th Western-Hamilton, Markham IL
+  # filter( parcel >= 2919107058 & parcel <= 2919120075 ) %>%     # 286 pins, 1 keypin
+   # 
+   # filter((parcel >= 2824201015 & parcel <= 2824211032) |   ## 66 PINs in Bloom
+   #        (parcel >= 2919100001 & parcel <= 2919105056)     ## 202 PINs in Thornton
+   #        ) %>%      # 268 obs, no keypins
+   # 
+   # range of PINs associated with Scannell Prop 420 LLC agreement from 12/27/2021
+  #  filter(parcel > 2919107001 & parcel < 2919120018) %>%         # 333 pins in this range
+  
+  group_by(keypin_concat) %>% summarize(n = n())
+
+
+```
+
+
+```{r}
+#| label: tbl-pinsinblocks-andparcels
+#| tbl-cap: "Number of PINs in 10-Digit Parcels and 7-Digit Blocks"
+#| layout-ncol: 2
+
+incentpins_2022 %>% 
+      group_by(parcel) %>% 
+  summarize(pins_in_parcel = n()) %>% arrange(desc(pins_in_parcel))
+
+incentpins_2022 %>% 
+      group_by(block) %>% 
+  summarize(pins_in_block = n()) %>% arrange(desc(pins_in_block))
+```
+
+
+```{r}
 comval_projects_2022 <- incentpins_2022 %>%   
   filter(class > 599 & class < 900) %>%
   filter(!is.na(keypin_concat)) %>% 
-  mutate(needs_keypin = 0 ) %>% select(pin, keypin_concat, needs_keypin)
+  mutate(needs_keypin = 0 ) %>% 
+  select(pin, keypin_concat, needs_keypin)
 
 ```
 
 We could attempt to make project IDs that were based only on the idea of incentive PINs in close proximity to other incentive PINs by grouping by Parcel (first 10-digits of PIN) or Block (first 7-digits of PIN)
 
-```{r eval=FALSE}
+```{r eval=FALSE, include = FALSE}
 # best guess at creating project-IDs: group by the block or parcel number.
 incentpins_2022 %>% 
       filter(class > 599 & class < 900) %>%
@@ -286,8 +373,15 @@ incentpins_2022 %>%
 
 incentpins_2022 %>% 
       filter(class > 599 & class < 900) %>%
+  group_by(pin, keypin_concat) %>% summarize(n = n()) %>%
+  filter(is.na(keypin_concat)) # 1149 pins missing keypins
+
+incentpins_2022 %>% 
+      filter(class > 599 & class < 900) %>%
   group_by(parcel, keypin_concat) %>% summarize(n = n()) %>%
-  filter(is.na(keypin_concat)) # 1400+ parcels missing keypins
+  filter(is.na(keypin_concat)) 
+# 1119 parcels missing keypins.
+# 1149 pins with 1119 parcels implies that some PINs can be grouped at the parcel level at the bare minimum. 
 ```
 
 Lets try seeing if the access file passed on to use from CMAP has project identifiers we can match to some pins.
@@ -321,11 +415,14 @@ unique_cmap <- access_db %>%
   distinct() %>% 
   arrange(pin)
 
-
+# identify if a PIN in the access DB is associated with more than one project
 unique_access <- access_db %>% 
   group_by(pin) %>%
-  mutate(var2 = cumsum(row_number() == 1 | (CONTROL != dplyr::lag(CONTROL)))) %>% 
-  arrange(pin, startyear_clean) %>% ungroup() %>% filter(!is.na(var2))
+  mutate(var2 = cumsum(row_number() == 1 | 
+                         (CONTROL != dplyr::lag(CONTROL)))) %>% 
+  arrange(pin, startyear_clean) %>% 
+  ungroup() %>% 
+  filter(!is.na(var2)) 
 
 
 unique_access_wide <- unique_access %>%
@@ -359,7 +456,7 @@ keypinless_join <- needs_keypin %>%
   select(CONTROL, pin, everything()) %>%
   rename(keypin = CONTROL, yrs_exist_inPTAX = count)
 
-keypinless_join # 1600 
+keypinless_join # 1600  # 1266
 
 
 keypinless_join %>% arrange(pin, keypin) %>%
@@ -368,7 +465,7 @@ keypinless_join %>% arrange(pin, keypin) %>%
             first_project = first(keypin),
             last_project = last(keypin))  %>% 
   arrange(first_project)
-# 1483 unique PINs still
+# 1483 unique PINs still # 1149 3/21/2024 AWM
 
 
 ## Visually inspected to see if pins
@@ -464,7 +561,7 @@ datatable(incent_projects_2022, rownames= FALSE, colnames = c('Keypin' = 'keypin
 
 ```{r}
 #| label: tbl-projectsummary
-#| column: page
+#| column: screen-inset
 #| tbl-cap: "Project Level: Summed AV and Taxbills of PINs within a Project"
 
 projectlevelsummary <- incent_projects_2022 %>% 
@@ -489,7 +586,7 @@ datatable(projectlevelsummary,
 
 ```{r}
 #| label: tbl-munilevel-projects
-#| column: page
+#| column: screen-inset
 #| tbl-cap: "Incentive Projects in Municipalities"
 
 muni_projects <- incent_projects_2022 %>% 
@@ -512,3 +609,15 @@ datatable(muni_projects,
  # formatRound(c(3), digits = 0) %>%
   formatCurrency(c('Incentive Projects Taxes Collected', 'AV Mailed', 'AV Certified', 'AV Board', 'AV Clerk'), digits = 0)
 ```
+
+
+# Map unmatched Parcels 
+
+First, map the Amazon parcels
+```{r eval=FALSE}
+
+
+  mutate(keypin_concat = ifelse(block >= 2919107 & block <= 2919120, "Amazon", keypin_concat ))
+
+```
+
