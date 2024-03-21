@@ -236,7 +236,7 @@ unique_comval %>% group_by(keypin_concat) %>% summarize(n = n()) %>% arrange(-n)
 # 1831 key pins (aka projects) from the commercial valuation data set from assessors/cook data portal 
 ```
 
-2973 unique keypin and pin combinations.
+After unnesting the data downloaded, there were 2976 unique keypin and pin combinations from the commercial valuation data. 1,826 Project IDs came from the preliminary commercial valuation dataset online. 
 
 
 
@@ -279,7 +279,7 @@ cleanjoin <- cleanjoin %>% filter(!is.na(keypin_concat)) %>% mutate(needs_keypin
 
 # Projects in 2022
 
-There were 4,385 incentive PINs in tax year 2022. Of those, 1,483 were missing key pins. 
+There were 4,385 incentive PINs in tax year 2022 (after merging PTAXSIM incentive pins with the commercial valuation dataset keypins cleaned above). Of those, 1,149 were still missing key pins. Time to see if we can get any more project IDs from the database passed on from CMAP. 
 
 ```{r}
 incentpins_2022 <- unique_ptax_w_class %>%
@@ -289,8 +289,13 @@ incentpins_2022 <- unique_ptax_w_class %>%
   mutate(parcel = str_sub(pin, 1, 10),
          block = str_sub(pin, 1, 7),
          township = str_sub(pin, 1, 2)) %>%
-  mutate(keypin_concat = ifelse(block >= 2919107 & block <= 2919120, "Amazon", keypin_concat ),
-         keypin_concat = ifelse(keypin_concat >= "2919100010000" & keypin_concat <= "29191050560000", "Amazon", keypin_concat) )
+  mutate(keypin_concat = ifelse(block >= 2824201 & block <= 2824211, "Amazon", keypin_concat)) %>%
+  mutate(
+         keypin_concat = ifelse(block >= 2919100 & block <= 2919120, "Amazon", keypin_concat ),
+
+        # keypin_concat = as.character(keypin_concat),
+        # keypin_concat = ifelse(keypin_concat >= "2919100010000" & keypin_concat <= "29191050560000", "Amazon", keypin_concat)
+          )
 # 4385 obs
 
 incentpins_2022 %>% 
@@ -298,6 +303,7 @@ incentpins_2022 %>%
   filter(is.na(keypin_concat)) 
 # 1483 missing keypin - less now, 3/20/2024
 # 1,149 missing as of 3/21/2024
+# 881 missing after even more pins cleaned, 3/21/2024
 
 ```
 
@@ -313,7 +319,7 @@ incentpins_2022 %>%
             ) %>% arrange(desc(pin_count))
 ```
 
-```{r include = FAKSE}
+```{r include = FALSE}
 incentpins_2022 %>% 
  
 
@@ -353,17 +359,6 @@ incentpins_2022 %>%
 ```
 
 
-```{r}
-comval_projects_2022 <- incentpins_2022 %>%   
-  filter(class > 599 & class < 900) %>%
-  filter(!is.na(keypin_concat)) %>% 
-  mutate(needs_keypin = 0 ) %>% 
-  select(pin, keypin_concat, needs_keypin)
-
-```
-
-We could attempt to make project IDs that were based only on the idea of incentive PINs in close proximity to other incentive PINs by grouping by Parcel (first 10-digits of PIN) or Block (first 7-digits of PIN)
-
 ```{r eval=FALSE, include = FALSE}
 # best guess at creating project-IDs: group by the block or parcel number.
 incentpins_2022 %>% 
@@ -383,6 +378,19 @@ incentpins_2022 %>%
 # 1119 parcels missing keypins.
 # 1149 pins with 1119 parcels implies that some PINs can be grouped at the parcel level at the bare minimum. 
 ```
+
+
+
+```{r}
+comval_projects_2022 <- incentpins_2022 %>%   
+  filter(class > 599 & class < 900) %>%
+  filter(!is.na(keypin_concat)) %>% 
+  mutate(needs_keypin = 0 ) %>% 
+  select(pin, keypin_concat, needs_keypin)
+
+```
+
+We could attempt to make project IDs that were based only on the idea of incentive PINs in close proximity to other incentive PINs by grouping by Parcel (first 10-digits of PIN) or Block (first 7-digits of PIN)
 
 Lets try seeing if the access file passed on to use from CMAP has project identifiers we can match to some pins.
 
@@ -450,6 +458,7 @@ needs_keypin<- incentpins_2022 %>%
       filter(class > 599 & class < 900) %>%
   filter(is.na(keypin_concat))
 # 1483 obs from PTAXSIM in 2022 need a project ID
+# 881 after dealing with Amazon pins. 
 
 keypinless_join <- needs_keypin %>% 
   left_join(access_db, by = c("pin" = "Concat PIN")) %>% 
@@ -457,6 +466,7 @@ keypinless_join <- needs_keypin %>%
   rename(keypin = CONTROL, yrs_exist_inPTAX = count)
 
 keypinless_join # 1600  # 1266
+# 998 3/21/24
 
 
 keypinless_join %>% arrange(pin, keypin) %>%
@@ -465,18 +475,10 @@ keypinless_join %>% arrange(pin, keypin) %>%
             first_project = first(keypin),
             last_project = last(keypin))  %>% 
   arrange(first_project)
-# 1483 unique PINs still # 1149 3/21/2024 AWM
+# 1483 unique PINs still 
+# 1149 3/21/2024 12pm AWM
+# 881 3/21/2024 2pm AWM
 
-
-## Visually inspected to see if pins
-keypinless_join %>% arrange(pin, keypin) %>%
-  group_by(pin) %>% 
-  summarize(n=n(), # number of times the PIN shows up in the access database
-            first_project = first(keypin),
-            last_project = last(keypin))  %>% 
-  arrange(first_project) %>% 
-  filter(n>1)
-# 106 pins show up in multiple projects as their project or status changed.
 ```
 
 
@@ -490,14 +492,20 @@ project_pins_accessDB <- keypinless_join %>%
   mutate(needs_keypin = ifelse(is.na(keypin_concat),1,0)) %>%
   select(pin, keypin_concat, needs_keypin) %>% 
   distinct() 
-# there are 1483 distinct PINs that needed projects
+# there are 1149 distinct PINs that needed projects
 # and 716 that now have identifiers
+# 165 still need a project ID
+
 project_pins_accessDB
+
+
 ```
 
 ```{r}
-# there are 345 project identifiers for the 716 pins that
-project_pins_accessDB %>% group_by(keypin_concat) %>% summarize(pincount = n())
+# there are 346 project identifiers for the 811 pins that
+project_pins_accessDB %>% group_by(keypin_concat) %>% summarize(pincount = n()) %>% arrange(desc(pincount))
+project_pins_accessDB %>% group_by(pin) %>% distinct()
+
 ```
 
 
@@ -527,7 +535,6 @@ incentpins_2022 %>% arrange(-tax_bill_total)
 
 ```
 
-3,731 PINs merged nicely with a project identifier.
 
 ```{r}
 #| label: tbl-incentivepins
@@ -614,10 +621,44 @@ datatable(muni_projects,
 # Map unmatched Parcels 
 
 First, map the Amazon parcels
-```{r eval=FALSE}
+```{r}
+
+library(sf)
+library(ggspatial)
 
 
-  mutate(keypin_concat = ifelse(block >= 2919107 & block <= 2919120, "Amazon", keypin_concat ))
+incentpins_2022<- incentpins_2022 %>%
+  filter(keypin == "Amazon") %>%
+  mutate(parcel = str_sub(pin, 1, 10))
+
+amazon <- unique(substr(incentpins_2022$pin, 1, 10))
+
+amazon_geo <- lookup_pin10_geometry(year = 2022, pin10 = amazon) %>%
+  st_as_sf(wkt = "geometry", crs = 4326)
+
+amazon_geo <- amazon_geo %>%
+  left_join(incentpins_2022, by = c("pin10" = "parcel"))
+
+
+
+amazon_map <- ggplot() +
+  annotation_map_tile(type = "cartolight", zoomin = -1) +
+  geom_sf(
+    data = amazon_geo,
+    aes(fill = clean_name),
+    alpha = 0.5,
+    linewidth = 0.1
+  ) +
+  annotation_scale(location = "br") +
+  theme_void() +
+  theme(
+    legend.title = element_text(size = 14),
+    legend.text = element_text(size = 10),
+    legend.key.size = unit(18, "points"),
+    legend.position = "bottom"
+  )
+
+amazon_map
 
 ```
 
