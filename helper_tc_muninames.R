@@ -13,7 +13,7 @@ library(ptaxsim)
 library(glue)
 
 # Create the DB connection with the default name expected by PTAXSIM functions
-ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2022.0.0.db")
 
 
 options(digits=4, scipen = 999)
