@@ -13,6 +13,8 @@ format:
 
 library(tidyverse)
 library(DT)
+library(sf)
+library(ggspatial)
 
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 
@@ -53,8 +55,13 @@ ptax_pins %>% filter(between(class, 600,899) ) %>% group_by(year) %>% summarize(
 # 3652 existed in 2021, etc.
 
 
-ptax_pins %>% filter(between(class, 600,899) ) %>% group_by(year) %>% summarize(incentive_count = n()) %>% ggplot() +geom_col(aes(y = incentive_count, x = year)) +   labs(
-    title = "Incentive PIN Count by Year", x = "", y = "# Incentive PINs") + theme_classic()
+ptax_pins %>% filter(between(class, 600,899) ) %>% 
+  group_by(year) %>% 
+  summarize(incentive_count = n()) %>% 
+  ggplot() +
+  geom_col(aes(y = incentive_count, x = year)) +   
+  labs(title = "Incentive PIN Count by Year", x = "", y = "# Incentive PINs") +
+  theme_classic()
 
 
 
@@ -113,7 +120,8 @@ ptax_pins %>%
 
 ptax_pins %>% 
   filter(class > 599 & class < 900) %>% 
-  group_by(pin) %>% summarize(count = n()) %>% filter(count > 16)
+  group_by(pin) %>% summarize(count = n()) %>% 
+  filter(count > 16)
 # 632 PINs have existed AND been incentive properties for all years in database.
 # 4,654 PINs existed during every year (doesn't matter what property class)
 # 5869-4654 = around 1200 PINs created since 2006
@@ -152,8 +160,14 @@ unique_ptax_wide_MC
 #| label: tbl-pinchange
 #| tbl-cap: "PINs that had an Incentive Class at some Point in Time" 
 
-incentpins_2021 <- ptax_pins %>% filter(year == 2021) %>%
-          filter(class > 599 & class < 900)
+
+# need later:
+incentpins_2021 <- ptax_pins %>% 
+  filter(year == 2021) %>%
+  filter(class > 599 & class < 900)
+
+
+
 
 unique_ptax_w_class <- ptax_pins %>% 
   group_by(pin, class) %>% 
@@ -283,66 +297,65 @@ cleanjoin <- cleanjoin %>% filter(!is.na(keypin_concat)) %>% mutate(needs_keypin
 
 # Projects in 2022
 
-There were 4,385 incentive PINs in tax year 2022 (after merging PTAXSIM incentive pins with the commercial valuation dataset keypins cleaned above). Of those, 1,149 were still missing key pins. Time to see if we can get any more project IDs from the database passed on from CMAP. 
+There were 4,385 incentive PINs in tax year 2022 (after merging PTAXSIM incentive pins with the commercial valuation dataset keypins cleaned above). Of those, 881 were still missing key pins. Time to see if we can get any more project IDs from the database passed on from CMAP. 
+
+
+The block range for mutate() is from the Clerk's Office document for EPA and buyer of property.
+has pins listed on a [pdf on the website](https://crs.cookcountyclerkil.gov/Document/Detail?dId=Mjk4Njg0Mjk1&hId=OWQ1Y2RhZWY2NmRmNzM5YTZkZjUyOGE2YjUyZTgwZmQxYmYwZDlkNjQwYzczMmNjYmI0NWQxOWQ4MWUxZTU5Nw2)
+
+
+There are actually two agreements. The rest of the PINs are [on this one:](https://crs.cookcountyclerkil.gov/Document/Detail?dId=Mjk4Njg0Mjg1&hId=Njc1YTdkZDY4ZTE0MGNlZTI4NDA3ODEzZWVmNWQyNDE2OWY0YTY2ZjE3ODA0NjQxYjllM2MzOTQwNjE0MmJmNA2)
 
 ```{r}
+amazon_pins <- readxl::read_excel("amazonPINs.xlsx")
+
+library(stringr)
+library(tidyverse)
+
+amazon_pins <- amazon_pins %>% 
+  mutate(pin_clean = str_remove_all(PIN, "-"),
+         parcel = str_sub(pin_clean, 1, 10),
+         block = str_sub(pin_clean,1,7),
+         township = str_sub(pin_clean, 1, 2))
+
 incentpins_2022 <- unique_ptax_w_class %>%
-        filter(class > 599 & class < 900) %>%
+  filter(class > 599 & class < 900) %>%
   filter(last_year == 2022) %>%  # implies still existed in 2022
   left_join(unique_comval, by = c("pin" = "pin_cleaned") ) %>%
   mutate(parcel = str_sub(pin, 1, 10),
          block = str_sub(pin, 1, 7),
          township = str_sub(pin, 1, 2)) %>%
-  mutate(keypin_concat = ifelse(block >= 2824201 & block <= 2824211, "Amazon", keypin_concat)) %>%
+  mutate(keypin_concat = ifelse((parcel >= 2824201015 & parcel <= 2824211032) | (parcel >=2919100002 & parcel <= 2919105056), "Amazon", keypin_concat)) %>%
   mutate(
-         keypin_concat = ifelse(block >= 2919100 & block <= 2919120, "Amazon", keypin_concat ),
-
-        # keypin_concat = as.character(keypin_concat),
-        # keypin_concat = ifelse(keypin_concat >= "2919100010000" & keypin_concat <= "29191050560000", "Amazon", keypin_concat)
-          )
+    keypin_concat = ifelse(parcel >= 2919107001 & parcel <= 2919120018, "Amazon", keypin_concat )
+  )
 # 4385 obs
 
 incentpins_2022 %>% 
-      filter(class > 599 & class < 900) %>%
+  filter(class > 599 & class < 900) %>%
   filter(is.na(keypin_concat)) 
 # 1483 missing keypin - less now, 3/20/2024
 # 1,149 missing as of 3/21/2024
-# 881 missing after even more pins cleaned, 3/21/2024
+# 882 missing after even more pins cleaned, 3/21/2024
 
 ```
 
-```{r include = FALSE}
-incentpins_2022 %>% 
-  group_by(block) %>% 
-  arrange((pin)) %>%
-  summarize(first_key = first(keypin_concat),
-            last_key = last(keypin_concat),
-            first_pin = first(pin),
-            last_pin = last(pin),
-            pin_count = n()
-            ) %>% arrange(desc(pin_count))
-```
 
 ```{r include = FALSE}
+
+# 593 PINs have incentives from the amazon warehouse 
 incentpins_2022 %>% 
  
 
-  filter(block >= 2919107 & block <= 2919120) %>%        # 335 obs, 1 keypin, all in Thornton township
+ # filter(block >= 2919107 & block <= 2919120) %>%        # 335 obs, 1 keypin, all in Thornton township
   
  # filter(block >= 2824202 & block <= 2824207) %>%        # 66 PINs, probably the ones in Harvey Muni / Bremen Township
   
-  # range of remdiation parcels included in 2022 Notice from Clerks office
-  # common address: 160th Western-Hamilton, Markham IL
-  # filter( parcel >= 2919107058 & parcel <= 2919120075 ) %>%     # 286 pins, 1 keypin
-   # 
-   # filter((parcel >= 2824201015 & parcel <= 2824211032) |   ## 66 PINs in Bloom
-   #        (parcel >= 2919100001 & parcel <= 2919105056)     ## 202 PINs in Thornton
-   #        ) %>%      # 268 obs, no keypins
-   # 
-   # range of PINs associated with Scannell Prop 420 LLC agreement from 12/27/2021
+  # range of PINs associated with Scannell Prop 420 LLC agreement from 12/27/2021
   #  filter(parcel > 2919107001 & parcel < 2919120018) %>%         # 333 pins in this range
-  
-  group_by(keypin_concat) %>% summarize(n = n())
+  filter(pin %in% amazon_pins$pin_clean) # %>%
+  #group_by(keypin_concat) %>% 
+ # summarize(n = n())
 
 
 ```
@@ -505,7 +518,7 @@ project_pins_accessDB
 
 ```
 
-```{r}
+```{r include = FALSE}
 # there are 346 project identifiers for the 811 pins that
 project_pins_accessDB %>% group_by(keypin_concat) %>% summarize(pincount = n()) %>% arrange(desc(pincount))
 project_pins_accessDB %>% group_by(pin) %>% distinct()
@@ -568,10 +581,11 @@ incent_projects_2022 <- incentpins_2022 %>%
            exe_abate = sum(exe_abate), 
            pins_inproject = n() ) %>% 
   left_join(tc_muninames) %>%
-  mutate(clean_name = ifelse(is.na(clean_name), "Unincorporated", clean_name))
+  select(-agency_num, agency_name, shpfile_name) %>%
+  mutate(clean_name = ifelse(is.na(clean_name), "Unincorporated", clean_name)) 
 
 
-datatable(incent_projects_2022, rownames= FALSE, colnames = c('Keypin' = 'keypin', 'Class' = 'class', 'Tax Code' = 'tax_code_num', 'Project Tax Bill' = 'tax_bill_total', 'AV Mailed' = 'av_mailed', 'AV Certified' = 'av_certified', 'AV Board' = 'av_board', 'AV Clerk' = 'av_clerk', 'Abatements' = 'exe_abate', 'PIN Count per Project' = 'pins_inproject', 'Tax Code Rate' = 'tax_code_rate')) %>%
+datatable(incent_projects_2022, rownames= FALSE, colnames = c('Keypin' = 'keypin', 'Class' = 'class', 'Tax Code' = 'tax_code_num', 'Project Tax Bill' = 'tax_bill_total', 'AV Mailed' = 'av_mailed', 'AV Certified' = 'av_certified', 'AV Board' = 'av_board', 'AV Clerk' = 'av_clerk', 'Abatements' = 'exe_abate', 'PIN Count per Project' = 'pins_inproject', 'Tax Code Rate' = 'tax_code_rate', 'Municipality' = 'clean_name')) %>%
  # formatRound(c(3), digits = 0) %>%
   formatCurrency(c('Project Tax Bill', 'AV Mailed', 'AV Certified', 'AV Board', 'AV Clerk'), digits = 0)
 ```
@@ -635,28 +649,90 @@ datatable(muni_projects,
 ```
 
 
-# Map unmatched Parcels 
+## Map unmatched Parcels 
 
 First, map the Amazon parcels
-```{r}
 
-library(sf)
-library(ggspatial)
+```{r amazonmaps2022}
+amazon_2022 <- incentpins_2022 %>%
+  filter(pin %in% amazon_pins$pin_clean) %>%
+  mutate(pin10 = str_sub(pin, 1, 10))
 
+amazon <- unique(substr(amazon_pins$pin_clean, 1, 10))
 
-incentpins_2022<- incentpins_2022 %>%
-  filter(keypin == "Amazon") %>%
-  mutate(parcel = str_sub(pin, 1, 10))
-
-amazon <- unique(substr(incentpins_2022$pin, 1, 10))
 
 amazon_geo <- lookup_pin10_geometry(year = 2022, pin10 = amazon) %>%
   st_as_sf(wkt = "geometry", crs = 4326)
 
 amazon_geo <- amazon_geo %>%
-  left_join(incentpins_2022, by = c("pin10" = "parcel"))
+  left_join(amazon_2022)
 
 
+amazon_map <- ggplot() +
+  annotation_map_tile(type = "cartolight", zoomin = -1) +
+  geom_sf(
+    data = amazon_geo,
+    aes(fill = factor(class)),
+    alpha = 0.5,
+    linewidth = 0.1
+  ) +
+  annotation_scale(location = "br") +
+  theme_void() +
+    labs(title = "Amazon PINs in 2022 by Class: Markham and Harvey") +
+  theme(
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    legend.key.size = unit(18, "points"),
+    legend.position = "bottom"
+  )
+
+amazon_map
+```
+
+
+```{r amazonmaps2022-allPINs}
+## Include all PINs within those block ranges, not just incentive PINs
+## Edited to use range of parcels from EPA document
+
+amazon_post <- read_csv("./Output/Dont_Upload/0_joined_PIN_data_2022.csv") %>% 
+  mutate(pin10 = str_sub(pin, 1, 10),
+         block = str_sub(pin, 1, 7),
+         keypin_concat = ifelse(pin %in% amazon_pins$pin_clean, "Amazon", NA)) %>%
+  #        keypin_concat = ifelse((pin10 >= 2824201015 & pin10 <= 2824211032) | 
+  #                                 (pin10 >=2919100002 & pin10 <= 2919105056), "Amazon", NA)) %>%
+  # mutate(keypin_concat = ifelse(pin10 >= 2919107001 & pin10 <= 2919120018, "Amazon", keypin_concat )
+  #         ) %>% 
+  filter(keypin_concat == "Amazon")
+
+
+amazon <- unique(substr(amazon_pins$pin_clean, 1, 10))
+
+amazon_geo <- lookup_pin10_geometry(year = 2022, pin10 = amazon) %>%
+  st_as_sf(wkt = "geometry", crs = 4326)
+
+amazon_geo <- amazon_geo %>%
+ left_join(amazon_post)
+
+
+amazon_map <- ggplot() +
+  annotation_map_tile(type = "cartolight", zoomin = -1) +
+  geom_sf(
+    data = amazon_geo,
+    aes(fill = factor(class)),
+    alpha = 0.5,
+    linewidth = 0.1
+  ) +
+  annotation_scale(location = "br") +
+  theme_void() +
+    labs(title = "Amazon PINs in 2022 by Class") +
+  theme(
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    legend.key.size = unit(18, "points"),
+    legend.position = "bottom"
+  )
+
+amazon_map
 
 amazon_map <- ggplot() +
   annotation_map_tile(type = "cartolight", zoomin = -1) +
@@ -668,8 +744,9 @@ amazon_map <- ggplot() +
   ) +
   annotation_scale(location = "br") +
   theme_void() +
+  labs(title = "Amazon PINs in 2022")+
   theme(
-    legend.title = element_text(size = 14),
+    legend.title = element_blank(),
     legend.text = element_text(size = 10),
     legend.key.size = unit(18, "points"),
     legend.position = "bottom"
@@ -687,21 +764,95 @@ amazon_map
 
 After merging in the commercial valuation dataset, there are still 788 PINs missing key pins. Time to see if we can get any more project IDs from the database passed on from CMAP. 
 
+```{r amazonmaps2021-delete, eval=FALSE, include = FALSE}
+# original incent pins made near beginning of code from ptax_pins object
+# kept trying to filter for amazon pins in the incentive data but DUH they don't exist because they weren't incentive classes in 2021. 
+ 
+
+amazon_pre <-incent_pins %>%
+   filter(keypin_concat == "Amazon")
+# 
+#  keypin_concat = ifelse((pin10 >= 2824201015 & pin10 <= 2824211032) | 
+#                                   (pin10 >=2919100002 & pin10 <= 2919105056), "Amazon", NA)) %>%
+#   mutate(keypin_concat = ifelse(pin10 >= 2919107001 & pin10 <= 2919120018, "Amazon", keypin_concat ) )
+
+# amazon_pre <- incentpins_2021 %>%
+#  filter(keypin_concat == "Amazon") 
+
+amazon <- unique(substr(amazon_pre$pin, 1, 10))
+
+amazon_geo <- lookup_pin10_geometry(year = 2021, pin10 = amazon) %>%
+  st_as_sf(wkt = "geometry", crs = 4326)
+
+amazon_pre <- amazon_pre %>%
+ left_join(amazon_geo)
+  
+amazon_pre %>%
+  ggplot() + 
+    annotation_map_tile(type = "cartolight", zoomin = -1) +
+  geom_sf(
+    data = amazon_geo$geometry,
+    aes(fill = factor(class)),
+    alpha = 0.5,
+    linewidth = 0.1
+  ) +
+ annotation_scale(location = "br") +
+  theme_void() +
+  labs(title = "Amazon Warehouse PINs in 2021") + 
+  theme(
+    legend.title =  element_blank(), #element_text(size = 14),
+    legend.text = element_text(size = 10),
+    legend.key.size = unit(18, "points"),
+    legend.position = "bottom"
+  )
+```
+
+
+Using all PINs, not just incentive PINs: 
+
 ```{r}
-
-incentpins_2021 <- incentpins_2021 %>%
-        filter(class > 599 & class < 900) %>%
- # filter(last_year == 2021) %>%  # implies still existed in 2022
-  left_join(unique_comval, by = c("pin" = "pin_cleaned") ) %>%
-  mutate(parcel = str_sub(pin, 1, 10),
+amazon_pre <- read_csv("./Output/4C_joined_PINs_bills_and_exemptions.csv") %>% 
+  mutate(pin10 = str_sub(pin, 1, 10),
          block = str_sub(pin, 1, 7),
-         township = str_sub(pin, 1, 2),
-         tax_bill_total = round(tax_bill_total)) 
+        # keypin_concat = ifelse(parcel >= 2824201015 & parcel <= 2919105056, "Amazon", NA)) %>%
+ # mutate(keypin_concat = ifelse(parcel >= 2919107001 & parcel <= 2919120018, "Amazon", keypin_concat )
+        # ) %>% 
+ pin10 = str_sub(pin, 1, 10),
+         block = str_sub(pin, 1, 7),
+ keypin_concat = ifelse(pin %in% amazon_pins$pin_clean, "Amazon", NA)) %>% 
+  #        keypin_concat = ifelse((pin10 >= 2824201015 & pin10 <= 2824211032) | 
+  #                                 (pin10 >=2919100002 & pin10 <= 2919105056), "Amazon", NA)) %>%
+  # mutate(keypin_concat = ifelse(pin10 >= 2919107001 & pin10 <= 2919120018, "Amazon", keypin_concat )
+  #         ) %>%
+  filter(keypin_concat == "Amazon") 
 
-incentpins_2021 %>% 
-      filter(class > 599 & class < 900) %>%
-  filter(is.na(keypin_concat)) 
+amazon <- unique(substr(amazon_pins$pin_clean, 1, 10))
 
+amazon_geo <- lookup_pin10_geometry(year = 2021, pin10 = amazon) %>%
+  st_as_sf(wkt = "geometry", crs = 4326)
+
+amazon_pre %>%
+  left_join(amazon_geo) %>%
+  ggplot() + 
+  
+    annotation_map_tile(type = "cartolight", zoomin = -1) +
+  geom_sf(
+    data = amazon_geo,
+    aes(fill = factor(amazon_pre$class)),
+    alpha = 0.5,
+    linewidth = 0.1
+  ) +
+ annotation_scale(location = "br") +
+  theme_void() +
+  labs(title = "Amazon Warehouse PINs in 2021: Vacant Land") + 
+  theme(
+    legend.title =  element_blank(), #element_text(size = 14),
+    legend.text = element_text(size = 10),
+    legend.key.size = unit(18, "points"),
+    legend.position = "bottom"
+  ) 
+
+  
 
 ```
 
@@ -712,13 +863,25 @@ incentpins_2021 %>%
 #| tbl-cap: "Number of PINs in 10-Digit Parcels and 7-Digit Blocks"
 #| layout-ncol: 2
 
+
+incentpins_2021 <- incentpins_2021 %>%
+  left_join(unique_comval, by = c("pin" = "pin_cleaned") ) 
+
+incentpins_2021 <- incentpins_2021 %>%
+  mutate(pin10 = str_sub(pin, 1, 10),
+         block = str_sub(pin, 1, 7),
+         township = str_sub(pin, 1, 2),
+         tax_bill_total = round(tax_bill_total))
+
 incentpins_2021 %>% 
-      group_by(parcel) %>% 
-  summarize(pins_in_parcel = n()) %>% arrange(desc(pins_in_parcel))
+      group_by(pin10) %>% 
+  summarize(pins_in_parcel = n()) %>% 
+  arrange(desc(pins_in_parcel))
 
 incentpins_2021 %>% 
       group_by(block) %>% 
-  summarize(pins_in_block = n()) %>% arrange(desc(pins_in_block))
+  summarize(pins_in_block = n()) %>% 
+  arrange(desc(pins_in_block))
 ```
 
 
@@ -729,15 +892,6 @@ comval_projects_2021 <- incentpins_2021 %>%
   filter(!is.na(keypin_concat)) %>% 
   mutate(needs_keypin = 0 ) %>% 
   select(pin, keypin_concat, needs_keypin)
-
-```
-
-We could attempt to make project IDs that were based only on the idea of incentive PINs in close proximity to other incentive PINs by grouping by Parcel (first 10-digits of PIN) or Block (first 7-digits of PIN)
-
-Lets try seeing if the access file passed on to use from CMAP has project identifiers we can match to some pins.
-
-
-```{r}
 
 needs_keypin<- incentpins_2021%>% 
       filter(class > 599 & class < 900) %>%
@@ -750,17 +904,14 @@ keypinless_join <- needs_keypin %>%
 
 keypinless_join
 
-keypinless_join %>% arrange(pin, keypin) %>%
+keypinless_join %>% 
+  arrange(pin, keypin) %>%
   group_by(pin) %>% 
   summarize(n=n(), # number of times the PIN shows up in the access database
             first_project = first(keypin),
             last_project = last(keypin))  %>% 
   arrange(first_project)
 
-```
-
-
-```{r}
 project_pins_accessDB <- keypinless_join %>% 
   arrange(pin, keypin) %>%
   group_by(pin) %>% 
@@ -774,21 +925,6 @@ project_pins_accessDB <- keypinless_join %>%
 project_pins_accessDB
 
 
-```
-
-```{r}
-#| layout-ncol: 2
-
-
-# there are 346 project identifiers for the 811 pins that
-project_pins_accessDB %>% group_by(keypin_concat) %>% summarize(pincount = n()) %>% arrange(desc(pincount))
-project_pins_accessDB %>% group_by(pin) %>% distinct()
-
-```
-
-> 82 PINs still need a keypin after merging in the project codes from CMAP's older files.
-
-```{r}
 both_groups <- rbind(comval_projects_2021, project_pins_accessDB)
 
 
@@ -799,15 +935,51 @@ projects <- both_groups %>%
   select(keypin=keypin_concat, pin, needs_keypin) %>% 
   distinct()  # %>% mutate(keypin = ifelse(is.na(keypin), as.character(pin), as.character(keypin)))
 
-incentpins_2021 <- ptax_pins %>% 
+incentpins_2021 <- ptax_pins %>%
   filter(class > 599 & class < 900) %>%
   filter(year == 2021) %>%
-  left_join(projects, by = "pin") %>% 
+  left_join(projects, by = "pin") %>%
   mutate(tax_code_num = as.character(tax_code_num)) %>%
-  left_join(tc_muninames) %>% 
+  left_join(tc_muninames) %>%
   select(keypin, pin, class, tax_code_num, everything()) %>% select(-c(exe_homeowner:exe_vet_dis_ge70)) %>%
   left_join(tc_muninames) %>%
   mutate(clean_name = ifelse(is.na(clean_name), "Unincorporated", clean_name))
+
+
+
+
+```
+
+
+```{r amazonmaps2021, eval=FALSE, include=FALSE}
+incentpins_2021 %>% 
+      filter(class > 599 & class < 900) %>%
+  filter(is.na(keypin_concat))
+```
+
+We could attempt to make project IDs that were based only on the idea of incentive PINs in close proximity to other incentive PINs by grouping by Parcel (first 10-digits of PIN) or Block (first 7-digits of PIN)
+
+Lets try seeing if the access file passed on to use from CMAP has project identifiers we can match to some pins.
+
+
+
+```{r}
+#| layout-ncol: 2
+
+
+# there are 346 project identifiers for the 811 pins that
+project_pins_accessDB %>% 
+  group_by(keypin_concat) %>% 
+  summarize(pincount = n()) %>% 
+  arrange(desc(pincount))
+
+project_pins_accessDB %>% group_by(pin) %>% distinct()
+
+```
+
+> 86 PINs still need a keypin after merging in the project codes from CMAP's older files.
+
+```{r}
 
 
 incentpins_2021 %>% arrange(-tax_bill_total)
@@ -826,7 +998,7 @@ incentpins_2021
 ```{r}
 #| label: tbl-incentiveprojects2021
 #| tbl-cap: "Totals for Project within a Tax Code - Note some have multiple tax codes"
-#| column: page
+#| column: screen-inset
 
 
 incent_projects_2021 <- incentpins_2021 %>%
@@ -842,7 +1014,8 @@ incent_projects_2021 <- incentpins_2021 %>%
            exe_abate = sum(exe_abate), 
            pins_inproject = n() ) %>% 
   left_join(tc_muninames) %>%
-  mutate(clean_name = ifelse(is.na(clean_name), "Unincorporated", clean_name))
+  mutate(clean_name = ifelse(is.na(clean_name), "Unincorporated", clean_name)) %>%
+  select(-c(agency_num, agency_name, shpfile_name, Triad))
 
 
 datatable(incent_projects_2021, rownames= FALSE, colnames = c('Keypin' = 'keypin', 'Class' = 'class', 'Tax Code' = 'tax_code_num', 'Project Tax Bill' = 'tax_bill_total', 'AV Mailed' = 'av_mailed', 'AV Certified' = 'av_certified', 'AV Board' = 'av_board', 'AV Clerk' = 'av_clerk', 'Abatements' = 'exe_abate', 'PIN Count per Project' = 'pins_inproject', 'Tax Code Rate' = 'tax_code_rate')) %>%
