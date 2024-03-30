@@ -31,7 +31,10 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 ```{r}
 #| code-fold: true
 
-nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
+nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx") 
+
+
+class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv") %>% select(class_code, class_desc, Alea_cat, everything()) 
 
 
 MuniLevel <- read_csv("./Output/ptaxsim_muni_level_2006-2021.csv") %>%
@@ -45,10 +48,17 @@ MC_sums <- read_csv("./Output/ptaxsim_muni_MC_2006-2021.csv") %>%
   filter(year == 2021) %>% 
   left_join(nicknames) 
 
-eqfact21 <- 3.0027 #2021 CC Equalization Factor
+tc_class <- read_csv("./Output/ptaxsim_TC_Class_summaries_2006-2021.csv") %>% 
+  filter(year == 2021)
+
+muni_class2022 <- read_csv("./Output/ptaxsim_muni_class_summaries_2006-2022.csv") %>% 
+  filter(year == 2022)
+
+eqfact22 <- 2.9237 # 2022 CC equalization factor
+eqfact21 <- 3.0027 # 2021 CC Equalization Factor
 ```
 
-```{r}
+```{r include = FALSE}
 incentive_sums <- MC_sums %>%
   left_join(MuniLevel) %>%
   mutate(
@@ -73,41 +83,110 @@ incentive_sums %>%
 ```
 
 
-```{r AleaCatsToGroup}
+```{r startfromclasslevelsummaries}
+muni_class2021 <- read_csv("./Output/ptaxsim_muni_class_summaries_2006-2022.csv") %>% 
+  filter(year == 2021) %>% 
+  left_join(class_dict, by = c("class" = "class_code"))
 
-# PTAXSIM incentive properties --------------------------------------------
-# Pulled from PTAXSIM - Al PINs from 2021, filtered by class_code between 600&900
-# 3652 PINs in 2021
-incentive_pins <- read_csv("./Output/7_output_incentive_classes.csv") %>%
-    mutate(
-      # pin = as.character(pin), 
-      # pin = str_pad(pin, 13, "left"),
-         parcel = str_sub(pin, 1, 10),
-         block = str_sub(pin, 1, 7)) 
-
-
-
-incentive_Aleacats <- incentive_pins %>%
-  left_join(nicknames)%>%
-  mutate(
-         incentive = ifelse(major_class_code %in% c("6A","6B", "6C", "7A","7B","7C","8"), "Incentive", "Non-Incentive"),
-         incent_type = ifelse(major_class_code %in% c("6A","6B", "6C"), "Industrial", ifelse(major_class_code %in% c("7A","7B","7C", "8"), "Commercial", "Not Incentive Prop"))) %>%
-  group_by(clean_name, Alea_cat) %>%
-  summarize(av = sum(av),
-            eav = sum(eav),
-            pins_in_muni = n()) %>%
+muni_class_AleaCats <- muni_class2021 %>%
   left_join(MuniLevel) %>%
+  mutate(Alea_cat = ifelse(Alea_cat %in% c("Exempt", "Residential", "Other Residential", 
+                                           "Owner Occupied", "Rental"), "Non-Incentive", Alea_cat)) %>% 
+  group_by(clean_name, incent_prop, Alea_cat, cur_munilevel_rate) %>%
+  summarize(av = sum(av),
+            eav = sum(eav), # equalized AV 
+            final_tax_to_dist = sum(final_tax_to_dist), # revenue collected by taxing districts
+            final_tax_to_tif = sum(final_tax_to_tif),   # revenue collected from TIF increment
+            current_taxable_eav = sum(current_taxable_eav),
+            pins_in_muni = n(),
+            all_exemptions = sum(all_exemptions),
+            abatements = sum(exe_abate),
+  ) %>%
   mutate(
-           # final_tax_to_dist = sum(final_tax_to_dist),
-           current_rev_collected = round(cur_munilevel_rate * eav ),
-           # current_taxable_eav = sum(current_taxable_eav)
-          )
+    # approximation for if assessments went from 10% to 25%, similar to other commercial and industrial property in Cook County
+    new_av = ifelse(incent_prop == "Incentive", av*2.5, av), 
+    
+    new_TEAV_noIncents = ifelse(incent_prop ==  "Incentive", current_taxable_eav * 2.5 , current_taxable_eav),
+    
+    new_TEAV_noExemps = current_taxable_eav + all_exemptions, # does not include abatements
+    
+    # amount of EAV from taxing an additiona 15% of the AV if incentive properties didn't exist
+    forgone_EAV_incent = ifelse(incent_prop == "Incentive", new_TEAV_noIncents - (current_taxable_eav + all_exemptions), 0),
+    
+    forgone_TIF_EAV = final_tax_to_tif / cur_munilevel_rate  )     
 
-incentive_Aleacats
+
+alt_rates <- muni_class_AleaCats %>% 
+  group_by(clean_name, cur_munilevel_rate) %>% 
+  mutate(munilevy = sum(final_tax_to_dist),
+         muni_exemptions = sum(all_exemptions), # all exe_ variables except exe_abate
+         muni_abatements = sum(abatements),
+         muni_forgoneTIF = sum(forgone_TIF_EAV),
+         muni_forgone_EAV_incent = sum(forgone_EAV_incent),
+
+         muni_current_TEAV = sum(current_taxable_eav),
+         muni_TEAV_noExe = sum(new_TEAV_noExemps),
+         muni_TEAV_noInc = sum(new_TEAV_noIncents),
+         
+         ) %>%
+  ungroup() %>%
+  mutate(
+    # Absolute maximum TEAV: No Exemptions, no abatements, no TIFS, no Incentive properties
+    # Commercial and industrial assessed at 25%
+    muni_TEAV_max = muni_current_TEAV + muni_exemptions + muni_abatements + muni_forgoneTIF + muni_forgone_EAV_incent,
+    
+    muni_TEAV_neither = muni_current_TEAV + muni_exemptions + muni_forgone_EAV_incent,
+    
+    muni_rate_noExe = munilevy / muni_TEAV_noExe * 100,
+    muni_rate_noInc = munilevy / muni_TEAV_noInc * 100,
+    muni_rate_neither = munilevy / muni_TEAV_neither * 100, 
+    muni_rate_noTIFs = munilevy / (muni_current_TEAV + muni_forgoneTIF) * 100,
+    muni_rate_lowest = munilevy / muni_TEAV_max * 100)
+
+alt_rates <- alt_rates %>% 
+  mutate(change_noExe = cur_munilevel_rate - muni_rate_noExe,
+         change_noInc = cur_munilevel_rate - muni_rate_noInc,
+         change_neither = cur_munilevel_rate - muni_rate_neither,
+         change_max = cur_munilevel_rate - muni_rate_lowest
+         )
 ```
 
 
-```{r commer_indust_incents}
+```{r}
+#| label: tbl-munirate-hypotheticals
+#| tbl-cap: "Hypothetical Composite Tax Rates"
+#| column: page
+
+tbl1 <- alt_rates %>% select(clean_name, cur_munilevel_rate, muni_rate_noExe, muni_rate_noInc, muni_rate_neither, muni_rate_noTIFs, muni_rate_lowest) %>% distinct() %>% 
+    mutate(across(cur_munilevel_rate:muni_rate_lowest, round, digits = 2)) %>% as.data.frame()
+
+tbl1
+
+```
+
+
+```{r}
+#| label: tbl-muni-ratechange
+#| tbl-cap: "Hypothetical Change in Composite Tax Rates"
+#| column: page
+
+tbl2 <- alt_rates %>% select(clean_name, change_noExe, change_noInc, change_neither, change_max) %>%
+  distinct() %>%
+  mutate(across(change_noExe:change_max, round, digits = 2)) %>% as.data.frame()
+
+tbl2
+
+```
+
+
+```{r exportXL, include=FALSE, eval = FALSE}
+library(openxlsx)
+list_for_tabs <- list("Alt Tax Rates" = tbl1, "Rate Change" = tbl2)
+
+# write.xlsx(list_for_tabs, file = "./Output/datarequest_taxratechange_03112024.xlsx")
+```
+
+```{r commer_indust_incents, include = FALSE}
 incentive_sums2 <- MC_sums %>%
   left_join(MuniLevel) %>%
   mutate(
@@ -144,7 +223,7 @@ burden2 <- incentive_sums2 %>%
 
 burden2 %>% arrange(clean_name) %>% select(clean_name, incent_type, burden_shift)
 
-write_csv(burden2, "./Output/incentive_burdenshift_bygrouptype.csv")
+# write_csv(burden2, "./Output/incentive_burdenshift_bygrouptype.csv")
 
 ```
 
@@ -176,7 +255,7 @@ burden <- incentive_sums %>%
 ```
 
 
-```{r}
+```{r include = FALSE}
 #| code-fold: true
 #| column: screen
 #| tbl-cap: "Incentive Properties (Combined) Tax Rates and Burden"
@@ -187,7 +266,7 @@ burden %>%
   mutate_if(is.numeric, ~round(., 1))
 
 
-burden %>% write_csv("./Output/incentive_burden_shift.csv")
+# burden %>% write_csv("./Output/incentive_burden_shift.csv")
 
 
 
@@ -225,6 +304,7 @@ burden %>%
   labs(title = "Difference in Composite Tax Rate if Assessed at 25%",
        subtitle = "Ordered by Comp. Rate Change", x = "Composite Tax Rate (%)", y = "")
 ```
+
 ```{r}
 
 # as a dot graph ## 
