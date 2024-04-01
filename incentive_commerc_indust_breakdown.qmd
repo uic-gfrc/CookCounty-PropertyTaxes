@@ -4,7 +4,7 @@ format:
   html:
     code-fold: true
     toc: true
-    column: 
+    tbl-cap-location: margin
 ---
 
 # Data Preparation
@@ -27,9 +27,7 @@ set_flextable_defaults(theme_fun = theme_vanilla,
 options(DT.options = list())
 ```
 
-# Loading Incentive PIN Data
 
-Data on incentive-class PINs was pulled from the PTAXSIM DB through the "helper_tc_muninames.R" helper file and the incentive data frame written to ".Output/7_output_incentive_classes.csv"
 
 ```{r}
 # file created in helper_pull_incentivepins_allyears.R
@@ -38,7 +36,8 @@ Data on incentive-class PINs was pulled from the PTAXSIM DB through the "helper_
 # all pins for 2022
 ptax_pins <- read_csv("Output/Dont_Upload/0_joined_PIN_data_2022.csv") %>% 
   mutate(class = as.numeric(class)) %>%
-  filter(class >= 500 & class < 900) %>%
+  filter( (class >= 100 & class < 200) |     # if we want vacant property owned by them too.
+  (class >= 500 & class < 900) )  %>%
   select(-c(propclass_1dig:av.y))
 
 # already in 0_joined data
@@ -64,8 +63,10 @@ ptax_pins <- ptax_pins %>% left_join(class_dict, by =  c("class" = "class_code")
 
 ```
 
+# Commercial and Industrial Properties
 
 ```{r}
+#| label: tbl-cooktotals
 #| tbl-cap: "Commercial and Industrial PINs in Cook County. Includes property classes 500-899."
 
 nonres_pins2022 <- ptax_pins
@@ -75,17 +76,20 @@ nonres_pins2022 <- ptax_pins
 table <- nonres_pins2022 %>% 
   group_by(Alea_cat) %>% 
   summarize(proptype_pincount = n(),
+            projects = n_distinct(keypin),
             av=sum(av))
 
-flextable(table) %>% set_caption("Totals for Cook County") %>% 
-  set_header_labels(Alea_cat = "Property Type", proptype_pincount = 'PINs', av = 'Assessed Value (Final)') %>%
-  set_table_properties( layout = "autofit")
+flextable(table) %>% 
+ # set_caption("Totals for Cook County") %>% 
+  set_header_labels(Alea_cat = "Property Type", proptype_pincount = 'PINs', projects = "Project IDs", av = 'AV (Final)') %>%
+  set_table_properties( layout = "autofit", width = .75)
 ```
 
 
+
 ```{r}
-#| layout-ncol: 2
-#| column: page
+#| label: tbl-projectsinMunis
+#| tbl-cap: "Grouped by Property Type within Municipality."
 
 
 table1 <- nonres_pins2022 %>% 
@@ -96,9 +100,14 @@ table1 <- nonres_pins2022 %>%
 
 datatable(table1,
           rownames= FALSE,
-          colnames = c('Municipality' = 'clean_name',   'Property Type' = 'Alea_cat', 'PIN Count' = 'pin_count', 'Project Count' = 'project_count', 'AV (Final)' = 'av'))
+          colnames = c('Municipality' = 'clean_name',   'Property Type' = 'Alea_cat', 'PIN Count' = 'pin_count', 'Project Count' = 'project_count', 'AV (Final)' = 'av')) %>%
+  formatCurrency('AV (Final)', digits = 0)
+```
 
 
+```{r}
+#| label: tbl-incentivizedornot
+#| tbl-cap: "Grouped by Incentivized or not within Municipality"
 
 table2 <- nonres_pins2022 %>% 
   group_by(clean_name, incent_prop) %>%   # projects can be counted twice if the project has incentive and normal commercial/industrial prop classes.
@@ -108,7 +117,8 @@ table2 <- nonres_pins2022 %>%
 
 datatable(table2,
           rownames= FALSE,
-          colnames = c('Municipality' = 'clean_name',   'Incentivized?' = 'incent_prop', 'PIN Count' = 'pin_count', 'Project Count' = 'project_count', 'AV (Final)' = 'av'))
+          colnames = c('Municipality' = 'clean_name',   'Incentivized?' = 'incent_prop', 'PIN Count' = 'pin_count', 'Project Count' = 'project_count', 'AV (Final)' = 'av')) %>%
+  formatCurrency('AV (Final)', digits = 0)
 ```
 
 
@@ -135,8 +145,8 @@ datatable(table2,
 ## Incentive and non-Incentive, Commercial and Industrial Properties
 
 ```{r echo = FALSE}
-#| tbl-cap: Breakdown of incentivized properties within commercial and industrial properties
-#| column: page
+#| label: tbl-propertybreakdown
+#| tbl-cap: "Breakdown of incentivized properties within commercial and industrial properties"
 
 table <- nonres_pins2022 %>% 
   group_by(clean_name, incent_prop, Alea_cat) %>%   # projects can be counted twice if the project has incentive and normal commercial/industrial prop classes.
@@ -148,7 +158,7 @@ table <- nonres_pins2022 %>%
 
 datatable(table,
           rownames= FALSE,
-          colnames = c('Municipality' = 'clean_name', 'Incentivized?'='incent_prop',   'Property Type' = 'Alea_cat', 'PIN Count per Project' = 'pin_count', 'Project Count' = 'project_count', 'AV (Final)' = 'av'),
+          colnames = c('Municipality' = 'clean_name', 'Incentivized?'='incent_prop',   'Property Type' = 'Alea_cat', 'PINs in Projects' = 'pin_count', 'Project Count' = 'project_count', 'AV (Final)' = 'av'),
           ) %>%
   formatCurrency('AV (Final)', digits = 0)
 ```
@@ -156,6 +166,9 @@ datatable(table,
 ## Projects with incentivized and non-incentivized PINs
 
 ```{r}
+#| label: tbl-mixedprojects
+#| tbl-cap: "Projects with Incentivized and non-Incentivized PIN Property Classes"
+
 table <- nonres_pins2022 %>% 
   mutate(has_incentive = ifelse(class >= 600, 1, 0)) %>%
   group_by(keypin) %>%
@@ -165,7 +178,8 @@ table <- nonres_pins2022 %>%
   mutate(pct_pins_w_inct = round(sum/count, digits = 3) ) %>%  # pct of pins that had incentive property class
   arrange(pct_pins_w_inct) %>% 
   filter(pct_pins_w_inct > 0 & pct_pins_w_inct < 1) %>%
-  arrange(desc(av))
+  arrange(desc(pct_pins_w_inct)) %>%
+  select(keypin, count, sum, pct_pins_w_inct, av)
 
 ## Other option for graphing the keypins with mixed property incentivization
 ## Using DT instead of flextable
@@ -174,11 +188,52 @@ table <- nonres_pins2022 %>%
 #           colnames = c('Project ID' = 'keypin', 'PINs per Project' = 'count', 'PINs with Incentive Class' = 'sum', 'Assessed Value (Final)' = 'av', 'Pct of PINs Incentivized' = 'pct_pins_w_inct'))
 
 
-flextable(table) %>% set_caption("Projects with Both Incentivized and non-Incentivized Property Clases") %>% 
-  set_header_labels(keypin = 'Project ID', count = 'PINs per Project', sum = 'PINs with Incentive Class', av = 'Assessed Value (Final)', pct_pins_w_inct = 'Pct of PINs Incentivized'
-                    ) %>%
-  set_table_properties( layout = "autofit")
+flextable(table) %>% 
+  set_caption("Projects with Both Incentivized and non-Incentivized Property Clases") %>% 
+  set_header_labels(keypin = 'Project ID', count = 'PINs per \nProject', sum = 'PINs with \nIncentives', pct_pins_w_inct = 'Pct of PINs \nIncentivized', av = 'Project AV  \n(Final)'
+                    )  %>% set_table_properties( layout = "autofit", width = .75)
 
 
 ```
 
+## Summed by Project Identifier
+
+```{r}
+#| label: tbl-projectIDs
+#| tbl-cap: "Summed to the Project Level. Note: We still do not have a true keypin-pin crosswalk so these numbers are very likely to change once the makeshift crosswalk is replaced"
+
+table <- nonres_pins2022 %>% 
+  mutate(has_incentive = ifelse(class >= 600, 1, 0)) %>%
+  group_by(keypin) %>%
+  mutate(av = sum(av)) %>%
+  ungroup() %>%
+  group_by(keypin) %>%
+  summarize(count = n(), # number of pins in project
+         sum = sum(has_incentive), # number of pins that had incentives
+         av_incent = sum(if_else(incent_prop == "Incentive", av, 0)),
+         av_nonincent = sum(ifelse(incent_prop == "Non-Incentive", av, 0))) %>%
+  mutate(pct_pins_w_inct = round(sum/count, digits = 3), # pct of pins that had incentive property class
+         ) %>%  
+  filter(av_incent > 0) %>%  
+  arrange(desc(count)) 
+
+  
+
+# Other option for graphing the keypins with mixed property incentivization
+# Using DT instead of flextable
+datatable(table,
+          rownames= FALSE,
+          colnames = c('Project ID' = 'keypin', 'PINs per Project' = 'count', 'PINs with\nIncent Class' = 'sum', 'Pct of PINs\nIncentivized' = 'pct_pins_w_inct', 'AV in Incent Class' = 'av_incent', 'AV in non-Incent Class' = 'av_nonincent')) %>%
+  formatPercentage('Pct of PINs\nIncentivized', digits = 1)
+
+
+# flextable(table) %>% 
+#   set_caption("Projects with at least some Incentivized PINs") %>% 
+#   set_header_labels(keypin = 'Project ID', count = 'PINs per\nProject',  
+#                     pct_pins_w_inct = 'Pct of PINs\nIncentivized', 
+#                     Incentive = 'AV from Incentive\nProjects', 
+#                     `non-Incentive` = 'AV from non-Incentive\nProjects'
+#                     )  %>% set_table_properties( layout = "autofit", width = .75)
+
+
+```
