@@ -14,6 +14,15 @@ library(DBI)
 library(glue)
 
 
+amazon <- readxl::read_excel("./amazonPINs.xlsx")
+library(stringr)
+library(tidyverse)
+
+amazon <- amazon %>% 
+  mutate(pin_clean = str_remove_all(PIN, "-"),
+         parcel = str_sub(pin_clean, 1, 10),
+         block = str_sub(pin_clean,1,7),
+         township = str_sub(pin_clean, 1, 2))
 
 
 # Commercial Valuation Dataset - Cook County Data Portal ------------------
@@ -125,13 +134,15 @@ cook_pins <- DBI::dbGetQuery(
 
 ## Limit to just non-incentive major class commercial properties (500-level props) ##
 # 1,602,401      500-level pin-class-year combinations
+# 1,648,125      500 to 800 level pin-class properties
 cook_pins <- cook_pins %>%
-  filter(class > 499 & class < 600)
+  filter(class > 499 & class < 900)
 
 # get distinct commercial pins with 500-level property classes
 distinct_pins <- cook_pins %>%
   select(pin) %>%
   distinct(pin)   # 117,493 distinct commercial pins
+# 119,404 when using classes 500-899
 
 
 ## But we want those PINs as obs. for all years, even if they weren't classified
@@ -148,18 +159,9 @@ commercial_pins <- DBI::dbGetQuery(
   .con = ptaxsim_db_conn
   ))
 # 1,798,619 obs. (PIN-YEAR combos)
+# 1,825,490 obs when using classes 500-899
 
 ##  Commercial PINs Each Year from PTAXSIM ------------------------------------------------
-
-commercial_pins %>% 
-  filter(class > 499 & class < 600) %>% 
-  group_by(year) %>% summarize(pin_count = n())
-# 91,450 existed in 2022. 
-# 92,102 existed in 2021, etc.
-
-commercial_pins %>%
-  group_by(pin) %>% summarize(count = n()) %>% filter(count > 16)
-# 94,457 PINs existed during every year (doesn't matter what type of commercial property class)
 
 
 ##  Grouped by PIN and 1st digit of class (aka major class) -----------------
@@ -187,6 +189,7 @@ commercial_pins %>%
 
 ## Grouped by PIN and class ----------------------------------------------
 unique_ptax_w_class <- commercial_pins %>% 
+  arrange(pin, year) %>%
   group_by(pin, class) %>% 
   summarize(count = n(),
             first_year = first(year),
@@ -213,6 +216,7 @@ unique_ptax_wide <- unique_ptax_w_class %>%
 
 cleanjoin <- full_join(unique_ptax_wide, unique_comval, by = c("pin" = "pin_cleaned"))
 # 135,180 obs
+# 136,955 obs
 
 cleanjoin <- cleanjoin %>% select(keypin = keypin_concat, pin, 
                                           class_1, first_year_1, last_year_1, yrs_existed_1 = count_1,
@@ -236,17 +240,19 @@ cleanjoin <- cleanjoin %>% select(keypin = keypin_concat, pin,
 
 ## Use unique occurrences of commercial pins that existed in tax year 2022
 ## and merge in keypin variables
-commercpins_2022 <- unique_ptax_w_class %>%
+pins2022 <- unique_ptax_w_class %>%
   filter(last_year == 2022) %>%  # implies still existed in 2022
   left_join(unique_comval, by = c("pin" = "pin_cleaned") ) %>%
   mutate(parcel = str_sub(pin, 1, 10),
          block = str_sub(pin, 1, 7),
-         township = str_sub(pin, 1, 2))
+         township = str_sub(pin, 1, 2)) %>%
+  mutate(keypin_concat = ifelse(pin %in% amazon$pin_clean, "Amazon", keypin_concat))
+  
 
 
 
 ## keep pins that already have a keypin and save them within commerc_projects_2022 object
-commerc_projects_2022 <- commercpins_2022 %>%   
+keypins <- pins2022 %>%   
   
   # create indicator for if it had a pin or will have one created from the pin
   mutate(needs_keypin = ifelse(is.na(keypin_concat), 1, 0)) %>% 
@@ -254,7 +260,7 @@ commerc_projects_2022 <- commercpins_2022 %>%
   # if missing a keypin, fill it in with the pin so there are not NA values in keypin
   mutate(keypin_concat = ifelse(is.na(keypin_concat), as.character(pin), as.character(keypin_concat)) ) %>%
 
-  select(pin, keypin_concat, needs_keypin)
+  select(pin, keypin_concat, needs_keypin) %>% group_by(keypin_concat) %>% mutate(pins_per_keypin = n()) %>% ungroup()
 
 
 # want to merge in muni names to the tax codes of the pins.
@@ -262,18 +268,23 @@ source("helper_tc_muninames_2022.R")
 
 
 # keep only distinct pin and keypin observations for tax year 2022. 
-projects <- commerc_projects_2022 %>% 
-  select(keypin=keypin_concat, pin, needs_keypin) %>% 
-  distinct() 
+projects <- keypins %>% 
+  select(keypin=keypin_concat, pin, pins_per_keypin, needs_keypin) %>% 
+  distinct()
 # 105,236 "projects" - remember, any pins without a keypin are considered individual projects for now
+# 106,939 projects after using classes 500-899
 
 
-commerc_pins_2022 <- commercial_pins %>% 
-  filter(class > 400 & class < 600) %>%
-  filter(year == 2022) %>%
-  left_join(projects, by = "pin") %>% 
-  mutate(tax_code_num = as.character(tax_code_num)) %>%
-  select(keypin, pin, class, tax_code_num, everything()) %>% 
-  select(-c(exe_homeowner:exe_vet_dis_ge70)) %>%
-  left_join(tc_muninames) %>%
-  mutate(clean_name = ifelse(is.na(clean_name), "Unincorporated", clean_name))
+write_csv(projects, "Output/all_keypins_2022.csv")
+
+# 106,939 pin-projects after using classes 500-899
+# 
+commercpins_2022 <- pins2022 %>% 
+  filter(class >= 500 & class < 900) %>% 
+  left_join(projects, by = "pin", relationship = "many-to-many") %>% 
+#  mutate(tax_code_num = as.character(tax_code_num)) %>%
+  select(keypin_concat, pin, class, everything()) # %>% 
+#  select(-c(exe_homeowner:exe_vet_dis_ge70)) # %>%
+ # left_join(tc_muninames) %>%
+ # mutate(clean_name = ifelse(is.na(clean_name), "Unincorporated", clean_name))
+
