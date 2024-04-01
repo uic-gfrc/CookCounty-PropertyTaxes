@@ -1,0 +1,206 @@
+---
+title: "Incentive PINs Over Time"
+format: 
+  html:
+    code-fold: true
+    toc: true
+    df-print: paged
+---
+
+# Data Preparation
+
+```{r setup, warning = FALSE, output = FALSE}
+
+library(tidyverse)
+library(DT)
+library(sf)
+library(ggspatial)
+
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+
+# keypins <- read_csv("Output/all_keypins.csv")
+```
+
+# Loading Incentive PIN Data
+
+Data on incentive-class PINs was pulled from the PTAXSIM DB through the "helper_tc_muninames.R" helper file and the incentive data frame written to ".Output/7_output_incentive_classes.csv"
+
+```{r}
+# file created in helper_pull_incentivepins_allyears.R
+# ptax_pins <- read_csv("./Output/incentivePINs_allyears.csv") 
+
+# all pins for 2022
+ptax_pins <- read_csv("Output/Dont_Upload/0_joined_PIN_data_2022.csv") %>% 
+  mutate(class = as.numeric(class)) %>%
+  filter(class >= 500 & class < 900) %>%
+  select(-c(propclass_1dig:av.y))
+
+# already in 0_joined data
+class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv") %>%
+  select(class_code, comparable_props, Alea_cat, incent_prop)
+
+proj_xwalk <- read_csv("Output/pin_project_crosswalk.csv")
+proj_xwalk <- read_csv("Output/all_keypins.csv")
+
+source("helper_tc_muninames_2022.R")
+tc_muninames <- tc_muninames %>%  select(-year)
+
+ptax_pins <- ptax_pins %>% left_join(proj_xwalk)
+
+ptax_pins <- ptax_pins %>% 
+  mutate(tax_code_num = as.character(tax_code_num)) %>%
+  left_join(tc_muninames)
+
+ptax_pins <- ptax_pins %>% left_join(class_dict, by =  c("class" = "class_code"))
+
+
+```
+
+
+```{r eval=FALSE, include = FALSE}
+#| tbl-cap: "1st attempt, didn't have all commercial PINs" 
+#| layout-ncol: 2
+
+nonres_pins2022 <- ptax_pins %>% 
+  filter(class >= 500 & class <= 899)
+
+
+#nonres_pins2022 <- nonres_pins2022 %>% group_by(keypin) %>% mutate(proj_hasincentive = class)
+nonres_pins2022 %>% group_by(Alea_cat) %>% 
+  summarize(proptype_pincount = n(),
+            av=sum(av))
+
+nonres_pins2022 %>% 
+  group_by(clean_name, Alea_cat) %>% 
+  summarize(pin_count = n(),
+         project_count = n_distinct(keypin), 
+         av = sum(av_clerk))
+
+nonres_pins2022 %>% 
+  group_by(clean_name, incent_prop) %>%   # projects can be counted twice if the project has incentive and normal commercial/industrial prop classes.
+  summarize(pin_count = n(),
+         project_count = n_distinct(keypin), 
+         av=sum(av_clerk),
+)
+
+nonres_pins2022 %>% 
+  group_by(clean_name, incent_prop, Alea_cat) %>%   # projects can be counted twice if the project has incentive and normal commercial/industrial prop classes.
+  summarize(pin_count = n(),
+         project_count = n_distinct(keypin), 
+         av=sum(av_clerk),
+)
+
+nonres_pins2022 %>% 
+  mutate(has_incentive = ifelse(class >= 500 & class <= 599, 0, 1)) %>%
+  group_by(keypin) %>%
+  summarize(count = n(),     # number of pins in project
+         sum = sum(has_incentive), # number of pins that had incentives
+         av = sum(av_clerk)) %>%
+  mutate(pct_pins_w_inct = sum/count ) %>%  # pct of pins that had incentive property class
+  arrange(desc(keypin))
+  
+
+nonres_pins2022 %>% 
+  mutate(has_incentive = ifelse(class >= 500 & class <= 599, 0, 1)) %>%
+  group_by(keypin) %>%
+  summarize(count = n(),     # number of pins in project
+         sum = sum(has_incentive), # number of pins that had incentives
+         av = sum(av_clerk)) %>%
+  mutate(pct_pins_w_inct = sum/count ) %>%  # pct of pins that had incentive property class
+  arrange(pct_pins_w_inct) %>% 
+  filter(pct_pins_w_inct> 0 & pct_pins_w_inct < 1)
+
+
+summarize(pin_count = n(),
+         project_count = n_distinct(keypin), 
+         av=sum(av_clerk))
+```
+
+
+
+```{r}
+#| tbl-cap: "Commercial and Industrial PINs in Cook County. Includes property classes 500 through 899." 
+#| layout-ncol: 2
+
+nonres_pins2022 <- ptax_pins
+
+
+#nonres_pins2022 <- nonres_pins2022 %>% group_by(keypin) %>% mutate(proj_hasincentive = class)
+nonres_pins2022 %>% 
+  group_by(Alea_cat) %>% 
+  summarize(proptype_pincount = n(),
+            av=sum(av))
+
+nonres_pins2022 %>% 
+  group_by(clean_name, Alea_cat) %>% 
+  summarize(pin_count = n(),
+         project_count = n_distinct(keypin), 
+         av = sum(av))
+
+nonres_pins2022 %>% 
+  group_by(clean_name, incent_prop) %>%   # projects can be counted twice if the project has incentive and normal commercial/industrial prop classes.
+  summarize(pin_count = n(),
+         project_count = n_distinct(keypin), 
+         av=sum(av),
+)
+
+nonres_pins2022 %>% 
+  group_by(clean_name, incent_prop, Alea_cat) %>%   # projects can be counted twice if the project has incentive and normal commercial/industrial prop classes.
+  summarize(pin_count = n(),
+         project_count = n_distinct(keypin), 
+         av=sum(av),
+)
+
+nonres_pins2022 %>% 
+  mutate(has_incentive = ifelse(class >= 600, 1, 0)) %>%
+  group_by(keypin) %>%
+  summarize(count = n(),     # number of pins in project
+         sum = sum(has_incentive), # number of pins that had incentives
+         av = sum(av)) %>%
+  mutate(pct_pins_w_inct = sum/count ) %>%  # pct of pins that had incentive property class
+  arrange(desc(keypin))
+  
+
+nonres_pins2022 %>% 
+  mutate(has_incentive = ifelse(class >= 600, 1, 0)) %>%
+  group_by(keypin) %>%
+  summarize(count = n(),     # number of pins in project
+         sum = sum(has_incentive), # number of pins that had incentives
+         av = sum(av)) %>%
+  mutate(pct_pins_w_inct = sum/count ) %>%  # pct of pins that had incentive property class
+  arrange(pct_pins_w_inct) %>% 
+  filter(pct_pins_w_inct > 0 & pct_pins_w_inct < 1)
+
+```
+
+# Trends in Incentive PINs Over Time
+
+Only 1,527 PINs were incentive property classes in 2006.\
+4,383 PINs had incentive classification by 2022.
+
+```{r}
+#| label: fig-incentive-pins-overtime
+#| fig-cap: Number of PINs that had incentive property classes each year.
+#| column: page
+#| layout-ncol: 2
+
+
+ptax_pins %>% filter(between(class, 600,899) ) %>% group_by(year) %>% summarize(incentive_count = n())
+# 4383 existed in 2022. 
+# 3652 existed in 2021, etc.
+
+
+ptax_pins %>% filter(between(class, 600,899) ) %>% 
+  group_by(year) %>% 
+  summarize(incentive_count = n()) %>% 
+  ggplot() +
+  geom_col(aes(y = incentive_count, x = year)) +   
+  labs(title = "Incentive PIN Count by Year", x = "", y = "# Incentive PINs") +
+  theme_classic()
+
+
+
+```
+
+
