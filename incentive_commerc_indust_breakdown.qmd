@@ -30,35 +30,58 @@ options(DT.options = list())
 
 
 ```{r}
+#| echo: true
+#| code-fold: false
+
 # file created in helper_pull_incentivepins_allyears.R
 # ptax_pins <- read_csv("./Output/incentivePINs_allyears.csv") 
 
 # all pins for 2022
 ptax_pins <- read_csv("Output/Dont_Upload/0_joined_PIN_data_2022.csv") %>% 
   mutate(class = as.numeric(class)) %>%
-  filter( (class >= 100 & class < 200) |     # if we want vacant property owned by them too.
-  (class >= 500 & class < 900) )  %>%
+         # keep 500-899 class PINs
+  filter((class >= 500 & class < 900) |   
+           # and keep land PINs if we want land property owned by them too.
+         (class >= 100 & class < 200)  
+         )  %>%
   select(-c(propclass_1dig:av.y))
 
-# already in 0_joined data
-class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv") %>%
-  select(class_code, comparable_props, Alea_cat, incent_prop)
+```
 
-# proj_xwalk <- read_csv("Output/pin_project_crosswalk.csv")   # incentive properties only
 
-# temporary work-around until we have full keypin list.
-proj_xwalk <- read_csv("Output/all_keypins.csv")               # all commercial valuation properties but made with very unreliable data from commercial valuation dataset. 
+```{r}
+#| echo: true
+#| code-fold: false
 
-source("helper_tc_muninames_2022.R")
-tc_muninames <- tc_muninames %>%  select(-year)
 
+# temporary work-around until we have full keypin list:
+proj_xwalk <- read_csv("Output/all_keypins.csv")               
+# all commercial valuation properties but made with very unreliable data from commercial valuation dataset. 
+
+# combine project IDs to PINs:
 ptax_pins <- ptax_pins %>% left_join(proj_xwalk)
 
+
+
+#  create tc_muninames from helper file:
+source("scripts/helper_tc_muninames_2022.R")
+tc_muninames <- tc_muninames %>%  select(-year)
+
+# add muni names by joining tax code info:
 ptax_pins <- ptax_pins %>% 
   mutate(tax_code_num = as.character(tax_code_num)) %>%
   left_join(tc_muninames)
 
-ptax_pins <- ptax_pins %>% left_join(class_dict, by =  c("class" = "class_code"))
+
+
+# original class_dict variables already in 0_joined data
+# but I do want the new-ish variables I created to be brought in:
+class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv") %>%
+  select(class_code, comparable_props, Alea_cat, incent_prop)
+
+ptax_pins <- ptax_pins %>% 
+  left_join(class_dict, by =  c("class" = "class_code")) %>%
+  mutate(clean_name = ifelse(is.na(clean_name), "0_Unincorporated", clean_name))
 
 
 ```
@@ -67,24 +90,57 @@ ptax_pins <- ptax_pins %>% left_join(class_dict, by =  c("class" = "class_code")
 
 ```{r}
 #| label: tbl-cooktotals
-#| tbl-cap: "Commercial and Industrial PINs in Cook County. Includes property classes 500-899."
+#| tbl-cap: "Commercial and Industrial PINs in Cook County. Includes property classes 500-899 and 100 level land PINs."
 
 nonres_pins2022 <- ptax_pins
 
 
 #nonres_pins2022 <- nonres_pins2022 %>% group_by(keypin) %>% mutate(proj_hasincentive = class)
 table <- nonres_pins2022 %>% 
-  group_by(Alea_cat) %>% 
+  # group_by(Alea_cat, keypin) %>% 
+  # mutate(proptype_pincount = n(),
+  #           proj_av=sum(av)) %>%
+  # ungroup() %>% 
+  group_by(Alea_cat) %>%
   summarize(proptype_pincount = n(),
             projects = n_distinct(keypin),
+            av_adjusted=sum(ifelse(between(class, 600, 899), av*2.5, av)),
+            av=sum(av)
+          )
+
+flextable(table) %>% 
+ # set_caption("Totals for Cook County") %>% 
+  set_header_labels(Alea_cat = "Property Type", proptype_pincount = 'PINs', projects = "Project IDs", av = ' Taxable AV') %>%
+  set_table_properties( layout = "autofit", width = .75)
+```
+
+
+```{r}
+#| label: tbl-incentiveproject-cooktotals
+#| tbl-cap: "Commercial and Industrial Incentive Projects & PINs in Cook County. Includes property classes 500-899 and 100 level land PINs if they are associated with a project id that has at least one incentive PIN."
+
+incentive_pins2022 <- ptax_pins %>% 
+  group_by(keypin) %>%
+  arrange(keypin, class) %>%
+  mutate(min_class = first(class),
+         max_class = last(class)) %>% 
+  filter(max_class > 599) %>%
+  ungroup()
+
+table <- incentive_pins2022 %>% 
+  group_by(Alea_cat) %>%
+  summarize(proptype_pincount = n(),
+            projects = n_distinct(keypin),
+            av_adjusted=sum(ifelse(between(class, 600, 899), av*2.5, av)),
+
             av=sum(av))
 
 flextable(table) %>% 
  # set_caption("Totals for Cook County") %>% 
   set_header_labels(Alea_cat = "Property Type", proptype_pincount = 'PINs', projects = "Project IDs", av = 'AV (Final)') %>%
   set_table_properties( layout = "autofit", width = .75)
-```
 
+```
 
 
 ```{r}
@@ -93,15 +149,20 @@ flextable(table) %>%
 
 
 table1 <- nonres_pins2022 %>% 
+  filter(Alea_cat != "Land") %>%
   group_by(clean_name, Alea_cat) %>% 
   summarize(pin_count = n(),
          project_count = n_distinct(keypin), 
+                     av_adjusted=sum(ifelse(between(class, 600, 899), av*2.5, av)),
+
          av = sum(av))
 
 datatable(table1,
           rownames= FALSE,
-          colnames = c('Municipality' = 'clean_name',   'Property Type' = 'Alea_cat', 'PIN Count' = 'pin_count', 'Project Count' = 'project_count', 'AV (Final)' = 'av')) %>%
-  formatCurrency('AV (Final)', digits = 0)
+          colnames = c('Municipality' = 'clean_name',   'Property Type' = 'Alea_cat', 'PIN Count' = 'pin_count', 'Project Count' = 'project_count', 'AV (Final)' = 'av'),
+          extensions = 'RowGroup',
+          options = list(rowGroup = list(dataSrc = 0))) %>%
+  formatCurrency(c('AV (Final)', 'av_adjusted'), digits = 0)
 ```
 
 
@@ -110,15 +171,18 @@ datatable(table1,
 #| tbl-cap: "Grouped by Incentivized or not within Municipality"
 
 table2 <- nonres_pins2022 %>% 
+    filter(Alea_cat != "Land") %>%
   group_by(clean_name, incent_prop) %>%   # projects can be counted twice if the project has incentive and normal commercial/industrial prop classes.
   summarize(pin_count = n(),
          project_count = n_distinct(keypin), 
+                     av_adjusted=sum(ifelse(between(class, 600, 899), av*2.5, av)),
+
          av=sum(av))
 
 datatable(table2,
           rownames= FALSE,
           colnames = c('Municipality' = 'clean_name',   'Incentivized?' = 'incent_prop', 'PIN Count' = 'pin_count', 'Project Count' = 'project_count', 'AV (Final)' = 'av')) %>%
-  formatCurrency('AV (Final)', digits = 0)
+  formatCurrency(c('AV (Final)', 'av_adjusted'), digits = 0)
 ```
 
 
@@ -138,6 +202,16 @@ datatable(table2,
 ```
 
 
+# Comparable Properties
+
+```{r}
+nonres_pins2022 %>% 
+  group_by(clean_name, comparable_props) %>% 
+  summarize(pincount = n(),
+            projects = n_distinct(keypin),
+           # incent_count = n(incent_prop == "Incentive"),
+            )
+```
 
 
 # Appendix Tables
@@ -149,37 +223,46 @@ datatable(table2,
 #| tbl-cap: "Breakdown of incentivized properties within commercial and industrial properties"
 
 table <- nonres_pins2022 %>% 
+      filter(Alea_cat != "Land") %>%
+
   group_by(clean_name, incent_prop, Alea_cat) %>%   # projects can be counted twice if the project has incentive and normal commercial/industrial prop classes.
   summarize(pin_count = n(),
          project_count = n_distinct(keypin), 
+                     av_adjusted=sum(ifelse(between(class, 600, 899), av*2.5, av)),
+
          av=sum(av),
-)
+) 
 
 
 datatable(table,
           rownames= FALSE,
           colnames = c('Municipality' = 'clean_name', 'Incentivized?'='incent_prop',   'Property Type' = 'Alea_cat', 'PINs in Projects' = 'pin_count', 'Project Count' = 'project_count', 'AV (Final)' = 'av'),
           ) %>%
-  formatCurrency('AV (Final)', digits = 0)
+  formatCurrency(c('AV (Final)', 'av_adjusted'), digits = 0)
 ```
 
 ## Projects with incentivized and non-incentivized PINs
 
 ```{r}
 #| label: tbl-mixedprojects
-#| tbl-cap: "Projects with Incentivized and non-Incentivized PIN Property Classes"
+#| tbl-cap: "Projects with Incentivized and non-Incentivized PIN Property Classes. Sorted from highest Taxable AV (from final final AV value (\"av_clerk\"))"
 
 table <- nonres_pins2022 %>% 
+      filter(Alea_cat != "Land") %>%
+
   mutate(has_incentive = ifelse(class >= 600, 1, 0)) %>%
   group_by(keypin) %>%
   summarize(count = n(),     # number of pins in project
          sum = sum(has_incentive), # number of pins that had incentives
+      av_adjusted=sum(ifelse(between(class, 600, 899), av*2.5, av)),
+
          av = sum(av)) %>%
   mutate(pct_pins_w_inct = round(sum/count, digits = 3) ) %>%  # pct of pins that had incentive property class
   arrange(pct_pins_w_inct) %>% 
   filter(pct_pins_w_inct > 0 & pct_pins_w_inct < 1) %>%
   arrange(desc(pct_pins_w_inct)) %>%
-  select(keypin, count, sum, pct_pins_w_inct, av)
+  select(keypin, count, sum, pct_pins_w_inct, av, av_adjusted) %>% 
+  arrange(desc(av))
 
 ## Other option for graphing the keypins with mixed property incentivization
 ## Using DT instead of flextable
@@ -203,9 +286,11 @@ flextable(table) %>%
 #| tbl-cap: "Summed to the Project Level. Note: We still do not have a true keypin-pin crosswalk so these numbers are very likely to change once the makeshift crosswalk is replaced"
 
 table <- nonres_pins2022 %>% 
+      filter(Alea_cat != "Land") %>%
+
   mutate(has_incentive = ifelse(class >= 600, 1, 0)) %>%
   group_by(keypin) %>%
-  mutate(av = sum(av)) %>%
+  mutate(project_taxable_av = sum(av)) %>%
   ungroup() %>%
   group_by(keypin) %>%
   summarize(count = n(), # number of pins in project
@@ -213,6 +298,8 @@ table <- nonres_pins2022 %>%
          av_incent = sum(if_else(incent_prop == "Incentive", av, 0)),
          av_nonincent = sum(ifelse(incent_prop == "Non-Incentive", av, 0))) %>%
   mutate(pct_pins_w_inct = round(sum/count, digits = 3), # pct of pins that had incentive property class
+         av_incent_adjusted = av_incent * 2.5,
+         EstMarketValue = av_incent_adjusted + av_nonincent
          ) %>%  
   filter(av_incent > 0) %>%  
   arrange(desc(count)) 
@@ -223,8 +310,9 @@ table <- nonres_pins2022 %>%
 # Using DT instead of flextable
 datatable(table,
           rownames= FALSE,
-          colnames = c('Project ID' = 'keypin', 'PINs per Project' = 'count', 'PINs with\nIncent Class' = 'sum', 'Pct of PINs\nIncentivized' = 'pct_pins_w_inct', 'AV in Incent Class' = 'av_incent', 'AV in non-Incent Class' = 'av_nonincent')) %>%
-  formatPercentage('Pct of PINs\nIncentivized', digits = 1)
+          colnames = c('Project ID' = 'keypin', 'PINs per Project' = 'count', 'PINs with\nIncent Class' = 'sum', 'Pct of PINs\nIncentivized' = 'pct_pins_w_inct', 'Taxable AV in Incent Class' = 'av_incent', 'Taxable AV in non-Incent Class' = 'av_nonincent', '2.5*IncentAV' = 'av_incent_adjusted', 'Adj.Total Assessed Value' = 'EstMarketValue')) %>%
+  formatPercentage('Pct of PINs\nIncentivized', digits = 1) %>%
+  formatCurrency(c('Taxable AV in Incent Class', '2.5*IncentAV', 'Taxable AV in non-Incent Class', 'Adj.Total Assessed Value'), digits = 0)
 
 
 # flextable(table) %>% 
