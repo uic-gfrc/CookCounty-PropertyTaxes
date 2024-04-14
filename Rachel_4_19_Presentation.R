@@ -7,14 +7,26 @@ options(digits = 2, scipen = FALSE)
 
 library(tidyverse)
 
-rates <- read_csv("alt_rates.csv")
+#Trends in Incentivized FMV as a percent of the base over time
 
-# Slide 9
-# Goal: scatterplot where change in tax rate from exemptions on x-axis and change from incentives on y-axis
-# Dot size represents total tax rate change
-# Another color dot will represent municipalities
+# Linegraph
+
+muni_MC <- read_csv("./Output/ptaxsim_muni_class_summaries_2006-2022.csv")
+
+class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv") %>%
+  select(class = class_code, assess_ratio, incent_prop, Alea_cat)
+
+plot_df <- left_join(muni_MC, class_dict, by = "class") %>%
+  select(year, av, )
+
+# Scatterplot
+## Goal: scatterplot where change in tax rate from exemptions on x-axis and change from incentives on y-axis
+## Dot size represents total tax rate change
+## Another color dot will represent municipalities
 
 ## Generate data
+
+rates <- read_csv("alt_rates.csv")
 
 delta_rates <- rates %>%
   select(clean_name, delta_exe = change_noExe, delta_inc = change_noInc, delta_both = change_neither) %>%
