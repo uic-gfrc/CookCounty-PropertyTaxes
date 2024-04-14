@@ -11,13 +11,18 @@ library(tidyverse)
 
 # Linegraph
 
-muni_MC <- read_csv("./Output/ptaxsim_muni_class_summaries_2006-2022.csv")
+muni_MC <- read_csv("./Output/ptaxsim_muni_class_summaries_2006-2022.csv") %>%
+  select(year, class, av)
 
 class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv") %>%
-  select(class = class_code, assess_ratio, incent_prop, Alea_cat)
+  select(class = class_code, class_1dig, assess_ratio, incent_prop, Alea_cat)
 
-plot_df <- left_join(muni_MC, class_dict, by = "class") %>%
-  select(year, av, )
+plot_df <- left_join(muni_MC, class_dict, by = "class")
+
+line_df <- plot_df %>%
+  filter(Alea_cat %in% c("Commercial", "Industrial")) %>%
+  mutate(FMV = av*assess_ratio) %>%
+  group_by(year)
 
 # Scatterplot
 ## Goal: scatterplot where change in tax rate from exemptions on x-axis and change from incentives on y-axis
