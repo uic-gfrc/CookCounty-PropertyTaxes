@@ -90,6 +90,13 @@ ptax_pins <- ptax_pins %>%
 
 ```
 
+## Sankey Graph
+```{r}
+
+```
+
+
+
 ## Slides 1-2
 
 ```{r}
@@ -241,7 +248,7 @@ nonres_pins2022 %>%
 )
 ```
 
-## Slides...
+## Slides 7 & 8
 
 ```{r}
 #| label: tbl-incentiveproject-cooktotals
@@ -335,7 +342,7 @@ datatable(table2,
 #   arrange(desc(keypin))
 ```
 
-## Slides \_\_\_: Impact on Composite Tax Rate
+## Slides: Impact on Composite Tax Rate
 
 ```{r}
 #| code-fold: true
@@ -669,11 +676,10 @@ burden %>%
        subtitle = "Ordered by Current Composite Tax Rate", x = "Composite Tax Rate (%)", y = "")
 ```
 
-## Slides \_\_\_\_ : Change in Tax Burden
+## Slides 15: Change in Tax Burden
 
 ```{r}
 #| code-fold: true
-#| column: screen
 #| tbl-cap: "Tax Burden for Incentive Properties: With and without the reduced assessment ratio (10% vs 25%). Commercial and Industrial are combined in this table. Incentive Properties (Combined) Tax Rates and Burden from removing Incentive Classification Levels of Assessment."
 
 burden %>% 
@@ -690,7 +696,7 @@ burden %>%
 
 ```{r}
 #| label: fig-incentiveprops
-#| fig-height: 10
+#| fig-height: 12
 #| fig-cap: "Tax Burden for Incentive Properties: With and without the reduced assessment ratio (10% vs 25%). Commercial and Industrial are combined in this table. Incentive Properties (Combined) Tax Rates and Burden from removing Incentive Classification Levels of Assessment."
 
 # as a dot graph ## 
@@ -727,6 +733,11 @@ burden %>%
        caption = "")
 ```
 
+
+### Interaction of Exemptions and Incentives
+
+![](images/WhatsApp Image 2024-04-12 at 18.14.28_e232cfab.jpg)
+
 ```{r}
 #| label: fig-residentialburden-scenarios
 #| fig-height: 10
@@ -742,6 +753,8 @@ order <- burden %>%
   select(clean_name, current_burden)
 
 burden %>% 
+    filter(change_neither > 1) %>%
+
     filter( Alea_cat %in% c( "Owner Occupied") & !is.na(clean_name) ) %>% 
 
  # filter(incentive == "Incentive" & Alea_cat == "Industrial"  & clean_name !="NA") %>%
@@ -755,21 +768,63 @@ burden %>%
   ggplot(aes(x = tax_rate, y= reorder(clean_name, current_burden)))+
   
   geom_line(aes(group = clean_name))+ 
-  geom_point(aes(color=type), size=3 )+
+  geom_point(aes(fill=type), pch = 21, size=3, color = "black" )+
   theme_minimal() + 
   theme( 
     legend.title = element_blank(),
     plot.title.position = "plot",
     plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
   )+
-  #scale_color_brewer(palette="Paired", labels = c("Incentives", "No Incentives"), direction = 1)+
+  scale_fill_brewer( labels = c("Current Burden", "No Incentives", "No Exemptions", "No Exemps or Incents"), direction = 1)+
   
   labs(title = "Tax Burden for owner-occupied Properties",
        subtitle = "Ordered by Current Tax Burden", x = "% of Levy Paid", y = "" , 
        caption = "")
 ```
 
-## ![](images/WhatsApp Image 2024-04-12 at 18.14.28_e232cfab.jpg)
+
+```{r}
+#| label: fig-residentialburden-scenarios2
+#| fig-height: 10
+#| fig-cap: "Tax Burden for Owner-Occupied Properties for 3 Tax Scenarios: With and without the reduced assessment ratio for commercial and industrial property (10% vs 25%). The Tax burden if homeowners were not granted the GHE. And the tax burden if residential owners did not get their exemption and incentive properties were assessed at 25% instead of 10%."
+
+# as a dot graph ## 
+
+order <- burden %>%  
+  as_tibble() %>% 
+  filter( Alea_cat %in% c( "Owner Occupied") ) %>% 
+  arrange(current_burden) %>%
+  select(clean_name, current_burden)
+
+burden %>% 
+    filter(change_neither > 1) %>%
+
+    filter( Alea_cat %in% c( "Owner Occupied") & !is.na(clean_name) ) %>% 
+  select(clean_name, current_burden, no_incents_burden, 
+         neither_burden) %>% 
+  pivot_longer(c("current_burden",
+                 "no_incents_burden",
+                 #"no_exemps_burden", 
+                 "neither_burden"), 
+               names_to = "type", values_to = "tax_rate") %>% 
+  left_join(order) %>%
+  ggplot(aes(x = tax_rate, y= reorder(clean_name, current_burden)))+
+  
+  geom_line(aes(group = clean_name))+ 
+  geom_point(aes( fill = type), color="black", pch = 21, size=3)+
+  theme_minimal() + 
+  theme( 
+    legend.title = element_blank(),
+    plot.title.position = "plot",
+    plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
+  )+
+  scale_fill_brewer(labels = c("Current Tax Burden", "Burden without Incentive\nClassifications", "Tax Burden without Exemptions\nor Incentives"), direction = 1)+
+  
+  labs(title = "Tax Burden for owner-occupied Properties",
+       subtitle = "Ordered by Current Tax Burden", x = "% of Levy Paid", y = "" , 
+       caption = "")
+```
+
 
 # Appendix Tables
 
