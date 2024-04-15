@@ -104,9 +104,17 @@ table <- nonres_pins2022 %>%
   group_by(Alea_cat) %>%
   summarize(proptype_pincount = n(),
             projects = n_distinct(keypin),
-            av_adjusted=sum(ifelse(between(class, 600, 899), av*2.5, av)),
+            av_incent = sum(ifelse(incent_prop == "Incentive", av, 0)),
+            av_nonincent = sum(ifelse(incent_prop == "Non-Incentive", av, 0)),
             av=sum(av)
-          )
+          ) %>% 
+  mutate(
+         incent_av_adj = 2.5*av_incent) %>%
+  mutate(
+         total_av_adjusted = av_incent*2.5 + av_nonincent,
+         pct_incent = incent_av_adj / total_av_adjusted) %>%
+    select(-c(av_incent, av_nonincent, incent_av_adj))
+
 
 flextable(table) %>% 
  # set_caption("Totals for Cook County") %>% 
@@ -131,13 +139,22 @@ table <- incentive_pins2022 %>%
   group_by(Alea_cat) %>%
   summarize(proptype_pincount = n(),
             projects = n_distinct(keypin),
-            av_adjusted=sum(ifelse(between(class, 600, 899), av*2.5, av)),
+            av_incent = sum(if_else(incent_prop == "Incentive", av, 0)),
+            av_nonincent = sum(ifelse(incent_prop == "Non-Incentive", av, 0)),
+       #     av_adjusted=sum(ifelse(between(class, 600, 899), av*2.5, av)),
+            av=sum(av)) %>%
+  mutate(
+         incent_av_adj = 2.5*av_incent ) %>%
+  mutate(
+         total_av_adjusted = incent_av_adj + av_nonincent,
+         pct_incent = incent_av_adj / total_av_adjusted) %>%
+  select(-c(av_incent, av_nonincent))
 
-            av=sum(av))
+  
 
 flextable(table) %>% 
  # set_caption("Totals for Cook County") %>% 
-  set_header_labels(Alea_cat = "Property Type", proptype_pincount = 'PINs', projects = "Project IDs", av = 'AV (Final)') %>%
+  set_header_labels(Alea_cat = "Property Type", proptype_pincount = 'PINs', projects = "Project IDs", av = ' Current Taxable AV') %>%
   set_table_properties( layout = "autofit", width = .75)
 
 ```
@@ -145,7 +162,7 @@ flextable(table) %>%
 
 ```{r}
 #| label: tbl-projectsinMunis
-#| tbl-cap: "Grouped by Property Type within Municipality."
+#| tbl-cap: "Grouped by Property Type within Municipality. Adjusted AV is calculated from 2.5*AV from incentive class properties + the AV of non-incentive class properties. "
 
 
 table1 <- nonres_pins2022 %>% 
@@ -159,10 +176,10 @@ table1 <- nonres_pins2022 %>%
 
 datatable(table1,
           rownames= FALSE,
-          colnames = c('Municipality' = 'clean_name',   'Property Type' = 'Alea_cat', 'PIN Count' = 'pin_count', 'Project Count' = 'project_count', 'AV (Final)' = 'av'),
+          colnames = c('Municipality' = 'clean_name',   'Property Type' = 'Alea_cat', 'PIN Count' = 'pin_count', 'Project Count' = 'project_count', 'Current Taxable AV' = 'av'),
           extensions = 'RowGroup',
           options = list(rowGroup = list(dataSrc = 0))) %>%
-  formatCurrency(c('AV (Final)', 'av_adjusted'), digits = 0)
+  formatCurrency(c('Current Taxable AV', 'av_adjusted'), digits = 0)
 ```
 
 
@@ -175,16 +192,72 @@ table2 <- nonres_pins2022 %>%
   group_by(clean_name, incent_prop) %>%   # projects can be counted twice if the project has incentive and normal commercial/industrial prop classes.
   summarize(pin_count = n(),
          project_count = n_distinct(keypin), 
-                     av_adjusted=sum(ifelse(between(class, 600, 899), av*2.5, av)),
-
-         av=sum(av))
+         av_adjusted=sum(ifelse(between(class, 600, 899), av*2.5, av)),
+         av=sum(av)) 
 
 datatable(table2,
           rownames= FALSE,
-          colnames = c('Municipality' = 'clean_name',   'Incentivized?' = 'incent_prop', 'PIN Count' = 'pin_count', 'Project Count' = 'project_count', 'AV (Final)' = 'av')) %>%
-  formatCurrency(c('AV (Final)', 'av_adjusted'), digits = 0)
+          colnames = c('Municipality' = 'clean_name',   'Incentivized?' = 'incent_prop', 'PIN Count' = 'pin_count', 'Project Count' = 'project_count', 'Taxable AV' = 'av')) %>%
+  formatCurrency(c('Taxable AV', 'av_adjusted'), digits = 0)
 ```
 
+```{r}
+#| label: tbl-amount-incentivized
+#| tbl-cap: "Percent of Commercial and Industrial \"Market Value for Assessment Purposes\" that has a reduced assessment rate due to incentive classification"
+
+
+table2 <- nonres_pins2022 %>% 
+    filter(Alea_cat != "Land") %>%
+  group_by(clean_name) %>%   # projects can be counted twice if the project has incentive and normal commercial/industrial prop classes.
+  summarize(pin_count = n(),
+          project_count = n_distinct(keypin), 
+          av_incent = sum(ifelse(between(class, 600, 899), av*2.5, 0)),
+          av_adjusted = sum(ifelse(between(class, 600, 899), av*2.5, av)),
+
+         av=sum(av)) %>%
+  mutate(pct_incent = av_incent / av_adjusted)  %>%
+  select(-av_incent)
+
+datatable(table2,
+          rownames= FALSE,
+          colnames = c('Municipality' = 'clean_name', #  'Incentivized?' = 'incent_prop', 
+                       'PIN Count' = 'pin_count', 'Project Count' = 'project_count', 
+                       'Taxable AV' = 'av',
+                       'Assessed Market Value' = 'av_adjusted', 
+                       'Pct Incentivized' = 'pct_incent')
+          ) %>%
+  formatCurrency(c('Taxable AV', 'Assessed Market Value'), digits = 0) %>%
+  formatPercentage('Pct Incentivized', digits = 2)
+```
+
+```{r}
+#| label-fig-pctincentivevalue
+#| fig-cap: "Percent of Commercial and Industrial Market Value (for Assessment Purposes) that has Incentive Classification." 
+
+
+library(sf)
+
+muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/politicalBoundary/MapServer/2/query?outFields=*&where=1%3D1&f=geojson")
+
+table2 %>% 
+  left_join(nicknames) %>%
+  full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
+
+    ggplot(aes(fill = pct_incent)) +
+    geom_sf(aes(geometry = geometry), color = "black") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+scale_fill_steps2(
+    high = "#420420", low = "black",
+  # midpoint = median(transfered_taxes),
+                   show.limits=TRUE,
+  nice.breaks=FALSE,
+  na.value=NA,
+                    n =4,
+                       name = "Pct of Market Value that \nhas Incentive Classification",
+         labels = scales::percent
+)
+```
 
 ```{r, include = FALSE}
 
@@ -193,7 +266,7 @@ datatable(table2,
 #### for all commercial properties                           ###
 # nonres_pins2022 %>% 
 #   mutate(has_incentive = ifelse(class >= 600, 1, 0)) %>%
-#   group_by(keypin) %>%
+#   group_ by(keypin) %>%
 #   summarize(count = n(),     # number of pins in project
 #          sum = sum(has_incentive), # number of pins that had incentives
 #          av = sum(av)) %>%
@@ -228,17 +301,25 @@ table <- nonres_pins2022 %>%
   group_by(clean_name, incent_prop, Alea_cat) %>%   # projects can be counted twice if the project has incentive and normal commercial/industrial prop classes.
   summarize(pin_count = n(),
          project_count = n_distinct(keypin), 
-                     av_adjusted=sum(ifelse(between(class, 600, 899), av*2.5, av)),
-
+         av_adjusted = sum(ifelse(between(class, 600, 899), av*2.5, av)),
+         av_incent = sum(ifelse(between(class, 600, 899), av*2.5, 0)),
          av=sum(av),
-) 
+)  %>%
+  mutate(#AV_incent = av_adjusted - av,
+           pct_incent = av_incent / av_adjusted)
 
 
 datatable(table,
           rownames= FALSE,
-          colnames = c('Municipality' = 'clean_name', 'Incentivized?'='incent_prop',   'Property Type' = 'Alea_cat', 'PINs in Projects' = 'pin_count', 'Project Count' = 'project_count', 'AV (Final)' = 'av'),
-          ) %>%
-  formatCurrency(c('AV (Final)', 'av_adjusted'), digits = 0)
+          colnames = c('Municipality' = 'clean_name', 'Incentivized?' = 'incent_prop',
+                       'Property Type' = 'Alea_cat', 'PINs in Projects' = 'pin_count', 
+                       'Project Count' = 'project_count',
+                       'Current Taxable AV' = 'av',
+                       'Total Assessed Market Value' = 'av_adjusted',
+      'Assessed Market Value' = 'av_incent', 
+      '% AV Incentivized' = 'pct_incent' )  ) %>%
+  formatCurrency(c('Current Taxable AV', 'Assessed Market Value'), digits = 0) %>%
+formatPercentage('% AV Incentivized', digits = 2)
 ```
 
 ## Projects with incentivized and non-incentivized PINs
@@ -284,6 +365,7 @@ flextable(table) %>%
 ```{r}
 #| label: tbl-projectIDs
 #| tbl-cap: "Summed to the Project Level. Note: We still do not have a true keypin-pin crosswalk so these numbers are very likely to change once the makeshift crosswalk is replaced"
+#| column: page
 
 table <- nonres_pins2022 %>% 
       filter(Alea_cat != "Land") %>%
@@ -299,8 +381,8 @@ table <- nonres_pins2022 %>%
          av_nonincent = sum(ifelse(incent_prop == "Non-Incentive", av, 0))) %>%
   mutate(pct_pins_w_inct = round(sum/count, digits = 3), # pct of pins that had incentive property class
          av_incent_adjusted = av_incent * 2.5,
-         EstMarketValue = av_incent_adjusted + av_nonincent
-         ) %>%  
+         EstMarketValue = av_incent_adjusted + av_nonincent,
+         perc_incentivized = av_incent_adjusted / EstMarketValue) %>%  
   filter(av_incent > 0) %>%  
   arrange(desc(count)) 
 
@@ -310,8 +392,13 @@ table <- nonres_pins2022 %>%
 # Using DT instead of flextable
 datatable(table,
           rownames= FALSE,
-          colnames = c('Project ID' = 'keypin', 'PINs per Project' = 'count', 'PINs with\nIncent Class' = 'sum', 'Pct of PINs\nIncentivized' = 'pct_pins_w_inct', 'Taxable AV in Incent Class' = 'av_incent', 'Taxable AV in non-Incent Class' = 'av_nonincent', '2.5*IncentAV' = 'av_incent_adjusted', 'Adj.Total Assessed Value' = 'EstMarketValue')) %>%
-  formatPercentage('Pct of PINs\nIncentivized', digits = 1) %>%
+          colnames = c('Project ID' = 'keypin', 'PINs per Project' = 'count', 
+                       'PINs with\nIncent Class' = 'sum',
+        '% Backed out AV w/ Incentives' = 'perc_incentivized',
+                     
+                       'Taxable AV in Incent Class' = 'av_incent', 'Taxable AV in non-Incent Class' = 'av_nonincent', '2.5*IncentAV' = 'av_incent_adjusted', 'Adj.Total Assessed Value' = 'EstMarketValue',  'Pct of PINs Incentivized' = 'pct_pins_w_inct' )) %>%
+  formatPercentage( c('% Backed out AV w/ Incentives' , 'Pct of PINs Incentivized'), 
+                   digits = 1) %>%
   formatCurrency(c('Taxable AV in Incent Class', '2.5*IncentAV', 'Taxable AV in non-Incent Class', 'Adj.Total Assessed Value'), digits = 0)
 
 
@@ -325,3 +412,19 @@ datatable(table,
 
 
 ```
+
+#### Class Dictionary File 
+
+```{r}
+#| column: page
+
+class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv")
+
+table <- class_dict
+
+datatable(table,
+          rownames= FALSE,
+        #  colnames = c()
+          ) 
+```
+
