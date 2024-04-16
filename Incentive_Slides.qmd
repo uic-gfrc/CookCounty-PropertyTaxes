@@ -19,6 +19,10 @@ library(flextable) # for exporting to word or PDF files. Kable does not do that
 
 library(sf)
 
+library(ggpattern)
+
+
+
 muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/politicalBoundary/MapServer/2/query?outFields=*&where=1%3D1&f=geojson")
 
 
@@ -90,14 +94,39 @@ ptax_pins <- ptax_pins %>%
 
 ```
 
-## Sankey Graph
-```{r}
-
-```
 
 
 
 ## Slides 1-2
+
+34 Municipalities do not use Incentive Classifications. 
+
+15 cross into other counties. All 15 that cross county lines do use incentive classifications. 
+
+Alsip, Bedford Park, Blue Island,Bridgeview, Riverdale, South Holland, Summit, and Worth also use "Abatements" (based on the exe_abate variable in PTAXSIM)
+
+```{r}
+#| label: tbl-countycrossers
+#| column: margin
+
+
+cross_county_lines <- c("030440000", "030585000", "030890000", "030320000", "031280000","030080000", "030560000", "031120000", "030280000", "030340000","030150000","030050000", "030180000","030500000","031210000")
+
+cross_county_lines <- tc_muninames %>% filter(agency_num %in% cross_county_lines) %>% select(clean_name, agency_num) %>% distinct() %>% arrange(clean_name)
+
+cross_county_lines <- cross_county_lines %>% left_join(muni_shp, by = c("clean_name" = "MUNICIPALITY"))
+
+
+no_incentives <-  ptax_pins %>% 
+ # filter(between(class, 600, 899)) %>%
+  group_by(clean_name) %>% 
+  summarize(incent_pins = sum(ifelse(between(class, 600, 899), 1, 0))) %>%
+  filter(incent_pins == 0) %>% 
+  distinct(clean_name)
+
+no_incentives <- no_incentives %>% left_join(muni_shp, by = c("clean_name" = "MUNICIPALITY"))
+```
+
 
 ```{r}
 #| label: tbl-cooktotals
@@ -141,7 +170,9 @@ table2 <- nonres_pins2022 %>%
             av_incent = sum(ifelse(between(class, 600, 899), av*2.5, 0)),
             av_adjusted = sum(ifelse(between(class, 600, 899), av*2.5, av)),
             av=sum(av)) %>%
-  mutate(pct_incent = av_incent / av_adjusted)  %>%
+  mutate(av_incent = ifelse(av_incent == 0, NA, av_incent),
+    pct_incent = av_incent / av_adjusted,
+    pct_incent = ifelse(pct_incent == 0, NA, pct_incent))  %>%
   select(-av_incent) %>% 
   select(clean_name, pct_incent, av, av_adjusted, pin_count, project_count)
 
@@ -161,12 +192,14 @@ datatable(table2,
 #| label: fig-pctincentivevalue-bothtypes
 #| fig-cap: "Percent of Commercial and Industrial Fair Market Value (FMV) that has Incentive Classification" 
 
+
+
 table2 %>% 
   left_join(nicknames) %>%
- inner_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
+  full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
   
-  ggplot(aes(fill = pct_incent)) +
-  geom_sf(aes(geometry = geometry), color = "black") +
+  ggplot() +
+  geom_sf(aes(geometry = geometry, fill = pct_incent), color = "black") +
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
   scale_fill_steps2(
@@ -175,20 +208,29 @@ table2 %>%
     show.limits=TRUE,
     breaks = c(0, .10, .20, .50, .70),
     nice.breaks=FALSE,
-    na.value= NA,
     #n =4,
+    na.value = "gray",
     name = "Pct of Market Value that \nhas Incentive Classification",
     labels = scales::percent
-)
+) +
+   geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, fill = "white", alpha = .5, color = 'gray70')
+
+
+map
+
+
+
 ```
 
 ```{r}
 #| label: fig-industrial-commercial-fmv
 #| layout-ncol: 2
+#| column: page
 #| fig-cap: 
 #|      - "Pct of Industrial FMV that \nhas Incentive Classification"
 #|      - "Pct of Commercial FMV that \nhas Incentive Classification"
 #|      
+
 nonres_pins2022 %>% 
   filter(Alea_cat == "Industrial") %>%
   group_by(clean_name) %>% 
@@ -197,7 +239,8 @@ nonres_pins2022 %>%
             av_incent = sum(ifelse(between(class, 600, 899), av*2.5, 0)),
             av_adjusted = sum(ifelse(between(class, 600, 899), av*2.5, av)),
             av=sum(av)) %>%
-  mutate(pct_incent = av_incent / av_adjusted)  %>%
+  mutate(av_incent = ifelse(av_incent == 0, NA, av_incent),
+         pct_incent = av_incent / av_adjusted)  %>%
   select(-av_incent) %>% 
   select(clean_name, pct_incent, av, av_adjusted, pin_count, project_count) %>%
   left_join(nicknames) %>%
@@ -212,11 +255,12 @@ nonres_pins2022 %>%
     # midpoint = median(transfered_taxes),
     show.limits=TRUE,
     nice.breaks=FALSE,
-    na.value=NA,
+    na.value="gray",
     n =4,
     name = "Pct of Industrial FMV that \nhas Incentive Classification",
     labels = scales::percent
-)
+) +
+   geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, fill = "white", alpha = .5, color = 'gray40')
 
 nonres_pins2022 %>% 
   filter(Alea_cat == "Commercial") %>%
@@ -226,7 +270,8 @@ nonres_pins2022 %>%
             av_incent = sum(ifelse(between(class, 600, 899), av*2.5, 0)),
             av_adjusted = sum(ifelse(between(class, 600, 899), av*2.5, av)),
             av=sum(av)) %>%
-  mutate(pct_incent = av_incent / av_adjusted)  %>%
+  mutate(av_incent = ifelse(av_incent == 0, NA, av_incent), 
+                            pct_incent = av_incent / av_adjusted)  %>%
   select(-av_incent) %>% 
   select(clean_name, pct_incent, av, av_adjusted, pin_count, project_count) %>%
   left_join(nicknames) %>%
@@ -238,15 +283,24 @@ nonres_pins2022 %>%
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
   scale_fill_steps2(
     high = "orange", low = "black",
-    # midpoint = median(transfered_taxes),
+     midpoint = 0.04,
     show.limits=TRUE,
     nice.breaks=FALSE,
-    na.value=NA,
-    n =4,
+    na.value="gray",
+   # n =4,
     name = "Pct of Commercial FMV that \nhas Incentive Classification",
     labels = scales::percent
-)
+) +
+   geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, fill = "white", alpha = .5, color = 'gray40')
 ```
+
+
+## Sankey Graph
+
+```{r eval=FALSE}
+ptax_pins <- read_csv("Output/Dont_Upload/0_joined_PIN_data_2022.csv")
+```
+
 
 ## Slides 7 & 8
 
@@ -475,6 +529,10 @@ datatable(tbl2,
 
 ```
 
+
+> Layer for Border Crossers. Layer for Unincorporated areas.   
+
+
 ```{r}
 #| label: fig-pctincentivevalue
 #| fig-cap: "Composite Tax Rate Change from recovering reduced EAV of properties with incentive classification and from taxing EAV that is currently exempt due to the GHE exemption." 
@@ -495,23 +553,24 @@ tbl2 %>%
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
 scale_fill_steps2(
     high = "#420420", low = "black",
-  # midpoint = median(transfered_taxes),
-  limits = c(0,15.5),
+  #limits = c(0,15.5),
                    show.limits=TRUE,
   nice.breaks=FALSE,
-  na.value=NA,
+  na.value="gray",
                     n =4,
                        name = "Change in Composite Tax Rate\n(Percentage Points)",
-)
+) +
+   geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, fill = "white", alpha = .5, color = 'gray40')
+
 ```
 
 ```{r}
 #| label: fig-incent-and-exempt-ratechange-map
 #| fig-height: 6
 #| layout-ncol: 2
-#| column: page
+#| column: page 
 #| fig-subcap:
-#|      - "Change in composite tax rate from taxing incentive properties at 25% instead of 10%"
+#|      - "Change in composite tax rate from assessment ratio for incentive properties set at 25% instead of 10%"
 #|      - "Change in composite taxrate from taxing EAV that is current tax exempt due to the GHE exemption"
 
 tbl2 %>% 
@@ -527,9 +586,11 @@ scale_fill_steps2(
  limits = c(0,7),
                    show.limits=TRUE,
   nice.breaks=FALSE,
-  na.value=NA,
+ na.value="gray",
                     n =4,
-                       name = "Change in Composite Tax Rate\n(Percentage Points)",)
+                       name = "Change in Composite Tax Rate\n(Percentage Points)",)+
+   geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, fill = "white", alpha = .5, color = 'gray40')
+
 
 
 tbl2 %>% 
@@ -545,11 +606,12 @@ scale_fill_steps2(
  limits = c(0,15),
                    show.limits=TRUE,
   nice.breaks=FALSE,
-  na.value=NA,
+  na.value="gray", # unincorporated areas
                     n =4,
                        name = "Change in Composite Tax Rate\n(Percentage Points)",
         # labels = scales::percent
 )
+
 ```
 
 ```{r}
