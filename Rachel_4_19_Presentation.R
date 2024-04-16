@@ -103,6 +103,23 @@ plot_df_final %>%
 
 #make bar chart (NOT A HISTOGRAM)
 
+plot_df_final %>%
+  ggplot() +
+  geom_col(aes(x = year, y = total_incent_ratio), color = "#fecc5c") +
+  geom_col(aes(x = year, y = inc_ind_ratio), color = "#fd8d3c") +
+  geom_col(aes(x = year, y = inc_com_ratio), color = "#bd0026") +
+  theme_classic()
+
+plot_df_final %>%
+  ggplot() +
+  geom_col(aes(x = year - 0.1, y = total_incent_ratio, fill = "Total"), width = .1, position = position_dodge(width = 0.2)) +
+  geom_col(aes(x = year, y = inc_ind_ratio, fill = "Industrial"), position = position_dodge(width = 0.2), width = .1) +
+  geom_col(aes(x = year + 0.1, y = inc_com_ratio, fill = "Commercial"), position = position_dodge(width = 0.2), width = .1) +
+  scale_fill_manual(values = c("Total" = "#fecc5c", "Industrial" = "#fd8d3c", "Commercial" = "#bd0026")) +
+  theme_classic() +
+  labs(x = "Year", y = "Ratio")
+
+
 # Scatterplot
 ## Goal: scatterplot where change in tax rate from exemptions on x-axis and change from incentives on y-axis
 ## Dot size represents total tax rate change
