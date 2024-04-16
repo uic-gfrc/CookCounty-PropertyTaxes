@@ -81,46 +81,43 @@ plot_df_ind <- left_join(muni_MC, class_dict, by = "class") %>%
   select(ind_inc_FMV, ind_tb) %>%
   distinct()
 
+plot_df_final <- plot_df_FMV %>%
+  left_join(plot_df_8, by = "year") %>%
+  left_join(plot_df_comm) %>%
+  left_join(plot_df_ind) %>%
+#mutate ratio variables
+  mutate(class_8_ratio = year_class_8_FMV/year_max_tb,
+         inc_ind_ratio = ind_inc_FMV/ind_tb,
+         inc_com_ratio = comm_inc_FMV/comm_tb,
+         total_incent_ratio =
+           (year_class_8_FMV + ind_inc_FMV + comm_inc_FMV)/year_max_tb)
 
-# Rename year columns in plot_df_comm, plot_df_ind, and plot_df_8
+#make line graph
 
-plot_df_comm <- rename(plot_df_comm, year_comm = year)
-plot_df_ind <- rename(plot_df_ind, year_ind = year)
-plot_df_8 <- rename(plot_df_8, year_8 = year)
+plot_df_final %>%
+  ggplot() +
+  geom_line(aes(x = year, y = total_incent_ratio), color = "#fecc5c") +
+  geom_line(aes(x = year, y = inc_ind_ratio), color = "#fd8d3c") +
+  geom_line(aes(x = year, y = inc_com_ratio), color = "#bd0026") +
+  theme_classic()
 
-# Combine data frames and remove redundant year columns
-plot_final <- bind_cols(plot_df_FMV, plot_df_comm, plot_df_ind, plot_df_8) %>%
-  select(-starts_with("year_"))
+#make bar chart (NOT A HISTOGRAM)
 
+plot_df_final %>%
+  ggplot() +
+  geom_col(aes(x = year, y = total_incent_ratio), color = "#fecc5c") +
+  geom_col(aes(x = year, y = inc_ind_ratio), color = "#fd8d3c") +
+  geom_col(aes(x = year, y = inc_com_ratio), color = "#bd0026") +
+  theme_classic()
 
-
-# plot_df <- plot_df %>%
-#   filter(Alea_cat %in% c("Commercial", "Industrial")) #%>%
-#   group_by(year) %>%
-#   reframe(FMV, dig1FMV = sum(FMV), .by = c("year", "class_1dig")) %>%
-#   reframe(alea_cat_FMV = sum(FMV), .by = c("year", "Alea_cat"))
-
-#total_comm_ind_base = sum(all industrial & commercial FMV)
-#total_ind_base = sum(all ind FMV)
-#total_com_base = sum(all comm FMV)
-#total_ind_incent = sum(AV for class 6)
-##total_com_incent = sum(AV for class 7)
-##total_8_incent = sum(AV for class 8)
-#
-#ind_ratio = total_ind_incent/total_ind_base
-#com_ratio = total_com_incent/total_comm_base
-#8_ratio = total_8_incent/total_comm_ind_base
-
-
-# line_df <- plot_df %>%
-#   filter(Alea_cat %in% c("Commercial", "Industrial")) %>%
-#   mutate(FMV = av * assess_ratio) %>%
-#   group_by(year) %>%
-#   mutate(year = as.character(year)) %>%
-#   rowwise() %>%
-#   summarise(FMV = sum(FMV)) %>%
-#   mutate(!!paste0("FMV_tot_", year) := FMV) %>%
-#   select(-FMV)
+plot_df_final %>%
+  ggplot() +
+  geom_col(aes(x = year - 0.1, y = total_incent_ratio, fill = "Total"), width = .1, position = position_dodge(width = 0.2)) +
+  geom_col(aes(x = year, y = inc_ind_ratio, fill = "Industrial"), position = position_dodge(width = 0.2), width = .1) +
+  geom_col(aes(x = year + 0.1, y = inc_com_ratio, fill = "Commercial"), position = position_dodge(width = 0.2), width = .1) +
+  scale_fill_manual(values = c("Total" = "#fecc5c", "Industrial" = "#fd8d3c", "Commercial" = "#bd0026")) +
+  theme_classic() +
+  labs(x = "Year", y = "Ratio")
 
 
 # Scatterplot
@@ -156,7 +153,7 @@ delta_rates %>%
   labs(
     x = "Exemptions",
     y = "Incentives",
-    #caption = "Observation size represents total change in tax rate from eliminating exemptions and incentives. Observations in orange represent municipalities with the top 20 rate changes from both exemptions and incentives."
+    caption = our_caption
   ) +
   theme_classic()
 
