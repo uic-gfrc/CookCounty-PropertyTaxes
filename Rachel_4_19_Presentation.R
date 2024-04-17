@@ -34,7 +34,7 @@ plot_df <- left_join(muni_MC, class_dict, by = "class") %>%
   ungroup() %>%
   arrange(desc(year))
 
-plot_df_FMV <- left_join(muni_MC, class_dict, by = "class") %>%
+plot_df_FMV_cook <- left_join(muni_MC, class_dict, by = "class") %>%
   mutate(FMV = av/assess_ratio) %>%
   select(year, class_1dig, incent_prop, Alea_cat, FMV) %>%
   filter(Alea_cat %in% c("Commercial", "Industrial")) %>%
@@ -43,19 +43,6 @@ plot_df_FMV <- left_join(muni_MC, class_dict, by = "class") %>%
   select(year, year_max_tb) %>%
   distinct() %>%
   arrange(year)
-
-plot_df_8 <- left_join(muni_MC, class_dict, by = "class") %>%
-  mutate(FMV = av/assess_ratio) %>%
-  select(year, class_1dig, incent_prop, Alea_cat, FMV) %>%
-  filter(Alea_cat %in% c("Commercial", "Industrial")) %>%
-  group_by(year) %>%
-  mutate(class_8 = ifelse(class_1dig == 8, 1, 0)) %>%
-  filter(class_8 == 1) %>%
-  group_by(year) %>%
-  mutate(year_class_8_FMV = sum(FMV)) %>%
-  arrange(year) %>%
-  select(year_class_8_FMV) %>%
-  distinct()
 
 plot_df_comm <- left_join(muni_MC, class_dict, by = "class") %>%
   mutate(FMV = av/assess_ratio) %>%
@@ -79,6 +66,19 @@ plot_df_ind <- left_join(muni_MC, class_dict, by = "class") %>%
   mutate(ind_inc_FMV = sum(FMV)) %>%
   arrange(year) %>%
   select(ind_inc_FMV, ind_tb) %>%
+  distinct()
+
+plot_df_8 <- left_join(muni_MC, class_dict, by = "class") %>%
+  mutate(FMV = av/assess_ratio) %>%
+  select(year, class_1dig, incent_prop, Alea_cat, FMV) %>%
+  filter(Alea_cat %in% c("Commercial", "Industrial")) %>%
+  group_by(year) %>%
+  mutate(class_8 = ifelse(class_1dig == 8, 1, 0)) %>%
+  filter(class_8 == 1) %>%
+  group_by(year) %>%
+  mutate(year_class_8_FMV = sum(FMV)) %>%
+  arrange(year) %>%
+  select(year_class_8_FMV) %>%
   distinct()
 
 plot_df_final <- plot_df_FMV %>%
@@ -108,14 +108,13 @@ plot_df_final %>%
   guides(color = guide_legend(title = NULL))
 
 
+# Class 8 Muni Trends over Time
+
+class8_df <- read_csv("./Output/class_8_ind_comm_FMV.csv")
+
+
 #make bar chart (NOT A HISTOGRAM)
 
-plot_df_final %>%
-  ggplot() +
-  geom_col(aes(x = year, y = total_incent_ratio), color = "#fecc5c") +
-  geom_col(aes(x = year, y = inc_ind_ratio), color = "#fd8d3c") +
-  geom_col(aes(x = year, y = inc_com_ratio), color = "#bd0026") +
-  theme_classic()
 
 plot_df_final %>%
   ggplot() +
@@ -128,11 +127,16 @@ plot_df_final %>%
 
 plot_df_final %>%
   ggplot() +
-  geom_col(aes(x = year - 0.15, y = total_incent_ratio, fill = "Total"), width = .1, position = position_dodge(width = 0.2)) +
-  geom_col(aes(x = year - 0.05, y = inc_ind_ratio, fill = "Industrial"), position = position_dodge(width = 0.2), width = .1) +
-  geom_col(aes(x = year + 0.05, y = inc_com_ratio, fill = "Commercial"), position = position_dodge(width = 0.2), width = .1) +
-  geom_col(aes(x = year + 0.15, y = class_8_ratio, fill = "Class-8"), position = position_dodge(width = 0.2), width = .1) +
-  scale_fill_manual(values = c("Total" = "#fecc5c", "Industrial" = "#fd8d3c", "Commercial" = "#bd0026", "Class-8" = "#000000")) +
+  geom_col(aes(x = year - 0.15, y = total_incent_ratio, fill = "Total"), width = .1,
+           position = position_dodge(width = 0.2)) +
+  geom_col(aes(x = year - 0.05, y = inc_ind_ratio, fill = "Industrial"),
+           position = position_dodge(width = 0.2), width = .1) +
+  geom_col(aes(x = year + 0.05, y = inc_com_ratio, fill = "Commercial"),
+           position = position_dodge(width = 0.2), width = .1) +
+  geom_col(aes(x = year + 0.15, y = class_8_ratio, fill = "Class-8"),
+           position = position_dodge(width = 0.2), width = .1) +
+  scale_fill_manual(values = c("Total" = "#fecc5c", "Industrial" = "#fd8d3c",
+                               "Commercial" = "#bd0026", "Class-8" = "#000000")) +
   theme_classic() +
   labs(x = "Year", y = "Percent") +
   scale_y_continuous(labels = scales::percent_format(), limits = c(0, 0.45), breaks = seq(0, 0.45, by = 0.05)) +
