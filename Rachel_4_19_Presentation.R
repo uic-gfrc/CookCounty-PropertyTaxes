@@ -96,10 +96,17 @@ plot_df_final <- plot_df_FMV %>%
 
 plot_df_final %>%
   ggplot() +
-  geom_line(aes(x = year, y = total_incent_ratio), color = "#fecc5c") +
-  geom_line(aes(x = year, y = inc_ind_ratio), color = "#fd8d3c") +
-  geom_line(aes(x = year, y = inc_com_ratio), color = "#bd0026") +
-  theme_classic()
+  geom_line(aes(x = year, y = total_incent_ratio, color = "Ind. & Comm. FMV"), linewidth = 1.5) +
+  geom_line(aes(x = year, y = inc_ind_ratio, color = "Industrial %"), linewidth = 1.5) +
+  geom_line(aes(x = year, y = inc_com_ratio, color = "Commercial %"), linewidth = 1.5) +
+  geom_line(aes(x = year, y = class_8_ratio, color = "Class-8 %"), linewidth = 1.5) +
+  labs(y = "percent") +
+  scale_color_manual(values = c("#b2182b", "#fd8d3c", "#878787", "#000000")) +
+  theme_classic() +
+  scale_x_continuous(breaks = seq(2006, 2022, by = 3)) +
+  scale_y_continuous(labels = scales::percent_format(), limits = c(0, 0.45), breaks = seq(0, 0.5, by = 0.05)) +
+  guides(color = guide_legend(title = NULL))
+
 
 #make bar chart (NOT A HISTOGRAM)
 
@@ -118,6 +125,19 @@ plot_df_final %>%
   scale_fill_manual(values = c("Total" = "#fecc5c", "Industrial" = "#fd8d3c", "Commercial" = "#bd0026")) +
   theme_classic() +
   labs(x = "Year", y = "Ratio")
+
+plot_df_final %>%
+  ggplot() +
+  geom_col(aes(x = year - 0.15, y = total_incent_ratio, fill = "Total"), width = .1, position = position_dodge(width = 0.2)) +
+  geom_col(aes(x = year - 0.05, y = inc_ind_ratio, fill = "Industrial"), position = position_dodge(width = 0.2), width = .1) +
+  geom_col(aes(x = year + 0.05, y = inc_com_ratio, fill = "Commercial"), position = position_dodge(width = 0.2), width = .1) +
+  geom_col(aes(x = year + 0.15, y = class_8_ratio, fill = "Class-8"), position = position_dodge(width = 0.2), width = .1) +
+  scale_fill_manual(values = c("Total" = "#fecc5c", "Industrial" = "#fd8d3c", "Commercial" = "#bd0026", "Class-8" = "#000000")) +
+  theme_classic() +
+  labs(x = "Year", y = "Percent") +
+  scale_y_continuous(labels = scales::percent_format(), limits = c(0, 0.45), breaks = seq(0, 0.45, by = 0.05)) +
+  scale_x_continuous(breaks = seq(2006, 2022, by = 3)) +
+  guides(fill = guide_legend(title = NULL))
 
 
 # Scatterplot
