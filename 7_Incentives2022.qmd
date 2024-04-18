@@ -22,7 +22,7 @@ library(jsonlite)
 library(glue)
 library(sf)
 
-knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, error = TRUE)
 
 
 
@@ -56,12 +56,22 @@ source("scripts/helper_tc_muninames_2022.R")
 
 projects <- read_csv("Output/pin_project_crosswalk.csv")
 
+theme_set(theme_void()) 
+
+
+theme_AWM <-   theme_void() + 
+  theme_update(# %+replace% 
+   # panel.background = element_rect(fill='transparent'), #transparent panel bg
+    plot.background = element_rect(fill='transparent'), #transparent plot bg
+  #  legend.background = element_rect(fill='transparent'), #transparent legend bg
+   # legend.box.background = element_rect(fill='transparent') #transparent legend panel
+  )
+
 ```
 
 # Incentive Properties In Cook County, IL
 
 ```{r}
-
 muni_class_sums <- muni_class_sums %>%   
   left_join(class_dict, by = c("class" = "class_code")) 
 
@@ -69,14 +79,16 @@ muni_class_sums <- muni_class_sums %>%
 muni_class_sums %>% 
   filter(year == 2022) %>%
   group_by(Alea_cat) %>% 
-  summarize(cur_TEAV = sum(current_taxable_eav),
+  summarize(fmv = sum(av / assess_ratio),
+            cur_TEAV = sum(current_taxable_eav),
             av = sum(av),
             pincount = sum(pins_in_muni))
 
 building_summaries <- muni_class_sums %>% 
   filter(year == 2022) %>%
   group_by(clean_name, Alea_cat) %>% 
-  summarize(cur_TEAV = sum(current_taxable_eav),
+  summarize(fmv = sum(av / assess_ratio),
+    cur_TEAV = sum(current_taxable_eav),
             av = sum(av),
             pincount = sum(pins_in_muni))
 
@@ -97,15 +109,19 @@ residential_pins <- muni_class_sums %>%
 
 
 
-incentive_pins %>% 
-  reframe(IncentiveProp_PINcount = sum(pins_in_muni),
-          IncentiveProp_MuniAV = sum(av),
-          .by=c(clean_name)) %>% 
-  rename(
-         Municipality = clean_name) %>%
-    mutate(Municipality = ifelse(is.na(Municipality), "Unincorporated", Municipality)) %>%
-  arrange(Municipality)
+# incentive_pins %>% 
+#   reframe(IncentiveProp_PINcount = sum(pins_in_muni),
+#           fmv = sum(av/assess_ratio),
+#           IncentiveProp_MuniAV = sum(av),
+#           .by=c(clean_name)) %>% 
+#   rename(
+#          Municipality = clean_name) %>%
+#     mutate(Municipality = ifelse(is.na(Municipality), "Unincorporated", Municipality)) %>%
+#   arrange(Municipality)
+```
 
+
+```{r}
 incentive_pins %>% 
   filter(class > 599 & class < 900) %>% 
   group_by(clean_name, major_class_code) %>%
@@ -118,7 +134,51 @@ incentive_pins %>%
   mutate(Municipality = ifelse(is.na(Municipality), "Unincorporated", Municipality)) %>%
   arrange(Municipality)
 
-incentive_pins %>% 
+
+muni_ind_com_totalvalue <- muni_class_sums %>% 
+  mutate(fmv = av/assess_ratio) %>%
+  group_by(clean_name) %>%
+  mutate(muni_total_fmv = sum(fmv, na.rm=TRUE)) %>% 
+  ungroup() %>%
+  filter(class > 499 & class < 900) %>% 
+  group_by(clean_name, Alea_cat, incent_prop, muni_total_fmv) %>%
+  summarize(fmv = sum(fmv),
+    pincount = sum(pins_in_muni),
+            TEAV = sum(current_taxable_eav),
+            av = sum(av)) %>% 
+  group_by(clean_name) %>% 
+  mutate(comval_fmv = sum(fmv)) %>%
+  ungroup() %>% 
+  group_by(clean_name, Alea_cat) %>%
+  mutate(type_fmv = sum(fmv)) %>% ungroup() %>%
+  group_by(clean_name, incent_prop) %>%
+  mutate(incent_fmv = sum(fmv)) 
+
+muni_ind_com_totalvalue
+
+
+muni_fmv_MC_totals <- muni_class_sums %>% 
+  mutate(fmv = av/assess_ratio) %>%
+  group_by(clean_name) %>%
+  mutate(muni_total_fmv = sum(fmv, na.rm=TRUE)) %>% 
+  ungroup() %>%
+  filter(class > 499 & class < 900) %>% 
+  group_by(clean_name, Alea_cat, incent_prop, major_class_code, muni_total_fmv) %>%
+  summarize(fmv = sum(fmv),
+    pincount = sum(pins_in_muni),
+            TEAV = sum(current_taxable_eav),
+            av = sum(av)) %>% 
+  group_by(clean_name) %>% 
+  mutate(comval_fmv = sum(fmv)) %>%
+  ungroup() %>% 
+  group_by(clean_name, Alea_cat) %>%
+  mutate(type_fmv = sum(fmv)) %>% ungroup() %>%
+  group_by(clean_name, incent_prop) %>%
+  mutate(incent_fmv = sum(fmv))
+
+muni_fmv_MC_totals
+
+muni_ind_com_counts <- incentive_pins %>% 
   filter(class > 599 & class < 900) %>% 
   group_by(clean_name, Alea_cat) %>%
   summarize(pincount = sum(pins_in_muni),
@@ -130,21 +190,92 @@ incentive_pins %>%
   select( Municipality = clean_name, everything() ) %>% 
   mutate(Municipality = ifelse(is.na(Municipality), "Unincorporated", Municipality)) %>%
   arrange(Municipality)
+
+
+no_commercial_incentives <- muni_ind_com_counts %>% filter(is.na(Commercial)) %>% select(clean_name = Municipality)
+no_commercial_incentives
+
+
+no_industrial_incentives <- muni_ind_com_counts %>% filter(is.na(Industrial)) %>% select(clean_name = Municipality)
+no_industrial_incentives
+
+useboth <- muni_ind_com_counts %>% filter(!is.na(Industrial)& !is.na(Commercial)) %>% select(clean_name = Municipality)
+useboth
+
 ```
 
+99 municipalities use incentives to some extent.
+
+60 use both industrial and commercial incentive property classes. 
+
+- 12 municipalities do not use Industrial incentives (87 use industrial incentives classes)  
+
+- 27 municipalities do not use Commercial incentives (72 use commercial incentive classes.)  
+
 ```{r}
-
 # csv read in here is only the 2021 incentive pins! 
-incentive_pins_w_projects <- read_csv("./Output/7_output_incentive_classes.csv") %>%
-  left_join(projects) %>%
-  mutate(tax_code_num = as.character(tax_code_num) ) %>%
-  left_join(tc_muninames, by = "tax_code_num")
+# incentive_pins_w_projects <- # read_csv("./Output/7_output_incentive_classes.csv") %>%
+#   read_csv("./Output/Dont_Upload/0_joined_PIN_data_2022.csv") %>% 
+#   left_join(projects) %>%
+#   mutate(tax_code_num = as.character(tax_code_num) ) %>%
+#   left_join(tc_muninames, by = "tax_code_num")
 
+
+
+# all pins for 2022
+ptax_pins <- read_csv("./Output/Dont_Upload/0_joined_PIN_data_2022.csv") %>% 
+  mutate(class = as.numeric(class)) %>%
+         # keep 500-899 class PINs
+  # filter((class >= 500 & class < 900) |   
+  #          # and keep land PINs if we want land property owned by them too.
+  #        (class >= 100 & class < 200)  
+  #        )  %>%
+  select(-c(propclass_1dig:av.y))
+
+# temporary work-around until we have full keypin list:
+#proj_xwalk <- read_csv("./Output/all_keypins.csv")               
+# all commercial valuation properties but made with very unreliable data from commercial valuation dataset. 
+
+# combine project IDs to PINs:
+# ptax_pins <- ptax_pins %>% left_join(proj_xwalk, by = "pin")
+
+
+# use other keypin file for now
+ptax_pins <- ptax_pins %>% left_join(projects, by = "pin")
+
+
+#  create tc_muninames from helper file:
+source("scripts/helper_tc_muninames_2022.R")
+
+tc_muninames <- tc_muninames %>%  select(-year)
+
+# add muni names by joining tax code info:
+ptax_pins <- ptax_pins %>% 
+  mutate(tax_code_num = as.character(tax_code_num)) %>%
+  left_join(tc_muninames)
+
+
+
+# original class_dict variables already in 0_joined data
+# but I do want the new-ish variables I created to be brought in:
+class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv") %>%
+  select(class_code, comparable_props, Alea_cat, incent_prop, major_class_code, assess_ratio)
+
+ptax_pins <- ptax_pins %>% 
+  left_join(class_dict, by =  c("class" = "class_code")) %>%
+  mutate(clean_name = ifelse(is.na(clean_name), "0_Unincorporated", clean_name))
+
+incentive_pins_w_projects <- ptax_pins %>% filter(between(class, 600, 899))
+```
+
+
+```{r}
 incentive_pins_w_projects %>% 
   group_by(clean_name, keypin) %>%
   summarize(pincount = n(),
             av = sum(av)) %>%
-  ungroup() %>% group_by(clean_name) %>%
+  ungroup() %>% 
+  group_by(clean_name) %>%
   summarize(projects = n(),
             pins = sum(pincount),
             av=sum(av)) %>% 
@@ -185,33 +316,31 @@ incentive_pins %>%
 
 ```
 
-```{r nbhd-allclasses, eval=FALSE, include = FALSE}
-nbh_pincounts <- incentive_pins %>% 
-  group_by(nbhd_code, class) %>%
-  dplyr::summarize(pin_count = n(),
-            av = sum(av)) %>%
-  mutate(class_1dig = str_sub(class, 1, 1))
+```{r nbhd-allclasses}
 
-nbh_pincounts_majorclass <- incentive_pins %>% 
-  group_by(major_class_code, major_class_type, nbhd_code) %>%
-  dplyr::summarize(pin_count = n(),
-            av = sum(av))
-
-# table(nbh_pincounts_majorclass$major_class_code)
+NBHs <- read_sf("https://datacatalog.cookcountyil.gov/resource/pcdw-pxtg.geojson")
 
 
-incentives_props <- nbh_pincounts_majorclass %>% 
-  filter(major_class_code %in% c("6A", "6B", "6C", "7A", "7B", "8", "9")) %>%
+nbh_sum <- read_csv("./Output/ptaxsim_nbh_MC_summary_2022.csv") %>%     mutate(nbhd_code = as.character(nbhd_code))
+
+ 
+
+
+incentives_props <- nbh_sum %>% 
+  filter(major_class_code %in% c("6A", "6B", "6C", "7A", "7B", "8")) %>%
   mutate(nbhd_code = as.character(nbhd_code))
+
+
+incentive_props <-  incentives_props %>% full_join(NBHs, by = c("nbhd_code" = "town_nbhd"))
 
 
 fig_nbhd_pincount <- incentives_props %>% 
   group_by(nbhd_code) %>%
-  summarize(pin_count = sum(pin_count)) %>%
+  summarize(pin_count = sum(nbh_MC_PC)) %>%
   full_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
   ggplot(aes(fill = pin_count)) + 
   geom_sf(aes(geometry = geometry), color = "black") + 
-  labs(title = "Number of PINs with Incentives in Assessor Neighborhoods", 
+  labs(title = "Number of PINs with Incentive Class in Assessor Neighborhoods", 
   caption = "Count of 14 digit PINs") +
   theme_void() + 
    theme(axis.ticks = element_blank(), axis.text = element_blank()) +
@@ -219,37 +348,37 @@ scale_fill_steps2(
   high = "darkblue", low = "orange",
   show.limits=TRUE,
   nice.breaks = TRUE,
-na.value = NA,
+  breaks = c(0, 25, 50, 100, 200, 600),
+na.value = "gray",
   name = "Pin Count")
 
 
 fig_nbhd_AV <- incentives_props %>% 
   group_by(nbhd_code) %>%
-  summarize(av = sum(av)) %>%
+  summarize(av = sum(nbh_MC_AV
+)) %>%
   full_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
-  filter(triad_name != "City") %>%
+  #filter(triad_name != "City") %>%
   ggplot(aes(fill = av)) + 
   geom_sf(aes(geometry = geometry), color = "black") + 
   labs(title = "Assessed Value of Properties in 
-       Assessor Neighborhoods", 
-       caption = "Different classes of properties have different assessment levels. 
-  Some change over time.") +
+       Assessor Neighborhoods") +
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank()) +
   scale_fill_steps2(
     high = "darkblue", low = "orange",
     show.limits=TRUE,
     nice.breaks = FALSE,
-   # limits = c(0, 90000000),
-    na.value = NA,
+    na.value = "gray",
     name = "AV",
     label = scales::dollar)
-
+fig_nbhd_AV
 
 
 fig_nbhd_Chicago_AV <- incentives_props %>% 
   group_by(nbhd_code) %>%
-  summarize(av = sum(av)) %>%
+  summarize(av = sum(nbh_MC_AV
+)) %>%
   full_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
   filter(triad_name == "City") %>%
   ggplot(aes(fill = av)) + 
@@ -265,58 +394,47 @@ fig_nbhd_Chicago_AV <- incentives_props %>%
     show.limits=TRUE,
     nice.breaks = FALSE,
    # limits = c(0, 90000000),
-    na.value = NA,
+    na.value = "gray",
     name = "AV",
     label = scales::dollar)
-
+fig_nbhd_Chicago_AV
 ```
 
-```{r nhbd-class6and7, eval=FALSE}
-nbh_pincounts_class <- incentive_pins %>% 
-  group_by(nbhd_code, class) %>%
-  dplyr::summarize(pin_count = n(),
-            av = sum(av)) %>%
-  mutate(class_1dig = str_sub(class, 1, 1))
-
-nbh_pincounts_majorclass <- incentive_pins %>% 
-  group_by(major_class_code, major_class_type, nbhd_code) %>%
-  dplyr::summarize(pin_count = n(),
-            av = sum(av))
-
-# table(nbh_pincounts_majorclass$major_class_code)
-
-
-incentives_props <- nbh_pincounts_majorclass %>% 
-  filter(major_class_code %in% c("6A", "6B", "6C", "7A", "7B", "8")) %>%
-  mutate(nbhd_code = as.character(nbhd_code))
-
+```{r nhbd-class6and7}
 fig_nbhd_C7AV <- incentives_props %>% 
   filter(major_class_code %in% c("7A", "7B", "7C") ) %>% 
   group_by(nbhd_code) %>%
-  summarize(av = sum(av)) %>%
+  summarize(av = sum(nbh_MC_AV
+)) %>%
   full_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
-  filter(triad_name != "City") %>%
+ filter(triad_name != "City") %>%
   ggplot(aes(fill = av)) + 
   geom_sf(aes(geometry = geometry),
           color = "black",
           lwd = .05)+ 
   labs(title = "Class 7 Properties - Assessed Value",
-       subtitle = "AV of Buildings with Incentives in Assessor Neighborhoods",
-       caption = "Over $90 million in Chicago") +
+       subtitle = "AV of Buildings with Incentives in Assessor Neighborhoods") +
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank()) +
   scale_fill_steps2(
-    high = "darkblue", low = "orange",
+  #  high = "#132B43", low = "#56B1F7",
+   # breaks = c(0, 20000, 50000, 100000, 1000000, 5000000),
+  
     nice.breaks = FALSE,
     show.limits=TRUE,
-    na.value = NA,
+    na.value = "gray90",
     name = "AV ($)",
     label = scales::dollar)
 
+fig_nbhd_C7AV
+```
+
+
+```{r nhbd-class6and7-2}
 fig_nbhd_C7_Chicago_AV <- incentives_props %>% 
   filter(major_class_code %in% c("7A", "7B", "7C") ) %>% 
   group_by(nbhd_code) %>%
-  summarize(av = sum(av)) %>%
+  summarize(av = sum(nbh_MC_AV)) %>%
   full_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
   filter(triad_name == "City") %>%
   ggplot(aes(fill = av)) + 
@@ -335,13 +453,13 @@ fig_nbhd_C7_Chicago_AV <- incentives_props %>%
     na.value = NA,
     name = "AV ($)",
     label = scales::dollar)
-
+fig_nbhd_C7_Chicago_AV
 
 
 fig_nbhd_C7_PC <- incentives_props %>% 
   filter(major_class_code %in% c("7A", "7B", "7C") ) %>%
   group_by(nbhd_code) %>%
-  summarize(pincount = sum(pin_count)) %>% 
+  summarize(pincount = sum(nbh_MC_PC)) %>% 
   full_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
     filter(triad_name != "City") %>%
 
@@ -356,13 +474,15 @@ fig_nbhd_C7_PC <- incentives_props %>%
   scale_fill_steps2(
     high = "darkblue", low = "orange",
     show.limits=TRUE,
-    na.value = NA,
+    na.value = "gray",
     name = "Pin Count")
+fig_nbhd_C7_PC
+
 
 fig_nbhd_C7_Chicago_PC <- incentives_props %>% 
   filter(major_class_code %in% c("7A", "7B", "7C") ) %>%
   group_by(nbhd_code) %>%
-  summarize(pincount = sum(pin_count)) %>% 
+  summarize(pincount = sum(nbh_MC_PC)) %>% 
   full_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
     filter(triad_name == "City") %>%
 
@@ -377,13 +497,14 @@ fig_nbhd_C7_Chicago_PC <- incentives_props %>%
   scale_fill_steps2(
     high = "darkblue", low = "orange",
     show.limits=TRUE,
-    na.value = NA,
+    na.value = "gray",
     name = "Pin Count")
+fig_nbhd_C7_Chicago_PC
 
 fig_nbhd_C6_AV <- incentives_props %>% 
   filter(major_class_code %in% c("6A", "6B", "6C") ) %>%
   group_by(nbhd_code) %>%
-  summarize(av = sum(av)) %>%
+  summarize(av = sum(nbh_MC_AV,na.rm=TRUE)) %>%
   full_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
   ggplot(aes(fill = av)) + 
   geom_sf(aes(geometry = geometry),
@@ -397,14 +518,14 @@ fig_nbhd_C6_AV <- incentives_props %>%
     high = "darkblue", low = "orange",
     nice.breaks = FALSE,
     show.limits=TRUE,
-    na.value = NA,
+    na.value = "gray",
     name = "AV ($)",
     label = scales::dollar)
-
+fig_nbhd_C6_AV
 fig_nbhd_C6_Chicago_AV <- incentives_props %>% 
   filter(major_class_code %in% c("6A", "6B", "6C") ) %>%
   group_by(nbhd_code) %>%
-  summarize(av = sum(av)) %>%
+  summarize(av = sum(nbh_MC_AV, na.rm=TRUE)) %>%
   full_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
   filter(triad_name == "City") %>%
   ggplot(aes(fill = av)) + 
@@ -422,11 +543,12 @@ fig_nbhd_C6_Chicago_AV <- incentives_props %>%
     na.value = NA,
     name = "AV ($)",
     label = scales::dollar)
-  
+fig_nbhd_C6_Chicago_AV
+
 fig_nbhd_C6_PC <- incentives_props %>% 
   filter(major_class_code %in% c("6A", "6B", "6C") ) %>%
   group_by(nbhd_code) %>%
-  summarize(pin_count= round(sum(pin_count)), digits = 0) %>%
+  summarize(pin_count= round(sum(nbh_MC_PC)), digits = 0) %>%
   full_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
   ggplot(aes(fill = pin_count)) + 
   geom_sf(aes(geometry = geometry),
@@ -440,13 +562,15 @@ fig_nbhd_C6_PC <- incentives_props %>%
     high = "darkblue", low = "orange",
     #nice.breaks = FALSE,
     show.limits=TRUE,
-    na.value = NA,
+    na.value = "gray",
     name = "Pin Count")
+
+fig_nbhd_C6_PC
 
 fig_nbhd_C6_Chicago_PC <- incentives_props %>% 
   filter(major_class_code %in% c("6A", "6B", "6C") ) %>%
   group_by(nbhd_code) %>%
-  summarize(pin_count= round(sum(pin_count)), digits = 0) %>%
+  summarize(pin_count= round(sum(nbh_MC_PC)), digits = 0) %>%
   full_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
   filter(triad_name == "City") %>%
   ggplot(aes(fill = pin_count)) + 
@@ -461,27 +585,103 @@ fig_nbhd_C6_Chicago_PC <- incentives_props %>%
     high = "darkblue", low = "orange",
     #nice.breaks = FALSE,
     show.limits=TRUE,
-    na.value = NA,
+    na.value = "gray",
     name = "Pin Count")
+
+fig_nbhd_C6_Chicago_PC
 ```
 
 ## All Incentive Types Together
 
-```{r muni-alltogether, eval=FALSE}
+```{r}
+# Add in names that merge with Muni shapefile names
+muni_pincounts_majorclass <- ptax_pins %>%
+  filter(major_class_code != 0) %>%
+  # incentive_pins_w_projects %>%
+  left_join(nicknames) %>%
+  group_by(clean_name) %>% 
+  mutate(muni_av = sum(av, na.rm=TRUE)) %>%
+  ungroup() %>%
+  group_by(clean_name, major_class_code, agency_name, shpfile_name, muni_av, assess_ratio) %>%
+  dplyr::summarize(
+    fmv = sum(av/assess_ratio),
+    project_count = n_distinct(keypin),
+    pin_count = n(),
+            av = sum(av))  %>%
+  mutate(
+         mc_fmv_perc = fmv/ (muni_av/assess_ratio),
+         av_perc = av / muni_av) %>%
+   ungroup() %>% group_by(clean_name) %>%
+   mutate(muni_fmv = sum(fmv, na.rm = TRUE))
+
+
+muni_comval_percentages <- ptax_pins %>% 
+  filter(major_class_code != 0) %>%
+    mutate(fmv = av / assess_ratio ) %>%
+    group_by(clean_name) %>% 
+  mutate(muni_av = sum(av, na.rm=TRUE),
+         muni_fmv = sum(fmv, na.rm=TRUE)) %>%
+  ungroup() %>%
+  filter(Alea_cat %in% c("Commercial", "Industrial"))  %>%
+  
+  reframe(clean_name, incent_prop, Alea_cat, major_class_code,agency_name, 
+          shpfile_name, muni_av, muni_fmv, assess_ratio, av, fmv, keypin, 
+          comind_av = sum(av), comind_fmv = sum(av/assess_ratio), 
+          .by = c(clean_name, Alea_cat)) %>%
+  left_join(nicknames) %>%
+  group_by(clean_name, incent_prop, Alea_cat, major_class_code,  agency_name, shpfile_name, muni_av, muni_fmv, assess_ratio) %>%
+  dplyr::summarize(
+    project_count = n_distinct(keypin),
+    pin_count = n(),
+    fmv = sum(av/assess_ratio, na.rm=TRUE),
+            av = sum(av, na.rm=TRUE))  %>%
+  mutate(mc_fmv_perc = fmv/ (muni_av/assess_ratio),
+         av_perc = av / muni_av) %>%
+  ungroup() %>%
+  group_by(clean_name) %>%
+  mutate(comind_fmv = sum(fmv, na.rm=TRUE)) %>%
+  mutate(perc_comind = fmv / comind_fmv)
+
+# table(muni_pincounts_majorclass$major_class_code) # Number of Munis with these major classes
+
+muni_comval_percentages %>% ungroup() %>% filter(major_class_code == "8") %>% 
+  reframe(perc_comind = sum(perc_comind, na.rm=TRUE), 
+          mc_fmv_perc = sum(mc_fmv_perc, na.rm=TRUE), .by = clean_name) %>% arrange(desc(perc_comind))
+
+
+fig_muni_perc_of_comval <- muni_comval_percentages %>% 
+  filter(major_class_code %in% c("6A", "6B", "6C", "7A", "7B", "8")) %>%
+  group_by(shpfile_name)%>%
+  summarize(perc_comind = sum(perc_comind, na.rm = TRUE)) %>% 
+  filter(!is.na(shpfile_name) ) %>% 
+  full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
+  ggplot(aes(fill = perc_comind)) + 
+  geom_sf(aes(geometry = geometry),
+          color = "black",
+          lwd = .05)+ 
+  labs(title = "% of Commercial & Industrial FMV (per Muni) that has Incentive Classifications",
+       subtitle = "FMV is AV / assessment ratio for property class") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+  scale_fill_steps2(
+    high = "brown",
+   # nice.breaks = FALSE,
+   breaks = c(0, 0.05, .10, .20, 0.4, .60),
+    show.limits=TRUE,
+    na.value = "gray",
+    name = "% of Com&Ind FMV",
+    label = scales::percent)
+
+fig_muni_perc_of_comval
+```
+
+
+```{r muni-alltogether}
 #| column: page
 #| layout-ncol: 2
 #| fig-cap: "All Incentive Property Classes: Municipality level and Assessor Neighborhood level"
 
 
-
-# Add in names that merge with Muni shapefile names
-muni_pincounts_majorclass <- incentive_pins %>% 
-  left_join(nicknames) %>%
-  group_by(clean_name, major_class_code, major_class_type, agency_name, shpfile_name) %>%
-  dplyr::summarize(pin_count = n(),
-            av = sum(av))
-
-# table(muni_pincounts_majorclass$major_class_code) # Number of Munis with these major classes
 
 
 fig_muni_AV <- muni_pincounts_majorclass %>% 
@@ -510,10 +710,60 @@ fig_muni_AV <- muni_pincounts_majorclass %>%
     label = scales::dollar)
 
 fig_muni_AV
+
+fig_muni_AV_perc <- muni_pincounts_majorclass %>% 
+  filter(major_class_code %in% c("6A", "6B", "6C", "7A", "7B", "8")) %>%
+  filter(clean_name != "Chicago") %>% 
+  group_by(shpfile_name)%>%
+  summarize(av_perc = sum(av_perc)) %>% 
+  filter(!is.na(shpfile_name) ) %>% 
+  full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
+  ggplot(aes(fill = av_perc)) + 
+  geom_sf(aes(geometry = geometry),
+          color = "black",
+          lwd = .05)+ 
+  labs(title = "% AV from Properties with Any Type of Incentive Class") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+  scale_fill_steps2(
+    high = "darkblue", low = "orange",
+    show.limits=TRUE,
+    na.value = NA,
+    name = "% AV",
+    label = scales::percent)
+
+fig_muni_AV_perc
 fig_nbhd_AV
+
+
+fig_muni_FMV_perc <- muni_pincounts_majorclass %>% 
+  filter(major_class_code %in% c("6A", "6B", "6C", "7A", "7B", "8")) %>%
+  group_by(shpfile_name)%>%
+  filter(!is.na(shpfile_name) ) %>% 
+  full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
+  ggplot(aes(fill = mc_fmv_perc)) + 
+  geom_sf(aes(geometry = geometry),
+          color = "black",
+          lwd = .05)+ 
+  labs(title = "FMV for Properties with Any Type of Incentive Class",
+       subtitle = "FMV is AV / assessment ratio for property class") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+  scale_fill_steps2(
+    high = "brown",
+   # nice.breaks = FALSE,
+   breaks = c(0, 0.05, .10, .15, .20, 0.4, .60),
+    show.limits=TRUE,
+    na.value = "gray",
+    name = "% of FMV",
+    label = scales::percent)
+
+fig_muni_FMV_perc
+
+
 ```
 
-```{r muni-pincount, eval=FALSE}
+```{r muni-pincount}
 #| column: page
 #| layout-ncol: 2
 fig_muni_pincount <- muni_pincounts_majorclass %>% 
@@ -551,9 +801,10 @@ Class 6B: Industrial Incentive - Designed to encourage industrial development th
 
 Class 6C: Industrial Brownfield
 
-```{r eval=FALSE}
+```{r}
 #| column: page
 #| layout-ncol: 2
+
 fig_muni_C6_AV <- muni_pincounts_majorclass %>% 
   filter(major_class_code %in% c("6A", "6B", "6C")) %>%
   filter(clean_name != "Chicago") %>% 
@@ -577,6 +828,49 @@ fig_muni_C6_AV <- muni_pincounts_majorclass %>%
     name = "AV ($)",
   label = scales::dollar)
 
+fig_muni_C6_AV_perc <- muni_pincounts_majorclass %>% 
+  filter(major_class_code %in% c("6A", "6B", "6C")) %>%
+ # filter(clean_name != "Chicago") %>% 
+  group_by(shpfile_name)%>%
+  summarize(av = sum(av_perc)) %>% 
+  filter(!is.na(shpfile_name)) %>% 
+  full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
+  ggplot(aes(fill = av)) + 
+  geom_sf(aes(geometry = geometry),
+          color = "black",
+          lwd = .05)+ 
+  labs(title = "Properties with Class 6 Incentives",
+       subtitle = "Assessed Value in Municipalities") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+  scale_fill_steps2(
+    high = "darkblue", low = "orange",
+    nice.breaks = TRUE,
+    show.limits=TRUE,
+    na.value = NA,
+    name = "% Muni AV",
+  label = scales::percent)
+
+fig_muni_C6_FMV_perc <- muni_pincounts_majorclass %>% 
+  filter(major_class_code %in% c("6A", "6B", "6C")) %>%
+  group_by(shpfile_name)%>%
+  summarize(mc_fmv_perc = sum(mc_fmv_perc)) %>% 
+  filter(!is.na(shpfile_name)) %>% 
+  full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
+  ggplot(aes(fill = mc_fmv_perc)) + 
+  geom_sf(aes(geometry = geometry),
+          color = "black",
+          lwd = .05)+ 
+  labs(title = "Percent of Municipality FMV from Property with Class 6 Incentives") +
+  theme_AWM + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+  scale_fill_steps2(
+    high = "brown",
+    show.limits=TRUE,
+    breaks = c(0,0.025, 0.05, .1, .3, .6),
+    na.value = "gray",
+    name = "% FMV",
+  label = scales::percent)
 
 
 fig_muni_C6_PC <- muni_pincounts_majorclass %>% 
@@ -602,12 +896,38 @@ fig_muni_C6_PC <- muni_pincounts_majorclass %>%
     name = "# PINs")
 
 fig_muni_C6_AV
+fig_muni_C6_AV_perc
+fig_muni_C6_FMV_perc
 fig_nbhd_C6_AV
 
 fig_muni_C6_PC
-fig_nbhd_C6_PC
 
 
+
+fig_muni_perc_of_comval <- muni_comval_percentages %>% 
+  filter(major_class_code %in% c("6A", "6B", "6C")) %>%
+  group_by(shpfile_name)%>%
+  summarize(perc_comind = sum(perc_comind, na.rm = TRUE)) %>% 
+  filter(!is.na(shpfile_name) ) %>% 
+  full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
+  ggplot(aes(fill = perc_comind)) + 
+  geom_sf(aes(geometry = geometry),
+          color = "black",
+          lwd = .05)+ 
+  labs(title = "% of Commercial & Industrial FMV (per Muni) that has Incentive Classifications",
+       subtitle = "FMV is AV / assessment ratio for property class") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+  scale_fill_steps2(
+    high = "brown",
+   # nice.breaks = FALSE,
+   breaks = c(0, 0.05, .10, .20, 0.4, .60, .8),
+    show.limits=TRUE,
+    na.value = "gray",
+    name = "% of Com&Ind FMV",
+    label = scales::percent)
+
+fig_muni_perc_of_comval
 
 ```
 
@@ -615,9 +935,10 @@ fig_nbhd_C6_PC
 
 Class 7A(B): Intended to encourage commercial projects in areas determined to be "in need of commercial development.These projects have total development costs, exclusive of land, that DO NOT EXCEED(DO EXCEED) two million and would not be economically feasible without the incentive.
 
-```{r eval=FALSE}
+```{r }
 #| column: page
 #| layout-ncol: 2
+
 
 fig_muni_C7_AV <- muni_pincounts_majorclass %>% 
   filter(major_class_code %in% c("7A", "7B", "7C")) %>%
@@ -643,6 +964,75 @@ fig_muni_C7_AV <- muni_pincounts_majorclass %>%
   label = scales::dollar)
 
 
+fig_muni_C7_AV_perc <- muni_pincounts_majorclass %>% 
+  filter(major_class_code %in% c("7A", "7B", "7C")) %>%
+  filter(clean_name != "Chicago") %>% 
+  group_by(shpfile_name)%>%
+  summarize(av = sum(av_perc)) %>% 
+  filter(!is.na(shpfile_name)) %>% 
+  full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
+  ggplot(aes(fill = av)) + 
+  geom_sf(aes(geometry = geometry),
+          color = "black",
+          lwd = .05)+ 
+  labs(title = "Percent of Total Municipality Assessed Value \nfrom Properties with Class 7 Incentives",
+       subtitle = "in Municipalities (Except Chicago)") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+  scale_fill_steps2(
+    high = "darkblue", low = "orange",
+    nice.breaks = FALSE,
+    show.limits=TRUE,
+    na.value = NA,
+    name = "% Muni AV",
+  label = scales::percent)
+
+fig_muni_C7_fmv_perc <- muni_pincounts_majorclass %>% 
+  filter(major_class_code %in% c("7A", "7B", "7C")) %>%
+   group_by(shpfile_name)%>%
+   summarize(mc_fmv_perc = sum(mc_fmv_perc)) %>% 
+  filter(!is.na(shpfile_name)) %>% 
+  full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
+  ggplot(aes(fill = mc_fmv_perc)) + 
+  geom_sf(aes(geometry = geometry),
+          color = "black",
+          lwd = .05)+ 
+  labs(title = "Percent of Muni FMV from Properties with Class 7 Incentives") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+  scale_fill_steps2(
+    high = "brown",
+    nice.breaks = FALSE,
+    show.limits=TRUE,
+    na.value = "gray",
+    name = "% Muni FMV",
+  label = scales::percent)
+
+fig_muni_C7_FMV <- muni_pincounts_majorclass %>% 
+  filter(major_class_code %in% c("7A", "7B", "7C")) %>%
+  filter(clean_name != "Chicago") %>% 
+  group_by(shpfile_name)%>%
+  summarize(fmv = sum(fmv)) %>% 
+  filter(!is.na(shpfile_name)) %>% 
+  full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
+  ggplot(aes(fill = fmv)) + 
+  geom_sf(aes(geometry = geometry),
+          color = "black",
+          lwd = .05)+ 
+  labs(title = "FMV ($) of Properties with Class 7 Incentives",
+       subtitle = "in Municipalities (Except Chicago)") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+  scale_fill_steps2(
+    high = "darkblue", low = "orange",
+    nice.breaks = FALSE,
+    show.limits=TRUE,
+    na.value = NA,
+    name = "FMV ($)",
+  label = scales::dollar)
+
+
+
 fig_muni_C7_PC <- muni_pincounts_majorclass %>% 
   filter(major_class_code %in% c("7A", "7B", "7C")) %>%
   filter(clean_name != "Chicago") %>% 
@@ -655,7 +1045,8 @@ fig_muni_C7_PC <- muni_pincounts_majorclass %>%
           color = "black",
           lwd = .05)+ 
   labs(title = "Properties with Class 7 Incentives",
-       subtitle = "# of Buildings with Incentives in Municipalities (Except Chicago)") +
+       subtitle = "# of PINs with Incentives in Municipalities (Except Chicago)",
+         caption = "Chicago has over 200 Class 7 PINs") +
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank()) +
   scale_fill_steps2(
@@ -666,12 +1057,38 @@ fig_muni_C7_PC <- muni_pincounts_majorclass %>%
     name = "# PINs")
 
 fig_muni_C7_AV
-fig_nbhd_C7AV
-
-
+#fig_nbhd_C7AV
+fig_muni_C7_AV_perc
+fig_muni_C7_FMV
+fig_muni_C7_fmv_perc
 
 fig_muni_C7_PC
-fig_nbhd_C7_PC
+#fig_nbhd_C7_PC
+
+fig_muni_perc_of_comval <- muni_comval_percentages %>% 
+  filter(major_class_code %in% c( "7A", "7B")) %>%
+  group_by(shpfile_name)%>%
+  summarize(perc_comind = sum(perc_comind, na.rm = TRUE)) %>% 
+  filter(!is.na(shpfile_name) ) %>% 
+  full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
+  ggplot(aes(fill = perc_comind)) + 
+  geom_sf(aes(geometry = geometry),
+          color = "black",
+          lwd = .05)+ 
+  labs(title = "% of Commercial & Industrial FMV (per Muni) that has Incentive Classifications",
+       subtitle = "FMV is AV / assessment ratio for property class") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+  scale_fill_steps2(
+    high = "brown",
+    nice.breaks = FALSE,
+   breaks = c(0, 0.025, 0.05, .10, .15,  0.4, .60),
+    show.limits=TRUE,
+    na.value = "gray",
+    name = "% of Com&Ind FMV",
+    label = scales::percent)
+
+fig_muni_perc_of_comval
 ```
 
 ## Class 8 Incentives
@@ -686,47 +1103,47 @@ Bloom, Bremen, Calumet, Rich, Thornton
 #| column: page
 #| layout-ncol: 2
 
-fig_nbhd_C8_PC <- incentives_props %>% 
-  filter(major_class_code == "8") %>%
-  group_by(nbhd_code)%>%
-  summarize(pin_count = sum(pin_count)) %>% 
-  full_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
-  ggplot(aes(fill = pin_count)) + 
-  geom_sf(aes(geometry = geometry), color = "black") + 
-  labs(title = "Class 8 Properties",
-       subtitle = "Number of PINs with Incentives in Assessor Neighborhoods", 
-       caption = "Count of 14 digit PINs") +
-  theme_void() + 
-  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
-  scale_fill_steps2(
-    high = "darkblue", low = "orange",
-    #nice.breaks = FALSE,
-    show.limits=TRUE,
-    na.value = NA,
-    name = "Count")
-
-
-fig_nbhd_C8 <- incentives_props %>% 
-  filter(major_class_code == "8") %>%
-  group_by(nbhd_code) %>%
-  summarize(av = sum(av)) %>% 
-  full_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
-  ggplot(aes(fill = av)) + 
-  geom_sf(aes(geometry = geometry),
-         # color = "black",
-          lwd = .1)  +
-  labs(title = "Class 8 Properties",
-       subtitle = "AV of Buildings with Incentives in Assessor Neighborhoods") +
-  theme_void() + 
-  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
-  scale_fill_steps2(
-    high = "darkblue", low = "orange",
-    nice.breaks = FALSE,
-    show.limits=TRUE,
-    limits = c(0, 13000000),
-    na.value = NA,
-    name = "AV ($)",
-    label = scales::dollar)
+# fig_nbhd_C8_PC <- incentives_props %>% 
+#   filter(major_class_code == "8") %>%
+#   group_by(nbhd_code)%>%
+#   summarize(pin_count = sum(pin_count)) %>% 
+#   full_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
+#   ggplot(aes(fill = pin_count)) + 
+#   geom_sf(aes(geometry = geometry), color = "black") + 
+#   labs(title = "Class 8 Properties",
+#        subtitle = "Number of PINs with Incentives in Assessor Neighborhoods", 
+#        caption = "Count of 14 digit PINs") +
+#   theme_void() + 
+#   theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+#   scale_fill_steps2(
+#     high = "darkblue", low = "orange",
+#     #nice.breaks = FALSE,
+#     show.limits=TRUE,
+#     na.value = NA,
+#     name = "Count")
+# 
+# 
+# fig_nbhd_C8 <- incentives_props %>% 
+#   filter(major_class_code == "8") %>%
+#   group_by(nbhd_code) %>%
+#   summarize(av = sum(av)) %>% 
+#   full_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
+#   ggplot(aes(fill = av)) + 
+#   geom_sf(aes(geometry = geometry),
+#          # color = "black",
+#           lwd = .1)  +
+#   labs(title = "Class 8 Properties",
+#        subtitle = "AV of Buildings with Incentives in Assessor Neighborhoods") +
+#   theme_void() + 
+#   theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+#   scale_fill_steps2(
+#     high = "darkblue", low = "orange",
+#     nice.breaks = FALSE,
+#     show.limits=TRUE,
+#     limits = c(0, 13000000),
+#     na.value = NA,
+#     name = "AV ($)",
+#     label = scales::dollar)
 
 fig_muni_C8_AV <- muni_pincounts_majorclass %>% 
   filter(major_class_code %in% c("8")) %>%
@@ -739,8 +1156,8 @@ fig_muni_C8_AV <- muni_pincounts_majorclass %>%
   geom_sf(aes(geometry = geometry),
           color = "black",
           lwd = .05)+ 
-  labs(title = "Properties with Class 8 Incentives",
-       subtitle = "# of Buildings with Incentives in Municipalities (Except Chicago)") +
+  labs(title = "AV per Muni from Properties with Class 8 Incentives",
+       subtitle = "Excludes Chicago") +
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank()) +
   scale_fill_steps2(
@@ -751,6 +1168,7 @@ fig_muni_C8_AV <- muni_pincounts_majorclass %>%
     name = "AV ($)",
   label = scales::dollar)
 
+fig_muni_C8_AV
 
 
 fig_muni_C8_PC <- muni_pincounts_majorclass %>% 
@@ -776,7 +1194,7 @@ fig_muni_C8_PC <- muni_pincounts_majorclass %>%
     name = "# PINs")
 
 fig_muni_C8_PC
-fig_nbhd_C8_PC
+# fig_nbhd_C8_PC
 
 
 
@@ -787,36 +1205,85 @@ fig_nbhd_C8_PC
 ```{r class8-2}
 #| column: page
 #| layout-ncol: 2
-fig_muni_C8 <- muni_pincounts_majorclass %>% 
-   filter(!is.na(shpfile_name)) %>% 
 
+fig_muni_C8_avperc <- muni_pincounts_majorclass %>% 
+  filter(!is.na(shpfile_name)) %>% 
   filter(major_class_code %in% c("8")) %>%
-  group_by(shpfile_name)%>%
-  summarize(av = sum(av)) %>% 
   full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
-  ggplot(aes(fill = av)) + 
+  ggplot(aes(fill = av_perc)) + 
   geom_sf(aes(geometry = geometry),color = "black", lwd = .05)+ 
   labs(title = "Class 8 Properties",
-       subtitle = "AV of Buildings with Incentives in Assessor Neighborhoods") +
+       subtitle = "Percent of AV for Property with Incentive Classifications") +
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank()) +
   scale_fill_steps2(
     high = "darkblue", low = "orange",
-    nice.breaks = FALSE,
+    breaks = c(0, 0.025, 0.05, .1, .2, .4),
     show.limits=TRUE,
-    na.value = NA,
-    limits = c(0, 13000000),
-    name = "AV ($)",
-    label = scales::dollar)
+    na.value = "gray",
+    name = "% Muni AV",
+    label = scales::percent
+  )
 
-fig_muni_C8
-fig_nbhd_C8
+fig_muni_C8_avperc
+
+fig_muni_C8_fmvperc <- muni_pincounts_majorclass %>% 
+  filter(!is.na(shpfile_name)) %>% 
+  filter(major_class_code %in% c("8")) %>%
+  full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
+  ggplot(aes(fill = mc_fmv_perc)) + 
+  geom_sf(aes(geometry = geometry),color = "black", lwd = .05)+ 
+  labs(title = "Class 8 Properties",
+       subtitle = "Percent of FMV for Property with Class 8 Classification") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank(),
+        legend.background = element_rect(fill = "transparent"),
+        plot.background = element_rect(fill = "transparent"),
+            panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), 
+        panel.background = element_rect(fill = "transparent", color = NA)) +
+  scale_fill_steps2(
+    high = "brown",
+    breaks = c(0, 0.025, 0.05, .1, .2, .4),
+    show.limits=TRUE,
+    na.value = "gray",
+    name = "% Muni FMV",
+    label = scales::percent
+  )
+
+fig_muni_C8_fmvperc
+#fig_nbhd_C8
+
+fig_muni_perc_of_comval <- muni_comval_percentages %>% 
+  filter(major_class_code %in% c("8")) %>%
+  group_by(shpfile_name)%>%
+  summarize(perc_comind = sum(perc_comind, na.rm = TRUE)) %>% 
+  filter(!is.na(shpfile_name) ) %>% 
+  full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
+  ggplot(aes(fill = perc_comind)) + 
+  geom_sf(aes(geometry = geometry),
+          color = "black",
+          lwd = .05)+  
+  labs(title = "% of Commercial & Industrial FMV (per Muni) that has Incentive Classifications",
+       subtitle = "FMV is AV / assessment ratio for property class") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+  scale_fill_steps2(
+    high = "brown",
+    # nice.breaks = FALSE,
+    breaks = c(0, 0.05, .10, .20, 0.4, .60),
+    show.limits=TRUE,
+    na.value = "gray",
+    name = "% of Com&Ind FMV",
+    label = scales::percent)
+
+fig_muni_perc_of_comval 
 
 ```
 
 # Chicago Specific Graphs
 
-```{r}
+```{r eval = FALSE}
 #| column: page
 #| layout-ncol: 2
 
@@ -830,7 +1297,7 @@ fig_nbhd_C7_Chicago_PC
 
 # Tables
 
-```{r}
+```{r eval = FALSE}
 #| column: page
 
 # By Muni and Major Property Class
@@ -851,12 +1318,12 @@ aka a reduced tax base
 ## Municpality Level
 
 ```{r}
-pin_data <- read_csv("./Output/4C_joined_PINs_bills_and_exemptions.csv")
+#pin_data <- read_csv("./Output/4C_joined_PINs_bills_and_exemptions.csv")
 ```
 
-```{r}
-muni_taxrates <- pin_data %>% 
-  left_join(nicknames, by = "agency_name") %>%
+```{r eval = FALSE}
+muni_taxrates <- ptax_pins %>% 
+  #left_join(nicknames, by = "agency_name") %>%
   group_by(clean_name) %>%
   summarize(
     muni_av = sum(av, na.rm = TRUE),
@@ -887,7 +1354,7 @@ muni_taxrates <- pin_data %>%
 muni_taxrates 
 ```
 
-```{r}
+```{r eval = FALSE}
 #| column: page
 
 prop_class_sums <- pin_data %>% 
@@ -994,9 +1461,9 @@ fig_muni_AV <- Class2_data %>%
 
 ## Neighborhood level join
 
-```{r}
+```{r eval = FALSE}
 
-nbh_major_class <- read_csv("./Output/8_Current_Taxrates_per_nbh_by_majorclass.csv")
+nbh_major_class <- read_csv("./Output/ptaxsim_nbh_MC_summary_2022.csv")
 nbh_major_class
 
 
@@ -1045,7 +1512,7 @@ nbh_data
 
 ```
 
-```{r}
+```{r eval = FALSE}
 # nbh_res_exemptions <- read_csv("./Output/8_nbh_sum_new_exe.csv") 
 nbh_taxrates <- read_csv( "./Output/8_Current_Taxrates_per_nbh.csv") %>% select(nbhd_code, pin_count, Total_EAV)
 
@@ -1069,7 +1536,7 @@ nbh_data
 ```
 
 
-```{r}
+```{r eval = FALSE}
 library(scales)
 nbh_sum <- read_csv("./Output/nbh_summary.csv") %>%
     mutate(nbhd_code = as.character(nbhd_code))
@@ -1098,7 +1565,7 @@ na.value = "gray",
 
 ## Maps
 
-```{r}
+```{r eval = FALSE}
 nbh_res <- nbh_data %>% 
   filter(major_class_code == 2) %>% 
   select(nbhd_code, major_class_code, 
@@ -1154,7 +1621,7 @@ fig2 <- nbh_data %>%
 fig2
 ```
 
-```{r}
+```{r eval = FALSE}
 fig1 <- nbh_data %>% 
   filter(major_class_code == 2) %>%
   #filter(major_class_code %in% c("6A", "6B", "6C", "7A", "7B", "8")) %>%
