@@ -25,13 +25,17 @@ class(class_8_df$class_1dig)
 
 class_8_df <- left_join(muni_MC, class_dict, by = "class") %>%
   filter(clean_name %in% class_8_munis) %>%
-  filter(Alea_cat %in% c("Industrial", "Commercial")) %>%
+  filter(av != 0) %>%
   mutate(FMV = av/assess_ratio) %>%
   group_by(year) %>%
-  mutate(year_FMV = sum(FMV)) %>%
+  mutate(year_tb_tot = sum(FMV)) %>%
+  ungroup() %>%
+  filter(Alea_cat %in% c("Industrial", "Commercial")) %>%
+  group_by(year) %>%
+  mutate(year_ind_comm_FMV = sum(FMV)) %>%
   ungroup() %>%
   group_by(year, clean_name) %>%
-  mutate(muni_year_FMV = sum(FMV)) %>%
+  mutate(muni_year_ind_comm_FMV = sum(FMV)) %>%
   ungroup() %>%
   group_by(year, Alea_cat) %>%
   mutate(cat_year_FMV = sum(FMV)) %>%
@@ -45,34 +49,19 @@ class_8_df <- left_join(muni_MC, class_dict, by = "class") %>%
 
 ggplot() +
   geom_line(data = class_8_df %>%
-              )
-
-
-ggplot() +
- # geom_line(aes(x = year, y = tot_FMV, color = "Ind. & Comm. FMV"), linewidth = 1.5) +
+             summarize(ind_comm_perc = year_ind_comm_FMV/year_tb_tot), aes(x = year, y = ind_comm_perc)) +#, color = "Ind. & Comm. FMV") +
   geom_line(data = class_8_df %>%
-              filter(Alea_cat == "Incentive") %>%
+              filter(incent_prop == "Incentive") %>%
               group_by(year) %>%
-              summarize(incent_perc = sum(muni_incent)/tot_FMV),
-            aes(x = year, y = incent_perc,
-                linewidth = 1.5))
-
-class_8_df %>%
-  group_by(year, Alea_cat) %>%
-  mutate(tot_FMV = sum(muni_year_cat_incent_tb)) %>%
-  ungroup() %>%
-  group_by(clean_name, incent_prop) %>%
-  mutate(muni_incent = sum(tot_FMV)) %>%
-  ungroup() %>%
-  ggplot() +
-    geom_line(aes(x = year, y = tot_FMV, color = "Ind. & Comm. FMV"), linewidth = 1.5) +
-    geom_line(data = class_8_df %>%
-                filter(Alea_cat == "Incentive") %>%
-                group_by(year) %>%
-                summarize("Incent %" = sum(muni_incent)/tot_FMV),
-aes(x = year, y = , color = "Incentivized %",
-              linewidth = 1.5) +
-  geom_line(aes(x = year, y = ))
+              summarise(incent_perc = sum(FMV)/year_tb_tot),
+            aes(x = year, y = incent_perc)#,
+            #color = "Incent. Class FMV"
+            ) +
+  geom_line(data = class_8_df %>%
+              filter(class_1dig == 8))
+  theme_classic() +
+  scale_x_continuous(breaks = seq(2006, 2022, by = 3)) +
+  scale_y_continuous(labels = scales::percent_format(), limits = c(0, 0.45), breaks = seq(0, 0.5, by = 0.05))
 
 
 # Linegraph
