@@ -211,24 +211,28 @@ geom_line(data = class_8_df_outofCook %>%               # threw error here, miss
 #   guides(color = guide_legend(title = NULL))
 
 
-plot_df <- left_join(muni_MC, class_dict, by = "class") %>%
+plot_df <- muni_MC %>%
+ # left_join(muni_MC, class_dict, by = "class") %>%
   mutate(FMV = av/assess_ratio) %>%
   select(year, class_1dig, incent_prop, Alea_cat, FMV) %>%
   filter(Alea_cat %in% c("Commercial", "Industrial")) %>%
-  reframe(FMV = sum(FMV), .by = c("year", "class_1dig", "Alea_cat", "incent_prop")) %>%
+  reframe(FMV = sum(FMV, na.rm=TRUE), .by = c("year", "class_1dig", "Alea_cat", "incent_prop")) %>%
   group_by(year) %>%
-  mutate(year_sum_FMV = sum(FMV)) %>%
+  mutate(year_sum_FMV = sum(FMV, na.rm = TRUE)) %>%
   ungroup() %>%
   group_by(year, Alea_cat) %>%
-  mutate(cat_year_FMV = sum(FMV)) %>%
+  mutate(cat_year_FMV = sum(FMV, na.rm=TRUE)) %>%
   ungroup() %>%
-  mutate(class_8 = ifelse(class_1dig == 8, 1, 0)) %>%
-  group_by(year, class_8) %>%
-  mutate(year_class_8_FMV = sum(FMV)) %>%
+ # mutate(class_8 = ifelse(class_1dig == 8, 1, 0)) %>%
+  group_by(year #, class_8
+           ) %>%
+  ## changed how year_class_8_FMV was calculated. sums if class is 8, otherwise leaves it as 0
+  mutate(year_class_8_FMV = ifelse(class_1dig == 8, sum(FMV, na.rm=TRUE), 0)) %>%
   ungroup() %>%
   arrange(desc(year))
 
-plot_df_FMV_cook <- left_join(muni_MC, class_dict, by = "class") %>%
+plot_df_FMV_cook <- muni_MC %>%
+ # left_join(muni_MC, class_dict, by = "class") %>%
   mutate(FMV = av/assess_ratio) %>%
   select(year, class_1dig, incent_prop, Alea_cat, FMV) %>%
   filter(Alea_cat %in% c("Commercial", "Industrial")) %>%
@@ -242,24 +246,25 @@ plot_df_FMV_cook <- left_join(muni_MC, class_dict, by = "class") %>%
 # is this for commercial FMV totals for county or class 8 munis? 
 
 plot_df_comm <-  muni_MC %>%
-  left_join(muni_MC, class_dict, by = "class") %>%
   filter(Alea_cat == "Commercial") %>%
   mutate(FMV = av/assess_ratio) %>%
-  #select(year, class_1dig, incent_prop, Alea_cat, FMV) %>%
-#  group_by(year, class_1dig, incent_prop, Alea_cat, FMV) %>%
+ # select(year, class_1dig, incent_prop, Alea_cat, FMV) %>%
+ # group_by(year, class_1dig, incent_prop, FMV) %>%
   reframe(year, class_1dig, incent_prop, Alea_cat, FMV,
-          comm_tb = sum(FMV), .by = year) %>%
+          comm_tb = sum(FMV, na.rm=TRUE), .by = year) %>%
 #  mutate(comm_tb = sum(FMV)) %>%    # total commercial FMV each year 
  filter(class_1dig %in% c(7, 8)) %>%   
-  reframe(year, class_1dig, incent_prop, Alea_cat, comm_tb,
-          comm_inc_FMV = sum(FMV), .by=year) %>%
+  #distinct() %>%
+  reframe(year, comm_tb,
+          comm_inc_FMV = sum(FMV, na.rm=TRUE), .by = year) %>%
  # mutate(comm_inc_FMV = sum(FMV)) %>% # amount FMV incentivized each year
  # ungroup() %>%
-  arrange(year) #%>%
+  arrange(year) %>%
 #  select(year, comm_inc_FMV, comm_tb) %>%   ### needed to select year here!!
- # distinct()
+  distinct()
 
-plot_df_ind <- left_join(muni_MC, class_dict, by = "class") %>%
+plot_df_ind <-  muni_MC %>%
+  #left_join(muni_MC, class_dict, by = "class") %>%
   mutate(FMV = av/assess_ratio) %>%
   select(year, class_1dig, incent_prop, Alea_cat, FMV) %>%
   filter(Alea_cat %in% c("Industrial")) %>%
@@ -271,7 +276,8 @@ plot_df_ind <- left_join(muni_MC, class_dict, by = "class") %>%
   select(ind_inc_FMV, ind_tb) %>%
   distinct()
 
-plot_df_8 <- left_join(muni_MC, class_dict, by = "class") %>%
+plot_df_8 <- muni_MC %>% 
+  # left_join(muni_MC, class_dict, by = "class") %>%
   mutate(FMV = av/assess_ratio) %>%
   select(year, class_1dig, incent_prop, Alea_cat, FMV) %>%
   filter(Alea_cat %in% c("Commercial", "Industrial")) %>%
@@ -284,8 +290,9 @@ plot_df_8 <- left_join(muni_MC, class_dict, by = "class") %>%
   select(year_class_8_FMV) %>%
   distinct()
 
-plot_df_final <- plot_df_FMV %>%
-  left_join(plot_df_8, by = "year") %>%
+plot_df_final <- plot_df_FMV_cook %>%    # changed initial dataframe
+  # plot_df_FMV %>%
+  left_join(plot_df_8) %>%
   left_join(plot_df_comm) %>%
   left_join(plot_df_ind) %>%
 #mutate ratio variables
@@ -306,10 +313,15 @@ plot_df_final %>%
   labs(y = "percent") +
   scale_color_manual(values = c("#b2182b", "#fd8d3c", "#878787", "#000000")) +
   theme_classic() +
+  theme(legend.position = "bottom") + 
   scale_x_continuous(breaks = seq(2006, 2022, by = 3)) +
   scale_y_continuous(labels = scales::percent_format(), limits = c(0, 0.45), breaks = seq(0, 0.5, by = 0.05)) +
-  guides(color = guide_legend(title = NULL))
+  guides(color = guide_legend(title = NULL), color = guide_legend(nrow=2, byrow = TRUE))
 
+
+#### Fixed above dataframe and line graph ####### 
+
+###### Stopped HERE night of 4/19 #### 
 
 # Class 8 Muni Trends over Time
 
