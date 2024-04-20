@@ -9,7 +9,7 @@ format:
     fig-cap-location: top
 ---
 
-# Data Preparation
+**Data Preparation**
 
 ```{r setup, warning = FALSE, output = FALSE}
 
@@ -94,16 +94,21 @@ ptax_pins <- ptax_pins %>%
 
 ```
 
+# Slides 1-2
 
+34 Municipalities do not use Incentive Classifications.
 
-
-## Slides 1-2
-
-34 Municipalities do not use Incentive Classifications. 
-
-15 cross into other counties. All 15 that cross county lines do use incentive classifications. 
+15 cross into other counties. All 15 that cross county lines do use incentive classifications.
 
 Alsip, Bedford Park, Blue Island,Bridgeview, Riverdale, South Holland, Summit, and Worth also use "Abatements" (based on the exe_abate variable in PTAXSIM)
+
+99 municipalities use incentives to some extent.
+
+60 use both industrial and commercial incentive property classes.
+
+-   12 municipalities do not use Industrial incentives (87 use industrial incentives classes)
+
+-   27 municipalities do not use Commercial incentives (72 use commercial incentive classes.)
 
 ```{r}
 #| label: tbl-countycrossers
@@ -126,7 +131,6 @@ no_incentives <-  ptax_pins %>%
 
 no_incentives <- no_incentives %>% left_join(muni_shp, by = c("clean_name" = "MUNICIPALITY"))
 ```
-
 
 ```{r}
 #| label: tbl-cooktotals
@@ -187,6 +191,216 @@ datatable(table2,
   formatCurrency(c('Taxable AV', 'Assessed Market Value'), digits = 0) %>%
   formatPercentage('Pct FMV Incentivized', digits = 2)
 ```
+
+## Slide 4 Sankey Graph
+
+```{r eval=FALSE}
+ptax_pins <- read_csv("Output/Dont_Upload/0_joined_PIN_data_2022.csv")
+```
+
+![](images/clipboard-3675640920.png)
+
+![](images/clipboard-2707126706.png)
+
+![](images/clipboard-2892269521.png)
+
+![](images/clipboard-2484422157.png)
+
+# Slide 5
+
+```{r}
+library(tidyverse)
+
+options(scipen = 999)
+
+# Trends in Incentivized FMV as a percent of the base over time
+
+## Data prep
+
+muni_MC <- read_csv("./Output/ptaxsim_muni_class_summaries_2006-2022.csv") %>%
+  select(year, clean_name, class, av)
+
+class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv") %>%
+  select(class = class_code, class_1dig, assess_ratio, incent_prop, Alea_cat, major_class_code)
+
+muni_MC <- muni_MC %>% 
+  left_join(class_dict, by = c("class")) %>% 
+  filter(class !=0) # drop exempt property types with 0 taxable value
+
+#class_8_munis <- read_csv("./Necessary_Files/datarequests_Class8Munis.csv")
+class_8_munis <- read_csv("./Output/datarequests_Class8Munis.csv")
+
+# changed from as.list to as.character
+class_8_munis <- as.character(class_8_munis$clean_name)
+
+
+
+# class 8 munis - at the year-class level
+class_8_df <- # left_join(muni_MC, class_dict, by = "class") %>%
+  muni_MC %>%
+  filter(clean_name %in% class_8_munis) %>%
+  filter(av != 0) %>%
+  mutate(FMV = av/assess_ratio) %>%
+  group_by(year) %>%   
+  mutate(year_tb_tot = sum(FMV)) %>%           # tax base for all class 8 munis together, per year
+  ungroup() %>%
+  filter(Alea_cat %in% c("Industrial", "Commercial")) %>%      ## drops all non-industrial and non-commercial classes to calculate the rest of the totals
+  group_by(year) %>%
+  mutate(year_ind_comm_FMV = sum(FMV)) %>%    #  total commercial and industrial FMV for all class 8 munis together, per year
+  ungroup() %>%
+  group_by(year, clean_name) %>%
+  mutate(muni_year_ind_comm_FMV = sum(FMV)) %>%   # calculates total FMV in each munis  each year
+  ungroup() %>%
+  group_by(year, Alea_cat) %>%
+  mutate(cat_year_FMV = sum(FMV)) %>%    # calculates FMV within each commercial vs industrial category for each year
+  ungroup() %>%
+  
+  ## Do you want class_1dig or major_class_code? Does it matter? 
+  ## probably not if I already had joined in the commecial and industrial codes to the class level data...
+  group_by(year, clean_name, class_1dig) %>%   # total fmv in class 5, 6, 7, and 8 per muni
+  mutate(year_muni_class_FMV = sum(FMV))
+
+## Added this for cook level totals:
+class_8_df_outofCook <- 
+  muni_MC %>%
+ # filter(clean_name %in% class_8_munis) %>% ## keep all munis, use for cook county totals.
+  filter(av != 0) %>%
+  mutate(FMV = av/assess_ratio) %>%
+  group_by(year) %>%   
+  mutate(year_tb_tot = sum(FMV)) %>%           # tax base for all class 8 munis together, per year
+  ungroup() %>%
+  filter(Alea_cat %in% c("Industrial", "Commercial")) %>%      ## drops all non-industrial and non-commercial classes to calculate the rest of the totals
+  group_by(year) %>%
+  mutate(year_ind_comm_FMV = sum(FMV)) %>%    #  total commercial and industrial FMV for all class 8 munis together, per year
+  ungroup() %>%
+  group_by(year, clean_name) %>%
+  mutate(muni_year_ind_comm_FMV = sum(FMV)) %>%   # calculates total FMV in each munis  each year
+  ungroup() %>%
+  group_by(year, Alea_cat) %>%
+  mutate(cat_year_FMV = sum(FMV)) %>%    # calculates FMV within each commercial vs industrial category for each year
+  ungroup() %>%
+  
+  ## Do you want class_1dig or major_class_code? Does it matter? 
+  ## probably not if I already had joined in the commecial and industrial codes to the class level data...
+  group_by(year, clean_name, class_1dig) %>%   # total fmv in class 5, 6, 7, and 8 per muni
+  mutate(year_muni_class_FMV = sum(FMV))
+
+ class(class_8_df$class_1dig)   ## moved this lower because it didn't exist yet when you ran it 
+
+# Class 8 Munis
+
+## Incentive types over time (line graph and line-area graph)
+
+# ggplot() +
+#   geom_line(data = class_8_df %>%
+#              summarize(ind_comm_perc = year_ind_comm_FMV/year_tb_tot), aes(x = year, y = ind_comm_perc)) +#, color = "Ind. & Comm. FMV") +
+#   geom_line(data = class_8_df %>%
+#               filter(incent_prop == "Incentive") %>%
+#               group_by(year) %>%
+#               summarise(incent_perc = sum(FMV)/year_tb_tot),
+#             aes(x = year, y = incent_perc)#,
+#             #color = "Incent. Class FMV"
+#             ) +
+#   geom_line(data = class_8_df %>%
+#               filter(class_1dig == 8)) +        # was missing a + sign here
+#   theme_classic() +
+#   scale_x_continuous(breaks = seq(2006, 2022, by = 3)) +
+#   scale_y_continuous(labels = scales::percent_format(), limits = c(0, 0.45), breaks = seq(0, 0.5, by = 0.05))
+
+ ## Alea Version: 
+ggplot() +
+  geom_line(data = class_8_df %>%
+              group_by(year) %>%
+              summarize(ind_comm_perc = mean(year_ind_comm_FMV/year_tb_tot)), 
+            aes(x = year, y = ind_comm_perc, color =  "Commercial+Industrial"), lwd = 1) +  
+  
+  # industrial fmv
+  geom_line(data = class_8_df_outofCook %>%               
+              filter(Alea_cat == "Industrial") %>%
+              group_by(year) %>%
+              # needed na.rm=TRUE, otherwise it didn't work. perc_industrial was not being calculated without it.
+              summarize(perc_industrial =  sum(FMV/year_tb_tot, na.rm=TRUE)),   ## added this part
+            aes(x = year, y = perc_industrial, color = "Industrial"), lwd = 1) +
+  
+  # commercial fmv
+  geom_line(data = class_8_df_outofCook %>%              
+              filter(Alea_cat == "Commercial") %>%
+              group_by(year) %>%
+              summarize(perc_commercial =  sum(FMV/year_tb_tot, na.rm=TRUE)),   ## added this part
+            aes(x = year, y = perc_commercial, color = "Commercial"), lwd = 1) +
+  geom_line(data = class_8_df %>%
+              filter(incent_prop == "Incentive") %>%
+              group_by(year) %>%
+              summarise(incent_perc = sum(FMV)/year_tb_tot),
+            aes(x = year, y = incent_perc, color = "Incentive Classes"), lwd = 1 ) +
+  geom_line(data = class_8_df %>%               # threw error here, missing x and y in aes()
+              filter(class_1dig == 8) %>% 
+              group_by(year) %>%
+              summarize(perc_8 =  sum(FMV/year_tb_tot)),   ## added this part
+            aes(x = year, y = perc_8, color = "Class 8"), lwd = 1) +        # was missing a + sign here
+  theme_classic() +
+  scale_x_continuous(name = "", breaks = seq(2006, 2022, by = 3), limits = c(2006, 2022), expand = c(0,0)) +
+  scale_y_continuous(name = "Percent of FMV", labels = scales::percent_format(), limits = c(0, 0.20),
+                     breaks = seq(0, 0.5, by = 0.05), expand = c(0,0))  +
+ scale_color_manual(name = "", values = c("Commercial+Industrial" = "black", "Industrial" = "gray70", "Commercial" = "gray50",  "Incentive Classes" = "orange",  "Class 8" = "red" )) +
+  theme(legend.position = "bottom") + 
+  labs(title = "Property in the Class 8 Townships") + 
+  guides(color = guide_legend(nrow=2, byrow = TRUE))
+
+
+
+## Alea Version for Cook Level: 
+ggplot() +
+  # Commercial + Industrial FMV in cook
+  geom_line(data = class_8_df_outofCook %>%
+              group_by(year) %>%  #didn't group by year before?
+              summarize(ind_comm_perc = mean(year_ind_comm_FMV/year_tb_tot)), 
+            aes(x = year, y = ind_comm_perc, color =  "Commercial+Industrial"), lwd = 1) +  
+  
+  # incentive class properties in cook
+  geom_line(data = class_8_df_outofCook %>%
+              filter(incent_prop == "Incentive") %>%
+              group_by(year) %>%
+              summarise(incent_perc = sum(FMV/year_tb_tot)),
+            aes(x = year, y = incent_perc, color = "Incentive Classes"), lwd = 1 ) +
+ 
+  # FMV with class 8 property class in cook county
+   geom_line(data = class_8_df_outofCook %>%               # threw error here, missing x and y in aes()
+              filter(class_1dig == 8) %>% 
+              group_by(year) %>%
+              summarize(perc_8 =  sum(FMV/year_tb_tot)),   ## added this part
+            aes(x = year, y = perc_8, color = "Class 8"), lwd = 1) +        # was missing a + sign here
+ 
+  # industrial fmv in cook county
+  geom_line(data = class_8_df_outofCook %>%               # threw error here, missing x and y in aes()
+              filter(Alea_cat == "Industrial") %>%
+              group_by(year) %>%
+              # needed na.rm=TRUE, otherwise it didn't work. perc_industrial was not being calculated without it.
+              summarize(perc_industrial =  sum(FMV/year_tb_tot, na.rm=TRUE)),   ## added this part
+            aes(x = year, y = perc_industrial, color = "Industrial"), lwd = 1) +
+
+  # commercial fmv in cook county
+geom_line(data = class_8_df_outofCook %>%               # threw error here, missing x and y in aes()
+            filter(Alea_cat == "Commercial") %>%
+            group_by(year) %>%
+            summarize(perc_commercial =  sum(FMV/year_tb_tot, na.rm=TRUE)),   ## added this part
+          aes(x = year, y = perc_commercial, color = "Commercial"), lwd = 1) +
+
+  # make it pretty:
+   theme_classic() +
+  scale_x_continuous(name = "", breaks = seq(2006, 2022, by = 3), limits = c(2006, 2022), expand = c(0,0)) +
+  scale_y_continuous(name = "Percent of County FMV", labels = scales::percent_format(),  limits = c(0, 0.20), 
+                     breaks = seq(0, 0.5, by = 0.05), expand = c(0,0))  +
+  scale_color_manual(name = "", values = c("Commercial+Industrial" = "black", "Industrial" = "gray80", "Commercial" = "gray40", "Incentive Classes" = "orange", "Class 8" =  "red")) +
+  theme(legend.position = "bottom") +
+  labs(title= "Cook County Commercial & Industrial FMV") + guides(color = guide_legend(nrow=2, byrow = TRUE))
+
+
+```
+
+# Slide 6 and 7
+
+![](images/clipboard-1924255976.png)
 
 ```{r}
 #| label: fig-pctincentivevalue-bothtypes
@@ -294,16 +508,6 @@ nonres_pins2022 %>%
    geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, fill = "white", alpha = .5, color = 'gray40')
 ```
 
-
-## Sankey Graph
-
-```{r eval=FALSE}
-ptax_pins <- read_csv("Output/Dont_Upload/0_joined_PIN_data_2022.csv")
-```
-
-
-## Slides 7 & 8
-
 ```{r}
 #| label: tbl-incentiveproject-cooktotals
 #| tbl-cap: "Commercial and Industrial Incentive Projects & PINs in Cook County. Includes property classes 500-899 and 100 level land PINs if they are associated with a project id that has at least one incentive PIN."
@@ -396,7 +600,19 @@ datatable(table2,
 #   arrange(desc(keypin))
 ```
 
-## Slides: Impact on Composite Tax Rate
+# Slide 8
+
+![](images/clipboard-2197304119.png)
+
+### FMV Out of Municipality Total FMV
+
+![](images/clipboard-213373226.png)
+
+![](images/clipboard-213373226.png)
+
+![](images/clipboard-593146377.png)
+
+# Slide 9: Impact on Composite Tax Rate
 
 ```{r}
 #| code-fold: true
@@ -529,9 +745,7 @@ datatable(tbl2,
 
 ```
 
-
-> Layer for Border Crossers. Layer for Unincorporated areas.   
-
+> Layer for Border Crossers. Layer for Unincorporated areas.
 
 ```{r}
 #| label: fig-pctincentivevalue
@@ -664,43 +878,6 @@ joined <- muni_class_AleaCats %>%   left_join(MuniLevel) %>%
 ### Dot Graphs: Change in Composite Tax Rate
 
 ```{r}
-#| label: fig-dotplot-ratechange
-#| fig-height: 6
-#| fig-cap: "Tax burden for properties with incentive classifications. Excludes municipalities that had a rate change less than 1 percentage point."
-
-# as a dot graph ## 
-# create order of dots
-order <- burden %>%  
-  as_tibble() %>% 
-  filter(incentive == "Incentive") %>% 
-  arrange(change_noInc) %>%
-  select(clean_name, cur_munilevel_rate, muni_rate_noInc)
-
-
-# make dot graph
-burden %>% 
-  filter(incentive == "Incentive" & clean_name != "NA") %>%
-  select(clean_name, cur_munilevel_rate, muni_rate_noInc, change_noInc) %>% 
-  pivot_longer(c("cur_munilevel_rate", "muni_rate_noInc"), 
-               names_to = "type", values_to = "tax_rate") %>% 
-  left_join(order) %>%
-    filter(change_noInc > 1 ) %>%
-  ggplot(aes(x = tax_rate, y= reorder(clean_name, change_noInc)))+
-  geom_line(aes(group = clean_name))+ 
-  geom_point(aes(color=type), size=3 )+
-  theme_minimal() + 
-  theme( 
-    legend.title = element_blank(),
-    plot.title.position = "plot",
-    plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
-  )+
-  scale_color_brewer(palette="Paired", labels = c("Incentives", "No Incentives"), direction = 1)+
-  
-  labs(title = "Difference in Composite Tax Rate if Assessed at 25%",
-       subtitle = "Ordered by Comp. Rate Change", x = "Composite Tax Rate (%)", y = "")
-```
-
-```{r}
 #| label: fig-dotplot-ratechange-order2
 #| fig-height: 6
 #| fig-cap: "Tax burden for Properties with Incentive Classifications. Excludes municipalities that had a rate change less than 1 percentage point."
@@ -738,11 +915,50 @@ burden %>%
        subtitle = "Ordered by Current Composite Tax Rate", x = "Composite Tax Rate (%)", y = "")
 ```
 
-## Slides 15: Change in Tax Burden
+```{r}
+#| label: fig-dotplot-ratechange
+#| fig-height: 6
+#| fig-cap: "Tax burden for properties with incentive classifications. Excludes municipalities that had a rate change less than 1 percentage point. Ordered by amount of change in the composite tax rate."
+
+
+# as a dot graph ## 
+# create order of dots
+order <- burden %>%  
+  as_tibble() %>% 
+  filter(incentive == "Incentive") %>% 
+  arrange(change_noInc) %>%
+  select(clean_name, cur_munilevel_rate, muni_rate_noInc)
+
+
+# make dot graph
+burden %>% 
+  filter(incentive == "Incentive" & clean_name != "NA") %>%
+  select(clean_name, cur_munilevel_rate, muni_rate_noInc, change_noInc) %>% 
+  pivot_longer(c("cur_munilevel_rate", "muni_rate_noInc"), 
+               names_to = "type", values_to = "tax_rate") %>% 
+  left_join(order) %>%
+    filter(change_noInc > 1 ) %>%
+  ggplot(aes(x = tax_rate, y= reorder(clean_name, change_noInc)))+
+  geom_line(aes(group = clean_name))+ 
+  geom_point(aes(color=type), size=3 )+
+  theme_minimal() + 
+  theme( 
+    legend.title = element_blank(),
+    plot.title.position = "plot",
+    plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
+  )+
+  scale_color_brewer(palette="Paired", labels = c("Incentives", "No Incentives"), direction = 1)+
+  
+  labs(title = "Difference in Composite Tax Rate if Assessed at 25%",
+       subtitle = "Ordered by Comp. Rate Change", x = "Composite Tax Rate (%)", y = "")
+```
+
+# Slide 13: Change in Tax Burden
 
 ```{r}
 #| code-fold: true
 #| tbl-cap: "Tax Burden for Incentive Properties: With and without the reduced assessment ratio (10% vs 25%). Commercial and Industrial are combined in this table. Incentive Properties (Combined) Tax Rates and Burden from removing Incentive Classification Levels of Assessment."
+
 
 burden %>% 
   filter(incentive == "Incentive" & clean_name != "NA") %>% 
@@ -771,7 +987,7 @@ order <- burden %>%
   select(clean_name, current_burden)
 
 burden %>% 
-    filter(change_noInc > 1) %>%
+    filter(change_noInc > .5) %>%
 
   filter(incentive == "Incentive" & Alea_cat == "Industrial"  & clean_name !="NA") %>%
   select(clean_name, current_burden, no_incents_burden, no_exemps_burden, neither_burden) %>% 
@@ -790,17 +1006,12 @@ burden %>%
     plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
   )+
   scale_fill_brewer(palette="YlOrBr", 
-                     labels = c("Current Burden", "No Exemptions or Reduced\nLevel of Assessment", "No Reduced Level of Assessment"), direction = 1)+
+                     labels = c("Current Burden", "No Exemptions or Reduced\nLevel of Assessment \n   ", "No Reduced Level \nof Assessment"), direction = 1)+
   
   labs(title = "Tax Burden for Industrial Properties with Incentives if Assessed at 25%",
        subtitle = "Ordered by Current Tax Burden", x = "% of Levy Paid", y = "" , 
        caption = "")
 ```
-
-
-### Interaction of Exemptions and Incentives
-
-![](images/WhatsApp Image 2024-04-12 at 18.14.28_e232cfab.jpg)
 
 ```{r}
 #| label: fig-residentialburden-scenarios
@@ -812,14 +1023,15 @@ burden %>%
 order <- burden %>%  
   as_tibble() %>% 
   filter( Alea_cat %in% c( "Owner Occupied") ) %>% 
- filter(change_noInc > 1) %>%
+ filter(change_noInc > 0.05) %>%
   arrange(current_burden) %>%
   select(clean_name, current_burden)
 
 burden %>% 
-    filter(change_noInc > 1) %>%
+    filter(change_noInc > .5) %>%
 
     filter( Alea_cat %in% c( "Owner Occupied") & !is.na(clean_name) ) %>% 
+  filter(clean_name != "Willow Springs") %>%
 
  # filter(incentive == "Incentive" & Alea_cat == "Industrial"  & clean_name !="NA") %>%
   select(clean_name, current_burden, no_incents_burden,  no_exemps_burden, 
@@ -829,7 +1041,7 @@ burden %>%
                  "neither_burden"), 
                names_to = "type", values_to = "tax_rate") %>% 
   left_join(order) %>%
-  filter(current_burden > 0) %>%
+  #filter(current_burden > 0) %>%
   ggplot(aes(x = tax_rate, y= reorder(clean_name, current_burden)))+
   
   geom_line(aes(group = clean_name))+ 
@@ -840,15 +1052,14 @@ burden %>%
     plot.title.position = "plot",
     plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
   )+
-  scale_fill_brewer( labels = c("Current Burden", "No Incentives", "No Exemptions", "No Exemps or Incents"), direction = 1)+
+  scale_fill_brewer(palette = "RdGy", labels = c(  "Current Burden", "No Exemps or Incents",  "No Exemptions", "No Incentives"), direction = 1)+
   
   labs(title = "Tax Burden for Class 2 Properties",
        subtitle = "Ordered by Current Tax Burden", x = "% of Levy Paid", y = "" , 
-       caption = "Technically, this is made using the Owner-occupied sub-category of Class 2 Properties.")
+       caption = "Technically, this is made using the Owner-occupied sub-category of Class 2 Properties. \nUses 2022 property tax data from the CCAO.")
 ```
 
-
-```{r}
+```{r, include = FALSE, eval = FALSE}
 #| label: fig-residentialburden-scenarios2
 #| fig-height: 8
 #| fig-cap: "Tax Burden for Owner-Occupied Properties for 3 Tax Scenarios: With and without the reduced assessment ratio for commercial and industrial property (10% vs 25%). The Tax burden if homeowners were not granted the GHE. And the tax burden if residential owners did not get their exemption and incentive properties were assessed at 25% instead of 10%."
@@ -862,7 +1073,7 @@ order <- burden %>%
   select(clean_name, current_burden)
 
 burden %>% 
-    filter(change_noInc > 1) %>%
+    filter(change_noInc > 0.5) %>%
 
     filter( Alea_cat %in% c( "Owner Occupied") & !is.na(clean_name) ) %>% 
   select(clean_name, current_burden, no_incents_burden, 
@@ -883,14 +1094,14 @@ burden %>%
     plot.title.position = "plot",
     plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
   )+
-  scale_fill_brewer(labels = c("Current Tax Burden", "Burden without Incentive\nClassifications", "Tax Burden without Exemptions\nor Incentives"), direction = 1)+
+  scale_fill_brewer(labels = c("Current Tax Burden" , "Tax Burden without Exemptions\nor Incentives" , "Burden without Incentive\nClassifications"), direction = 1)+
   
   labs(title = "Tax Burden for Class 2 (Owner-occupied) Properties",
        subtitle = "Ordered by Current Tax Burden", x = "% of Levy Paid", y = "" , 
        caption = "")
 ```
 
-```{r}
+```{r eval =FALSE, include = FALSE}
 #| label: fig-residentialburden-scenarios3
 #| fig-height: 10
 #| fig-cap: "Tax Burden for Owner-Occupied Properties for 3 Tax Scenarios: With and without the reduced assessment ratio for commercial and industrial property (10% vs 25%). The Tax burden if homeowners were not granted the GHE. And the tax burden if residential owners did not get their exemption and incentive properties were assessed at 25% instead of 10%."
@@ -904,7 +1115,7 @@ order <- burden %>%
   select(clean_name, current_burden)
 
 burden %>% 
-    filter(change_noInc > 1) %>%
+    filter(change_noInc > 0.05) %>%
 
     filter( Alea_cat %in% c( "Owner Occupied") & !is.na(clean_name) ) %>% 
   select(clean_name, current_burden, no_incents_burden, 
@@ -925,7 +1136,7 @@ burden %>%
     plot.title.position = "plot",
     plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
   )+
-  scale_fill_brewer(labels = c("Current Tax Burden", "Burden without Exemptions", "Tax Burden without Exemptions\nor Incentives"), direction = 1)+
+  scale_fill_brewer(labels = c("Current Tax Burden",  "Tax Burden without Exemptions\nor Incentives", "Burden without Incentives" ), direction = 1)+
   
   labs(title = "Tax Burden for Class 2 (Owner-occupied) Properties",
        subtitle = "Ordered by Current Tax Burden", x = "% of Levy Paid", y = "" , 
