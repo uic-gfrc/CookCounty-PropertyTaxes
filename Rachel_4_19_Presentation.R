@@ -486,13 +486,18 @@ delta_rates <- rates %>%
 
 delta_rates %>%
   ggplot(aes(delta_exe, delta_inc)) +
-  geom_point(aes(size = delta_both, color = key_obs), alpha = .5) +
+  geom_point(aes(size = delta_both, color = key_obs), alpha = .4) +
   scale_size_continuous(guide = "none") +
-  scale_color_manual(guide = "none", values = c("green", "orange")) +
+  scale_color_manual(guide = "none", values = c("blue", "gray9")) +
+  scale_x_continuous(expand = c(0,0), limits = c(0,16)) +
+  scale_y_continuous(expand = c(0,0), limits = c(0,18)) +
   labs(
     x = "Exemptions",
     y = "Incentives",
-    caption = our_caption
+    caption = "Axes represent percentage point change in the composite tax rate from 
+    removing either incentive classifications or the General Homeowner Exemption. 
+    Removing incentive classification implies taxing all commercial and industrial 
+    property at at 25% level of assessment instead of 10% if it receives an incentive classification."
   ) +
   theme_classic()
 
