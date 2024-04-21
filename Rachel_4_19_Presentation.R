@@ -334,32 +334,129 @@ class8_df_sums <- class8_df %>%
 
 #make bar chart (NOT A HISTOGRAM)
 
+## Michael version ## 
+# plot_df_final %>%
+#   ggplot() +
+#   geom_col(aes(x = year - 0.1, y = total_incent_ratio, fill = "Total Incentives"),# width = .1, 
+#            position = position_dodge(width = 0.2)) +
+#   geom_col(aes(x = year, y = inc_ind_ratio, fill = "Industrial"), 
+#            position = position_dodge(width = 0.2), width = .1) +
+#   geom_col(aes(x = year + 0.1, y = inc_com_ratio, fill = "Commercial"), 
+#            position = position_dodge(width = 0.2), width = .1) +
+#   scale_fill_manual(values = c("Total" = "#fecc5c", "Industrial" = "#fd8d3c", "Commercial" = "#bd0026")) +
+#   theme_classic() +
+#   labs(x = "Year", y = "Ratio") + theme()
+
+
+### Simple Version ###
 plot_df_final %>%
-  ggplot() +
-  geom_col(aes(x = year - 0.1, y = total_incent_ratio, fill = "Total"), width = .1, position = position_dodge(width = 0.2)) +
-  geom_col(aes(x = year, y = inc_ind_ratio, fill = "Industrial"), position = position_dodge(width = 0.2), width = .1) +
-  geom_col(aes(x = year + 0.1, y = inc_com_ratio, fill = "Commercial"), position = position_dodge(width = 0.2), width = .1) +
-  scale_fill_manual(values = c("Total" = "#fecc5c", "Industrial" = "#fd8d3c", "Commercial" = "#bd0026")) +
+  ggplot( ) +
+  
+  # this was too small to show up in the graph. It would need to become a separate graph. 
+  geom_col(aes(x = year , y = total_incent_ratio, fill = "Total Incentives")) + # First I thought it wasn't working
+  # then I realized that they are graphed on top of each other. Total incentives is hidden behind 
+  #  commercial and industrial incentive bars.
+  
+  # geom_col(aes(x = year, y = inc_ind_ratio, fill = "Industrial")) + # commented out to see what f irst layer looked like
+  # geom_col(aes(x = year, y = inc_com_ratio,fill = "Commercial")) +  # commented out to see what f irst layer looked like
   theme_classic() +
-  labs(x = "Year", y = "Ratio")
+  labs(x = "Year", y = "FMV Ratio", title = "Incentive FMV / All FMV in Cook County")
+  
+
+
+plot_df_final %>%
+  ggplot( ) +
+
+  # Switch order of layers to get all 3 bars to appear!
+  geom_col(aes(x = year, y = inc_ind_ratio, fill = "Industrial-Incentive")) +
+  # this was too small to show up in the graph because it was behind other layers  
+  geom_col(aes(x = year , y = total_incent_ratio, fill = "Incentive Classes / Total FMV")) + # First I thought it wasn't working
+   geom_col(aes(x = year, y = inc_com_ratio, fill = "Commercial-Incentive")) +
+  theme_classic() +
+  labs(x = "Year", y = "FMV Ratio", title = "Industrial & Commercial \nFMV with Incentive Classification" ) 
+
+
+
+
+plot_df_final %>%
+  ggplot(
+    ) +
+
+  geom_col(aes(x = year, y = inc_ind_ratio,
+               fill = "Industrial"), 
+         #  position = position_dodge(width = 0.2), # width = .1
+           ) +
+  geom_col(aes(x = year, y = inc_com_ratio, 
+               fill = "Commercial"), 
+          # position = position_dodge(width = 0.2), # width = .1
+           ) +
+  #scale_fill_manual(values = c("Total" = "#fecc5c", "Industrial" = "#fd8d3c", "Commercial" = "#bd0026")) +
+  theme_classic() +
+  geom_line(aes(x = year , y = total_incent_ratio, 
+                color = "Total Incentives"),# width = .1, 
+            #position = position_dodge(width = 0.2)
+  ) +
+  labs(x = "Year", y = "% of FMV") 
+
 
 plot_df_final %>%
   ggplot() +
-  geom_col(aes(x = year - 0.15, y = total_incent_ratio, fill = "Total"), width = .1,
+  geom_col(aes(x = year - 0.15, y = total_incent_ratio, fill = "Total"), # width = .1,
            position = position_dodge(width = 0.2)) +
   geom_col(aes(x = year - 0.05, y = inc_ind_ratio, fill = "Industrial"),
-           position = position_dodge(width = 0.2), width = .1) +
+           position = position_dodge(width = 0.2), 
+        #   width = .1
+           ) +
   geom_col(aes(x = year + 0.05, y = inc_com_ratio, fill = "Commercial"),
-           position = position_dodge(width = 0.2), width = .1) +
+           position = position_dodge(width = 0.2), #width = .1
+           ) +
   geom_col(aes(x = year + 0.15, y = class_8_ratio, fill = "Class-8"),
-           position = position_dodge(width = 0.2), width = .1) +
+           position = position_dodge(width = 0.2), 
+         #  width = .1
+           ) +
   scale_fill_manual(values = c("Total" = "#fecc5c", "Industrial" = "#fd8d3c",
                                "Commercial" = "#bd0026", "Class-8" = "#000000")) +
   theme_classic() +
   labs(x = "Year", y = "Percent") +
+  theme(legend.position = "bottom") + 
   scale_y_continuous(labels = scales::percent_format(), limits = c(0, 0.45), breaks = seq(0, 0.45, by = 0.05)) +
   scale_x_continuous(breaks = seq(2006, 2022, by = 3)) +
   guides(fill = guide_legend(title = NULL))
+
+
+
+
+### Switch order of columns to make them show up better. Total was behind other layer.
+plot_df_final %>%
+  ggplot() +
+  geom_col(aes(x = year - 0.15, y = total_incent_ratio, fill = "Total"), # width = .1,
+           position = position_dodge(width = 0.2)) +
+  geom_col(aes(x = year - 0.05, y = inc_ind_ratio, fill = "Industrial"),
+           position = position_dodge(width = 0.2), 
+           #   width = .1
+  ) +
+  
+  geom_col(aes(x = year - 0.15, y = total_incent_ratio, fill = "Incentive FMV/Total FMV"), # width = .1,
+           position = position_dodge(width = 0.2)) +
+  
+  
+  geom_col(aes(x = year + 0.05, y = inc_com_ratio, fill = "Commercial"),
+           position = position_dodge(width = 0.2), #width = .1
+  ) +
+  geom_col(aes(x = year + 0.15, y = class_8_ratio, fill = "Class-8"),
+           position = position_dodge(width = 0.2), 
+           #  width = .1
+  ) +
+  scale_fill_manual(values = c("Incentive FMV/Total FMV" = "#fecc5c", "Industrial" = "#fd8d3c",
+                               "Commercial" = "#bd0026", "Class-8" = "#000000")) +
+  theme_classic() +
+  labs(x = "Year", y = "Percent") +
+  theme(legend.position = "bottom", 
+        legend.title = element_blank()) + 
+  scale_y_continuous(labels = scales::percent_format(), limits = c(0, 0.45), breaks = seq(0, 0.45, by = 0.05)) +
+  scale_x_continuous(breaks = seq(2006, 2022, by = 3)) 
+
+
 
 
 # Scatterplot
