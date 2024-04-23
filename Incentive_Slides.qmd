@@ -24,6 +24,9 @@ library(ggpattern)
 
 
 muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/politicalBoundary/MapServer/2/query?outFields=*&where=1%3D1&f=geojson")
+# muni_shp %>% st_crs() #  WGS 84
+
+#muni_shp <- st_transform(muni_shp, crs = 26916)
 
 
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
@@ -192,11 +195,14 @@ datatable(table2,
   formatPercentage('Pct FMV Incentivized', digits = 2)
 ```
 
-## Slide 4 Sankey Graph
+# Slide 4 Sankey Graph
 
-```{r eval=FALSE}
+```{r eval=FALSE, include = FALSE}
 ptax_pins <- read_csv("Output/Dont_Upload/0_joined_PIN_data_2022.csv")
 ```
+
+
+:::{layout=[2,2]}
 
 ![](images/clipboard-3675640920.png)
 
@@ -206,9 +212,17 @@ ptax_pins <- read_csv("Output/Dont_Upload/0_joined_PIN_data_2022.csv")
 
 ![](images/clipboard-2484422157.png)
 
+:::
+
+
+
 # Slide 5
 
 ```{r}
+#| layout-ncol: 2
+#| column: page
+
+
 library(tidyverse)
 
 options(scipen = 999)
@@ -285,28 +299,8 @@ class_8_df_outofCook <-
   group_by(year, clean_name, class_1dig) %>%   # total fmv in class 5, 6, 7, and 8 per muni
   mutate(year_muni_class_FMV = sum(FMV))
 
- class(class_8_df$class_1dig)   ## moved this lower because it didn't exist yet when you ran it 
 
-# Class 8 Munis
-
-## Incentive types over time (line graph and line-area graph)
-
-# ggplot() +
-#   geom_line(data = class_8_df %>%
-#              summarize(ind_comm_perc = year_ind_comm_FMV/year_tb_tot), aes(x = year, y = ind_comm_perc)) +#, color = "Ind. & Comm. FMV") +
-#   geom_line(data = class_8_df %>%
-#               filter(incent_prop == "Incentive") %>%
-#               group_by(year) %>%
-#               summarise(incent_perc = sum(FMV)/year_tb_tot),
-#             aes(x = year, y = incent_perc)#,
-#             #color = "Incent. Class FMV"
-#             ) +
-#   geom_line(data = class_8_df %>%
-#               filter(class_1dig == 8)) +        # was missing a + sign here
-#   theme_classic() +
-#   scale_x_continuous(breaks = seq(2006, 2022, by = 3)) +
-#   scale_y_continuous(labels = scales::percent_format(), limits = c(0, 0.45), breaks = seq(0, 0.5, by = 0.05))
-
+## Class 8 Townships Graph -------------------
  ## Alea Version: 
 ggplot() +
   geom_line(data = class_8_df %>%
@@ -315,7 +309,7 @@ ggplot() +
             aes(x = year, y = ind_comm_perc, color =  "Commercial+Industrial"), lwd = 1) +  
   
   # industrial fmv
-  geom_line(data = class_8_df_outofCook %>%               
+  geom_line(data = class_8_df %>%               
               filter(Alea_cat == "Industrial") %>%
               group_by(year) %>%
               # needed na.rm=TRUE, otherwise it didn't work. perc_industrial was not being calculated without it.
@@ -323,7 +317,7 @@ ggplot() +
             aes(x = year, y = perc_industrial, color = "Industrial"), lwd = 1) +
   
   # commercial fmv
-  geom_line(data = class_8_df_outofCook %>%              
+  geom_line(data = class_8_df %>%              
               filter(Alea_cat == "Commercial") %>%
               group_by(year) %>%
               summarize(perc_commercial =  sum(FMV/year_tb_tot, na.rm=TRUE)),   ## added this part
@@ -348,7 +342,8 @@ ggplot() +
   guides(color = guide_legend(nrow=2, byrow = TRUE))
 
 
-
+## Percentage out of Cook County ---------------------
+ 
 ## Alea Version for Cook Level: 
 ggplot() +
   # Commercial + Industrial FMV in cook
@@ -395,12 +390,58 @@ geom_line(data = class_8_df_outofCook %>%               # threw error here, miss
   theme(legend.position = "bottom") +
   labs(title= "Cook County Commercial & Industrial FMV") + guides(color = guide_legend(nrow=2, byrow = TRUE))
 
+## Newest Addition for April 30th Presentation --------------------
+ggplot() +
+  # incentive class properties in cook
+  geom_line(data = class_8_df_outofCook %>%
+              filter(incent_prop == "Incentive") %>%
+              group_by(year) %>%
+              summarise(incent_perc = sum(FMV/year_ind_comm_FMV)),
+            aes(x = year, y = incent_perc, color = "Incentive Classes"), lwd = 1 ) +
+  
+  # FMV with class 8 property class in cook county
+  geom_line(data = class_8_df_outofCook %>%               
+              filter(class_1dig == 8) %>% 
+              group_by(year) %>%
+              summarize(perc_8 =  sum(FMV/year_ind_comm_FMV)),   
+            aes(x = year, y = perc_8, color = "Class 8"), lwd = 1) +       
+  # make it pretty:
+  theme_classic() +
+  scale_x_continuous(name = "", breaks = seq(2006, 2022, by = 3), limits = c(2006, 2022), expand = c(0,0)) +
+  scale_y_continuous(name = "Percent of Com+Ind FMV", labels = scales::percent_format(), limits = c(0, 0.25), 
+                     breaks = seq(0, 0.5, by = 0.05), expand = c(0,0))  +
+  scale_color_manual(name = "", values = c("Industrial" = "gray80", "Commercial" = "gray40", "Incentive Classes" = "orange", "Class 8" =  "red")) +
+  theme(legend.position = "bottom") +
+  labs(title= "Cook County", subtitle =  "Share of Commercial & Industrial FMV with Incentive Classification") + guides(color = guide_legend(nrow=2, byrow = TRUE))
+
+
+ ggplot() +
+   geom_line(data = class_8_df %>%
+               filter(incent_prop == "Incentive") %>%
+               group_by(year) %>%
+               summarise(incent_perc = sum(FMV/year_ind_comm_FMV)),
+             aes(x = year, y = incent_perc, color = "All Incentive Classes"), lwd = 1 ) +
+      geom_line(data = class_8_df %>%               
+               filter(class_1dig == 8) %>% 
+               group_by(year) %>%
+               summarize(perc_8 =  sum(FMV/year_ind_comm_FMV)), 
+             aes(x = year, y = perc_8, color = "Class 8"), lwd = 1) +        
+   # make it pretty:
+   theme_classic() +
+   scale_x_continuous(name = "", breaks = seq(2006, 2022, by = 3), limits = c(2006, 2022), expand = c(0,0)) +
+   scale_y_continuous(name = "Percent of Com&Ind FMV", labels = scales::percent_format(), # limits = c(0, 0.25), 
+                      breaks = seq(0, 0.5, by = 0.05), expand = c(0,0))  +
+   scale_color_manual(name = "", values = c("Commercial+Industrial" = "black", "Industrial" = "gray80", "Commercial" = "gray40", "All Incentive Classes" = "orange", "Class 8" =  "red")) +
+   theme(legend.position = "bottom") +
+   labs(title= "Class 8 Townships", subtitle =  "Share of Commercial & Industrial FMV with Incentive Classification") + guides(color = guide_legend(nrow=2, byrow = TRUE))
+ 
+ 
+
 
 ```
 
 # Slide 6 and 7
 
-![](images/clipboard-1924255976.png)
 
 ```{r}
 #| label: fig-pctincentivevalue-bothtypes
@@ -419,18 +460,19 @@ table2 %>%
   scale_fill_steps2(
     high = "#420420", low = "black",
     # midpoint = median(transfered_taxes),
+        limits = c(0,.93),
+
     show.limits=TRUE,
     breaks = c(0, .10, .20, .50, .70),
     nice.breaks=FALSE,
     #n =4,
     na.value = "gray",
     name = "Pct of Market Value that \nhas Incentive Classification",
-    labels = scales::percent
-) +
-   geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, fill = "white", alpha = .5, color = 'gray70')
+    labels = scales::percent) +
+   geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray70')
 
 
-map
+
 
 
 
@@ -474,7 +516,38 @@ nonres_pins2022 %>%
     name = "Pct of Industrial FMV that \nhas Incentive Classification",
     labels = scales::percent
 ) +
-   geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, fill = "white", alpha = .5, color = 'gray40')
+   geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray40')
+
+# nonres_pins2022 %>% 
+#   filter(Alea_cat == "Commercial") %>%
+#   group_by(clean_name) %>% 
+#   summarize(pin_count = n(),
+#             project_count = n_distinct(keypin), 
+#             av_incent = sum(ifelse(between(class, 600, 899), av*2.5, 0)),
+#             av_adjusted = sum(ifelse(between(class, 600, 899), av*2.5, av)),
+#             av=sum(av)) %>%
+#   mutate(av_incent = ifelse(av_incent == 0, NA, av_incent), 
+#                             pct_incent = av_incent / av_adjusted)  %>%
+#   select(-av_incent) %>% 
+#   select(clean_name, pct_incent, av, av_adjusted, pin_count, project_count) %>%
+#   left_join(nicknames) %>%
+#   full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
+#   
+#   ggplot(aes(fill = pct_incent)) +
+#   geom_sf(aes(geometry = geometry), color = "black") +
+#   theme_void() + 
+#   theme(axis.ticks = element_blank(), axis.text = element_blank())+
+#   scale_fill_steps2(
+#     high = "orange", low = "black",
+#      midpoint = 0.04,
+#     show.limits=TRUE,
+#     nice.breaks=FALSE,
+#     na.value="gray",
+#    # n =4,
+#     name = "Pct of Commercial FMV that \nhas Incentive Classification",
+#     labels = scales::percent
+# ) +
+#    geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, fill = "white", alpha = .5, color = 'gray40')
 
 nonres_pins2022 %>% 
   filter(Alea_cat == "Commercial") %>%
@@ -496,16 +569,16 @@ nonres_pins2022 %>%
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
   scale_fill_steps2(
-    high = "orange", low = "black",
-     midpoint = 0.04,
+    high = "brown", low = "black",
+    limits = c(0,.93),
     show.limits=TRUE,
     nice.breaks=FALSE,
     na.value="gray",
-   # n =4,
+    n =4,
     name = "Pct of Commercial FMV that \nhas Incentive Classification",
     labels = scales::percent
 ) +
-   geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, fill = "white", alpha = .5, color = 'gray40')
+   geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray40')
 ```
 
 ```{r}
@@ -602,17 +675,30 @@ datatable(table2,
 
 # Slide 8
 
+## Maps
+
+> Change scale of combined incentive class map. Change color too so it looks different than the one that splits them apart. (maybe combining the scale will do that by darkening areas with different incentive types.)
+
 ![](images/clipboard-2197304119.png)
+
 
 ### FMV Out of Municipality Total FMV
 
-![](images/clipboard-213373226.png)
+:::{layout-ncol=3 }
 
 ![](images/clipboard-213373226.png)
+
+![](images/clipboard-1430145241.png)
 
 ![](images/clipboard-593146377.png)
 
+:::
+
+
+
 # Slide 9: Impact on Composite Tax Rate
+
+## Tables
 
 ```{r}
 #| code-fold: true
@@ -750,6 +836,9 @@ datatable(tbl2,
 
 ```
 
+
+## Maps 
+
 > Layer for Border Crossers. Layer for Unincorporated areas.
 
 ```{r}
@@ -779,13 +868,62 @@ scale_fill_steps2(
                     n =4,
                        name = "Change in Composite Tax Rate\n(Percentage Points)",
 ) +
-   geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, fill = "white", alpha = .5, color = 'gray40')
+   geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015,  pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray40')
 
 ```
 
 ```{r}
-#| label: fig-incent-and-exempt-ratechange-map
-#| fig-height: 6
+#| label: fig-incent-and-exempt-ratechange-map-samescales
+#| column: page 
+#| layout-ncol: 2
+#| fig-subcap:
+#|      - "Change in composite tax rate from assessment ratio for incentive properties set at 25% instead of 10%"
+#|      - "Change in composite taxrate from taxing EAV that is current tax exempt due to the GHE exemption"
+
+tbl2 %>% 
+  left_join(nicknames) %>%
+  left_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
+
+    ggplot(aes(fill = change_noInc)) +
+    geom_sf(aes(geometry = geometry), color = "black") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+scale_fill_steps2(
+    high = "#420420",
+ limits = c(0,15),
+                   show.limits=TRUE,
+  nice.breaks=FALSE,
+ na.value="gray",
+                    n =4,
+                       name = "Change in Composite Tax Rate\n(Percentage Points)",)+
+   geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015,pattern_scale = 0.1, fill = "white", alpha = .5, color = 'gray40')
+
+
+
+tbl2 %>% 
+  left_join(nicknames) %>%
+  left_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
+
+    ggplot(aes(fill = change_noExe)) +
+    geom_sf(aes(geometry = geometry), color = "black") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+scale_fill_steps2(
+    high = "#420420",
+ limits = c(0,15),
+                   show.limits=TRUE,
+  nice.breaks=FALSE,
+  na.value="gray", # unincorporated areas
+                    n =4,
+                       name = "Change in Composite Tax Rate\n(Percentage Points)",
+        # labels = scales::percent
+)
+
+
+```
+
+```{r}
+#| label: fig-incent-and-exempt-ratechange-map-difscales
 #| layout-ncol: 2
 #| column: page 
 #| fig-subcap:
@@ -801,14 +939,13 @@ tbl2 %>%
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
 scale_fill_steps2(
-    high = "forestgreen",
+    high = "darkblue",
  limits = c(0,7),
                    show.limits=TRUE,
   nice.breaks=FALSE,
  na.value="gray",
                     n =4,
-                       name = "Change in Composite Tax Rate\n(Percentage Points)",)+
-   geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, fill = "white", alpha = .5, color = 'gray40')
+                       name = "Change in Composite Tax Rate\n(Percentage Points)",)
 
 
 
@@ -821,16 +958,13 @@ tbl2 %>%
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
 scale_fill_steps2(
-    high = "purple4",
+    high = "darkblue",
  limits = c(0,15),
                    show.limits=TRUE,
   nice.breaks=FALSE,
   na.value="gray", # unincorporated areas
                     n =4,
-                       name = "Change in Composite Tax Rate\n(Percentage Points)",
-        # labels = scales::percent
-)
-
+                       name = "Change in Composite Tax Rate\n(Percentage Points)")
 ```
 
 ```{r}
@@ -958,7 +1092,6 @@ burden %>%
        subtitle = "Ordered by Comp. Rate Change", x = "Composite Tax Rate (%)", y = "")
 ```
 
-
 ```{r}
 #| label: fig-dotplot-ratechange-extradot
 #| fig-height: 6
@@ -998,7 +1131,47 @@ burden %>%
 ```
 
 
+```{r}
+#| label: fig-dotplot-ratechange-4dots
+#| fig-height: 6
+#| fig-cap: "Composite Tax Rate for Scenarios. Excludes municipalities that had a rate change less than 1 percentage point."
+
+
+# as a dot graph ## 
+# create order of dots
+order <- burden %>%  
+  as_tibble() %>% 
+  filter(incentive == "Incentive") %>% 
+    filter(change_noInc > 1) %>%
+  arrange(cur_munilevel_rate) %>%
+  select(clean_name, cur_munilevel_rate)
+
+# make dot graph
+burden %>% 
+  filter(incentive == "Incentive" & clean_name != "NA") %>%
+  select(clean_name, cur_munilevel_rate, muni_rate_noInc, muni_rate_vacant, muni_rate_noExe) %>% 
+  arrange(cur_munilevel_rate) %>%
+  pivot_longer(c("cur_munilevel_rate", "muni_rate_noInc", "muni_rate_vacant", "muni_rate_noExe"), 
+               names_to = "type", values_to = "tax_rate") %>% 
+  inner_join(order) %>%
+  ggplot(aes(x = tax_rate, y= reorder(clean_name, cur_munilevel_rate)))+
+  geom_line(aes(group = clean_name))+ 
+  geom_point(aes(color=type), size=3 )+
+  theme_minimal() + 
+  theme( 
+    legend.title = element_blank(),
+    plot.title.position = "plot",
+    plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
+  )+
+  scale_color_brewer(palette="Paired", labels = c("Current Rate", "If LoA 25%", "If Vacant", "If No GHE"), direction = 1)+
+  
+  labs(title = "Difference in Composite Tax Rate if Assessed at 25%",
+       subtitle = "Ordered by Current Composite Tax Rate", x = "Composite Tax Rate (%)", y = "")
+```
+
 # Slide 13: Change in Tax Burden
+
+## Tables
 
 ```{r}
 #| code-fold: true
@@ -1016,6 +1189,8 @@ burden %>%
 
 
 ```
+
+## Figures
 
 ```{r}
 #| label: fig-incentiveprops
@@ -1050,6 +1225,8 @@ burden %>%
     plot.title.position = "plot",
     plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
   )+
+  scale_x_continuous( labels = scales::percent) +
+
   scale_fill_brewer(palette="YlOrBr", 
                      labels = c("Current Burden", "No Exemptions or Reduced\nLevel of Assessment \n   ", "No Reduced Level \nof Assessment"), direction = 1)+
   
@@ -1061,7 +1238,7 @@ burden %>%
 ```{r}
 #| label: fig-residentialburden-scenarios
 #| fig-height: 8
-#| fig-cap: "Tax Burden for Owner-Occupied Properties for 3 Tax Scenarios: With and without the reduced assessment ratio for commercial and industrial property (10% vs 25%). The Tax burden if homeowners were not granted the GHE. And the tax burden if residential owners did not get their exemption and incentive properties were assessed at 25% instead of 10%."
+#| fig-cap: "Tax Burden for Owner-Occupied Properties for 3 Tax Scenarios: With and without the reduced assessment ratio for commercial and industrial property (10% vs 25%). The Tax burden if homeowners were not granted the GHE. And the tax burden if residential owners did not get their exemption and incentive properties were assessed at 25% instead of 10%. This graph is made using the owner-occupied sub-category of Class 2 Properties for tax year 2022. Property tax data from the CCAO."
 
 # as a dot graph ## 
 
@@ -1100,8 +1277,7 @@ burden %>%
   scale_fill_brewer(palette = "RdGy", labels = c(  "Current Burden", "No Exemps or Incents",  "No Exemptions", "No Incentives"), direction = 1)+
   
   labs(title = "Tax Burden for Class 2 Properties",
-       subtitle = "Ordered by Current Tax Burden", x = "% of Levy Paid", y = "" , 
-       caption = "Technically, this is made using the Owner-occupied sub-category of Class 2 Properties. \nUses 2022 property tax data from the CCAO.")
+       subtitle = "Ordered by Current Tax Burden", x = "% of Levy Paid", y = "")
 ```
 
 ```{r, include = FALSE, eval = FALSE}
