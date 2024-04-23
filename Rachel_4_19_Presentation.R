@@ -101,6 +101,8 @@ class_8_df_outofCook <-
 #   scale_x_continuous(breaks = seq(2006, 2022, by = 3)) +
 #   scale_y_continuous(labels = scales::percent_format(), limits = c(0, 0.45), breaks = seq(0, 0.5, by = 0.05))
 
+ 
+## Class 8 Townships Graph -------------------
  ## Alea Version: 
 ggplot() +
   geom_line(data = class_8_df %>%
@@ -109,7 +111,7 @@ ggplot() +
             aes(x = year, y = ind_comm_perc, color =  "Commercial+Industrial"), lwd = 1) +  
   
   # industrial fmv
-  geom_line(data = class_8_df_outofCook %>%               
+  geom_line(data = class_8_df %>%               
               filter(Alea_cat == "Industrial") %>%
               group_by(year) %>%
               # needed na.rm=TRUE, otherwise it didn't work. perc_industrial was not being calculated without it.
@@ -117,7 +119,7 @@ ggplot() +
             aes(x = year, y = perc_industrial, color = "Industrial"), lwd = 1) +
   
   # commercial fmv
-  geom_line(data = class_8_df_outofCook %>%              
+  geom_line(data = class_8_df %>%              
               filter(Alea_cat == "Commercial") %>%
               group_by(year) %>%
               summarize(perc_commercial =  sum(FMV/year_tb_tot, na.rm=TRUE)),   ## added this part
@@ -142,7 +144,8 @@ ggplot() +
   guides(color = guide_legend(nrow=2, byrow = TRUE))
 
 
-
+## Percentage sout of Cook County ---------------------
+ 
 ## Alea Version for Cook Level: 
 ggplot() +
   # Commercial + Industrial FMV in cook
@@ -189,11 +192,54 @@ geom_line(data = class_8_df_outofCook %>%               # threw error here, miss
   theme(legend.position = "bottom") +
   labs(title= "Cook County Commercial & Industrial FMV") + guides(color = guide_legend(nrow=2, byrow = TRUE))
 
+## Newest Addition for April 30th Presentation --------------------
+ggplot() +
+  # incentive class properties in cook
+  geom_line(data = class_8_df_outofCook %>%
+              filter(incent_prop == "Incentive") %>%
+              group_by(year) %>%
+              summarise(incent_perc = sum(FMV/year_ind_comm_FMV)),
+            aes(x = year, y = incent_perc, color = "Incentive Classes"), lwd = 1 ) +
+  
+  # FMV with class 8 property class in cook county
+  geom_line(data = class_8_df_outofCook %>%               
+              filter(class_1dig == 8) %>% 
+              group_by(year) %>%
+              summarize(perc_8 =  sum(FMV/year_ind_comm_FMV)),   
+            aes(x = year, y = perc_8, color = "Class 8"), lwd = 1) +       
+  # make it pretty:
+  theme_classic() +
+  scale_x_continuous(name = "", breaks = seq(2006, 2022, by = 3), limits = c(2006, 2022), expand = c(0,0)) +
+  scale_y_continuous(name = "Percent of Com+Ind FMV", labels = scales::percent_format(), limits = c(0, 0.25), 
+                     breaks = seq(0, 0.5, by = 0.05), expand = c(0,0))  +
+  scale_color_manual(name = "", values = c("Industrial" = "gray80", "Commercial" = "gray40", "Incentive Classes" = "orange", "Class 8" =  "red")) +
+  theme(legend.position = "bottom") +
+  labs(title= "Cook County", subtitle =  "Share of Commercial & Industrial FMV with Incentive Classification") + guides(color = guide_legend(nrow=2, byrow = TRUE))
 
 
-###### I got the two graphs above to work and stopped here ########
-
-#############################
+ ggplot() +
+   geom_line(data = class_8_df %>%
+               filter(incent_prop == "Incentive") %>%
+               group_by(year) %>%
+               summarise(incent_perc = sum(FMV/year_ind_comm_FMV)),
+             aes(x = year, y = incent_perc, color = "All Incentive Classes"), lwd = 1 ) +
+      geom_line(data = class_8_df %>%               
+               filter(class_1dig == 8) %>% 
+               group_by(year) %>%
+               summarize(perc_8 =  sum(FMV/year_ind_comm_FMV)), 
+             aes(x = year, y = perc_8, color = "Class 8"), lwd = 1) +        
+   # make it pretty:
+   theme_classic() +
+   scale_x_continuous(name = "", breaks = seq(2006, 2022, by = 3), limits = c(2006, 2022), expand = c(0,0)) +
+   scale_y_continuous(name = "Percent of Com&Ind FMV", labels = scales::percent_format(), # limits = c(0, 0.25), 
+                      breaks = seq(0, 0.5, by = 0.05), expand = c(0,0))  +
+   scale_color_manual(name = "", values = c("Commercial+Industrial" = "black", "Industrial" = "gray80", "Commercial" = "gray40", "All Incentive Classes" = "orange", "Class 8" =  "red")) +
+   theme(legend.position = "bottom") +
+   labs(title= "Class 8 Townships", subtitle =  "Share of Commercial & Industrial FMV with Incentive Classification") + guides(color = guide_legend(nrow=2, byrow = TRUE))
+ 
+ 
+ 
+## Other variations --------------------------
 
 ## this one doesn't work because you never pass a data frame to it..
 
