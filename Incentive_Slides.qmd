@@ -667,6 +667,8 @@ muni_class_AleaCats <- muni_class2022 %>%
     
     new_TEAV_noIncents = ifelse(incent_prop ==  "Incentive", current_taxable_eav * 2.5 , current_taxable_eav),
     
+        new_TEAV_vacant_noIncents = ifelse(incent_prop ==  "Incentive", 0 , current_taxable_eav),
+    
     new_TEAV_noExemps = current_taxable_eav + all_exemptions, # does not include abatements
     
     # amount of EAV from taxing an additiona 15% of the AV if incentive properties didn't exist
@@ -686,6 +688,7 @@ alt_rates <- muni_class_AleaCats %>%
          muni_current_TEAV = sum(current_taxable_eav),
          muni_TEAV_noExe = sum(new_TEAV_noExemps),
          muni_TEAV_noInc = sum(new_TEAV_noIncents),
+         muni_TEAV_vacant_noInc = sum(new_TEAV_vacant_noIncents)
          
          ) %>%
   ungroup() %>%
@@ -700,13 +703,15 @@ alt_rates <- muni_class_AleaCats %>%
     muni_rate_noInc = munilevy / muni_TEAV_noInc * 100,
     muni_rate_neither = munilevy / muni_TEAV_neither * 100, 
     muni_rate_noTIFs = munilevy / (muni_current_TEAV + muni_forgoneTIF) * 100,
+    muni_rate_vacant = munilevy / muni_TEAV_vacant_noInc* 100,
     muni_rate_lowest = munilevy / muni_TEAV_max * 100)
 
 alt_rates <- alt_rates %>% 
   mutate(change_noExe = cur_munilevel_rate - muni_rate_noExe,
          change_noInc = cur_munilevel_rate - muni_rate_noInc,
          change_neither = cur_munilevel_rate - muni_rate_neither,
-         change_max = cur_munilevel_rate - muni_rate_lowest
+         change_max = cur_munilevel_rate - muni_rate_lowest,
+         change_vacants = cur_munilevel_rate - muni_rate_vacant
          )
 ```
 
@@ -716,9 +721,9 @@ alt_rates <- alt_rates %>%
 
 tbl1 <- alt_rates %>% 
   select(clean_name, cur_munilevel_rate, muni_rate_noExe, muni_rate_noInc, muni_rate_neither, # muni_rate_noTIFs, 
-                             muni_rate_lowest) %>% 
+                             muni_rate_lowest, muni_rate_vacant) %>% 
   distinct() %>% 
-  mutate(across(cur_munilevel_rate:muni_rate_lowest, round, digits = 2)) %>% 
+  mutate(across(cur_munilevel_rate:muni_rate_vacant, round, digits = 2)) %>% 
   as.data.frame()
 
 #tbl1
@@ -734,9 +739,9 @@ datatable(tbl1,
 #| tbl-cap: "Hypothetical Change in Composite Tax Rates. Values shown represent a percentage point change."
 
 tbl2 <- alt_rates %>% 
-  select(clean_name, change_noExe, change_noInc, change_neither, change_max) %>%
+  select(clean_name, change_noExe, change_noInc, change_neither, change_max, change_vacants) %>%
   distinct() %>%
-  mutate(across(change_noExe:change_max, round, digits = 2)) %>% as.data.frame()
+  mutate(across(change_noExe:change_vacants, round, digits = 2)) %>% as.data.frame()
 
 
 datatable(tbl2,
@@ -952,6 +957,46 @@ burden %>%
   labs(title = "Difference in Composite Tax Rate if Assessed at 25%",
        subtitle = "Ordered by Comp. Rate Change", x = "Composite Tax Rate (%)", y = "")
 ```
+
+
+```{r}
+#| label: fig-dotplot-ratechange-extradot
+#| fig-height: 6
+#| fig-cap: "Tax burden for Properties with Incentive Classifications. Excludes municipalities that had a rate change less than 1 percentage point."
+
+
+# as a dot graph ## 
+# create order of dots
+order <- burden %>%  
+  as_tibble() %>% 
+  filter(incentive == "Incentive") %>% 
+    filter(change_noInc > 1) %>%
+  arrange(cur_munilevel_rate) %>%
+  select(clean_name, cur_munilevel_rate)
+
+# make dot graph
+burden %>% 
+  filter(incentive == "Incentive" & clean_name != "NA") %>%
+  select(clean_name, cur_munilevel_rate, muni_rate_noInc, muni_rate_vacant) %>% 
+  arrange(cur_munilevel_rate) %>%
+  pivot_longer(c("cur_munilevel_rate", "muni_rate_noInc", "muni_rate_vacant"), 
+               names_to = "type", values_to = "tax_rate") %>% 
+  inner_join(order) %>%
+  ggplot(aes(x = tax_rate, y= reorder(clean_name, cur_munilevel_rate)))+
+  geom_line(aes(group = clean_name))+ 
+  geom_point(aes(color=type), size=3 )+
+  theme_minimal() + 
+  theme( 
+    legend.title = element_blank(),
+    plot.title.position = "plot",
+    plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
+  )+
+  scale_color_brewer(palette="Paired", labels = c("Current Rate", "If LoA 25%", "If Vacant"), direction = 1)+
+  
+  labs(title = "Difference in Composite Tax Rate if Assessed at 25%",
+       subtitle = "Ordered by Current Composite Tax Rate", x = "Composite Tax Rate (%)", y = "")
+```
+
 
 # Slide 13: Change in Tax Burden
 
