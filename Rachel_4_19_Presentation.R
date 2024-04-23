@@ -144,7 +144,7 @@ ggplot() +
   guides(color = guide_legend(nrow=2, byrow = TRUE))
 
 
-## Percentage sout of Cook County ---------------------
+## Percentage out of Cook County ---------------------
  
 ## Alea Version for Cook Level: 
 ggplot() +
