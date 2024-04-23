@@ -415,6 +415,8 @@ fig_nbhd_Chicago_AV
 ### Municipality - All Incentive Types Together
 
 ```{r}
+#| fig-height: 6
+#| fig-width: 8
 # Add in names that merge with Muni shapefile names
 muni_pincounts_majorclass <- ptax_pins %>%
   filter(major_class_code != 0) %>%
@@ -474,21 +476,25 @@ fig_muni_perc_of_comval <- muni_comval_percentages %>%
   filter(!is.na(shpfile_name) ) %>% 
   full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
   ggplot(aes(fill = perc_comind)) + 
-  geom_sf(aes(geometry = geometry),
+  geom_sf(aes(geometry = geometry, label = shpfile_name),
           color = "black",
           lwd = .05)+ 
-  labs(title = "% of Commercial & Industrial FMV (per Muni) that has Incentive Classifications",
+  geom_sf_text(aes(geometry = geometry, label = str_wrap(shpfile_name, 1)), size = 1) + 
+  labs(title = "% of Commercial & Industrial FMV (per Muni) \nthat has Incentive Classifications",
        subtitle = "FMV is AV / assessment ratio for property class") +
   theme_void() + 
-  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+  theme(axis.ticks = element_blank(), 
+        axis.text = element_blank(),
+legend.position = "bottom", legend.key.width = unit(2, "cm")) +
   scale_fill_steps2(
     high = "brown",
    # nice.breaks = FALSE,
-   breaks = c(0, 0.05, .10, .20, 0.4, .60),
-    show.limits=TRUE,
+   breaks = c(0, 0.05, .10, .20, 0.4, .60, .70),
+  #  show.limits=TRUE,
     na.value = "gray",
     name = "% of Com&Ind FMV",
-    label = scales::percent)
+    label = scales::percent) +   guides(fill=guide_legend(nrow=1,byrow=TRUE, label.position = "bottom"))
+
 
 fig_muni_perc_of_comval
 ```
@@ -522,7 +528,8 @@ fig_muni_AV <- muni_pincounts_majorclass %>%
     na.value = NA,
   limits = c(0, 90000000),
     name = "AV ($)",
-    label = scales::dollar)
+    label = scales::dollar) +
+   geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015,  pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray40')
 
 fig_muni_AV
 
@@ -545,9 +552,16 @@ fig_muni_AV_perc <- muni_pincounts_majorclass %>%
     show.limits=TRUE,
     na.value = NA,
     name = "% AV",
-    label = scales::percent)
+    label = scales::percent) +
+   geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015,  pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray40')
 
 fig_muni_AV_perc
+```
+
+
+```{r muni-alltogether-scaled}
+#| fig-height: 6
+#| fig-width: 6
 
 
 fig_muni_FMV_perc <- muni_pincounts_majorclass %>% 
@@ -562,16 +576,17 @@ fig_muni_FMV_perc <- muni_pincounts_majorclass %>%
   labs(title = "FMV for Properties with Any Type of Incentive Class",
        subtitle = "FMV is AV / assessment ratio for property class") +
   theme_void() + 
-  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
+  theme(axis.ticks = element_blank(), axis.text = element_blank(), legend.position = "bottom") +
   scale_fill_steps2(
     high = "brown",
    # nice.breaks = FALSE,
   # limits = c(0, .6),
-   breaks = c(0, 0.05, .10, .15, .20, 0.4, .60),
-    show.limits=TRUE,
+   breaks = c(0, 0.05, .10, .15, .20, 0.4, 0.60, 0.70),
+   # show.limits=TRUE,
     na.value = "gray",
     name = "% of FMV",
-    label = scales::percent)
+    label = scales::percent)+ guides(fill=guide_legend(nrow=1,byrow=TRUE, label.position = "bottom")) +
+   geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015,  pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray40')
 
 fig_muni_FMV_perc
 
