@@ -78,13 +78,31 @@ data_renamed <- final_df %>%
    )     %>% 
   select(-c(adj_rent_sf_2, final_mv_sf_2, year_built_2, year_built_3, total_exp_2, percent_exp_2, excess_land_value_2, excess_land_value_3, bldg_sq_ft, bldg_sf, excess_land_value_2, excess_land_value_3, market_value_2,
             property_description_2, pct_owner_interest_2, mobile_home_pads_2, x2023_permit_partial_demo_value_2, x1br_units_2, x2br_units_2, x3br_units_2 )) %>%
-  select(pin = ias_world_pi_ns, key_pin, classes, market_value, everything()) %>%
-mutate(across(.cols = c(adj_rent_sf:percent_exp, total_land_sf:year_built), .fns = as.numeric)) 
+  select(pin = ias_world_pi_ns, key_pin, classes, sheet_name, file_name, market_value ,everything()) %>%
+  mutate(across(.cols = c(adj_rent_sf:percent_exp, total_land_sf:year_built), .fns = as.numeric)) 
 
 
 
 
 write_csv(data_renamed, "Output/combined_methodologyworksheets.csv")
+
+data_renamed_unnest <- data_renamed %>% 
+  
+  mutate(keypin_concat = as.character(key_pin),
+         keypin_concat = str_remove_all(keypin_concat, "-"),
+         keypin_concat = str_pad(keypin_concat, 14, "left", pad = "0"),
+         pin = as.character(pin),
+         
+         pin_concat = str_remove_all(pin, "-"),
+         pin_concat = str_pad(pin_concat, 14, "left", pad = "0"),
+         major_class = str_sub(classes, 1, 1))  %>%
+  mutate(pins2 = str_split(pin_concat, pattern = " ")) %>%
+  unnest(pins2) %>%
+  mutate(pins2 = trimws(pins2) ) %>%
+  #  filter(!is.na(pins2) | pins2 == " ") %>%
+  #  mutate(pins3 = str_split(pins2, pattern = " ")) %>%
+  # unnest(pins3) %>%
+  mutate(check_me = ifelse(str_length(pins2)<14, 1, 0))
 
 # PINs and keyPINs-------------------------------------------------------------
 
@@ -101,7 +119,7 @@ pins_pivot <- data_renamed %>%
   select(keypin_concat, pin_concat, pin, major_class)  %>%
   mutate(pins2 = str_split(pin_concat, pattern = " ")) %>%
   unnest(pins2) %>%
-  mutate( pins2 = trimws(pins2) ) %>%
+  mutate(pins2 = trimws(pins2) ) %>%
 #  filter(!is.na(pins2) | pins2 == " ") %>%
  #  mutate(pins3 = str_split(pins2, pattern = " ")) %>%
  # unnest(pins3) %>%
@@ -114,4 +132,7 @@ keypins <- unique(comval$keypin_concat)
 
 sum(as.numeric(data_renamed$final_market_value), na.rm = TRUE)
 sum(as.numeric(data_renamed$market_value), na.rm = TRUE)
+
+table(pins_pivot$major_class)
+
 
