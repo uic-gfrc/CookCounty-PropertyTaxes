@@ -84,7 +84,7 @@ data_renamed <- final_df %>%
 
 
 
-write_csv(data_renamed, "Output/combined_methodologyworksheets.csv")
+write.csv(data_renamed, "Output/combined_methodologyworksheets.csv")
 
 data_renamed_unnest <- data_renamed %>% 
   
