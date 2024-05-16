@@ -58,6 +58,10 @@ muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/poli
 
 ## Create Project ID
 
+Pulls appeal data from the Cook County Data Portal. CSV file was created using data from May 2024. Property classes had extra zeros padding the right side of the class so an additional data cleaning step was done after pulling the data.
+
+After the second filter step to fix the class variable and filter the remaining residential properties out, there are 780K observations.
+
 ```{r getBORappeals, eval=FALSE}
 base_url <- "https://datacatalog.cookcountyil.gov/resource/7pny-nedm.json?$where=class > 399"
 
@@ -79,72 +83,92 @@ bor <- GET(
 
 bor <- fromJSON(rawToChar(bor$content))
 
-bor <- bor %>% mutate(
-  class = str_sub(class, 1,3)) %>% filter(class > 399) 
+
+## class had extra zeros padding the right side so keep first 3 digits that are the actual property class
+bor <- bor %>% 
+  mutate(
+  class_bor = str_sub(class, 1,3)) %>% 
+  filter(class > 399)    ## filters out any property class below 400
 
 bor <- bor %>% 
-#  mutate(project_id = str_sub(appealid, 1, 7)) 
   mutate(project_id = str_extract(appealid, "[^.]+"))
 
 write_csv(bor, "Output/borappeals.csv")
 ```
 
+::: callout-caution
+## Have not checked uniqueness of appeal ID. ( Seems to at least be unique for "projects"  per year.)
+:::
 
 ```{r}
 #| label: tbl-getBORappeals2
 #| tbl-cap: "Board of Review Appeal Data - Grouped by apellant and project ID. Project ID is created from the `appealid` variable used by the BoR. The `appealid` appears to group PINs by the digits before the decimal point."
 
-bor <- read_csv("Output/borappeals.csv")
+bor <- read_csv("Output/borappeals.csv") %>%
+  mutate(project_appellant = paste(project_id, sep = "-", appellant))
 
 bor %>% 
   group_by(tax_year, project_id, appellant) %>% 
-  summarize(pincount = n()) %>% 
-  filter(pincount > 1)  %>% 
-  arrange(desc(tax_year))  %>% datatable(rownames = FALSE)
-```
-
-```{r}
-bor %>% 
-  group_by(tax_year, appellant) %>% 
   summarize(pincount = n(),
-            pins = as.character(list(pin))) %>% 
+             pins = list(pin)) %>% 
   filter(pincount > 1)  %>% 
-  arrange(desc(tax_year))  %>% datatable(rownames = FALSE)
-```
+  arrange(desc(tax_year))  %>% 
+  head() %>%
+  datatable(rownames = FALSE)
 
+bor %>% 
+  group_by(tax_year, project_id) %>% 
+  summarize(pincount = n(),
+            appellant = list(unique(appellant)),
+             pins = list(pin)) %>% 
+  filter(pincount > 1)  %>% 
+  arrange(desc(tax_year))  %>% 
+  head() %>%
+  datatable(rownames = FALSE)
+```
 
 ```{r}
 #| label: tbl-borprojectpins
-#| tbl-cap: "Count of PINs within project ID from Board of Review. Uses appealid to create project ID."
+#| tbl-cap: "Uses first occurance of the an appeal id and the appealant name to create project IDs for each PIN. This deal with PINS that appealed multiple time and makes each PIN a unique occurance. Takes numbers for athe decimal point in `appealid to create project ID. Uses Board of Review Appeals data from the Cook County Data Portal. Counts number of times each PIN appealed its valuation. 102,619 PINs from BoR data (downloaded May 2024)."
 
 bor_pins <- bor %>% 
-              group_by(pin) %>% 
-    arrange(desc(tax_year)) %>%
+  group_by(pin) %>% 
+  arrange(desc(tax_year)) %>%
+  summarize(pin = first(pin),
+            class_bor = list(unique(class)),
+            appellant = first(appellant),
+            project_id = first(project_id), 
+            timesappealed = n() ) %>%
+  mutate(proj_appeallant = paste(project_id, "-", appellant))
 
-            summarize(pin = first(pin),
-                      project_id = first(project_id), 
-                      timesappealed = n() ) 
 
-
+#46,250 distinct projects based on IDs
 projects <- bor_pins %>% distinct(project_id)
 
+#38,808 distinct apellant names
+appellants <- bor_pins %>% distinct(appellant)
 
-bor <- bor %>% filter(project_id %in% projects$project_id)
+# 48,993 distinct project id-appellant combinations
+projects_appellant <- bor_pins %>% 
+  distinct(project_id, appellant)
 
-
+ 
 bor_pins %>%
   group_by(project_id) %>%
   summarize(pincount = n()) %>%
-  arrange(desc(pincount))  %>% datatable(rownames = FALSE)
+  arrange(desc(pincount)) %>% 
+  # head() %>% 
+  datatable(rownames = FALSE)
 
-
+bor_pins %>% 
+  group_by(appellant) %>%
+  summarize(pincount = n()) %>%
+  arrange(desc(pincount)) %>%  
+  head() %>% 
+  datatable(rownames = FALSE)
 ```
 
-
-
-After the second filter step to fix the class variable and filter the remaining residential properties out, there are 780K observations.
-
-
+Pull in the joined pin and exemption data for 2022. Extracted from PTAXSIM. See `0_joined_PIN_data_2022.qmd` for code.
 
 ```{r}
 #| echo: true
@@ -165,8 +189,8 @@ ptax_pins <- read_csv("Output/Dont_Upload/0_joined_PIN_data_2022.csv") %>%
 
 ```
 
+82,957 distinct keypins from `all_keypins` file. (Made from commercial valuation dataset on the Data Portal.)
 
-82,957 distinct keypins from all_keypins file
 46,213 distinct project ids using the Board of Review appeal ids
 
 ```{r}
@@ -178,12 +202,13 @@ ptax_pins <- read_csv("Output/Dont_Upload/0_joined_PIN_data_2022.csv") %>%
 proj_xwalk <- read_csv("Output/all_keypins.csv")               
 # all commercial valuation properties but made with very unreliable data from commercial valuation dataset. 
 
-proj_xwalk %>% distinct(keypin) # 82 distinct keypins from all_keypins file
+# 82K+ distinct keypins from all_keypins file
+# proj_xwalk %>% distinct(keypin) 
 
 # combine project IDs to PINs:
-ptax_pins <- ptax_pins %>% left_join(proj_xwalk)
+ptax_pins <- ptax_pins %>% left_join(proj_xwalk, by = "pin")
 
-ptax_pins <- ptax_pins %>% left_join(bor_pins)
+ptax_pins <- ptax_pins %>% left_join(bor_pins, by = "pin")
 
 
 #  create tc_muninames from helper file:
@@ -210,21 +235,6 @@ ptax_pins <- ptax_pins %>%
 ```
 
 ```{r}
-#| label: tbl-createbothids
-#| tbl-cap: "Incentive Properties only. Count of PINs in project ID (using `both_ids`). both_ids is created from using the BoR appeal ids as the default group ID. Then if a PIN in ptaxsim doesn't match to a Board of Review appeal PIN, project IDs from the commercial valuation data set are used."
-
-ptax_pins <- ptax_pins %>% 
-  mutate(both_ids = ifelse(needs_keypin==1, project_id, keypin ),
-         both_ids = ifelse(is.na(both_ids), pin, both_ids))
-
-# ptax_pins %>% group_by(both_ids) %>% summarize(pincount = n()) 
-
-ptax_pins %>% filter(class > 599) %>% group_by(both_ids) %>% summarize(pincount = n())  %>%
-  arrange(desc(pincount))
-```
-
-
-```{r}
 #| label: tbl-createbothids2
 #| tbl-cap: "Incentive Properties only. Count of PINs in project ID (using `both_ids`). both_ids is created from using the BoR appeal ids as the default group ID. Then if a PIN in ptaxsim doesn't match to a Board of Review appeal PIN, project IDs from the commercial valuation data set are used."
 
@@ -238,13 +248,17 @@ ptax_pins <- ptax_pins %>%
 #   group_by(both_ids) %>% 
 #   summarize(pincount = n()) 
 
-ptax_pins %>% 
+table_list <- ptax_pins %>% 
   filter(class > 599) %>% 
   group_by(both_ids) %>% 
-  summarize(pincount = n()) %>%
+  summarize(pincount = n(),
+            pin_list = (list(unique(pin))),
+            class_list = (list(unique(class))),
+            appellant = ((list(unique(appellant)))) ) %>%
   arrange(desc(pincount))
-```
 
+table_list
+```
 
 ```{r}
 table <- ptax_pins %>% 
@@ -262,13 +276,11 @@ table <- ptax_pins %>%
          pct_incent = incent_av_adj / total_av_adjusted) %>%
     select(-c(av_incent, av_nonincent, incent_av_adj))
 
-
 flextable(table) %>% 
  # set_caption("Totals for Cook County") %>% 
   set_header_labels(Alea_cat = "Property Type", proptype_pincount = 'PINs', projects = "Project IDs", av = ' Taxable AV') %>%
   set_table_properties( layout = "autofit", width = .75)
 ```
-
 
 ```{r}
 incentive_pins2022 <- ptax_pins %>% 
@@ -302,18 +314,16 @@ flextable(table) %>%
   set_table_properties( layout = "autofit", width = .75)
 ```
 
-
 > renaming the both_ids variable to keypin to avoid changing all the code below.
 
 ```{r}
+#| code-fold: false
+
 ptax_pins <- ptax_pins %>% 
   mutate(keypin = both_ids)
 ```
 
-
 ## Create TIF vectors
-
-
 
 ```{r}
 # TIF distributions will include all the unique tax codes that make up
@@ -325,7 +335,7 @@ tif_distrib <- DBI::dbGetQuery(
   glue_sql("
   SELECT *
   FROM tif_distribution
-  WHERE year = 2021
+  WHERE year = 2022
   ",
   .con = ptaxsim_db_conn
   )
@@ -339,7 +349,7 @@ tif_pins <- DBI::dbGetQuery(
     SELECT DISTINCT *
     FROM pin
     WHERE tax_code_num IN ({unique(tif_distrib$tax_code_num)*})
-    AND year = 2021
+    AND year = 2022
   ",
     .con = ptaxsim_db_conn
   )
@@ -347,8 +357,23 @@ tif_pins <- DBI::dbGetQuery(
 
 ```
 
-### TIF pins and Lookup_pin() command.
+```{r}
+bound_tif <- st_read(paste0(
+  "https://opendata.arcgis.com/api/v3/datasets/",
+  "8aeb00520c544aafb9a22510465c679d_18/downloads/",
+  "data?format=geojson&spatialRefId=4326&where=1%3D1"
+), quiet = TRUE) 
 
+
+  
+bound_tif %>%
+  ggplot() +
+  geom_sf(data = bound_tif, aes(geometry = geometry#, fill = project_count
+              ), color = "black") +
+  theme_void() 
+```
+
+### TIF pins and Lookup_pin() command.
 
 ```{r}
 ptax_pins <- ptax_pins %>%
@@ -379,7 +404,6 @@ EAV_inandout_TIF <- ptax_pins %>%
 EAV_inandout_TIF %>% datatable(rownames = FALSE)
 ```
 
-
 ```{r}
 ptax_pins %>% 
   group_by( 
@@ -396,8 +420,6 @@ ptax_pins %>%
 
 ```
 
-
-
 ```{r}
 ptax_pins %>% group_by(clean_name, incent_prop, in_tif) %>% 
   summarize(pins = n(),
@@ -407,7 +429,6 @@ ptax_pins %>% group_by(clean_name, incent_prop, in_tif) %>%
                         av = sum(av)
 ) %>% datatable(rownames = FALSE)
 ```
-
 
 ```{r}
 table3 <- ptax_pins %>% 
@@ -444,8 +465,6 @@ table3 %>%  filter(in_tif == 1) %>%
 
 ```
 
-
-
 # Slides 1-2
 
 34 Municipalities do not use Incentive Classifications.
@@ -453,7 +472,6 @@ table3 %>%  filter(in_tif == 1) %>%
 15 cross into other counties. All 15 that cross county lines do use incentive classifications.
 
 Alsip, Bedford Park, Blue Island,Bridgeview, Riverdale, South Holland, Summit, and Worth also use "Abatements" (based on the exe_abate variable in PTAXSIM)
-
 
 ```{r}
 #| label: tbl-countycrossers
@@ -510,8 +528,6 @@ flextable(table) %>%
   set_table_properties( layout = "autofit", width = .75)
 ```
 
-
-
 ```{r}
 #| label: tbl-amount-incentivized
 #| tbl-cap: "Percent of Commercial and Industrial \"Market Value for Assessment Purposes\" that has a reduced assessment rate due to incentive classification"
@@ -545,7 +561,6 @@ datatable(table2,
 
 # Slide 6 and 7
 
-
 ```{r}
 #| label: fig-pctincentivevalue-bothtypes
 #| fig-cap: "Number of Commercial and Industrial Projects per Municipality. A Project is based off of distinct KeyPINs" 
@@ -558,7 +573,7 @@ table2 %>%
   full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
   
   ggplot() +
-  geom_sf(aes(geometry = geometry, fill = project_count), color = "black") +
+  geom_sf(aes(geometry = geometry, fill = project_count), color = "black", alpha = 0.3) +
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
   scale_fill_steps2(
@@ -576,12 +591,9 @@ table2 %>%
     name = "Number of Projects",
    # labels = scales::percent
    ) +
-   geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray70')
-
-
-
-
-
+   geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray70')+
+    geom_sf(data = bound_tif, aes(geometry = geometry#, fill = project_count
+              ), color = "black", alpha = 0.5, fill ="orange")
 
 ```
 
@@ -764,7 +776,6 @@ datatable(table2,
           colnames = c('Municipality' = 'clean_name',   'Incentivized?' = 'incent_prop', 'PIN Count' = 'pin_count', 'Project Count' = 'project_count', 'Taxable AV' = 'av')) %>%
   formatCurrency(c('Taxable AV', 'av_adjusted'), digits = 0)
 ```
-
 
 ```{r}
 #| label: fig-projectcountmaps-incentive
