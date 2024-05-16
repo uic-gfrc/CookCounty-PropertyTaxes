@@ -80,6 +80,18 @@ DBI::dbGetQuery(
  .con = ptaxsim_db_conn
   ))
 
+## for the shed example - class 593, industrial no incentives
+pins <- c(33201040020000, 33192050300000, 33192050360000)
+DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql(
+    "SELECT*
+  FROM pin
+  WHERE pin IN ({pins*})
+  AND year IN ({years*})
+  ",
+  .con = ptaxsim_db_conn
+  ))
 
 
 # all pins for 2022
