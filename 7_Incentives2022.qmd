@@ -21,7 +21,7 @@ library(httr)
 library(jsonlite)
 library(glue)
 library(sf)
-
+library(ggpattern)
 knitr::opts_chunk$set(warning = FALSE, message = FALSE, error = TRUE)
 
 
@@ -67,6 +67,7 @@ theme_AWM <-   theme_void() +
    # legend.box.background = element_rect(fill='transparent') #transparent legend panel
   )
 
+no_incentives <- readRDS("no_incentives_formap.rds")
 ```
 
 # Incentive Properties In Cook County, IL
@@ -294,9 +295,10 @@ incentive_pins_w_projects %>%
 
 incentive_pins_w_projects %>% 
   group_by(clean_name, keypin) %>%
-  summarize(pincount = n_d(),
+  summarize(pincount = n(),
             av = sum(av)) %>%
-  ungroup() %>% group_by(clean_name) %>%
+  ungroup() %>% 
+  group_by(clean_name) %>%
   summarize(projects = n(),
             pins = sum(pincount),
             av=sum(av)) %>% 
@@ -669,7 +671,9 @@ fig_muni_C6_FMV_perc <- muni_pincounts_majorclass %>%
     high = "brown",
     show.limits=TRUE,
     limits = c(0, .6),
-    breaks = c(0, 0.025, 0.05, .1, .3, .6),
+    breaks = c(0, .1, .2, .3, .4, .5, .6),
+
+    #breaks = c(0, 0.025, 0.05, .1, .3, .6),
     na.value = "gray",
     name = "% FMV",
   label = scales::percent)
@@ -677,7 +681,7 @@ fig_muni_C6_FMV_perc <- muni_pincounts_majorclass %>%
 
 
 
-fig_muni_C6_AV
+# fig_muni_C6_AV
 fig_muni_C6_AV_perc
 fig_muni_C6_FMV_perc
 fig_nbhd_C6_AV
@@ -696,14 +700,15 @@ fig_muni_perc_of_comval6C <- muni_comval_percentages %>%
   geom_sf(aes(geometry = geometry),
           color = "black",
           lwd = .05)+ 
-  labs(title = "% of Commercial & Industrial FMV (per Muni) \nwith Incentive Class 6") +
+  labs(title = "Class 6: % of Commercial & Industrial FMV (per Muni)") +
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank()) +
   scale_fill_steps2(
     high = "brown",
    # nice.breaks = FALSE,
-   breaks = c(0, 0.05, .10, .20, 0.4, .60, .8),
+   breaks = c(0, 0.05, .10, .20, 0.4, .60, .80),
     show.limits=TRUE,
+   limits = c(0, .8),
     na.value = "gray",
     name = "% of Com&Ind FMV",
     label = scales::percent)
@@ -889,6 +894,9 @@ fig_muni_C7_fmv_perc <- muni_pincounts_majorclass %>%
   scale_fill_steps2(
    high = "brown",
    limits = c(0, .6),
+   
+       breaks = c(0, .1, .2, .3, .4, .5, .6),
+
     nice.breaks = FALSE,
     show.limits=TRUE,
     na.value = "gray",
@@ -940,14 +948,14 @@ fig_muni_perc_of_comvalC7 <- muni_comval_percentages %>%
   geom_sf(aes(geometry = geometry),
           color = "black",
           lwd = .05)+ 
-  labs(title = "% of Commercial & Industrial FMV (per Muni) that has Incentive Classifications",
+  labs(title = "Class 7: % of Commercial & Industrial FMV (per Muni)",
        subtitle = "FMV is AV / assessment ratio for property class") +
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank()) +
   scale_fill_steps2(
     high = "brown",
-limits = c(0, .6),
-breaks = c(0, 0.025, 0.05, .10, .15,  0.4, .60),
+limits = c(0, .8),
+breaks = c(0, 0.05, .10, .20,  0.4, .60, 0.8),
     show.limits=TRUE,
     na.value = "gray",
     name = "% of Com&Ind FMV",
@@ -1073,7 +1081,9 @@ fig_muni_C8_fmvperc <- muni_pincounts_majorclass %>%
     high = "brown",
    # breaks = c(0, 0.025, 0.05, .1, .2, .4),
    limits = c(0, .6), 
-    breaks = c(0, 0.025, 0.05, .1, .3, .6),
+   # breaks = c(0, 0.025, 0.05, .1, .3, .6),
+          breaks = c(0, .1, .2, .3, .4, .5, .6),
+
 
     show.limits=TRUE,
     na.value = "gray",
@@ -1094,14 +1104,15 @@ fig_muni_perc_of_comvalC8 <- muni_comval_percentages %>%
   geom_sf(aes(geometry = geometry),
           color = "black",
           lwd = .05)+  
-  labs(title = "% of Commercial & Industrial FMV (per Muni) that has Incentive Classifications",
+  labs(title = "Class 8: % of Commercial & Industrial FMV (per Muni)",
        subtitle = "FMV is AV / assessment ratio for property class") +
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank()) +
   scale_fill_steps2(
     high = "brown",
      nice.breaks = FALSE,
-    breaks = c(0, 0.05, .10, .20, 0.4, .60),
+    limits = c(0, .8),
+    breaks = c(0, 0.05, .10, .20, 0.4, .60, .80),
     show.limits=TRUE,
     na.value = "gray",
     name = "% of Com&Ind FMV",
@@ -1325,38 +1336,21 @@ fig_nbhd_pincount
 ```
 
 
-```{r class6pincount}
-fig_muni_C6_PC <- muni_pincounts_majorclass %>% 
-  filter(major_class_code %in% c("6A", "6B", "6C")) %>%
- # filter(clean_name != "Chicago") %>% 
-  group_by(shpfile_name)%>%
-  summarize(pin_count = sum(pin_count)) %>% 
-  filter(!is.na(shpfile_name)) %>% 
-  full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
-  ggplot(aes(fill = pin_count)) + 
-  geom_sf(aes(geometry = geometry),
-          color = "black",
-          lwd = .05)+ 
-  labs(title = "Properties with Class 6 Incentives",
-       subtitle = "# of Buildings with Incentives in Municipalities") +
-  theme_void() + 
-  theme(axis.ticks = element_blank(), axis.text = element_blank()) +
-  scale_fill_steps2(
-    high = "darkblue", low = "orange",
-  #  nice.breaks = FALSE,
-    show.limits=TRUE,
-    na.value = NA,
-    name = "# PINs")
-fig_muni_C6_PC
-```
 
 ```{r}
+#| layout-ncol: 2
+
+
 fig_nbhd_C6_Chicago_PC
 fig_nbhd_C7_Chicago_PC
 ```
 
 
 ```{r class8pincount}
+#| layout-ncol: 2
+
+
+
 fig_muni_C8_PC <- muni_pincounts_majorclass %>% 
   filter(major_class_code %in% c("8")) %>%
  # filter(clean_name != "Chicago") %>% 
@@ -1369,7 +1363,8 @@ fig_muni_C8_PC <- muni_pincounts_majorclass %>%
           color = "black",
           lwd = .05)+ 
   labs(title = "Properties with Class 8 Incentives",
-       subtitle = "# of Buildings with Incentives in Municipalities") +
+       subtitle = "# of Buildings with Incentives in Municipalities",
+       caption: "Outlier is the Amazon in Markham") +
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank()) +
   scale_fill_steps2(
@@ -1378,9 +1373,9 @@ fig_muni_C8_PC <- muni_pincounts_majorclass %>%
     show.limits=TRUE,
     na.value = NA,
     name = "# PINs")
+# fig_nbhd_C8_PC
 
 fig_muni_C8_PC
-# fig_nbhd_C8_PC
 ```
 
 
