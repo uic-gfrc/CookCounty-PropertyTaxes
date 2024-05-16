@@ -132,7 +132,11 @@ no_incentives <-  ptax_pins %>%
   filter(incent_pins == 0) %>% 
   distinct(clean_name)
 
-no_incentives <- no_incentives %>% left_join(muni_shp, by = c("clean_name" = "MUNICIPALITY"))
+no_incentives <- no_incentives %>% left_join(muni_shp, by = c("clean_name" = "MUNICIPALITY")) 
+
+# saveRDS(no_incentives, "no_incentives_formap.rds")
+# to use in 7_incentives.qmd file
+
 ```
 
 ```{r}
@@ -163,6 +167,8 @@ flextable(table) %>%
   set_header_labels(Alea_cat = "Property Type", proptype_pincount = 'PINs', projects = "Project IDs", av = ' Taxable AV') %>%
   set_table_properties( layout = "autofit", width = .75)
 ```
+
+
 
 ```{r}
 #| label: tbl-amount-incentivized
@@ -268,9 +274,6 @@ class_8_df <- # left_join(muni_MC, class_dict, by = "class") %>%
   group_by(year, Alea_cat) %>%
   mutate(cat_year_FMV = sum(FMV)) %>%    # calculates FMV within each commercial vs industrial category for each year
   ungroup() %>%
-  
-  ## Do you want class_1dig or major_class_code? Does it matter? 
-  ## probably not if I already had joined in the commecial and industrial codes to the class level data...
   group_by(year, clean_name, class_1dig) %>%   # total fmv in class 5, 6, 7, and 8 per muni
   mutate(year_muni_class_FMV = sum(FMV))
 
@@ -293,9 +296,6 @@ class_8_df_outofCook <-
   group_by(year, Alea_cat) %>%
   mutate(cat_year_FMV = sum(FMV)) %>%    # calculates FMV within each commercial vs industrial category for each year
   ungroup() %>%
-  
-  ## Do you want class_1dig or major_class_code? Does it matter? 
-  ## probably not if I already had joined in the commecial and industrial codes to the class level data...
   group_by(year, clean_name, class_1dig) %>%   # total fmv in class 5, 6, 7, and 8 per muni
   mutate(year_muni_class_FMV = sum(FMV))
 
@@ -415,6 +415,32 @@ ggplot() +
   labs(title= "Cook County", subtitle =  "Share of Commercial & Industrial FMV with Incentive Classification") + guides(color = guide_legend(nrow=2, byrow = TRUE))
 
 
+## Newest Addition for April 30th Presentation --------------------
+ggplot() +
+  # incentive class properties in cook
+  geom_line(data = class_8_df_outofCook %>%
+              filter(incent_prop == "Incentive") %>%
+              group_by(year) %>%
+              summarise(incent_perc = sum(FMV/year_ind_comm_FMV)),
+            aes(x = year, y = incent_perc, color = "Incentive Classes"), lwd = 1 ) +
+  # 
+  # # FMV with class 8 property class in cook county
+  # geom_line(data = class_8_df_outofCook %>%               
+  #             filter(class_1dig == 8) %>% 
+  #             group_by(year) %>%
+  #             summarize(perc_8 =  sum(FMV/year_ind_comm_FMV)),   
+  #           aes(x = year, y = perc_8, color = "Class 8"), lwd = 1) +       
+  # make it pretty:
+  theme_classic() +
+  scale_x_continuous(name = "", breaks = seq(2006, 2022, by = 3), limits = c(2006, 2022), expand = c(0,0)) +
+  scale_y_continuous(name = "Percent of Com+Ind FMV", labels = scales::percent_format(), limits = c(0, 0.25), 
+                     breaks = seq(0, 0.5, by = 0.05), expand = c(0,0))  +
+  scale_color_manual(name = "", values = c("Industrial" = "gray80", "Commercial" = "gray40", "Incentive Classes" = "orange")) +
+  theme(legend.position = "bottom") +
+  labs(title= "Cook County", subtitle =  "Share of Commercial & Industrial FMV with Incentive Classification") + guides(color = guide_legend(nrow=2, byrow = TRUE))
+
+
+
  ggplot() +
    geom_line(data = class_8_df %>%
                filter(incent_prop == "Incentive") %>%
@@ -458,7 +484,9 @@ table2 %>%
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
   scale_fill_steps2(
-    high = "#420420", low = "black",
+   # high = "#420420", low = "black",
+        high = "brown", low = "black",
+
     # midpoint = median(transfered_taxes),
         limits = c(0,.93),
 
@@ -684,13 +712,8 @@ datatable(table2,
 
 ### FMV Out of Municipality Total FMV
 
-:::{layout-ncol=3 }
+:::{layout-ncol=3}
 
-![](images/clipboard-213373226.png)
-
-![](images/clipboard-1430145241.png)
-
-![](images/clipboard-593146377.png)
 
 :::
 
@@ -753,14 +776,15 @@ muni_class_AleaCats <- muni_class2022 %>%
     
     new_TEAV_noIncents = ifelse(incent_prop ==  "Incentive", current_taxable_eav * 2.5 , current_taxable_eav),
     
-        new_TEAV_vacant_noIncents = ifelse(incent_prop ==  "Incentive", 0 , current_taxable_eav),
+        new_TEAV_vacant_noIncents = ifelse(incent_prop ==  "Incentive", 0, current_taxable_eav),
     
     new_TEAV_noExemps = current_taxable_eav + all_exemptions, # does not include abatements
     
-    # amount of EAV from taxing an additiona 15% of the AV if incentive properties didn't exist
+    # amount of EAV from taxing an additional 15% of the AV if incentive properties didn't exist
     forgone_EAV_incent = ifelse(incent_prop == "Incentive", new_TEAV_noIncents - (current_taxable_eav + all_exemptions), 0),
     
-    forgone_TIF_EAV = final_tax_to_tif / cur_munilevel_rate  )     
+    forgone_TIF_EAV = final_tax_to_tif / cur_munilevel_rate    # revenue that went to TIF comes from tax rate  X the EAV above the frozen EAV amount (aka the TIF increment) 
+    )     
 
 
 alt_rates <- muni_class_AleaCats %>% 
@@ -770,11 +794,10 @@ alt_rates <- muni_class_AleaCats %>%
          muni_abatements = sum(abatements),
          muni_forgoneTIF = sum(forgone_TIF_EAV),
          muni_forgone_EAV_incent = sum(forgone_EAV_incent),
-
          muni_current_TEAV = sum(current_taxable_eav),
          muni_TEAV_noExe = sum(new_TEAV_noExemps),
          muni_TEAV_noInc = sum(new_TEAV_noIncents),
-         muni_TEAV_vacant_noInc = sum(new_TEAV_vacant_noIncents)
+         muni_TEAV_vacant_noInc = sum(new_TEAV_vacant_noIncents, na.rm = TRUE)
          
          ) %>%
   ungroup() %>%
@@ -788,7 +811,7 @@ alt_rates <- muni_class_AleaCats %>%
     muni_rate_noExe = munilevy / muni_TEAV_noExe * 100,
     muni_rate_noInc = munilevy / muni_TEAV_noInc * 100,
     muni_rate_neither = munilevy / muni_TEAV_neither * 100, 
-    muni_rate_noTIFs = munilevy / (muni_current_TEAV + muni_forgoneTIF) * 100,
+    muni_rate_noTIFs = munilevy / (muni_current_TEAV + muni_forgoneTIF)  * 100,
     muni_rate_vacant = munilevy / muni_TEAV_vacant_noInc* 100,
     muni_rate_lowest = munilevy / muni_TEAV_max * 100)
 
@@ -796,8 +819,9 @@ alt_rates <- alt_rates %>%
   mutate(change_noExe = cur_munilevel_rate - muni_rate_noExe,
          change_noInc = cur_munilevel_rate - muni_rate_noInc,
          change_neither = cur_munilevel_rate - muni_rate_neither,
+         change_noTIFs = cur_munilevel_rate - muni_rate_noTIFs,
          change_max = cur_munilevel_rate - muni_rate_lowest,
-         change_vacants = cur_munilevel_rate - muni_rate_vacant
+         change_vacants = cur_munilevel_rate - muni_rate_vacant # highest rate scenario
          )
 ```
 
@@ -806,7 +830,7 @@ alt_rates <- alt_rates %>%
 #| tbl-cap: "Hypothetical Composite Tax Rates. Lowest Tax Rate Possible is calculated from the taxable EAV that would be available if there were no Exemptions, no Incentive Classifications (i.e. all Commercial and Industrial Classes assessed at 25% of their fair market value), and no TIFs."
 
 tbl1 <- alt_rates %>% 
-  select(clean_name, cur_munilevel_rate, muni_rate_noExe, muni_rate_noInc, muni_rate_neither, # muni_rate_noTIFs, 
+  select(clean_name, cur_munilevel_rate, muni_rate_noExe, muni_rate_noInc, muni_rate_neither,  muni_rate_noTIFs, 
                              muni_rate_lowest, muni_rate_vacant) %>% 
   distinct() %>% 
   mutate(across(cur_munilevel_rate:muni_rate_vacant, round, digits = 2)) %>% 
@@ -839,7 +863,6 @@ datatable(tbl2,
 
 ## Maps 
 
-> Layer for Border Crossers. Layer for Unincorporated areas.
 
 ```{r}
 #| label: fig-pctincentivevalue
@@ -889,8 +912,10 @@ tbl2 %>%
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
 scale_fill_steps2(
-    high = "#420420",
- limits = c(0,15),
+  high= "#1F78B4",
+    #high = "#420420",
+  limits = c(0,7),
+# limits = c(0,15),
                    show.limits=TRUE,
   nice.breaks=FALSE,
  na.value="gray",
@@ -909,7 +934,9 @@ tbl2 %>%
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
 scale_fill_steps2(
-    high = "#420420",
+  #  high = "#420420",
+      high= "#1F78B4",
+
  limits = c(0,15),
                    show.limits=TRUE,
   nice.breaks=FALSE,
@@ -935,17 +962,17 @@ tbl2 %>%
   left_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
 
     ggplot(aes(fill = change_noInc)) +
-    geom_sf(aes(geometry = geometry), color = "black") +
+  geom_sf(aes(geometry = geometry), color = "black") +
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
-scale_fill_steps2(
-    high = "darkblue",
- limits = c(0,7),
-                   show.limits=TRUE,
-  nice.breaks=FALSE,
- na.value="gray",
-                    n =4,
-                       name = "Change in Composite Tax Rate\n(Percentage Points)",)
+  scale_fill_steps2(
+    high= "#1F78B4",
+    limits = c(0, 15),
+    show.limits=TRUE,
+    nice.breaks=FALSE,
+    na.value = "gray",
+    n = 4,
+    name = "Change in Composite Tax Rate\n(Percentage Points)",)
 
 
 
@@ -958,7 +985,7 @@ tbl2 %>%
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
 scale_fill_steps2(
-    high = "darkblue",
+   high= "#1F78B4",
  limits = c(0,15),
                    show.limits=TRUE,
   nice.breaks=FALSE,
@@ -991,10 +1018,14 @@ scale_fill_steps2(
 #   mutate(new_comp_rate = munilevy / new_muni_taxable_eav * 100)
 
 
-joined <- muni_class_AleaCats %>%   left_join(MuniLevel) %>%
-  select(-cur_munilevel_rate) %>% left_join(tbl1, by = "clean_name")
+joined <- muni_class_AleaCats %>%   
+  left_join(MuniLevel) %>%
+  select(-cur_munilevel_rate) %>% 
+  left_join(tbl1, by = "clean_name")
 
- burden <- joined %>% 
+
+
+burden <- joined %>% 
    group_by(clean_name) %>%
    mutate(munilevy = sum(final_tax_to_dist), 
           incentive = incent_prop) %>%
@@ -1004,15 +1035,27 @@ joined <- muni_class_AleaCats %>%   left_join(MuniLevel) %>%
     no_incents_burden = (new_TEAV_noIncents *  (muni_rate_noInc/100) ) / munilevy,
     no_exemps_burden = (new_TEAV_noExemps * (muni_rate_noExe/100)) /  munilevy,
     current_burden = (current_taxable_eav * (cur_munilevel_rate/100)) / munilevy,
-    neither_burden = ((new_TEAV_noIncents + all_exemptions) * (muni_rate_neither/100))  / munilevy
+    neither_burden = ((new_TEAV_noIncents + all_exemptions) * (muni_rate_neither/100))  / munilevy,
+    vacant_burden = (new_TEAV_vacant_noIncents * (muni_rate_vacant/100) ) / munilevy
       ) %>%
      mutate(change_noExe = cur_munilevel_rate - muni_rate_noExe,
          change_noInc = cur_munilevel_rate - muni_rate_noInc,
          change_neither = cur_munilevel_rate - muni_rate_neither,
-         change_max = cur_munilevel_rate - muni_rate_lowest
+         change_max_decrease = cur_munilevel_rate - muni_rate_lowest,
+         change_max_increase = cur_munilevel_rate - muni_rate_vacant
          )
 
 ```
+
+
+
+```{r muni-levies, include = FALSE}
+levies <- burden %>%
+  reframe(munilevy, tif_revenue = sum(final_tax_to_tif), .by = clean_name) %>%
+  select(clean_name, munilevy, tif_revenue) %>% distinct()  %>% arrange(desc(munilevy))
+levies
+```
+
 
 ### Dot Graphs: Change in Composite Tax Rate
 
@@ -1027,7 +1070,7 @@ joined <- muni_class_AleaCats %>%   left_join(MuniLevel) %>%
 order <- burden %>%  
   as_tibble() %>% 
   filter(incentive == "Incentive") %>% 
-    filter(change_noInc > 1) %>%
+    filter(change_noInc > 0.5) %>%
   arrange(cur_munilevel_rate) %>%
   select(clean_name, cur_munilevel_rate)
 
@@ -1035,6 +1078,7 @@ order <- burden %>%
 burden %>% 
   filter(incentive == "Incentive" & clean_name != "NA") %>%
   select(clean_name, cur_munilevel_rate, muni_rate_noInc) %>% 
+  distinct() %>%
   arrange(cur_munilevel_rate) %>%
   pivot_longer(c("cur_munilevel_rate", "muni_rate_noInc"), 
                names_to = "type", values_to = "tax_rate") %>% 
@@ -1048,7 +1092,9 @@ burden %>%
     plot.title.position = "plot",
     plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
   )+
-  scale_color_brewer(palette="Paired", labels = c("Incentives", "No Incentives"), direction = 1)+
+  scale_color_manual(#palette="Blues", 
+                     labels = c("Current Rate", "No Incentives"),  
+                     values = c("#A6CEE3", "#1F78B4" ))+
   
   labs(title = "Difference in Composite Tax Rate if Assessed at 25%",
        subtitle = "Ordered by Current Composite Tax Rate", x = "Composite Tax Rate (%)", y = "")
@@ -1066,27 +1112,30 @@ order <- burden %>%
   as_tibble() %>% 
   filter(incentive == "Incentive") %>% 
   arrange(change_noInc) %>%
-  select(clean_name, cur_munilevel_rate, muni_rate_noInc)
+  select(clean_name, cur_munilevel_rate, muni_rate_noInc) %>%
+  distinct()
 
 
 # make dot graph
 burden %>% 
   filter(incentive == "Incentive" & clean_name != "NA") %>%
+
   select(clean_name, cur_munilevel_rate, muni_rate_noInc, change_noInc) %>% 
+  distinct() %>%
   pivot_longer(c("cur_munilevel_rate", "muni_rate_noInc"), 
                names_to = "type", values_to = "tax_rate") %>% 
   left_join(order) %>%
-    filter(change_noInc > 1 ) %>%
+    filter(change_noInc > 0.5 ) %>%
   ggplot(aes(x = tax_rate, y= reorder(clean_name, change_noInc)))+
   geom_line(aes(group = clean_name))+ 
-  geom_point(aes(color=type), size=3 )+
+  geom_point(aes(fill=type), size=3, pch = 21, color = "black" )+
   theme_minimal() + 
   theme( 
     legend.title = element_blank(),
     plot.title.position = "plot",
     plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
   )+
-  scale_color_brewer(palette="Paired", labels = c("Incentives", "No Incentives"), direction = 1)+
+  scale_fill_brewer(palette="Paired", labels = c("Incentives", "No Incentives"), direction = 1)+
   
   labs(title = "Difference in Composite Tax Rate if Assessed at 25%",
        subtitle = "Ordered by Comp. Rate Change", x = "Composite Tax Rate (%)", y = "")
@@ -1095,7 +1144,7 @@ burden %>%
 ```{r}
 #| label: fig-dotplot-ratechange-extradot
 #| fig-height: 6
-#| fig-cap: "Tax burden for Properties with Incentive Classifications. Excludes municipalities that had a rate change less than 1 percentage point."
+#| fig-cap: "Tax burden for Properties with Incentive Classifications. Excludes municipalities that had a rate change less than 0.5 percentage points."
 
 
 # as a dot graph ## 
@@ -1103,28 +1152,35 @@ burden %>%
 order <- burden %>%  
   as_tibble() %>% 
   filter(incentive == "Incentive") %>% 
-    filter(change_noInc > 1) %>%
+    filter(change_noInc > .5) %>%
   arrange(cur_munilevel_rate) %>%
-  select(clean_name, cur_munilevel_rate)
+  select(clean_name, cur_munilevel_rate) %>% distinct()
 
 # make dot graph
 burden %>% 
   filter(incentive == "Incentive" & clean_name != "NA") %>%
+    filter(clean_name != "Willow Springs") %>%
+
   select(clean_name, cur_munilevel_rate, muni_rate_noInc, muni_rate_vacant) %>% 
+  distinct() %>%
   arrange(cur_munilevel_rate) %>%
   pivot_longer(c("cur_munilevel_rate", "muni_rate_noInc", "muni_rate_vacant"), 
                names_to = "type", values_to = "tax_rate") %>% 
   inner_join(order) %>%
   ggplot(aes(x = tax_rate, y= reorder(clean_name, cur_munilevel_rate)))+
   geom_line(aes(group = clean_name))+ 
-  geom_point(aes(color=type), size=3 )+
+  geom_point(aes(fill=type), size=3, pch = 21, color = "black")+
   theme_minimal() + 
   theme( 
     legend.title = element_blank(),
     plot.title.position = "plot",
     plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
   )+
-  scale_color_brewer(palette="Paired", labels = c("Current Rate", "If LoA 25%", "If Vacant"), direction = 1)+
+  scale_fill_manual(labels = c("Current Rate", "If LoA 25%", "If Vacant"),
+    #values = c("#A6CEE3", "#1F78B4", "#08519C")  
+    values = c("#EFF3FF", "#6BAED6", "#08519C")
+  #  "#EFF3FF" "#BDD7E7" "#6BAED6" "#3182BD" "#08519C"
+                    )+
   
   labs(title = "Difference in Composite Tax Rate if Assessed at 25%",
        subtitle = "Ordered by Current Composite Tax Rate", x = "Composite Tax Rate (%)", y = "")
@@ -1132,7 +1188,7 @@ burden %>%
 
 
 ```{r}
-#| label: fig-dotplot-ratechange-4dots
+#| label: fig-dotplot-ratechange-fourdots
 #| fig-height: 6
 #| fig-cap: "Composite Tax Rate for Scenarios. Excludes municipalities that had a rate change less than 1 percentage point."
 
@@ -1141,32 +1197,119 @@ burden %>%
 # create order of dots
 order <- burden %>%  
   as_tibble() %>% 
-  filter(incentive == "Incentive") %>% 
-    filter(change_noInc > 1) %>%
+ # filter(incentive == "Incentive") %>% 
+  filter(change_noInc > 1) %>%
   arrange(cur_munilevel_rate) %>%
-  select(clean_name, cur_munilevel_rate)
+  select(clean_name, cur_munilevel_rate) %>% distinct()
 
 # make dot graph
 burden %>% 
-  filter(incentive == "Incentive" & clean_name != "NA") %>%
-  select(clean_name, cur_munilevel_rate, muni_rate_noInc, muni_rate_vacant, muni_rate_noExe) %>% 
+ # filter(incentive == "Incentive" & clean_name != "NA") %>%
+  select(clean_name, cur_munilevel_rate, muni_rate_noInc, muni_rate_neither, muni_rate_vacant, muni_rate_noExe) %>% 
+  distinct() %>%
   arrange(cur_munilevel_rate) %>%
-  pivot_longer(c("cur_munilevel_rate", "muni_rate_noInc", "muni_rate_vacant", "muni_rate_noExe"), 
+  pivot_longer(c("cur_munilevel_rate", 
+                 "muni_rate_noInc", 
+                 "muni_rate_vacant", 
+                 "muni_rate_noExe",
+                  "muni_rate_neither"), 
                names_to = "type", values_to = "tax_rate") %>% 
   inner_join(order) %>%
   ggplot(aes(x = tax_rate, y= reorder(clean_name, cur_munilevel_rate)))+
   geom_line(aes(group = clean_name))+ 
-  geom_point(aes(color=type), size=3 )+
+  geom_point(aes(fill=type), size=3, pch = 21, color = "black" )+
   theme_minimal() + 
   theme( 
     legend.title = element_blank(),
     plot.title.position = "plot",
     plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
   )+
-  scale_color_brewer(palette="Paired", labels = c("Current Rate", "If LoA 25%", "If Vacant", "If No GHE"), direction = 1)+
+  scale_fill_brewer(palette = "RdGy",
+                    labels = c("Current Rate", 
+                               "No Exemps & LoA is 25%",
+                               "If no Exemptions", 
+                               "If LoA 25%",
+                               "If Vacant"
+                    ), 
+                    direction = 1)+
+  labs(title = "Composite Tax Rate Scenarios",
+       subtitle = "Ordered by Current Composite Tax Rate", 
+       x = "Composite Tax Rate (%)", y = "")
+```
+
+
+
+```{r}
+#| label: fig-justmarkham
+#| fig-cap: "Zoom in on Markham: Composite Tax Rate for Scenarios"
+
+
+levies %>% filter( clean_name =="Markham" | clean_name == "Matteson")
+
+
+library(ggrepel)
+# make dot graph
+burden %>% 
+  filter( clean_name =="Markham" ## | clean_name == "Matteson"
+          ) %>%
+  select(clean_name, cur_munilevel_rate, muni_rate_noInc, muni_rate_neither, muni_rate_vacant, muni_rate_noExe) %>% 
+  distinct() %>%
+  arrange(cur_munilevel_rate) %>%
+  pivot_longer(c("cur_munilevel_rate", "muni_rate_noInc", 
+               
+                 "muni_rate_vacant", "muni_rate_noExe",
+                  "muni_rate_neither"), 
+               names_to = "type", values_to = "tax_rate") %>% 
+  inner_join(order) %>%
+  ggplot(aes(x = tax_rate, y= reorder(clean_name, cur_munilevel_rate)))+
+  geom_line(aes(group = clean_name))+ 
+  geom_point(aes(fill=type), size=3, pch = 21, color = "black" )+
+ 
+  geom_text_repel(aes(x=tax_rate),
+            hjust = 0,
+           vjust = -1,
+            min.segment.length = Inf,
+          #  vjust = -1,
+         #  nudge_y = .3,
+         # nudge_x = 3,
+          size = 3,
+                angle = 30,
+               label = c("Current Rate", "If LoA 25%" ,
+                           "If Vacant" , "If no Exemps",
+                                "No Exemps & LoA is 25%")
+         )+
+  theme_minimal() + 
+  theme( 
+    legend.title = element_blank(),
+    plot.title.position = "plot",
+
+   plot.background = element_rect(fill='transparent', color=NA),
+      legend.position = "none"  
+  )+
+
+ #   "#EFF3FF" "#BDD7E7" "#6BAED6"  "#08519C"
   
-  labs(title = "Difference in Composite Tax Rate if Assessed at 25%",
-       subtitle = "Ordered by Current Composite Tax Rate", x = "Composite Tax Rate (%)", y = "")
+  
+      
+      scale_fill_manual(
+                          values = c("#BDD7E7", "#6BAED6", "#3182BD", "#EFF3FF",  "#08519C")) +
+  # 
+  # 
+  # scale_fill_brewer(#palette = "Paired",
+  #                   # labels = c("Current Rate",
+  #                   #             "If no GHE",
+  #                   #             "No GHE & LoA is 25%",
+  #                   #             "If LoA 25%" ,
+  #                   #            "If Vacant"  ),
+  #                    direction = 1)+
+  scale_x_continuous(limits = c(17, 35)) + 
+  scale_y_discrete(
+   expand = expand_scale(mult = c(.1, 1)) ,
+           #        limits = c("Markham")#, breaks = "Markham"
+                   )  + 
+  labs(# title = "Composite Tax Rate Scenarios", 
+    x = "Composite Tax Rate (%)", 
+    y = "")
 ```
 
 # Slide 13: Change in Tax Burden
@@ -1253,11 +1396,12 @@ burden %>%
     filter(change_noInc > .5) %>%
 
     filter( Alea_cat %in% c( "Owner Occupied") & !is.na(clean_name) ) %>% 
-  filter(clean_name != "Willow Springs") %>%
+#  filter(clean_name != "Willow Springs") %>%
 
  # filter(incentive == "Incentive" & Alea_cat == "Industrial"  & clean_name !="NA") %>%
   select(clean_name, current_burden, no_incents_burden,  no_exemps_burden, 
          neither_burden) %>% 
+  distinct() %>%
   pivot_longer(c("current_burden", "no_incents_burden", 
                  "no_exemps_burden", 
                  "neither_burden"), 
@@ -1274,7 +1418,62 @@ burden %>%
     plot.title.position = "plot",
     plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
   )+
-  scale_fill_brewer(palette = "RdGy", labels = c(  "Current Burden", "No Exemps or Incents",  "No Exemptions", "No Incentives"), direction = 1)+
+  scale_fill_brewer(palette = "RdGy", labels = c("Current Burden", "No Exemps or Incents",  "No Exemptions", "No Incentives"), direction = 1)+
+  
+  labs(title = "Tax Burden for Class 2 Properties",
+       subtitle = "Ordered by Current Tax Burden", x = "% of Levy Paid", y = "")
+```
+
+
+
+```{r}
+#| label: fig-residentialburden-scenarios-extradots
+#| fig-height: 8
+#| fig-cap: "Tax Burden for Owner-Occupied Properties for 3 Tax Scenarios: With and without the reduced assessment ratio for commercial and industrial property (10% vs 25%). The Tax burden if homeowners were not granted any exemptions. And the tax burden if residential owners did not get their exemption and incentive properties were assessed at 25% instead of 10%. This graph is made using the owner-occupied sub-category of Class 2 Properties for tax year 2022. Property tax data from the CCAO."
+
+# as a dot graph ## 
+
+order <- burden %>%  
+  as_tibble() %>% 
+  filter( Alea_cat %in% c( "Owner Occupied") ) %>% 
+ filter(change_noInc > 1) %>%
+  arrange(current_burden) %>%
+  select(clean_name, current_burden)
+
+
+burden %>% 
+    filter(change_noInc > 1) %>%
+
+    filter( Alea_cat %in% c( "Owner Occupied") & !is.na(clean_name) ) %>% 
+#  filter(clean_name != "Willow Springs") %>%
+
+ # filter(incentive == "Incentive" & Alea_cat == "Industrial"  & clean_name !="NA") %>%
+  select(clean_name, current_burden, no_incents_burden,  no_exemps_burden, 
+         neither_burden,
+         vacant_burden) %>% 
+  distinct() %>%
+  pivot_longer(c("current_burden", "no_incents_burden", 
+                 "no_exemps_burden", 
+                 "neither_burden",
+                 "vacant_burden"), 
+               names_to = "type", values_to = "tax_rate") %>% 
+  left_join(order) %>%
+  #filter(current_burden > 0) %>%
+  ggplot(aes(x = tax_rate, y= reorder(clean_name, current_burden)))+
+  
+  geom_line(aes(group = clean_name))+ 
+  geom_point(aes(fill=type), pch = 21, size=3, color = "black" )+
+  theme_minimal() + 
+  theme( 
+    legend.title = element_blank(),
+    plot.title.position = "plot",
+    plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
+  )+
+  scale_fill_brewer(palette = "RdGy", 
+                    labels = c("Current Burden", "No Exemps or Incents",  
+                               "No Exemptions", "No Incentives",
+                               "If Vacant"
+                               ), direction = 1)+
   
   labs(title = "Tax Burden for Class 2 Properties",
        subtitle = "Ordered by Current Tax Burden", x = "% of Levy Paid", y = "")
@@ -1283,7 +1482,7 @@ burden %>%
 ```{r, include = FALSE, eval = FALSE}
 #| label: fig-residentialburden-scenarios2
 #| fig-height: 8
-#| fig-cap: "Tax Burden for Owner-Occupied Properties for 3 Tax Scenarios: With and without the reduced assessment ratio for commercial and industrial property (10% vs 25%). The Tax burden if homeowners were not granted the GHE. And the tax burden if residential owners did not get their exemption and incentive properties were assessed at 25% instead of 10%."
+#| fig-cap: "Tax Burden for Owner-Occupied Properties for 3 Tax Scenarios: With and without the reduced assessment ratio for commercial and industrial property (10% vs 25%). The Tax burden if homeowners were not granted any exemptions. And the tax burden if residential owners did not get their exemptions and incentive properties were assessed at 25% instead of 10%."
 
 # as a dot graph ## 
 
@@ -1325,7 +1524,7 @@ burden %>%
 ```{r eval =FALSE, include = FALSE}
 #| label: fig-residentialburden-scenarios3
 #| fig-height: 10
-#| fig-cap: "Tax Burden for Owner-Occupied Properties for 3 Tax Scenarios: With and without the reduced assessment ratio for commercial and industrial property (10% vs 25%). The Tax burden if homeowners were not granted the GHE. And the tax burden if residential owners did not get their exemption and incentive properties were assessed at 25% instead of 10%."
+#| fig-cap: "Tax Burden for Owner-Occupied Properties for 3 Tax Scenarios: With and without the reduced assessment ratio for commercial and industrial property (10% vs 25%). The Tax burden if homeowners were not granted any exemptions. And the tax burden if residential owners did not get their exemption and incentive properties were assessed at 25% instead of 10%."
 
 # as a dot graph ## 
 
@@ -1394,7 +1593,7 @@ datatable(table,
                        'Current Taxable AV' = 'av',
                        'Total Assessed Market Value' = 'av_adjusted',
       'Assessed Market Value' = 'av_incent', 
-      '% AV Incentivized' = 'pct_incent' )  ) %>%
+      '% AV Incentivized' = 'pct_incent' )) %>%
   formatCurrency(c('Current Taxable AV', 'Assessed Market Value'), digits = 0) %>%
 formatPercentage('% AV Incentivized', digits = 2)
 ```
