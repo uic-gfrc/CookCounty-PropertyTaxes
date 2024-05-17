@@ -7,13 +7,14 @@ output:
 ---
 
 ```{r setup, warning=FALSE, message=FALSE, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, eval=FALSE)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
 library(tidyverse)
 library(data.table)
 library(gstat)
 library(ptaxsim)
 library(glue)
+library(DBI)
 
 ```
 
@@ -56,7 +57,7 @@ tax_codes <- DBI::dbGetQuery(
   )
 
 
-cook_pins <- dbGetQuery(
+cook_pins <- DBI::dbGetQuery(
     ptaxsim_db_conn, 
     glue_sql("
              SELECT DISTINCT pin, class, tax_code_num 
@@ -67,8 +68,23 @@ cook_pins <- dbGetQuery(
 ```
 
 ```{r}
-source("helper_tc_muninames_2022.R")
+source("scripts/helper_tc_muninames_2022.R")
 
+ccao_loa <- read_csv("./Inputs/ccao_loa.csv") %>% 
+  mutate(
+  class_code = as.character(class_code)
+)
+
+  
+  # has eav values for each tax code
+tif_distrib <- DBI::dbGetQuery(
+    ptaxsim_db_conn,
+    glue_sql(
+  'SELECT *
+  FROM tif_distribution
+  WHERE year = 2022'), .con = ptaxsim_db_conn)
+          
+    
 ```
 
 22,976,339 taxing agency - PIN combinations from tax_bill command.
@@ -77,66 +93,71 @@ source("helper_tc_muninames_2022.R")
 
 ```{r}
 # Tax Bills ---------------------------------------------------------------
-  
-  
+
+
 # pin-taxing agency combinations for tax bills
 taxbills <- tax_bill(2022,  cook_pins$pin, 
-                       #  pin_dt = exe_dt, # default option, change for "no exemption" simulation
-                       simplify = FALSE)
+                     #  pin_dt = exe_dt, # default option, change for "no exemption" simulation
+                     simplify = FALSE)
+
+
+
+#  billed properties with 14-digit PINs  
+pin14_bills <- taxbills %>%
+  group_by(tax_code, class, pin) %>%
   
+  mutate(total_bill = final_tax_to_dist + final_tax_to_tif) %>% # from each taxing agency
   
+  summarize(total_billed = sum(total_bill, na.rm = TRUE), # total on someone's property tax bill
+            av = first(av),
+            eav = first(eav),
+            taxing_agency_count = n(), # number of taxing agencies that tax the pin
+            final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # portion of all levies paid by the pin
+            final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE), 
+            tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE),           # revenue lost due to exemptions
+            tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE),   # total rev before all exemptions
+            tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE), # total rev after all exemptions
+            rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE),     # not used
+            rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE),       # not used
+            rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE),     # not used
+            tif_share = mean(tif_share, na.rm=TRUE),                # not used
+  )  %>% 
+  mutate(propclass_1dig = str_sub(class, 1, 1))
+
+rm(taxbills)
+
+
+
+# Exemptions at PIN level --------------------------------------------------
+
+
+# finds all pins within Cook county and data on their exemptions
+# joins tax code variable by pin
+exemption_data <- lookup_pin(2022, cook_pins$pin) %>%
+  left_join(cook_pins, by = c("pin", "class")) %>%
+  left_join(ccao_loa, by = c("year", "class" = "class_code")) %>%
   
-  #  billed properties with 14-digit PINs  
-  pin14_bills <- taxbills %>%
-    group_by(tax_code, class, pin) %>%
-    
-    mutate(total_bill = final_tax_to_dist + final_tax_to_tif) %>% # from each taxing agency
-    
-    summarize(total_billed = sum(total_bill, na.rm = TRUE), # total on someone's property tax bill
-              av = first(av),
-              eav = first(eav),
-              taxing_agency_count = n(), # number of taxing agencies that tax the pin
-              final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # portion of all levies paid by the pin
-              final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE), 
-              tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE),           # revenue lost due to exemptions
-              tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE),   # total rev before all exemptions
-              tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE), # total rev after all exemptions
-              rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE),     # not used
-              rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE),       # not used
-              rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE),     # not used
-              tif_share = mean(tif_share, na.rm=TRUE),                # not used
-    )  %>% 
-    mutate(propclass_1dig = str_sub(class, 1, 1))
-  
-  rm(taxbills)
-  
-  
-  
-  # Exemptions at PIN level --------------------------------------------------
-  
-  
-  # finds all pins within Cook county and data on their exemptions
-  # joins tax code variable by pin
-  exemption_data <- lookup_pin(2022, cook_pins$pin) %>%
-    left_join(cook_pins, by = c("pin", "class")) %>%
-    mutate(all_exemptions = exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
-             exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 ,
-           abatements = exe_abate) %>%
-    mutate(zero_bill = ifelse(eav <= all_exemptions, 1, 0),
-           has_HO_exemp = ifelse(exe_homeowner > 0, 1, 0),
-           has_SF_exemp = ifelse(exe_senior > 0, 1, 0),
-           has_FR_exemp = ifelse(exe_freeze > 0, 1, 0),
-           has_LTHO_exemp = ifelse(exe_longtime_homeowner > 0, 1, 0),
-           has_DI_exemp = ifelse(exe_disabled > 0, 1, 0),
-           has_VR_exemp = ifelse(exe_vet_returning > 0, 1, 0),
-           has_DV_exemp = ifelse(exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 > 0, 1, 0),
-           has_AB_exemp = ifelse(exe_abate > 0, 1, 0),
-    )
-  
-  
-  rm(cook_pins)
-  
-  
+  mutate(all_exemptions = exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+           exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 ,
+         abatements = exe_abate,
+         fmv = av / loa) %>%
+  mutate(zero_bill = ifelse(eav <= all_exemptions, 1, 0),
+         has_HO_exemp = ifelse(exe_homeowner > 0, 1, 0),
+         has_SF_exemp = ifelse(exe_senior > 0, 1, 0),
+         has_FR_exemp = ifelse(exe_freeze > 0, 1, 0),
+         has_LTHO_exemp = ifelse(exe_longtime_homeowner > 0, 1, 0),
+         has_DI_exemp = ifelse(exe_disabled > 0, 1, 0),
+         has_VR_exemp = ifelse(exe_vet_returning > 0, 1, 0),
+         has_DV_exemp = ifelse(exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 > 0, 1, 0),
+         has_AB_exemp = ifelse(exe_abate > 0, 1, 0),
+         in_tif = ifelse(tax_code_num %in% tif_distrib$tax_code_num, 1, 0)
+         
+  )
+
+
+rm(cook_pins)
+
+
   # change variable type to character so the join works.
 #  class_dict$class_code <- as.character(class_dict$class_code)
   
@@ -145,9 +166,11 @@ taxbills <- tax_bill(2022,  cook_pins$pin,
   exemption_data <- class_dict %>%
     right_join(exemption_data, by = c("class_code" = "class"), 
                relationship = "many-to-many")
-  
-  
-  # Summarize PIN Exemptions ------------------------------------------------
+```
+
+
+```{r}
+# Summarize PIN Exemptions ------------------------------------------------
   
   ## summarize pin level data to the tax code level for each type of property class
   exemptions_inCook_perTC <- exemption_data %>%
@@ -155,6 +178,7 @@ taxbills <- tax_bill(2022,  cook_pins$pin,
     summarize(year = first(year), 
               av = sum(av, na.rm = TRUE),
               eav=sum(eav, na.rm=TRUE),
+              fmv = sum(fmv, na.rm=TRUE),
               pin_count = n(),  # number of pins within each tax code and property combo
               
               all_exemptions = sum(all_exemptions),
@@ -179,7 +203,9 @@ taxbills <- tax_bill(2022,  cook_pins$pin,
               has_DI_exemp = sum(has_DI_exemp),
               has_VR_exemp = sum(has_VR_exemp),
               has_DV_exemp = sum(has_DV_exemp),
-              has_AB_exemp = sum(has_AB_exemp)
+              has_AB_exemp = sum(has_AB_exemp),
+              in_tif = ifelse(tax_code_num %in% tif_distrib$tax_code_num, 1, 0)
+
     )
   
   
@@ -195,13 +221,15 @@ taxbills <- tax_bill(2022,  cook_pins$pin,
            eav =  eav.x,
            equalized_av = eav.y)
   
-  rm(exemption_data)
+rm(exemption_data)
   
   
   ## Add tax code tax rate to PIN level data
-  joined_pin_data <- left_join(joined_pin_data, tc_muninames, by = c("tax_code" = "tax_code_num"))
-  
-  
+joined_pin_data <- left_join(joined_pin_data, tc_muninames, by = c("tax_code" = "tax_code_num"))
+```
+
+
+```{r}
 write_csv(joined_pin_data, "./Output/Dont_Upload/0_joined_PIN_data_2022.csv")
 ```
 
