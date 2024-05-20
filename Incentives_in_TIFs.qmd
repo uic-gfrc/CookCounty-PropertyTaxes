@@ -58,6 +58,8 @@ muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/poli
 
 ## Create Project ID
 
+### Board of Review Appeals Data
+
 Pulls appeal data from the Cook County Data Portal. CSV file was created using data from May 2024. Property classes had extra zeros padding the right side of the class so an additional data cleaning step was done after pulling the data.
 
 After the second filter step to fix the class variable and filter the remaining residential properties out, there are 780K observations.
@@ -97,12 +99,12 @@ write_csv(bor, "Output/borappeals.csv")
 ```
 
 ::: callout-caution
-## Have not checked uniqueness of appeal ID. ( Seems to at least be unique for "projects"  per year.)
+Have not checked uniqueness of appeal ID. ( Seems to at least be unique for "projects" per year.)
 :::
 
 ```{r}
 #| label: tbl-getBORappeals2
-#| tbl-cap: "Board of Review Appeal Data - Grouped by apellant and project ID. Project ID is created from the `appealid` variable used by the BoR. The `appealid` appears to group PINs by the digits before the decimal point."
+#| tbl-cap: "Board of Review Appeal Data - Grouped by appellant and project ID. Project ID is created from the `appealid` variable used by the BoR. The `appealid` appears to group PINs by the digits before the decimal point."
 
 bor <- read_csv("Output/borappeals.csv") %>%
   mutate(project_appellant = paste(project_id, sep = "-", appellant))
@@ -168,11 +170,18 @@ bor_pins %>%
   datatable(rownames = FALSE)
 ```
 
+### Joined Pin Data
+
 Pull in the joined pin and exemption data for 2022. Extracted from PTAXSIM. See `0_joined_PIN_data_2022.qmd` for code.
 
 ```{r}
 #| echo: true
 #| code-fold: false
+
+
+loa <- read_csv("inputs/ccao_loa.csv") %>% filter(year == 2022)
+
+
 
 # file created in helper_pull_incentivepins_allyears.R
 # ptax_pins <- read_csv("./Output/incentivePINs_allyears.csv") 
@@ -181,17 +190,22 @@ Pull in the joined pin and exemption data for 2022. Extracted from PTAXSIM. See 
 ptax_pins <- read_csv("Output/Dont_Upload/0_joined_PIN_data_2022.csv") %>% 
   mutate(class = as.numeric(class)) %>%
   #        # keep 500-899 class PINs
-  filter((class >= 500 & class < 900)   
+  filter((class >= 500 & class < 900)  
   #          # and keep land PINs if we want land property owned by them too.
   #        (class >= 100 & class < 200)  
           )  %>%
-   select(-c(propclass_1dig:av.y))
+   select(-c(propclass_1dig:av.y)) %>%
+mutate(fmv = ifelse(is.na(fmv), 0, fmv))
 
 ```
+
+
+### Methodology Worksheet Project IDs (from Data Portal: commercial valuation dataset)
 
 82,957 distinct keypins from `all_keypins` file. (Made from commercial valuation dataset on the Data Portal.)
 
 46,213 distinct project ids using the Board of Review appeal ids
+
 
 ```{r}
 #| echo: true
@@ -257,17 +271,23 @@ table_list <- ptax_pins %>%
             appellant = ((list(unique(appellant)))) ) %>%
   arrange(desc(pincount))
 
-table_list
+table_list %>% datatable(rownames = FALSE)
 ```
 
 ```{r}
+#| label: tbl-Aleacats-inTIFs
+#| tbl-cap: "All nonResidential PINs Types. Count of PINs in project ID (using `both_ids`). both_ids is created from using the BoR appeal ids as the default group ID. Then if a PIN in ptaxsim doesn't match to a Board of Review appeal PIN, project IDs from the commercial valuation data set are used."
+
 table <- ptax_pins %>% 
   group_by(Alea_cat) %>%
   summarize(proptype_pincount = n(),
             projects = n_distinct(both_ids),
             av_incent = sum(ifelse(incent_prop == "Incentive", av, 0)),
             av_nonincent = sum(ifelse(incent_prop == "Non-Incentive", av, 0)),
-            av=sum(av)
+            av=sum(av),
+pins_inTIF = sum(in_tif, na.rm=TRUE),
+fmv = sum(fmv, na.rm=TRUE)
+
           ) %>% 
   mutate(
          incent_av_adj = 2.5*av_incent) %>%
@@ -283,6 +303,53 @@ flextable(table) %>%
 ```
 
 ```{r}
+#| label: tbl-summarytable-commercialandindustrialPINs
+#| tbl-cap: "Commercial and Industrial PINs only (500 and higher, excludes nonprofit properties). Count of PINs in project ID (using `both_ids`). both_ids is created from using the BoR appeal ids as the default group ID. Then if a PIN in ptaxsim doesn't match to a Board of Review appeal PIN, project IDs from the commercial valuation data set are used."
+
+
+
+com_ind_projects <- ptax_pins %>% 
+  group_by(both_ids) %>%
+  arrange(both_ids, class) %>%
+  mutate(min_class = first(class),
+         max_class = last(class)) %>% 
+  filter(max_class > 499) %>%
+  ungroup()
+
+table <- com_ind_projects %>% 
+  group_by(Alea_cat) %>%
+  summarize(proptype_pincount = n(),
+            projects = n_distinct(both_ids),
+            av_incent = sum(if_else(incent_prop == "Incentive", av, 0)),
+            av_nonincent = sum(ifelse(incent_prop == "Non-Incentive", av, 0)),
+       #     av_adjusted=sum(ifelse(between(class, 600, 899), av*2.5, av)),
+            av=sum(av),
+fmv =sum(fmv, na.rm=TRUE),
+pins_inTIF = sum(in_tif, na.rm=TRUE)
+
+) %>%
+  mutate(
+         incent_av_adj = 2.5*av_incent ) %>%
+  mutate(
+         total_av_adjusted = incent_av_adj + av_nonincent,
+         pct_incent = incent_av_adj / total_av_adjusted) %>%
+  select(-c(av_incent, av_nonincent))
+
+  
+
+
+flextable(table) %>% 
+ # set_caption("Totals for Cook County") %>% 
+  set_header_labels(Alea_cat = "Property Type", proptype_pincount = 'PINs', projects = "Project IDs", av = ' Current Taxable AV') %>%
+  set_table_properties( layout = "autofit", width = .75)
+```
+
+
+```{r}
+#| label: tbl-summarytable-commercialandindustrial-incentivePINs
+#| tbl-cap: "Commercial and Industrial Incentive PINs only (600 and higher, excludes nonprofit properties). Count of PINs in project ID (using `both_ids`). both_ids is created from using the BoR appeal ids as the default group ID. Then if a PIN in ptaxsim doesn't match to a Board of Review appeal PIN, project IDs from the commercial valuation data set are used."
+
+
 incentive_pins2022 <- ptax_pins %>% 
   group_by(both_ids) %>%
   arrange(both_ids, class) %>%
@@ -298,7 +365,11 @@ table <- incentive_pins2022 %>%
             av_incent = sum(if_else(incent_prop == "Incentive", av, 0)),
             av_nonincent = sum(ifelse(incent_prop == "Non-Incentive", av, 0)),
        #     av_adjusted=sum(ifelse(between(class, 600, 899), av*2.5, av)),
-            av=sum(av)) %>%
+            av=sum(av),
+fmv =sum(fmv, na.rm=TRUE),
+pins_inTIF = sum(in_tif, na.rm=TRUE)
+
+) %>%
   mutate(
          incent_av_adj = 2.5*av_incent ) %>%
   mutate(
@@ -307,6 +378,7 @@ table <- incentive_pins2022 %>%
   select(-c(av_incent, av_nonincent))
 
   
+
 
 flextable(table) %>% 
  # set_caption("Totals for Cook County") %>% 
@@ -379,6 +451,11 @@ bound_tif %>%
 ptax_pins <- ptax_pins %>%
   # create a dummy variable for if the pin is located in a tax_code that is within a tif
   mutate(in_tif = ifelse(pin %in% tif_pins$pin, 1,0))
+
+incentive_pins2022 <- incentive_pins2022 %>%
+  # create a dummy variable for if the pin is located in a tax_code that is within a tif
+  mutate(in_tif = ifelse(pin %in% tif_pins$pin, 1,0))
+
 ```
 
 Amount of EAV in and outside of TIF areas:
@@ -388,6 +465,10 @@ Amount of EAV in and outside of TIF areas:
 Individual properties are summed together within the municipality.
 
 ```{r}
+#| label: tbl-allprops-eavinandoutTIF
+#| tbl-cap: "All properties in and out of TIFs in Cook County. Sums EAV."
+
+
 EAV_inandout_TIF <- ptax_pins %>% 
   group_by(clean_name,
            in_tif) %>% 
@@ -404,7 +485,77 @@ EAV_inandout_TIF <- ptax_pins %>%
 EAV_inandout_TIF %>% datatable(rownames = FALSE)
 ```
 
+
 ```{r}
+#| label: tbl-incentiveprops-eavinandoutTIF
+#| tbl-cap: "Incentive properties in and out of TIFs in Cook County. Sums EAV."
+
+
+EAV_inandout_TIF <- incentive_pins2022 %>% 
+  group_by(clean_name,
+           in_tif) %>% 
+  summarise(eav = sum(eav, na.rm=TRUE)) %>% 
+  pivot_wider(names_from = in_tif, values_from = eav 
+              )%>% 
+  mutate(#total = `0`+`1`
+         total = ifelse(is.na(`1`), `0`, `0`+`1`)) %>%
+  rename(
+         "Taxable EAV" = `0`,
+         "TIF Increment" = `1`,
+         "Total EAV before exemptions" = total)
+
+EAV_inandout_TIF %>% datatable(rownames = FALSE)
+```
+
+
+```{r}
+#| label: tbl-allprops-FMVinandoutTIF
+#| tbl-cap: "All properties in and out of TIFs in Cook County. Sums FMV."
+
+FMV_inandout_TIF <- ptax_pins %>% 
+  group_by(clean_name,
+           in_tif) %>% 
+  summarise(fmv = sum(fmv, na.rm=TRUE)) %>% 
+  pivot_wider(names_from = in_tif, values_from = fmv 
+              )%>% 
+  mutate(#total = `0`+`1`
+         total = ifelse(is.na(`1`), `0`, `0`+`1`)) %>%
+  rename(
+         "Taxable FMV (Before Exemptions)" = `0`,
+         "TIF Increment" = `1`,
+         "Total FMV before exemptions" = total)
+
+FMV_inandout_TIF %>% datatable(rownames = FALSE)  %>%
+formatCurrency(c('Taxable FMV (Before Exemptions)', 'TIF Increment', 'Total FMV before exemptions'), digits = 0)
+```
+
+
+```{r}
+#| label: tbl-incentiveprops-FMVinandoutTIF
+#| tbl-cap: "All properties in and out of TIFs in Cook County. Sums FMV. FMV is the AV / level of assessment."
+
+FMV_inandout_TIF <- incentive_pins2022 %>% 
+  group_by(clean_name,
+           in_tif) %>% 
+  summarise(fmv = sum(fmv, na.rm=TRUE)) %>% 
+  pivot_wider(names_from = in_tif, values_from = fmv 
+              )%>% 
+  mutate(#total = `0`+`1`
+         total = ifelse(is.na(`1`), `0`, `0`+`1`)) %>%
+  rename(
+         "Taxable FMV (Before Exemptions)" = `0`,
+         "TIF Increment" = `1`,
+         "Total FMV before exemptions" = total)
+
+FMV_inandout_TIF %>% datatable(rownames = FALSE)  %>%
+formatCurrency(c('Taxable FMV (Before Exemptions)', 'TIF Increment', 'Total FMV before exemptions'), digits = 0) 
+
+```
+
+```{r}
+#| label: tbl-cooklevel-eavinandoutTIF
+#| tbl-cap: "Cook County EAV totals in and out of TIF"
+
 ptax_pins %>% 
   group_by( 
            in_tif) %>% 
@@ -431,6 +582,9 @@ ptax_pins %>% group_by(clean_name, incent_prop, in_tif) %>%
 ```
 
 ```{r}
+#| label: tbl-percentofcommercialindustrialAV
+#| tbl-cap: "Percentages are out of the commercial and industrial pins with and without incentive property classifications in a Muni"
+
 table3 <- ptax_pins %>% 
   group_by(clean_name) %>% 
   mutate(muni_pins = n(),
@@ -445,7 +599,8 @@ table3 <- ptax_pins %>%
             projects = n_distinct(keypin),
                       #  av_incent = sum(ifelse(between(class, 600, 899), av*2.5, 0)),
             av_adjusted = sum(ifelse(between(class, 600, 899), av*2.5, av)),
-                        av = sum(av)
+                        av = sum(av),
+fmv = sum(fmv, na.rm=TRUE)
 ) %>%
   mutate(pct_munipins = pins / muni_pins,
          pct_muniprojects = projects / muni_projects,
@@ -511,20 +666,26 @@ table <- nonres_pins2022 %>%
   summarize(proptype_pincount = n(),
             projects = n_distinct(keypin),
             av_incent = sum(ifelse(incent_prop == "Incentive", av, 0)),
+            fmv_incent = sum(ifelse(incent_prop == "Incentive", fmv, 0)),
+
             av_nonincent = sum(ifelse(incent_prop == "Non-Incentive", av, 0)),
-            av=sum(av)
+            fmv_nonincent = sum(ifelse(incent_prop == "Non-Incentive", fmv, 0)),
+
+            av=sum(av), 
+fmv=sum(fmv, na.rm=TRUE)
           ) %>% 
   mutate(
          incent_av_adj = 2.5*av_incent) %>%
   mutate(
          total_av_adjusted = av_incent*2.5 + av_nonincent,
-         pct_incent = incent_av_adj / total_av_adjusted) %>%
+         pct_incent = incent_av_adj / total_av_adjusted,
+pct_fmv = fmv_incent / fmv ) %>%
     select(-c(av_incent, av_nonincent, incent_av_adj))
 
 
 flextable(table) %>% 
  # set_caption("Totals for Cook County") %>% 
-  set_header_labels(Alea_cat = "Property Type", proptype_pincount = 'PINs', projects = "Project IDs", av = ' Taxable AV') %>%
+  set_header_labels(Alea_cat = "Property Type", proptype_pincount = 'PINs', projects = "Project IDs", fmv = 'FMV', av = ' Taxable AV') %>%
   set_table_properties( layout = "autofit", width = .75)
 ```
 
@@ -538,25 +699,32 @@ table2 <- nonres_pins2022 %>%
   group_by(clean_name) %>% 
   summarize(pin_count = n(),
             project_count = n_distinct(keypin), 
+
             av_incent = sum(ifelse(between(class, 600, 899), av*2.5, 0)),
             av_adjusted = sum(ifelse(between(class, 600, 899), av*2.5, av)),
-            av=sum(av)) %>%
+            fmv_w_incent = sum(ifelse(between(class, 600, 899), fmv, 0)),
+            av=sum(av), 
+fmv =sum(fmv, na.rm=TRUE),
+pins_inTIF = sum(in_tif, na.rm=TRUE)
+) %>%
   mutate(av_incent = ifelse(av_incent == 0, NA, av_incent),
     pct_incent = av_incent / av_adjusted,
-    pct_incent = ifelse(pct_incent == 0, NA, pct_incent))  %>%
+    pct_incent = ifelse(pct_incent == 0, NA, pct_incent),
+pct_fmv = fmv_w_incent/fmv)  %>%
   select(-av_incent) %>% 
-  select(clean_name, pct_incent, av, av_adjusted, pin_count, project_count)
+  select(clean_name, pct_incent, av, fmv, pct_fmv, av_adjusted, pin_count, project_count, pins_inTIF)
 
 datatable(table2,
           rownames= FALSE,
           colnames = c('Municipality' = 'clean_name', #  'Incentivized?' = 'incent_prop', 
                        'PIN Count' = 'pin_count', 'Project Count' = 'project_count', 
                        'Taxable AV' = 'av',
+'FMV' = 'fmv', 'Pct FMV with Incentives' = 'pct_fmv',
                        'Assessed Market Value' = 'av_adjusted', 
-                       'Pct FMV Incentivized' = 'pct_incent')
+                       'Pct AV Incentivized' = 'pct_incent')
           ) %>%
-  formatCurrency(c('Taxable AV', 'Assessed Market Value'), digits = 0) %>%
-  formatPercentage('Pct FMV Incentivized', digits = 2)
+  formatCurrency(c('Taxable AV', 'Assessed Market Value', 'FMV'), digits = 0) %>%
+  formatPercentage(c('Pct AV Incentivized', 'Pct FMV with Incentives'), digits = 2)
 ```
 
 # Slide 6 and 7
@@ -577,6 +745,34 @@ table2 %>%
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
   scale_fill_steps2(
+      high = "brown", low = "black",
+    nice.breaks=FALSE,
+    na.value = "gray",
+    name = "Number of Projects",
+   ) +
+   geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray70')+
+    geom_sf(data = bound_tif, aes(geometry = geometry#, fill = project_count
+              ), color = "black", alpha = 0.5, fill ="orange")
+
+```
+
+
+```{r}
+#| label: fig-pinsInTIF
+#| fig-cap: "Number of PINs within a TIF, per Municipality" 
+
+
+
+table2 %>% 
+  left_join(nicknames) %>%
+  filter(clean_name != "Chicago") %>%
+  full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
+  
+  ggplot() +
+  geom_sf(aes(geometry = geometry, fill = pins_inTIF), color = "black") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+  scale_fill_steps2(
    # high = "#420420", low = "black",
         high = "brown", low = "black",
 
@@ -584,11 +780,11 @@ table2 %>%
       #  limits = c(0,.93),
 
     show.limits=TRUE,
-    breaks = c(0,  50, 100, 200, 500, 1000,1500),
+    #breaks = c(0,  50, 100, 200, 500, 1000,1500),
     nice.breaks=FALSE,
     #n =4,
     na.value = "gray",
-    name = "Number of Projects",
+    name = "Number of PINs in TIF",
    # labels = scales::percent
    ) +
    geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray70')+
@@ -596,6 +792,61 @@ table2 %>%
               ), color = "black", alpha = 0.5, fill ="orange")
 
 ```
+
+```{r}
+#| label: fig-pinspertif-onlychicago
+#| fig-cap: Only Chicago.
+NBHs <- read_sf("https://datacatalog.cookcountyil.gov/resource/pcdw-pxtg.geojson")
+
+nbh_sum <- read_csv("./Output/ptaxsim_nbh_summary_2022.csv") %>%     
+mutate(nbhd_code = as.character(nbhd_code)) %>%
+mutate(township = str_sub(nbhd_code, 1, 2),
+) 
+
+nbh_MC <- read_csv("Output/ptaxsim_nbh_MC_summary_2022.csv")
+
+
+nbh_sum %>% 
+filter(triad_name == "City") %>%
+left_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
+
+  ggplot() +
+  geom_sf(aes(geometry = geometry, fill = nbh_TIF_PC), color = "black") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+  scale_fill_steps2(
+        high = "brown", low = "black",
+    show.limits=TRUE,
+    nice.breaks=FALSE,
+    na.value = "gray",
+    name = "Number of PINs in TIF",
+   # labels = scales::percent
+   ) +
+    geom_sf(data = bound_tif, aes(geometry = geometry#, fill = project_count
+              ), color = "black", alpha = 0.5, fill ="orange")
+
+nbh_sum %>% 
+filter(triad_name == "City") %>%
+left_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
+
+  ggplot() +
+  geom_sf(aes(geometry = geometry, fill = nbh_FMV), color = "black") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+  scale_fill_steps2(
+        high = "brown", low = "black",
+    show.limits=TRUE,
+    nice.breaks=FALSE,
+    na.value = "gray",
+    name = "FMV in TIF",
+    labels = scales::dollar
+   ) +
+    geom_sf(data = bound_tif, aes(geometry = geometry#, fill = project_count
+              ), color = "black", alpha = 0.5, fill ="orange")
+```
+
+> WHY are there some neighobrhoods that are gray??  Implies they didn't match during the join. CHECK.
+
 
 ```{r}
 #| label: fig-industrial-commercial-fmv
