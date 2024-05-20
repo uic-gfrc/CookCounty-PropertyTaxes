@@ -409,7 +409,7 @@ table_mctotals <- ptax_pins %>%
   group_by(clean_name) %>%
   mutate(
     muni_proptype_pincount = n(),
-             muni_projects = n_distinct(keypin), # mostly for industrial and commercial properties
+             muni_projects = n_distinct(both_ids), # mostly for industrial and commercial properties
              muni_fmv_incentive = sum(ifelse(class >=600 & class <=900, fmv, 0), na.rm = TRUE),
              muni_taxable_fmv = sum(taxable_fmv, na.rm=TRUE),
              muni_pins_withincents = sum(ifelse(class >=600 & class <=900 & in_tif == 1, 1, 0), na.rm = TRUE),
@@ -473,7 +473,7 @@ table1 <- nonres_pins2022 %>%
   filter(Alea_cat %in% c("Industrial", "Commercial"))  %>%
   group_by(clean_name, Alea_cat) %>% 
           summarize(proptype_pincount = n(),
-            projects = n_distinct(keypin), # mostly for industrial and commercial properties
+            projects = n_distinct(both_ids), # mostly for industrial and commercial properties
             fmv_incentive = sum(ifelse(class >=600 & class <=900, fmv, 0), na.rm = TRUE),
             taxable_fmv = sum(taxable_fmv, na.rm=TRUE),
             incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, fmv, 0), na.rm = TRUE),
@@ -515,7 +515,7 @@ table2 <- nonres_pins2022 %>%
     filter(Alea_cat != "Land") %>%
   group_by(clean_name, incent_prop) %>%   # projects can be counted twice if the project has incentive and normal commercial/industrial prop classes.
   summarize(pin_count = n(),
-         project_count = n_distinct(keypin), 
+         project_count = n_distinct(both_ids), 
          fmv_incent=sum(ifelse(between(class, 600, 899), av/loa, 0), na.rm=TRUE),
          av_ifnoincent =sum(ifelse(between(class, 600, 899), av*2.5, av), na.rm=TRUE),
          av=sum(av, na.rm=TRUE),
@@ -536,7 +536,7 @@ table2 <- nonres_pins2022 %>%
     filter(Alea_cat != "Land") %>%
   group_by(clean_name) %>%   # projects can be counted twice if the project has incentive and normal commercial/industrial prop classes.
   summarize(pin_count = n(),
-          project_count = n_distinct(keypin), 
+          project_count = n_distinct(both_ids), 
           fmv = sum(av / loa, na.rm=TRUE), 
           fmv_incent = sum(ifelse(between(class, 600, 899), av/loa, 0), na.rm=TRUE),
 
@@ -652,7 +652,7 @@ formatPercentage('% AV Incentivized', digits = 2)
 table <- incentive_pins2022 %>% 
   group_by(Alea_cat) %>%
   summarize(proptype_pincount = n(),
-            projects = n_distinct(keypin),
+            projects = n_distinct(both_ids),
             av_incent = sum(if_else(incent_prop == "Incentive", av, 0), na.rm=TRUE),
             av_nonincent = sum(ifelse(incent_prop == "Non-Incentive", av, 0), na.rm=TRUE),
             #     av_adjusted=sum(ifelse(between(class, 600, 899), av*2.5, av)),
@@ -682,7 +682,7 @@ table <- nonres_pins2022 %>%
       filter(Alea_cat != "Land") %>%
 
   mutate(has_incentive = ifelse(class >= 600, 1, 0)) %>%
-  group_by(keypin) %>%
+  group_by(both_ids) %>%
   summarize(count = n(),     # number of pins in project
          sum = sum(has_incentive), # number of pins that had incentives
       av_adjusted=sum(ifelse(between(class, 600, 899), av*2.5, av)),
@@ -692,7 +692,7 @@ table <- nonres_pins2022 %>%
   arrange(pct_pins_w_inct) %>% 
   filter(pct_pins_w_inct > 0 & pct_pins_w_inct < 1) %>%
   arrange(desc(pct_pins_w_inct)) %>%
-  select(keypin, count, sum, pct_pins_w_inct, av, av_adjusted) %>% 
+  select(both_ids, count, sum, pct_pins_w_inct, av, av_adjusted) %>% 
   arrange(desc(av))
 
 ## Other option for graphing the keypins with mixed property incentivization
@@ -704,7 +704,7 @@ table <- nonres_pins2022 %>%
 
 flextable(table) %>% 
   set_caption("Projects with Both Incentivized and non-Incentivized Property Clases") %>% 
-  set_header_labels(keypin = 'Project ID', count = 'PINs per \nProject', sum = 'PINs with \nIncentives', pct_pins_w_inct = 'Pct of PINs \nIncentivized', av = 'Project AV  \n(Final)'
+  set_header_labels(both_ids = 'Project ID', count = 'PINs per \nProject', sum = 'PINs with \nIncentives', pct_pins_w_inct = 'Pct of PINs \nIncentivized', av = 'Project AV  \n(Final)'
                     )  %>% set_table_properties( layout = "autofit", width = .75)
 
 
@@ -721,10 +721,10 @@ table <- nonres_pins2022 %>%
       filter(Alea_cat != "Land") %>%
 
   mutate(has_incentive = ifelse(class >= 600, 1, 0)) %>%
-  group_by(keypin) %>%
+  group_by(both_ids) %>%
   mutate(project_taxable_av = sum(av)) %>%
   ungroup() %>%
-  group_by(keypin) %>%
+  group_by(both_ids) %>%
   summarize(count = n(), # number of pins in project
          sum = sum(has_incentive), # number of pins that had incentives
          av_incent = sum(if_else(incent_prop == "Incentive", av, 0)),
@@ -742,7 +742,7 @@ table <- nonres_pins2022 %>%
 # Using DT instead of flextable
 datatable(table,
           rownames= FALSE,
-          colnames = c('Project ID' = 'keypin', 'PINs per Project' = 'count', 
+          colnames = c('Project ID' = 'both_ids', 'PINs per Project' = 'count', 
                        'PINs with\nIncent Class' = 'sum',
         '% Backed out AV w/ Incentives' = 'perc_incentivized',
                      
@@ -769,7 +769,7 @@ datatable(table,
 nonres_pins2022 %>% 
   group_by(clean_name, comparable_props) %>% 
   summarize(pincount = n(),
-            projects = n_distinct(keypin),
+            projects = n_distinct(both_ids),
            # incent_count = n(incent_prop == "Incentive"),
             )
 ```
