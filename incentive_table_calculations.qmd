@@ -89,7 +89,7 @@ ptax_pins <- ptax_pins %>% left_join(bor_pins, by = "pin")
 ptax_pins <- ptax_pins %>% 
   mutate( both_ids = project_id,
           both_ids = ifelse(is.na(both_ids), keypin, both_ids ),
-          both_ids = ifelse(is.na(both_ids), pin, both_ids))
+          both_ids = ifelse(is.na(both_ids) & (class > 298 & class < 900), pin, both_ids))
 
 ```
 
@@ -421,6 +421,10 @@ table_mc_percentages <- table_muni_mc %>%
          pct_zero_bill = zero_bill / muni_zero_bill
          ) %>%
   select(clean_name, class_group, starts_with("pct"))
+
+table_mc_percentages %>% 
+  datatable(rownames = FALSE) %>%
+  formatPercentage(columns = 3:15, digits = 2)
 ```
 
 ## By Land Type
