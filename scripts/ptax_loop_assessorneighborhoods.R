@@ -11,7 +11,8 @@ library(ptaxsim)
 library(stars)
 library(glue)
 
-# Create the DB connection with the default name expected by PTAXSIM functions
+
+# Create the DB connection with the default name expected by PTAXSIM functions ---------
 
 # AWM filepath:
 ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2022.0.0.db")
@@ -21,13 +22,17 @@ ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2022.
 
 # Load supplemental files w/ "clean" muni names and detail re: class codes.
 
-class_dict <- read_csv("./Necessary_Files/class_dict.csv")
+class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv")
+ccao_loa <- read_csv("./Inputs/ccao_loa.csv") %>% 
+  mutate(
+  class_code = as.character(class_code)
+)
 
 nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
 
 # Set years for loop to run.
 
-years <-(2006:2022)
+years <-(2022)
 
 # Create empty dataframes for the loop to populate.
 
@@ -66,11 +71,21 @@ for(i in years){
   muni_tax_codes<- dbGetQuery(ptaxsim_db_conn, glue_sql(query, .con = ptaxsim_db_conn))
   
   
+  # has eav values for each tax code
+  tif_distrib <- DBI::dbGetQuery(
+    ptaxsim_db_conn, paste(
+
+  'SELECT *
+  FROM tif_distribution
+  WHERE year = ', i, ';')
+          
+    )
   
   
   ## All tax codes. 
   ## tax codes within municipalities have additional info 
   tc_muninames <- tax_codes %>% 
+    mutate(tif_taxcode = ifelse(tax_code_num %in% tif_distrib$tax_code_num, 1, 0)) %>%
     left_join(muni_tax_codes) %>%
     left_join(muni_agency_names) %>% 
     select(-agency_rate) %>% 
@@ -107,6 +122,7 @@ for(i in years){
   
   #  billed properties with 14-digit PINs  
   pin14_bills <- taxbills %>%
+    
     group_by(tax_code, class, pin) %>%
     
     mutate(total_bill = final_tax_to_dist + final_tax_to_tif) %>% # from each taxing agency
@@ -138,9 +154,14 @@ for(i in years){
   # joins tax code variable by pin
   exemption_data <- lookup_pin(i, cook_pins$pin) %>%
     left_join(cook_pins, by = c("pin", "class")) %>%
+    left_join(ccao_loa, by = c("year", "class" = "class_code")) %>%
+    
     mutate(all_exemptions = exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
              exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 ,
-           abatements = exe_abate) %>%
+           abatements = exe_abate,
+           fmv = av / loa,
+           parcel = str_sub(pin, 1, 10)) %>%
+   
     mutate(zero_bill = ifelse(eav <= all_exemptions, 1, 0),
            has_HO_exemp = ifelse(exe_homeowner > 0, 1, 0),
            has_SF_exemp = ifelse(exe_senior > 0, 1, 0),
@@ -150,6 +171,7 @@ for(i in years){
            has_VR_exemp = ifelse(exe_vet_returning > 0, 1, 0),
            has_DV_exemp = ifelse(exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 > 0, 1, 0),
            has_AB_exemp = ifelse(exe_abate > 0, 1, 0),
+           in_tif = ifelse(tax_code_num %in% tif_distrib$tax_code_num, 1, 0)
     )
   
   
@@ -168,42 +190,46 @@ for(i in years){
   
   # Summarize PIN Exemptions ------------------------------------------------
   
-  ## summarize pin level data to the tax code level for each type of property class
-  exemptions_inCook_perTC <- exemption_data %>%
-    group_by(tax_code_num, class_code) %>%
-    summarize(year = first(year), 
-              av = sum(av, na.rm = TRUE),
-              eav=sum(eav, na.rm=TRUE),
-              pin_count = n(),  # number of pins within each tax code and property combo
-              
-              all_exemptions = sum(all_exemptions),
-              
-              exe_homeowner = sum(exe_homeowner, na.rm=TRUE),
-              exe_senior = sum(exe_senior, na.rm=TRUE),
-              exe_freeze = sum(exe_freeze, na.rm=TRUE),
-              exe_longtime_homeowner = sum(exe_longtime_homeowner, na.rm=TRUE),
-              exe_disabled = sum(exe_disabled, na.rm=TRUE),
-              exe_vet_returning = sum(exe_vet_returning, na.rm=TRUE),
-              exe_vet_dis_lt50 = sum(exe_vet_dis_lt50, na.rm=TRUE),
-              exe_vet_dis_50_69 = sum(exe_vet_dis_50_69, na.rm=TRUE),
-              exe_vet_dis_ge70 = sum(exe_vet_dis_ge70, na.rm=TRUE),
-              exe_vet_dis = sum(exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70, na.rm=TRUE),
-              exe_abate = sum(exe_abate, na.rm=TRUE),
-              
-              zero_bills = sum(zero_bill),
-              has_HO_exemp = sum(has_HO_exemp),
-              has_SF_exemp = sum(has_SF_exemp),
-              has_FR_exemp = sum(has_FR_exemp),
-              has_LTHO_exemp = sum(has_LTHO_exemp),
-              has_DI_exemp = sum(has_DI_exemp),
-              has_VR_exemp = sum(has_VR_exemp),
-              has_DV_exemp = sum(has_DV_exemp),
-              has_AB_exemp = sum(has_AB_exemp)
-    )
-  
-  
-  exemptions_inCook_perTC <- exemptions_inCook_perTC %>% 
-    left_join(tc_muninames)
+  # ## summarize pin level data to the tax code level for each type of property class
+  # exemptions_inCook_perTC <- exemption_data %>%
+  #   group_by(tax_code_num, class_code) %>%
+  #   summarize(year = first(year), 
+  #             av = sum(av, na.rm = TRUE),
+  #             eav=sum(eav, na.rm=TRUE),
+  #             fmv = sum(fmv, na.rm=TRUE),
+  #             pin_count = n(),  # number of pins within each tax code and property combo
+  #             parcel_count = n_distinct(parcel),
+  #             pins_inTIF = sum(in_tif),
+  #             
+  #             all_exemptions = sum(all_exemptions),
+  #             
+  #             exe_homeowner = sum(exe_homeowner, na.rm=TRUE),
+  #             exe_senior = sum(exe_senior, na.rm=TRUE),
+  #             exe_freeze = sum(exe_freeze, na.rm=TRUE),
+  #             exe_longtime_homeowner = sum(exe_longtime_homeowner, na.rm=TRUE),
+  #             exe_disabled = sum(exe_disabled, na.rm=TRUE),
+  #             exe_vet_returning = sum(exe_vet_returning, na.rm=TRUE),
+  #             exe_vet_dis_lt50 = sum(exe_vet_dis_lt50, na.rm=TRUE),
+  #             exe_vet_dis_50_69 = sum(exe_vet_dis_50_69, na.rm=TRUE),
+  #             exe_vet_dis_ge70 = sum(exe_vet_dis_ge70, na.rm=TRUE),
+  #             exe_vet_dis = sum(exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70, na.rm=TRUE),
+  #             exe_abate = sum(exe_abate, na.rm=TRUE),
+  #             
+  #             zero_bills = sum(zero_bill),
+  #             has_HO_exemp = sum(has_HO_exemp),
+  #             has_SF_exemp = sum(has_SF_exemp),
+  #             has_FR_exemp = sum(has_FR_exemp),
+  #             has_LTHO_exemp = sum(has_LTHO_exemp),
+  #             has_DI_exemp = sum(has_DI_exemp),
+  #             has_VR_exemp = sum(has_VR_exemp),
+  #             has_DV_exemp = sum(has_DV_exemp),
+  #             has_AB_exemp = sum(has_AB_exemp),
+  #             year = year_variable
+  #   )
+  # 
+  # 
+  # exemptions_inCook_perTC <- exemptions_inCook_perTC %>% 
+  #   left_join(tc_muninames)
   
   
   # Join Bills and Exemptions  ----------------------------------------------
@@ -228,14 +254,11 @@ base_url <- "https://datacatalog.cookcountyil.gov/resource/tx2p-k2g9.json"
 nbh_pins <- GET(
   base_url,
   query = list(
-    tax_year = 2021,
-    #   ward_num = 49,
-    # property_city = "ROGERS PARK",
-    `$select` = paste0(c("pin", "pin10", 
+    tax_year = year_variable,
+    `$select` = paste0(c("pin", # "pin10", 
                          "class", 
                          "township_code", "township_name",
                          "nbhd_code", "census_puma_geoid",
-                         #"lat","lon", 
                          "triad_name" 
     ),
     collapse = ","),
@@ -252,7 +275,7 @@ nbh_MC_summary <-  joined_pin_data %>%
   left_join(nbh_pins2) %>%
   mutate(nbhd_3 = str_sub(nbhd_code, 3,5)) %>%
   
-  group_by(nbhd_code, major_class_code, nbhd_3, triad_name) %>%
+  group_by(nbhd_code, major_class_code, nbhd_3, triad_name, township_name, township_code) %>%
   filter(!is.na(nbhd_code)) %>%
   
   summarize(nbh_final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by munis with current exemptions in place
@@ -263,8 +286,13 @@ nbh_MC_summary <-  joined_pin_data %>%
             Total_EAV = sum((tax_amt_exe + final_tax_to_dist + final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE),
             
             nbh_MC_PC = n(),
+            nbh_MC_parcels = n_distinct(parcel),
+            nbh_MC_TIF_PC = sum(in_tif),
+            #nbh_MC_TIF_parcels = sum(ifelse((in_tif ==1 & n_distinct(parcel)), 1,0)),
+            
             nbh_MC_AV = sum(av),
             nbh_MC_EAV = sum(eav),
+            nbh_MC_FMV = sum(fmv, na.rm=TRUE),
             nbh_MC_res_exe = sum(exe_homeowner + exe_senior + exe_freeze + 
                                   exe_longtime_homeowner + exe_disabled + 
                                   exe_vet_returning + exe_vet_dis_lt50 + 
@@ -289,12 +317,13 @@ nbh_MC_summary <-  joined_pin_data %>%
             has_DI_exemp = sum(has_DI_exemp),
             has_VR_exemp = sum(has_VR_exemp),
             has_DV_exemp = sum(has_DV_exemp),
-            has_AB_exemp = sum(has_AB_exemp)
+            has_AB_exemp = sum(has_AB_exemp),
+            year = year_variable
   ) %>%
   
   mutate(tax_rate_current = nbh_final_tax_to_dist/nbh_nonTIF_EAV_post_exemps) %>% 
   
-  select(nbhd_code, nbh_current_rate=tax_rate_current, everything()) %>% 
+  select(year, nbhd_code, nbh_current_rate=tax_rate_current, everything()) %>% 
   arrange(desc(nbhd_code))
 
 
@@ -302,7 +331,7 @@ nbh_summary <-  joined_pin_data %>%
   left_join(nbh_pins2) %>%
   mutate(nbhd_3 = str_sub(nbhd_code, 3,5)) %>%
   
-  group_by(nbhd_code, nbhd_3) %>%
+  group_by(nbhd_code, nbhd_3, triad_name, township_name, township_code) %>%
   filter(!is.na(nbhd_code)) %>%
   
   summarize(nbh_final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by munis with current exemptions in place
@@ -313,8 +342,11 @@ nbh_summary <-  joined_pin_data %>%
             Total_EAV = sum((tax_amt_exe + final_tax_to_dist + final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE),
             
             nbh_PC = n(),
+            nbh_parcels = n_distinct(parcel),
+            nbh_TIF_PC = sum(in_tif),
             nbh_AV = sum(av),
             nbh_EAV = sum(eav),
+            nbh_FMV = sum(fmv),
             nbh_res_exe = sum(exe_homeowner + exe_senior + exe_freeze + 
                                 exe_longtime_homeowner + exe_disabled + 
                                 exe_vet_returning + exe_vet_dis_lt50 + 
@@ -339,15 +371,87 @@ nbh_summary <-  joined_pin_data %>%
             has_DI_exemp = sum(has_DI_exemp),
             has_VR_exemp = sum(has_VR_exemp),
             has_DV_exemp = sum(has_DV_exemp),
-            has_AB_exemp = sum(has_AB_exemp)
+            has_AB_exemp = sum(has_AB_exemp),
+            year = year_variable
   ) %>%
   
   mutate(tax_rate_current = nbh_final_tax_to_dist/nbh_nonTIF_EAV_post_exemps) %>% 
   
-  select(nbhd_code, nbh_current_rate=tax_rate_current, everything()) %>% 
+  select(year, nbhd_code, nbh_current_rate=tax_rate_current, everything()) %>% 
   arrange(desc(nbhd_code))
+
+
+# nbh_parcel_summary <- joined_pin_data %>%
+#   left_join(nbh_pins2) %>%
+#   mutate(nbhd_3 = str_sub(nbhd_code, 3,5)) %>%
+#   group_by(parcel, nbhd_code, nbhd_3, triad_name, township_name, township_code) %>%
+#   filter(!is.na(nbhd_code)) %>%
+#   
+#   summarize(nbh_final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by munis with current exemptions in place
+#             nbh_tif_rev = sum(final_tax_to_tif, na.rm=TRUE),
+#                         nbh_nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
+#                         nbh_TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),  
+#                         nbh_exe_and_abates_frombills = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE),  # Combines all exemptions and abatements!
+#                         Total_EAV = sum((tax_amt_exe + final_tax_to_dist + final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE),
+#                         
+#                         nbh_PC = n(),
+#                         nbh_parcels = n_distinct(parcel),
+#                         nbh_TIF_PC = sum(in_tif),
+#                         nbh_AV = sum(av),
+#                         nbh_EAV = sum(eav),
+#                         nbh_FMV = sum(fmv),
+#                         nbh_res_exe = sum(exe_homeowner + exe_senior + exe_freeze + 
+#                                             exe_longtime_homeowner + exe_disabled + 
+#                                             exe_vet_returning + exe_vet_dis_lt50 + 
+#                                             exe_vet_dis_50_69 + exe_vet_dis_ge70, na.rm = TRUE),
+#                         nbh_exe_homeowner = sum(exe_homeowner, na.rm=TRUE),
+#                         nbh_exe_senior = sum(exe_senior, na.rm=TRUE),
+#                         nbh_exe_freeze = sum(exe_freeze, na.rm=TRUE),
+#                         nbh_exe_longtime_homeowner = sum(exe_longtime_homeowner, na.rm=TRUE),
+#                         nbh_exe_disabled = sum(exe_disabled, na.rm=TRUE),
+#                         nbh_exe_vet_returning = sum(exe_vet_returning, na.rm=TRUE),
+#                         nbh_exe_vet_dis_lt50 = sum(exe_vet_dis_lt50, na.rm=TRUE),
+#                         nbh_exe_vet_dis_50_69 = sum(exe_vet_dis_50_69, na.rm=TRUE),
+#                         nbh_exe_vet_dis_ge70 = sum(exe_vet_dis_ge70, na.rm=TRUE),
+#                         
+#                         nbh_exe_abate = sum(exe_abate, na.rm=TRUE),
+#                         
+#                         zero_bills = sum(zero_bill),
+#                         has_HO_exemp = sum(has_HO_exemp),
+#                         has_SF_exemp = sum(has_SF_exemp),
+#                         has_FR_exemp = sum(has_FR_exemp),
+#                         has_LTHO_exemp = sum(has_LTHO_exemp),
+#                         has_DI_exemp = sum(has_DI_exemp),
+#                         has_VR_exemp = sum(has_VR_exemp),
+#                         has_DV_exemp = sum(has_DV_exemp),
+#                         has_AB_exemp = sum(has_AB_exemp),
+#                         year = year_variable
+#               ) %>%
+#               
+#               mutate(tax_rate_current = nbh_final_tax_to_dist/nbh_nonTIF_EAV_post_exemps,
+#                      parcel_inTIF = ifelse(nbh_TIF_PC > 1, 1, 0)) %>% 
+#               
+#               select(year, parcel, nbhd_code, nbh_current_rate=tax_rate_current, everything())
+# 
 
 }
 
-write_csv(nbh_MC_summary, "./Output/nbh_MC_summary_2006-2022.csv")
-write_csv(nbh_summary, "./Output/nbh_summary_2006-2022.csv")
+write_csv(nbh_MC_summary, "./Output/ptaxsim_nbh_MC_summary_2022.csv")
+write_csv(nbh_summary, "./Output/ptaxsim_nbh_summary_2022.csv")
+
+
+
+## summations of fmv ---------------------------
+
+# county wide FMV
+sum(nbh_summary$nbh_FMV, na.rm=TRUE)
+
+
+## Commercial and industrial FMV
+nbh_MC_summary %>% ungroup() %>% 
+  filter(major_class_code %in% c("5A", "5B", "6", "7", "8")) %>% 
+  summarize(sum_fmv = sum(nbh_MC_FMV, na.rm=TRUE))
+
+nbh_MC_summary %>% ungroup() %>% 
+  filter(major_class_code %in% c("5A", "5B", "6", "7", "8")) %>% 
+  summarize(sum_av = sum(nbh_MC_AV, na.rm=TRUE))
