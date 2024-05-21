@@ -1,0 +1,331 @@
+---
+title: "Project level grouping and summarizing"
+format: 
+  html:
+    code-fold: true
+    toc: true
+    tbl-cap-location: margin
+---
+
+# Data Preparation
+
+```{r setup, warning = FALSE, output = FALSE}
+
+library(tidyverse)
+library(DT)
+library(flextable) # for exporting to word or PDF files. Kable does not do that
+
+library(sf)
+
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+set_flextable_defaults(theme_fun = theme_vanilla, 
+                       padding = 2,
+                       line_spacing = 1,
+                       big.mark = ",",
+                       )
+# keypins <- read_csv("Output/all_keypins.csv")
+
+options(DT.options = list())
+```
+
+
+
+```{r}
+#| echo: true
+#| code-fold: false
+
+# all pins for 2022
+ptax_pins <- read_csv("Output/Dont_Upload/0_joined_PIN_data_2022.csv") %>% 
+  mutate(class = as.numeric(class)) %>%
+    select(-c(propclass_1dig:av.y))
+
+
+```
+
+
+```{r}
+#| echo: true
+#| code-fold: false
+
+bor <- read_csv("Output/borappeals.csv") %>%
+  mutate(project_appellant = paste(project_id, sep = "-", appellant))
+
+# temporary work-around until we have full keypin list:
+proj_xwalk <- read_csv("Output/all_keypins.csv")               
+# all commercial valuation properties but made with very unreliable data from commercial valuation dataset. 
+
+# combine project IDs to PINs:
+ptax_pins <- ptax_pins %>% left_join(proj_xwalk)
+
+
+
+#  create tc_muninames from helper file:
+source("scripts/helper_tc_muninames_2022.R")
+tc_muninames <- tc_muninames %>%  select(-year)
+
+# add muni names by joining tax code info:
+ptax_pins <- ptax_pins %>% 
+  mutate(tax_code_num = as.character(tax_code_num)) %>%
+  left_join(tc_muninames)
+
+
+
+# original class_dict variables already in 0_joined data
+# but I do want the new-ish variables I created to be brought in:
+class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv") %>%
+  select(class_code, comparable_props, Alea_cat, incent_prop)
+
+ptax_pins <- ptax_pins %>% 
+  left_join(class_dict, by =  c("class" = "class_code")) %>%
+  mutate(clean_name = ifelse(is.na(clean_name), "0_Unincorporated", clean_name))
+
+```
+
+```{r}
+#| label: tbl-borprojectpins
+#| tbl-cap: "**BoR Appeal PINs associated with Project ID; includes all property classes.** Uses first occurance of the an appeal id and the appealant name to create project IDs for each PIN. This deal with PINS that appealed multiple time and makes each PIN a unique occurance. Takes numbers for athe decimal point in `appealid to create project ID. Uses Board of Review Appeals data from the Cook County Data Portal. Counts number of times each PIN appealed its valuation. 102,619 PINs from BoR data (downloaded May 2024)."
+
+bor_pins <- bor %>% 
+  group_by(pin) %>% 
+  arrange(desc(tax_year)) %>%
+  summarize(pin = first(pin),
+            class_bor = list(unique(class)),
+            appellant = first(appellant),
+            project_id = first(project_id), 
+            timesappealed = n() ) %>%
+  mutate(proj_appeallant = paste(project_id, "-", appellant))
+
+ 
+bor_pins %>%
+  group_by(project_id) %>%
+  summarize(pincount = n()) %>%
+  arrange(desc(pincount)) %>% 
+   head() %>% 
+  datatable(rownames = FALSE)
+```
+
+
+```{r}
+#| label: tbl-borproject-appellants
+#| tbl-cap: "**Non-residential PINs associated with an appellant each tax year.** Excludes property classes 0-399. Data from Board of Review Appeals dataset on Cook Data Portal. "
+
+
+appellant_table <- bor %>% 
+  filter(class > 399 & tax_year > 2018) %>%
+  group_by(pin) %>% 
+  arrange(desc(tax_year)) %>%
+  summarize(pin = first(pin),
+            class_bor = list(unique(class)),
+            appellant = first(appellant),
+            project_id = first(project_id), 
+            timesappealed = n(),
+            tax_year=tax_year) %>%
+  mutate(proj_appellant = paste(project_id, "-", appellant)) %>%
+  ungroup() %>%
+  group_by(tax_year, proj_appellant) %>%
+
+ # group_by(tax_year, appellant) %>%
+  summarize(pincount = n()) %>%
+  arrange(desc(pincount))%>%
+  pivot_wider(names_from = "tax_year", values_from = "pincount")%>%  
+  datatable(rownames = FALSE)
+
+appellant_table
+```
+
+## Create Project ID
+
+```{r}
+
+ptax_pins <- ptax_pins %>% left_join(bor_pins, by = "pin")
+
+# now do it the other way and compare 
+ptax_pins <- ptax_pins %>% 
+  mutate( both_ids = project_id,
+          both_ids = ifelse(is.na(both_ids), keypin, both_ids ),
+          both_ids = ifelse(is.na(both_ids), pin, both_ids))
+
+table_list <- ptax_pins %>% 
+  filter(class > 599) %>% 
+  group_by(both_ids, appellant) %>% 
+  summarize(pincount = n(),
+            pin_list = (list(unique(pin))),
+            class_list = (list(unique(class))),
+            appellant = ((list(unique(appellant)))) ) %>%
+  arrange(desc(pincount))
+
+table_list %>% datatable(rownames = FALSE)
+```
+
+
+```{r}
+
+eq2021 <- 3.0027
+eq2022 <- 2.9237
+
+
+
+commercial_classes <- c(401:435, 490, 491, 492, 496:499,
+                        500:535,590, 591, 592, 597:599, 
+                        700:799,
+                        800:835, 891, 892, 897, 899)  
+
+industrial_classes <- c(480:489,493, 
+                        550:589, 593,
+                        600:699,
+                        850:890, 893
+                        )
+
+#nonres_pins2022 <- nonres_pins2022 %>% group_by(keypin) %>% mutate(proj_hasincentive = class)
+ptax_pins <- ptax_pins %>% 
+  mutate(class_group = str_sub(class, 1,1),
+         class_group = case_when(
+          (class_group == 5 & class %in% commercial_classes) ~ "5A",
+          (class_group == 5 & class %in% industrial_classes) ~ "5B",
+          (class_group == 8 & class %in% commercial_classes ) ~ "8A",
+          (class_group == 8 & class %in% industrial_classes ) ~ "8B",
+          TRUE ~ as.character(class_group))) %>%
+  
+  mutate(
+    taxable_av = (final_tax_to_dist/(tax_code_rate/100))  / eq2022, # current value that taxing agencies can tax for their levies
+    taxable_fmv = taxable_av / loa,
+
+    #  taxable_av = ((final_tax_to_dist/(tax_code_rate/100)) - (all_exemptions + abatements) ) / eq2022,
+    untaxable_value_eav = all_exemptions + abatements + (final_tax_to_tif/(tax_code_rate/100)),
+    untaxable_value_av = untaxable_value_eav / eq2022,
+    untaxable_value_fmv = untaxable_value_av / loa,
+    
+    exempt_eav= (all_exemptions + abatements),
+    exempt_fmv = exempt_eav / eq2022 / loa, 
+    
+    fmv_inTIF = ifelse(in_tif==1, av/loa, 0),
+    fmv_tif_increment = ifelse(final_tax_to_tif > 0, ((final_tax_to_tif / (tax_code_rate/100)) / eq2022 ) / loa, 0),
+    
+
+    ) %>%
+  select(tax_code, class, pin, taxable_fmv, untaxable_value_fmv, fmv_inTIF, fmv_tif_increment, fmv, total_billed, final_tax_to_dist, final_tax_to_tif, tax_code_rate, eav, equalized_av, av, everything())
+
+```
+
+
+
+## Incentive and non-Incentive, Commercial and Industrial Properties
+
+```{r}
+#| label: tbl-propertybreakdown
+#| tbl-cap: "Breakdown of incentivized properties within commercial and industrial properties. Includes 400-899 property classes."
+
+nonres_pins2022 <- ptax_pins %>% 
+  group_by(both_ids) %>%
+  arrange(keypin, class) %>%
+  mutate(min_class = first(class),
+         max_class = last(class)) %>% 
+  filter(max_class > 399 & max_class < 900) %>%
+  ungroup()
+
+table <- nonres_pins2022 %>% 
+      filter(Alea_cat != "Land") %>%
+
+  group_by(clean_name, incent_prop, Alea_cat) %>%   # projects can be counted twice if the project has incentive and normal commercial/industrial prop classes.
+  summarize(pin_count = n(),
+         project_count = n_distinct(keypin),
+         projects_bor = n_distinct(both_ids),
+         av_adjusted = sum(ifelse(between(class, 600, 899), av*2.5, av)),
+         av_incent = sum(ifelse(between(class, 600, 899), av*2.5, 0)),
+         fmv = sum(av/loa*0.25, na.rm=TRUE),
+         av=sum(av),
+)  %>%
+  mutate(#AV_incent = av_adjusted - av,
+           pct_incent = av_incent / av_adjusted)
+
+
+datatable(table,
+          rownames= FALSE,
+          colnames = c('Municipality' = 'clean_name', 'Incentivized?' = 'incent_prop',
+                       'Property Type' = 'Alea_cat', 'PINs in Projects' = 'pin_count', 
+                       'Project Count' = 'project_count',
+                       'Current Taxable AV' = 'av',
+                       'FMV' = 'fmv',
+                       'Total Assessed Market Value' = 'av_adjusted',
+      'Assessed Market Value' = 'av_incent', 
+      '% AV Incentivized' = 'pct_incent' )  ) %>%
+  formatCurrency(c('Current Taxable AV', 'Assessed Market Value'), digits = 0) %>%
+formatPercentage('% AV Incentivized', digits = 2)
+```
+
+## Projects with incentivized and non-incentivized PINs
+
+```{r}
+#| label: tbl-mixedprojects
+#| tbl-cap: "Projects with Incentivized and non-Incentivized PIN Property Classes. Sorted from highest Taxable AV (from final final AV value (\"av_clerk\")"
+
+table <- nonres_pins2022 %>% 
+   #   filter(Alea_cat != "Land") %>%
+  mutate(has_incentive = ifelse(class >= 600, 1, 0)) %>%
+  group_by(both_ids) %>%
+  summarize(
+    count = n(),     # number of pins in project
+    sum = sum(has_incentive), # number of pins that had incentives
+    av_adjusted=sum(ifelse(between(class, 600, 899), av*2.5, av)),  # approximated fmv
+    fmv = sum((av/loa)*0.25, na.rm=TRUE),                            # more accurate fmv
+    av = sum(av)) %>%
+  mutate(pct_pins_w_inct = round(sum/count, digits = 3) ) %>%  # pct of pins that had incentive property class
+  arrange(pct_pins_w_inct) %>% 
+  filter(pct_pins_w_inct > 0 & pct_pins_w_inct < 1) %>%
+  arrange(desc(pct_pins_w_inct)) %>%
+  select(both_ids, count, sum, pct_pins_w_inct, av, av_adjusted, fmv) %>% 
+  arrange(desc(av))
+
+flextable(table) %>% 
+  set_header_labels(both_ids = 'Project ID', count = 'PINs in Projects', sum = 'PINs with \nIncentives', pct_pins_w_inct = 'Pct of PINs \nIncentivized', av = 'Project AV  \n(Final)'
+                    )  %>% set_table_properties( layout = "autofit", width = .75)
+
+
+```
+
+## Summed by Project Identifier
+
+```{r}
+#| label: tbl-projectIDs
+#| tbl-cap: "**Incentive Project Level Values** Note: We still do not have a true keypin-pin crosswalk so these numbers are very likely to change once the makeshift crosswalk is replaced"
+#| column: page
+
+table <- nonres_pins2022 %>% 
+  # filter(Alea_cat != "Land") %>%
+
+  mutate(has_incentive = ifelse(class >= 600, 1, 0)) %>%
+  group_by(both_ids) %>%
+  mutate(project_taxable_av = sum(av)) %>%
+  ungroup() %>%
+  group_by(both_ids) %>%
+  summarize(count = n(), # number of pins in project
+         sum = sum(has_incentive), # number of pins that had incentives
+         av_incent = sum(if_else(incent_prop == "Incentive", av, 0), na.rm=TRUE),
+         av_nonincent = sum(ifelse(incent_prop == "Non-Incentive", av, 0), na.rm=TRUE),
+         fmv_incent = sum(ifelse(incent_prop == "Non-Incentive", av/loa*0.25, 0), na.rm=TRUE),
+         fmv = sum((av/loa)*0.25, na.rm=TRUE) ) %>%
+  mutate(pct_pins_w_inct = round(sum/count, digits = 3), # pct of pins that had incentive property class
+         av_incent_adjusted = av_incent * 2.5,
+         EstMarketValue = av_incent_adjusted + av_nonincent,
+         perc_incentivized = av_incent_adjusted / EstMarketValue,
+         pct_fmv = fmv_incent/fmv) %>%  
+  filter(av_incent > 0) %>%  
+  arrange(desc(fmv)) %>%
+  select(-c(EstMarketValue, fmv_incent))
+
+  
+datatable(table,
+          rownames= FALSE,
+          colnames = c('Project ID' = 'both_ids', 'PINs in Projects' = 'count', 
+                       'PINs with\nIncent Class' = 'sum',
+        '% Backed out AV w/ Incentives' = 'perc_incentivized',
+                     'FMV' = 'fmv',
+        'Pct FMV with Incent.Class.' = 'pct_fmv',
+                       'Taxable AV in Incent Class' = 'av_incent', 'Taxable AV in non-Incent Class' = 'av_nonincent', '2.5*IncentAV' = 'av_incent_adjusted',  'Pct of PINs Incentivized' = 'pct_pins_w_inct' )) %>%
+  formatPercentage( c('% Backed out AV w/ Incentives' , 'Pct of PINs Incentivized', 'Pct FMV with Incent.Class.'), 
+                   digits = 1) %>%
+  formatCurrency(c('FMV', 'Taxable AV in Incent Class', '2.5*IncentAV', 'Taxable AV in non-Incent Class'), digits = 0)
+
+```
+
