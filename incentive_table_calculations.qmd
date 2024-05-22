@@ -587,8 +587,15 @@ MuniLevel <- read_csv("./Output/ptaxsim_muni_level_2006-2022.csv") %>%
 # 
 # tc_class <- read_csv("./Output/ptaxsim_TC_Class_summaries_2006-2022.csv") %>% 
 #   filter(year == 2022)
-
-muni_class_sums <- read_csv("./Output/ptaxsim_muni_class_summaries_2006-2022.csv")
+# 
+# muni_class_sums <- read_csv("./Output/ptaxsim_muni_class_summaries_2006-2022.csv") %>%
+#     mutate(class_group = str_sub(class, 1,1),
+#          class_group = case_when(
+#           (class_group == 5 & class %in% commercial_classes) ~ "5A",
+#           (class_group == 5 & class %in% industrial_classes) ~ "5B",
+#           (class_group == 8 & class %in% commercial_classes ) ~ "8A",
+#           (class_group == 8 & class %in% industrial_classes ) ~ "8B",
+#           TRUE ~ as.character(class_group)))
 
 eqfact22 <- 2.9237 # 2022 CC equalization factor
 eqfact21 <- 3.0027 # 2021 CC Equalization Factor
@@ -597,12 +604,19 @@ muni_class2022 <- read_csv("./Output/ptaxsim_muni_class_summaries_2006-2022.csv"
   filter(year == 2022) %>% 
   filter(clean_name != c("Frankfort"))%>%
   left_join(class_dict, by = c("class" = "class_code")) %>%
-  left_join(ccao_loa, by = c("class" = "class_code")) 
+  left_join(ccao_loa, by = c("class" = "class_code")) %>%
+    mutate(class_group = str_sub(class, 1,1),
+         class_group = case_when(
+          (class_group == 5 & class %in% commercial_classes) ~ "5A",
+          (class_group == 5 & class %in% industrial_classes) ~ "5B",
+          (class_group == 8 & class %in% commercial_classes ) ~ "8A",
+          (class_group == 8 & class %in% industrial_classes ) ~ "8B",
+          TRUE ~ as.character(class_group)))
 
 
 muni_class_AleaCats <- muni_class2022 %>%
   left_join(MuniLevel) %>%
-  group_by(clean_name, incent_prop, Alea_cat, cur_munilevel_rate) %>%
+  group_by(clean_name, class_group, incent_prop, Alea_cat, cur_munilevel_rate) %>%
   summarize(av = sum(av),
             eav = sum(eav), # equalized AV 
             fmv = sum(av / loa, na.rm=TRUE),
@@ -612,20 +626,27 @@ muni_class_AleaCats <- muni_class2022 %>%
             pins_in_muni = n(),
             all_exemptions = sum(all_exemptions),
             abatements = sum(exe_abate),
+            loa = mean(loa, na.rm=TRUE)
   ) %>%
   mutate(
     # approximation for if assessments went from 10% to 25%, similar to other commercial and industrial property in Cook County
-    new_av = ifelse(incent_prop == "Incentive", av*2.5, av), 
+    new_av = ifelse(incent_prop == "Incentive", av/loa, av), 
     
-    new_TEAV_noIncents = ifelse(incent_prop ==  "Incentive", current_taxable_eav * 2.5 , current_taxable_eav),
+    new_TEAV_noIncents = ifelse(incent_prop ==  "Incentive", current_taxable_eav/eq2022/loa, current_taxable_eav),
+    new_TEAV_noC6 = ifelse(class_group == "6", (current_taxable_eav/eq2022)/loa , current_taxable_eav),
+    new_TEAV_noC7 = ifelse(class_group == "7", (current_taxable_eav/eq2022)/loa , current_taxable_eav),
+    new_TEAV_noC8 = ifelse(class_group == "8", (current_taxable_eav/eq2022)/loa, current_taxable_eav),
     
-        new_TEAV_vacant_noIncents = ifelse(incent_prop ==  "Incentive", 0, current_taxable_eav),
+    new_TEAV_vacant_noIncents = ifelse(incent_prop ==  "Incentive", 0, current_taxable_eav),
     
     new_TEAV_noExemps = current_taxable_eav + all_exemptions, # does not include abatements
     new_TEAV_noAbates = current_taxable_eav + abatements, # include only abatements, not other exemption types
 
     # amount of EAV from taxing an additional 15% of the AV if incentive properties didn't exist
     forgone_EAV_incent = ifelse(incent_prop == "Incentive", new_TEAV_noIncents - (current_taxable_eav + all_exemptions), 0),
+      forgone_EAV_noC6 = ifelse(class_group == "6", new_TEAV_noC6 - (current_taxable_eav + all_exemptions), 0),
+          forgone_EAV_noC7 = ifelse(class_group == "7", new_TEAV_noC7 - (current_taxable_eav + all_exemptions), 0),
+          forgone_EAV_noC8 = ifelse(class_group == "8", new_TEAV_noC8 - (current_taxable_eav + all_exemptions), 0),
     
     forgone_TIF_EAV = final_tax_to_tif / cur_munilevel_rate)     
 
@@ -635,13 +656,21 @@ alt_rates <- muni_class_AleaCats %>%
   mutate(munilevy = sum(final_tax_to_dist),
          muni_exemptions = sum(all_exemptions), # all exe_ variables except exe_abate
          muni_abatements = sum(abatements),
-         muni_forgoneTIF = sum(forgone_TIF_EAV),
-         muni_forgone_EAV_incent = sum(forgone_EAV_incent),
+         muni_forgoneTIF = sum(forgone_TIF_EAV, na.rm=TRUE),
+         muni_forgone_EAV_incent = sum(forgone_EAV_incent, na.rm=TRUE),
+         muni_forgone_EAV_noC6 = sum(forgone_EAV_noC6, na.rm=TRUE),
+         muni_forgone_EAV_noC7 = sum(forgone_EAV_noC7, na.rm=TRUE),
+         muni_forgone_EAV_noC8 = sum(forgone_EAV_noC8, na.rm=TRUE),
+         muni_TEAV_noC6 = sum(new_TEAV_noC6, na.rm=TRUE),
+         muni_TEAV_noC7 = sum(new_TEAV_noC7, na.rm=TRUE),
+         muni_TEAV_noC8 = sum(new_TEAV_noC8, na.rm=TRUE),
          muni_current_TEAV = sum(current_taxable_eav),
          muni_TEAV_noExe = sum(new_TEAV_noExemps),
          muni_TEAV_noAbate= sum(new_TEAV_noAbates),
          muni_TEAV_noInc = sum(new_TEAV_noIncents),
-         muni_TEAV_vacant_noInc = sum(new_TEAV_vacant_noIncents, na.rm = TRUE)
+         muni_TEAV_vacant_noInc = sum(new_TEAV_vacant_noIncents, na.rm = TRUE),
+        
+                                      
          
          ) %>%
   ungroup() %>%
@@ -658,17 +687,32 @@ alt_rates <- muni_class_AleaCats %>%
     muni_rate_neither = munilevy / muni_TEAV_neither * 100, 
     muni_rate_noTIFs = munilevy / (muni_current_TEAV + muni_forgoneTIF) * 100,
     muni_rate_vacant = munilevy / muni_TEAV_vacant_noInc* 100,
-    muni_rate_lowest = munilevy / muni_TEAV_max * 100)
+    muni_rate_lowest = munilevy / muni_TEAV_max * 100,
+    muni_rate_noC6 = munilevy / (muni_TEAV_noC6) * 100,
+    muni_rate_noC7 = munilevy / (muni_TEAV_noC7) * 100,
+    muni_rate_noC8 = munilevy / ( muni_TEAV_noC8) * 100
+     
+    )
 
 alt_rates <- alt_rates %>% 
   mutate(change_noExe = cur_munilevel_rate - muni_rate_noExe,
          change_noInc = cur_munilevel_rate - muni_rate_noInc,
+         change_noC6 = cur_munilevel_rate - muni_rate_noC6,
+         change_noC7 = cur_munilevel_rate - muni_rate_noC7,
+         change_noC8 = cur_munilevel_rate - muni_rate_noC8,
+
          change_noTIFs = cur_munilevel_rate - muni_rate_noTIFs,
          change_neither = cur_munilevel_rate - muni_rate_neither,
          change_max = cur_munilevel_rate - muni_rate_lowest,
          change_noAbate = cur_munilevel_rate - muni_rate_noAbate,
          change_vacants = cur_munilevel_rate - muni_rate_vacant) # highest rate scenario
+```
 
+
+> Change calculations for incentives do not seem correct!!
+
+
+```{r}
 tbl1 <- alt_rates %>% 
   select(clean_name, cur_munilevel_rate, muni_rate_noExe, muni_rate_noInc, muni_rate_neither,  muni_rate_noTIFs, muni_rate_noAbate,
                              muni_rate_lowest, muni_rate_vacant) %>% 
@@ -695,6 +739,30 @@ datatable(tbl2,
                        'Rate Change: No Abatements' = 'change_noAbate',
                        'Rate Change from Additional Commerc & Indust. Value' = 'change_noInc', 
                        'Rate Change: Incent. Prop. Lose All Value' = 'change_vacants',
+                       'Rate if No Incentive Classes & No Exemptions' = 'change_neither',
+                       'Rate if No TIF Increments' = 'change_noTIFs',
+                       'Maxiumum Rate Change' = 'change_max'
+                       
+                    ))
+
+
+tbl3 <- alt_rates %>% 
+  select(clean_name, change_noExe, change_noInc, change_noC6, change_noC7, change_noC8, change_noAbate, change_noTIFs, 
+         change_neither, change_max, change_vacants) %>%
+  distinct() %>%
+  mutate(across(change_noExe:change_vacants, round, digits = 2)) %>% as.data.frame()
+
+datatable(tbl3,
+          rownames= FALSE,
+          colnames = c('Municipality' = 'clean_name',   
+                       'Rate Change from Taxing GHE Exempt EAV' = 'change_noExe', 
+                       'Rate Change: No Abatements' = 'change_noAbate',
+                       'Rate Change from Additional Commerc & Indust. Value' = 'change_noInc', 
+                       'Rate Change: Incent. Prop. Lose All Value' = 'change_vacants',
+                       'Rate Change: No C6 AV Reduction' = 'change_noC6',
+                       'Rate Change: No C7 AV Reduction' = 'change_noC7',
+                       'Rate Change: No C8 AV Reduction' = 'change_noC8',
+
                        'Rate if No Incentive Classes & No Exemptions' = 'change_neither',
                        'Rate if No TIF Increments' = 'change_noTIFs',
                        'Maxiumum Rate Change' = 'change_max'
