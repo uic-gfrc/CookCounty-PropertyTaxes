@@ -102,11 +102,9 @@ ptax_pins <- ptax_pins %>%
 
 # FMV
 
-## Major Class Sums
-
 <!--- Don't use tax_amount_exe for calculations below because it is the "naive" calculation of the current tax rate * exempt eav discussed in the exemptions research. --->
 
-> Taxed Value refers to what taxing agencies did tax to pay for their levies. We use the portion of the tax bill that does NOT go to TIFs to calculate the portion of the composite levy paid by each PIN and then sum up from there. 
+> Taxed Value refers to what taxing agencies did tax to pay for their levies. We use the portion of the tax bill that does NOT go to TIFs to calculate the portion of the composite levy paid by each PIN and then sum up from there.
 
 ```{r}
 eq2022 <- 2.9237
@@ -129,6 +127,8 @@ ptax_pins <- ptax_pins %>%
          class_group = case_when(
           (class_group == 5 & class %in% commercial_classes) ~ "5A",
           (class_group == 5 & class %in% industrial_classes) ~ "5B",
+          class_group == 7 &  class < 742 ~ "7-small",
+          class_group == 7 &  class >= 742 ~ "7-big",
           (class_group == 8 & class %in% commercial_classes ) ~ "8A",
           (class_group == 8 & class %in% industrial_classes ) ~ "8B",
           TRUE ~ as.character(class_group))) %>%
@@ -168,16 +168,16 @@ ptax_pins <- ptax_pins %>%
 
 > Total Value should equal Current Taxable Value + non-Taxable Value where non-Taxable Value = Value in TIF Increment + Reduced Value from Policy Choices where Reduced Value = Tax Exempt Value from Homeowners exemptions or abatements + Reduced Value from lower levels of assessments due to incentive classifications.
 
-### Cook County Total Value
+## Cook County Total Value
 
 > Numbers will be slightly different than Sankey graph due to using more accurate levels of assessment when calculating the Fair Market Value of properties. There is a typo in the sankey graphs: says 665 billion for cook county and it should be 605 billion.
 
 ```{r}
 #| label: tbl-cooktotals
-#| tbl-cap: "**FMV of PINs in Cook County** \\newline Taxed FMV represents the property value that was actually taxed by local taxing jurisdictions and is equal to the amount levied. We use the the portion of an individuals tax bill that does NOT go to a TIF to calculate the composite levy for taxing jursidictions."
+#| tbl-cap: "**FMV of PINs in Cook County**       Taxed FMV represents the property value that was actually taxed by local taxing jurisdictions and is equal to the amount levied. We use the the portion of an individuals tax bill that does NOT go to a TIF to calculate the composite levy for taxing jursidictions."
 
 table_cook <- ptax_pins %>%
-  summarize(cty_proptype_PC = n(),
+  summarize(cty_PC = n(),
             cty_projects = n_distinct(both_ids), # mostly for industrial and commercial properties
             fmv_incentive = sum(ifelse(class >=600 & class <=900, fmv, 0), na.rm = TRUE),
             fmv_taxed =  sum(taxed_fmv, na.rm=TRUE),
@@ -192,7 +192,7 @@ table_cook <- ptax_pins %>%
             cty_zero_bill = sum(zero_bill, na.rm=TRUE),
             cty_fmv_residential = sum(ifelse(class %in% c(200:399), fmv, 0), na.rm = TRUE),
             cty_fmv_industrial = sum(ifelse(class %in% industrial_classes, fmv, 0), na.rm = TRUE),
-            muni_fmv_commercial = sum(ifelse(class %in% commercial_classes, fmv, 0), na.rm = TRUE),
+            cty_fmv_commercial = sum(ifelse(class %in% commercial_classes, fmv, 0), na.rm = TRUE),
             cty_levy = sum(final_tax_to_dist),
             cty_current_rate_avg = mean(tax_code_rate),
             
@@ -200,12 +200,13 @@ table_cook <- ptax_pins %>%
             cty_avg_C2_bill_withexe = mean(ifelse(between(class,200,300) & all_exemptions > 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
             
   ) %>%
-  mutate(pct_fmv_untaxable = fmv_untaxable_value / fmv)
+  mutate(pct_fmv_untaxable = fmv_untaxable_value / fmv,
+         pct_fmv_taxed = fmv_taxed / fmv)
 
 table_cook %>% 
-  select(cty_proptype_PC, fmv_taxed, fmv_untaxable_value, fmv ) %>%
+  select(cty_PC, fmv_taxed, fmv_untaxable_value, fmv ) %>%
   flextable() %>% 
-  set_header_labels(cty_proptype_PC = 'PINs', cty_projects = "Project IDs", 
+  set_header_labels(cty_PC = 'PINs', cty_projects = "Project IDs", 
                     fmv = 'Total FMV', 
                     fmv_taxed = 'Taxed FMV', fmv_untaxable_value = 'Value not Taxable\nfor Levy',
                     pct_fmv_untaxable = 'Value not Taxed (%)'
@@ -213,14 +214,12 @@ table_cook %>%
 
 ```
 
-
 ```{r}
 #| label: tbl-untaxableFMV-Cook
-#| tbl-cap: "**Untaxable FMV in Cook County.** \\newline Taxed FMV represents the property value that was actually taxed by local taxing jurisdictions and is equal to the amount levied. We use the the portion of an individuals tax bill that does NOT go to a TIF to calculate the composite levy for taxing jursidictions."
+#| tbl-cap: "**Untaxable FMV in Cook County.**        Taxed FMV represents the property value that was actually taxed by local taxing jurisdictions and is equal to the amount levied. We use the the portion of an individuals tax bill that does NOT go to a TIF to calculate the composite levy for taxing jursidictions."
 
 table_cook %>% 
   select(fmv, fmv_tif_increment, fmv_exemptions, fmv_abatements, 
-         # fmv_incents_inTIFs, fmv_incentive, 
          pct_fmv_untaxable, ) %>%
   flextable() %>% 
   set_header_labels(
@@ -228,17 +227,14 @@ table_cook %>%
                     fmv_tif_increment = 'TIF Increment FMV' ,
                     fmv_exemptions = 'Exempt Value: Exemptions',
                     fmv_abatements = 'Exempt Value: Abatements',
-                #    fmv_incents_inTIFs = 'FMV with Incent. Class. in TIFs',
-                #    fmv_incentive = "FMV with Incent.Class.",
                     fmv_untaxable_value = 'Value not Taxable \nfor Levy',
                     pct_fmv_untaxable = 'County FMV not Taxed (%)'
 ) %>%   FitFlextableToPage()
 ```
 
-
 ```{r}
-#| label: tbl-fmvtifincentive-Cook
-#| tbl-cap: "**FMV of properties with incentive classifications and TIF increment.** \\newline Value in TIFs, value within the TIF that can be taxed by local taxing jurisdictions, value of properties that have reduced levels of assessments from incentive classifications, and the value that is both in a TIF and has a reduced LOA."
+#| label: tbl-fmv-intif-withincentive-Cook
+#| tbl-cap: "**FMV of properties with incentive classifications and TIF increment.**      Value in TIFs, value within the TIF that can be taxed by local taxing jurisdictions, value of properties that have reduced levels of assessments from incentive classifications, and the value that is both in a TIF and has a reduced LOA."
 
 table_cook %>% 
   select(fmv, fmv_inTIF, fmv_tif_increment, fmv_incentive, fmv_incents_inTIFs) %>%
@@ -253,40 +249,60 @@ table_cook %>%
 
 ```
 
-Taxable value is the frozen EAV within an area + taxable EAV for residential properties after exemptions and abatements (for non-residential properties) are subtracted from the equalized AV.
+**Taxed value** is the frozen EAV within an area + taxable EAV for residential properties after exemptions and abatements (for non-residential properties) are subtracted from the equalized AV. It includes incentive properties at their current, lower assessment ratios.
 
-### Cook Total Value by Properties' Major Class
+**Taxable value** is the frozen EAV within an area + taxable EAV for residential properties after exemptions and abatements (for non-residential properties) are subtracted from the equalized AV.
+
+
+## Cook Total Value by Properties' Major Class
 
 ```{r}
 #| label: tbl-cooktotals-majorclass
-#| tbl-cap: 
-#|      "**Summed FMV of PINs in Cook County by Property Class.** 
-#|      Untaxable EAV includes homeowner exemptions for 200 level properties, abatements for other property class types, EAV in the TIF increment, and EAV that has been reduced due to incentive classifications"
+#| tbl-cap: "**Summed FMV of PINs in Cook County by Property Class.**      Untaxable EAV includes homeowner exemptions for 200 level properties, abatements for other property class types, EAV in the TIF increment, and EAV that has been reduced due to incentive classifications"
 
-table_MC <- ptax_pins %>%
-  group_by(class_group) %>%
-  summarize(proptype_pincount = n(),
-          #  projects = n_distinct(both_ids), # mostly for industrial and commercial properties
-            fmv_incentive = sum(ifelse(class >=600 & class <=900, fmv, 0), na.rm = TRUE),
-            taxable_fmv = sum(taxable_fmv, na.rm=TRUE),
-            incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, fmv, 0), na.rm = TRUE),
-            fmv_inTIF = sum(fmv_inTIF, na.rm=TRUE),
-            fmv_tif_increment = sum(fmv_tif_increment, na.rm=TRUE),
-            untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
-            fmv = sum(fmv, na.rm=TRUE),
 
-          #  zero_bill = sum(zero_bill, na.rm=TRUE),
+cty_MC_table <- ptax_pins %>%
+  mutate(cty_fmv = sum(fmv, na.rm=TRUE)) %>%
+    group_by(class_group) %>%
+
+  summarize(cty_MC_PC = n(),
+            cty_MC_projects = n_distinct(both_ids), # mostly for industrial and commercial properties
+            cty_MC_fmv_incentive = sum(ifelse(class >=600 & class <=900, fmv, 0), na.rm = TRUE),
+            cty_MC_fmv_taxed =  sum(taxed_fmv, na.rm=TRUE),
+            cty_MC_fmv_taxable = sum(taxable_fmv, na.rm=TRUE),
+            cty_MC_fmv_incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, fmv, 0), na.rm = TRUE),
+            cty_MC_fmv_inTIF = sum(fmv_inTIF, na.rm=TRUE),
+            cty_MC_fmv_tif_increment = sum(fmv_tif_increment, na.rm=TRUE),
+            cty_MC_fmv_untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
+            cty_MC_fmv = sum(fmv, na.rm=TRUE),
+            cty_MC_fmv_exemptions = sum(all_exemptions/eq2022/loa, na.rm=TRUE),
+            cty_MC_fmv_abatements = sum(abatements/eq2022/loa, na.rm=TRUE),
+            cty_MC_cty_zero_bill = sum(zero_bill, na.rm=TRUE),
+            cty_MC_fmv_residential = sum(ifelse(class %in% c(200:399), fmv, 0), na.rm = TRUE),
+            cty_MC_fmv_industrial = sum(ifelse(class %in% industrial_classes, fmv, 0), na.rm = TRUE),
+            cty_MC_fmv_commercial = sum(ifelse(class %in% commercial_classes, fmv, 0), na.rm = TRUE),
+            cty_MC_levy_paid = sum(final_tax_to_dist),
+            cty_MC_current_rate_avg = mean(tax_code_rate),
             
-) %>%
-  mutate(pct_fmv_untaxable = untaxable_value / fmv)
+            cty_avg_C2_bill_noexe = mean(ifelse(between(class,200,300) & all_exemptions == 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
+            cty_avg_C2_bill_withexe = mean(ifelse(between(class,200,300) & all_exemptions > 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
+            cty_fmv = mean(cty_fmv)
+            
+  ) %>%
+  mutate(pct_cty_MC_fmv_untaxable = cty_MC_fmv_untaxable_value / cty_MC_fmv,
+         pct_fmv_taxed = cty_MC_fmv_taxed / cty_fmv,
+         pct_MC_levy_paid = cty_MC_levy_paid / sum(cty_MC_levy_paid) )
 
 
-flextable(table_MC) %>% 
-  set_header_labels(class_group = "Property Type", proptype_pincount = 'PINs',# projects = "Project IDs", 
-                    fmv = 'Total FMV', taxable_fmv = 'Taxable FMV', untaxable_value = 'Value not Taxable for Levy', fmv_incentive = "FMV with Incent.Class.", fmv_inTIF = 'FMV in TIFs', fmv_tif_increment = 'TIF Increment FMV' , pct_fmv_untaxable = 'Value not Taxed (%)', incentive_fmv = 'FMV with Incent. Classification', incents_inTIFs = 'FMV with Incent. Class. in TIFs' )
+
+flextable(cty_MC_table) %>% 
+  set_header_labels(class_group = "Property Type", cty_MC_PC = 'PINs',# projects = "Project IDs", 
+                    cty_fmv = 'Total FMV', cty_MC_fmv_taxable = 'Taxable FMV', cty_MC_fmv_untaxable_value = 'Value not Taxable for Levy', cty_MC_fmv_incentive = "FMV with Incent.Class.", cty_MC_fmv_inTIF = 'FMV in TIFs', cty_MC_fmv_tif_increment = 'TIF Increment FMV' , pct_cty_MC_fmv_untaxable = 'Value not Taxed (%)', cty_MC_incentive_fmv = 'FMV with Incent. Classification', cty_MC_incents_inTIFs = 'FMV with Incent. Class. in TIFs' )
+
 ```
 
-### Municipality Level Stats
+
+## Municipality Level Stats 
 
 ```{r}
 #| label: tbl-muni-levelstats
@@ -343,6 +359,8 @@ munilevel <- ptax_pins %>%
 munilevel %>% datatable(rownames=FALSE)
 ```
 
+### Muni Percentages
+
 ```{r}
 table_muni_percentages <- munilevel %>%
   mutate(
@@ -359,6 +377,8 @@ table_muni_percentages%>%
   datatable(rownames = FALSE) %>%
   formatPercentage(columns = 2:6, digits = 2)
 ```
+
+# County and Municipality by Major Class Types
 
 
 ```{r}
@@ -408,6 +428,8 @@ table_muni_mc %>%
   formatCurrency(c('Class FMV', 'Taxable FMV', 'Value not Taxable for Levy', 'TIF Increment FMV', 'FMV with Incent.Class.', 'FMV with Incent. Class. in TIFs', 'FMV in TIFs' ), digits = 0)
 
 ```
+
+### Muni-major class level percentrages
 
 ```{r}
 table_mc_percentages <- table_muni_mc %>%
