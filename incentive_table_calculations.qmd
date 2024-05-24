@@ -169,6 +169,38 @@ ptax_pins <- ptax_pins %>%
 
 > Total Value should equal Current Taxable Value + non-Taxable Value where non-Taxable Value = Value in TIF Increment + Reduced Value from Policy Choices where Reduced Value = Tax Exempt Value from Homeowners exemptions or abatements + Reduced Value from lower levels of assessments due to incentive classifications.
 
+```{r}
+ptax_pins %>% filter(equalized_av - (taxed_eav + untaxable_value_eav) > 100)
+
+ptax_pins %>% filter(equalized_av - eav > 10) 
+
+```
+
+> What is class 239? That is the class that is consistently not equalling 0 in the test above.
+
+```{r}
+# Are there any properties where the taxed_eav is greater than the original eav value? Nope! yay.
+ptax_pins %>% filter(equalized_av -taxed_eav < -1)
+```
+
+
+```{r eval=FALSE}
+stopifnot(
+    (ptax_pins$equalized_av - ptax_pins$eav <= 1000),
+
+ # (ptax_pins$equalized_av - ptax_pins$taxed_eav <= 1000),
+  (ptax_pins$taxed_eav - ptax_pins$equalized_av <= 10)
+)
+
+stopifnot(
+  ((ptax_pins$taxed_eav + ptax_pins$untaxable_value_eav) -  ptax_pins$equalized_av > 500 )
+)
+
+stopifnot(
+  ptax_pins$taxed_eav + ptax_pins$untaxable_value_eav - ptax_pins$equalized_av > 50
+)
+```
+
 ## Cook County Total Value
 
 > Numbers will be slightly different than Sankey graph due to using more accurate levels of assessment when calculating the Fair Market Value of properties. There is a typo in the sankey graphs: says 665 billion for cook county and it should be 605 billion.
@@ -199,10 +231,14 @@ table_cook <- ptax_pins %>%
             
             cty_avg_C2_bill_noexe = mean(ifelse(between(class,200,300) & all_exemptions == 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
             cty_avg_C2_bill_withexe = mean(ifelse(between(class,200,300) & all_exemptions > 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
-            
+           cty_av_taxed = sum(taxed_av, na.rm = TRUE),
+           cty_untaxable_value_av = sum(untaxable_value_av, na.rm=TRUE),
+           cty_av = sum(av)
   ) %>%
   mutate(pct_fmv_untaxable = fmv_untaxable_value / fmv,
-         pct_fmv_taxed = fmv_taxed / fmv)
+         pct_fmv_taxed = fmv_taxed / fmv,
+         cty_pct_av_taxed = cty_av_taxed / cty_av,
+         cty_pct_av_untaxable = cty_untaxable_value_av/cty_av ) 
 
 table_cook %>% 
   select(cty_PC, fmv_taxed, fmv_untaxable_value, fmv ) %>%
@@ -234,6 +270,17 @@ table_cook %>%
 ```
 
 ```{r}
+#| label: tbl-untaxableAV-Cook
+#| tbl-cap: "**Untaxable AV in Cook County.**        Taxed AV represents the property value that was actually taxed by local taxing jurisdictions."
+
+table_cook %>% 
+  select(cty_av, cty_av_taxed, cty_untaxable_value_av, cty_pct_av_taxed, cty_pct_av_untaxable ) %>%
+  flextable() %>% 
+   FitFlextableToPage()
+```
+
+
+```{r}
 #| label: tbl-fmv-intif-withincentive-Cook
 #| tbl-cap: "**FMV of properties with incentive classifications and TIF increment.**      Value in TIFs, value within the TIF that can be taxed by local taxing jurisdictions, value of properties that have reduced levels of assessments from incentive classifications, and the value that is both in a TIF and has a reduced LOA."
 
@@ -250,30 +297,17 @@ table_cook %>%
 
 ```
 
-**Taxed value** is the amount of value that was actually taxed in order to pay for taxing agencies levies. It includes frozen EAV within an area + taxable EAV for residential properties net exemptions and abatements. It also includes the equalized assessed value of incentive properties at their current, lower assessment ratios. `final_tax_to_dist` is used to calculate the amount that was collected by local government agencies and then divided by the tax rate to calculate the amount of value that was taxed, or the __taxable equalized assessed value (TEAV)__. 
+**Taxed value** is the amount of value that was actually taxed in order to pay for taxing agencies levies. It includes frozen EAV within an area + taxable EAV for residential properties net exemptions and abatements. It also includes the equalized assessed value of incentive properties at their current, lower assessment ratios. `final_tax_to_dist` is used to calculate the amount that was collected by local government agencies and then divided by the tax rate to calculate the amount of value that was taxed, or the **taxable equalized assessed value (TEAV)**.
 
-::: aside-margin
+::: aside
 The Fair Market Value (FMV) is also called the "Market Value for Assessment Purposes" and can be calculated from the `av` / `loa`, or the Assessed Value divided by the Level of Assessment. However, the values used for the level of assessment are an approximation for incentive properties since we do not have the PIN level assessment ratios.
 :::
 
-The Taxed Value, when converted to the Fair Market Value (FMV) represents the amount of value that was taxed out of the full FMV available in Cook County. 
-
-
-~~**Taxable value** is the frozen EAV within an area + taxable EAV for residential properties after exemptions and abatements (for non-residential properties) are subtracted from the equalized AV.~~
-
-
-::: {aside-margin}
-The Fair Market Value (FMV) is also called the "Market Value for Assessment Purposes" and can be calculated from the `av` / `loa`, or the Assessed Value divided by the Level of Assessment. However, the values used for the level of assessment are an approximation for incentive properties since we do not have the PIN level assessment ratios.
-:::
-
-The Taxed Value, when converted to the Fair Market Value (FMV) represents the amount of value that was taxed out of the full FMV available in Cook County. 
-
+The Taxed Value, when converted to the Fair Market Value (FMV) represents the amount of value that was taxed out of the full FMV available in Cook County.
 
 ~~**Taxable value** is the frozen EAV within an area + taxable EAV for residential properties after exemptions and abatements (for non-residential properties) are subtracted from the equalized AV.~~
-
 
 <!-- Check all variable names of taxed vs taxable value.  -->
-
 
 ## Cook Total Value by Properties' Major Class
 
@@ -329,8 +363,7 @@ flextable(cty_MC_table) %>%
 
 ```
 
-
-## Municipality Level Stats 
+## Municipality Level Stats
 
 ```{r}
 #| label: tbl-muni-levelstats
@@ -407,7 +440,6 @@ table_muni_percentages%>%
 ```
 
 # County and Municipality by Major Class Types
-
 
 ```{r}
 #| label: tbl-municlassgroup-totals
