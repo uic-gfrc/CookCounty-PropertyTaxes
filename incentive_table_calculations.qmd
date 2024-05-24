@@ -39,7 +39,6 @@ FitFlextableToPage <- function(ft, pgwidth = 6){
 ```
 
 ```{r}
-#| echo: true
 #| code-fold: false
 
 # all pins for 2022
@@ -135,11 +134,11 @@ ptax_pins <- ptax_pins %>%
   
   mutate(
     
-    # taxing district revenue = eav * tax rate so rearrange the formula:
+    # taxing district revenue = taxable eav * tax rate so rearrange the formula:
     taxed_eav = (final_tax_to_dist/(tax_code_rate/100)),
     taxed_av =  taxed_eav / eq2022, # current value that taxing agencies can tax for their levies
     
-    # taxable AV = equalized assessed value outside of TIFs, gross exemptions
+    # taxable AV = equalized assessed value net TIF increments, gross exemptions
     taxable_av = ((final_tax_to_dist/(tax_code_rate/100)) + (all_exemptions + abatements) ) / eq2022,
     
     
@@ -149,7 +148,8 @@ ptax_pins <- ptax_pins %>%
 
 
     # untaxable value = exempt EAV from abatements and exemptions + TIF increment EAV above frozen EAV, which becomes TIF revenue + difference between 25% and reduced level of assessment for incentive class properties 
-    untaxable_value_eav = all_exemptions + abatements + (final_tax_to_tif/(tax_code_rate/100) + ifelse(incent_prop=="Incentive", (taxable_av - taxed_av)*eq2022, 0)  ) ,
+    untaxable_value_eav = all_exemptions + abatements + (final_tax_to_tif/(tax_code_rate/100) +                                                  ifelse(incent_prop=="Incentive", 
+               ((taxable_av - taxed_av)*eq2022), 0)  ) ,
     
     untaxable_value_av = untaxable_value_eav / eq2022,
     untaxable_value_fmv = untaxable_value_av / loa,
@@ -162,7 +162,8 @@ ptax_pins <- ptax_pins %>%
     
 
     ) %>%
-  select(tax_code, class, pin, taxed_fmv, taxable_fmv, untaxable_value_fmv, fmv_inTIF, fmv_tif_increment, fmv, total_billed, final_tax_to_dist, final_tax_to_tif, tax_code_rate, eav, equalized_av, av, everything())
+  select(tax_code, class, pin, taxed_fmv, # taxable_fmv, 
+         untaxable_value_fmv, fmv_inTIF, fmv_tif_increment, fmv, total_billed, final_tax_to_dist, final_tax_to_tif, tax_code_rate, eav, equalized_av, av, everything())
 
 ```
 
@@ -181,7 +182,7 @@ table_cook <- ptax_pins %>%
             cty_projects = n_distinct(both_ids), # mostly for industrial and commercial properties
             fmv_incentive = sum(ifelse(class >=600 & class <=900, fmv, 0), na.rm = TRUE),
             fmv_taxed =  sum(taxed_fmv, na.rm=TRUE),
-            fmv_taxable = sum(taxable_fmv, na.rm=TRUE),
+           # fmv_taxable = sum(taxable_fmv, na.rm=TRUE),
             fmv_incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, fmv, 0), na.rm = TRUE),
             fmv_inTIF = sum(fmv_inTIF, na.rm=TRUE),
             fmv_tif_increment = sum(fmv_tif_increment, na.rm=TRUE),
@@ -249,9 +250,19 @@ table_cook %>%
 
 ```
 
-**Taxed value** is the frozen EAV within an area + taxable EAV for residential properties after exemptions and abatements (for non-residential properties) are subtracted from the equalized AV. It includes incentive properties at their current, lower assessment ratios.
+**Taxed value** is the amount of value that was actually taxed in order to pay for taxing agencies levies. It includes frozen EAV within an area + taxable EAV for residential properties net exemptions and abatements. It also includes the equalized assessed value of incentive properties at their current, lower assessment ratios. `final_tax_to_dist` is used to calculate the amount that was collected by local government agencies and then divided by the tax rate to calculate the amount of value that was taxed, or the __taxable equalized assessed value (TEAV)__. 
 
-**Taxable value** is the frozen EAV within an area + taxable EAV for residential properties after exemptions and abatements (for non-residential properties) are subtracted from the equalized AV.
+::: aside-margin
+The Fair Market Value (FMV) is also called the "Market Value for Assessment Purposes" and can be calculated from the `av` / `loa`, or the Assessed Value divided by the Level of Assessment. However, the values used for the level of assessment are an approximation for incentive properties since we do not have the PIN level assessment ratios.
+:::
+
+The Taxed Value, when converted to the Fair Market Value (FMV) represents the amount of value that was taxed out of the full FMV available in Cook County. 
+
+
+~~**Taxable value** is the frozen EAV within an area + taxable EAV for residential properties after exemptions and abatements (for non-residential properties) are subtracted from the equalized AV.~~
+
+
+<!-- Check all variable names of taxed vs taxable value.  -->
 
 
 ## Cook Total Value by Properties' Major Class
@@ -267,9 +278,15 @@ cty_MC_table <- ptax_pins %>%
 
   summarize(cty_MC_PC = n(),
             cty_MC_projects = n_distinct(both_ids), # mostly for industrial and commercial properties
-            cty_MC_fmv_incentive = sum(ifelse(class >=600 & class <=900, fmv, 0), na.rm = TRUE),
+            cty_MC_fmv_incentive = sum(ifelse(class >= 600 & class <= 900, fmv, 0), na.rm = TRUE),
             cty_MC_fmv_taxed =  sum(taxed_fmv, na.rm=TRUE),
+
+## I don't think this variable means anything... delete?
             cty_MC_fmv_taxable = sum(taxable_fmv, na.rm=TRUE),
+
+            cty_MC_av_taxed  = sum(taxed_av, na.rm=TRUE),
+
+            cty_MC_av_taxable = sum(taxable_av, na.rm=TRUE),
             cty_MC_fmv_incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, fmv, 0), na.rm = TRUE),
             cty_MC_fmv_inTIF = sum(fmv_inTIF, na.rm=TRUE),
             cty_MC_fmv_tif_increment = sum(fmv_tif_increment, na.rm=TRUE),
