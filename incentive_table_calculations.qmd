@@ -156,11 +156,12 @@ ptax_pins <- ptax_pins %>%
          ifelse(incent_prop=="Incentive", 
                ((taxable_av - taxed_av)*eq2022), 0)
        ) ,
+    untaxable_value_eav = ifelse(class == 239, equalized_av-taxed_eav, untaxable_value_eav), 
     
     untaxable_value_av = untaxable_value_eav / eq2022,
     untaxable_value_fmv = untaxable_value_av / loa,
     
-    exempt_eav= all_exemptions + abatements),
+    exempt_eav= all_exemptions + abatements,
     exempt_fmv = exempt_eav / eq2022 / loa, 
     
     fmv_inTIF = ifelse(in_tif==1, av/loa, 0),
@@ -175,36 +176,32 @@ ptax_pins <- ptax_pins %>%
 
 > Total Value should equal Current Taxable Value + non-Taxable Value where non-Taxable Value = Value in TIF Increment + Reduced Value from Policy Choices where Reduced Value = Tax Exempt Value from Homeowners exemptions or abatements + Reduced Value from lower levels of assessments due to incentive classifications.
 
-```{r}
-ptax_pins %>% filter(equalized_av - (taxed_eav + untaxable_value_eav) > 100)
+```{r include = FALSE}
+#ptax_pins %>% filter(equalized_av - (taxed_eav + untaxable_value_eav) > 100)
 
-ptax_pins %>% filter(equalized_av - eav > 10) 
+#ptax_pins %>% filter(equalized_av - eav > 10) 
+
+ptax_pins %>% filter(class == 239) %>% mutate(difference = round(equalized_av - (taxed_eav + untaxable_value_eav)), .before = taxed_fmv ) %>% arrange(desc(difference)) %>% head()
 
 ```
 
 > What is class 239? That is the class that is consistently not equalling 0 in the test above.
 
-```{r}
-# Are there any properties where the taxed_eav is greater than the original eav value? Nope! yay.
-ptax_pins %>% filter(equalized_av -taxed_eav < -1)
-```
+- 239 is some form of subsidized farm land. Using the assessment ratio to back out the value does not work.    
+- Could include something like: `untaxable_value = ifelse(class == 239, equalized_av-taxed_value, untaxable_value)`    - COMPLETED
 
+
+```{r include = FALSE}
+# Are there any properties where the taxed_eav is greater than the original eav value? Nope! yay.
+ptax_pins %>% filter(equalized_av - taxed_eav < -1)
+```
 
 ```{r eval=FALSE}
 stopifnot(
-    (ptax_pins$equalized_av - ptax_pins$eav <= 1000),
-
- # (ptax_pins$equalized_av - ptax_pins$taxed_eav <= 1000),
+  (ptax_pins$equalized_av - ptax_pins$eav <= 1000),
   (ptax_pins$taxed_eav - ptax_pins$equalized_av <= 10)
 )
 
-stopifnot(
-  ((ptax_pins$taxed_eav + ptax_pins$untaxable_value_eav) -  ptax_pins$equalized_av > 500 )
-)
-
-stopifnot(
-  ptax_pins$taxed_eav + ptax_pins$untaxable_value_eav - ptax_pins$equalized_av > 50
-)
 ```
 
 ## Cook County Total Value
@@ -284,7 +281,6 @@ table_cook %>%
   flextable() %>% 
    FitFlextableToPage()
 ```
-
 
 ```{r}
 #| label: tbl-fmv-intif-withincentive-Cook
@@ -823,7 +819,6 @@ eqfact22 <- 2.9237 # 2022 CC equalization factor
 eqfact21 <- 3.0027 # 2021 CC Equalization Factor
 ```
 
-
 ```{r eval=FALSE}
 muni_class2022 <- read_csv("./Output/ptaxsim_muni_class_summaries_2006-2022.csv") %>% 
 filter(year == 2022) %>% 
@@ -1248,7 +1243,6 @@ datatable(tbl3,
                     ))
 ```
 
-
 ```{r eval=FALSE}
 muni_class_AleaCats <- muni_class2022 %>%
   left_join(MuniLevel) %>%
@@ -1366,9 +1360,6 @@ alt_rates <- alt_rates %>%
 # East Dundee, University Park, Bensenville, Hinsdale, Roeselle, Deerfield are below 15% in Cook County
   filter(!clean_name  %in% c("Frankfort", "Homer Glen",  "Oak Brook", "East Dundee", "University Park",  "Bensenville", "Hinsdale", "Roselle", "Deer Park", "Deerfield"))
 ```
-
-
-
 
 # Alternative Calculations
 
