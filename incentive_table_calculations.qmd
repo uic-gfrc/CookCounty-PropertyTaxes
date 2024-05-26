@@ -93,6 +93,7 @@ ptax_pins <- ptax_pins %>% left_join(bor_pins, by = "pin")
 ptax_pins <- ptax_pins %>% 
   mutate( both_ids = project_id,
           both_ids = ifelse(is.na(both_ids), keypin, both_ids ),
+          #### MVH: WHY IS THIS 298??? ####
           both_ids = ifelse(is.na(both_ids) & (class > 298 & class < 900), pin, both_ids))
 
 ```
@@ -106,7 +107,7 @@ ptax_pins <- ptax_pins %>%
 ```{r}
 eq2022 <- 2.9237
 
-
+### JUST DOUBLE CHECKING THAT WE KNOW CLASSES 400 AND STUFF GET TAXED AT THE EMPTY LAND VALUE?
 
 commercial_classes <- c(401:435, 490, 491, 492, 496:499,
                         500:535,590, 591, 592, 597:599, 
@@ -124,6 +125,8 @@ ptax_pins <- ptax_pins %>%
          class_group = case_when(
           (class_group == 5 & class %in% commercial_classes) ~ "5A",
           (class_group == 5 & class %in% industrial_classes) ~ "5B",
+          
+          ## MVH: I THINK THIS IS TOO MUCH DATA FOR THEM ##
           class_group == 7 &  class < 742 ~ "7-small",
           class_group == 7 &  class >= 742 ~ "7-big",
           (class_group == 8 & class %in% commercial_classes ) ~ "8A",
@@ -133,11 +136,11 @@ ptax_pins <- ptax_pins %>%
   mutate(
     
     # taxing district revenue = taxable eav * tax rate so rearrange the formula:
-    taxed_eav = (final_tax_to_dist/(tax_code_rate/100)),
+    taxed_eav = final_tax_to_dist / tax_code_rate*100, # MVH: simplified formula
     taxed_av =  taxed_eav / eq2022, # current value that taxing agencies can tax for their levies
     
     # taxable AV = equalized assessed value net TIF increments, gross exemptions
-    taxable_av = ((final_tax_to_dist/(tax_code_rate/100)) + (all_exemptions + abatements) ) / eq2022,
+    taxable_av = (final_tax_to_dist / tax_code_rate *100 + all_exemptions + abatements)/ eq2022, # MVH: SAME
     
     
     # FMV * assessment rate = AV
@@ -145,14 +148,19 @@ ptax_pins <- ptax_pins %>%
     taxable_fmv = taxable_av / loa,
 
 
-    # untaxable value = exempt EAV from abatements and exemptions + TIF increment EAV above frozen EAV, which becomes TIF revenue + difference between 25% and reduced level of assessment for incentive class properties 
-    untaxable_value_eav = all_exemptions + abatements + (final_tax_to_tif/(tax_code_rate/100) +                                                  ifelse(incent_prop=="Incentive", 
-               ((taxable_av - taxed_av)*eq2022), 0)  ) ,
+    # untaxable value = exempt EAV from abatements and exemptions
+    untaxable_value_eav = all_exemptions + abatements + 
+      ## TIF increment EAV above frozen EAV, which becomes TIF revenue
+      (final_tax_to_tif /  tax_code_rate*100 +
+         ## difference between 25% and reduced level of assessment for incentive class properties 
+         ifelse(incent_prop=="Incentive", 
+               ((taxable_av - taxed_av)*eq2022), 0)
+       ) ,
     
     untaxable_value_av = untaxable_value_eav / eq2022,
     untaxable_value_fmv = untaxable_value_av / loa,
     
-    exempt_eav= (all_exemptions + abatements),
+    exempt_eav= all_exemptions + abatements),
     exempt_fmv = exempt_eav / eq2022 / loa, 
     
     fmv_inTIF = ifelse(in_tif==1, av/loa, 0),
@@ -376,7 +384,7 @@ munilevel <- ptax_pins %>%
     muni_PC_industrial  = sum(ifelse(class %in% industrial_classes, 1, 0), na.rm = TRUE),
     muni_PC_commercial = sum(ifelse(class %in% commercial_classes, 1, 0), na.rm = TRUE),
     muni_PC_withincents = sum(ifelse(class >=600 & class <=900 & in_tif == 1, 1, 0), na.rm = TRUE),
-    muni_PC_incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, fmv, 0), na.rm = TRUE),
+    muni_PC_incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, 1, 0), na.rm = TRUE),
     muni_PC_claimed_exe = sum(ifelse(all_exemptions > 0, 1, 0)),
 
     muni_projects = n_distinct(both_ids), # mostly for industrial and commercial properties
@@ -400,9 +408,8 @@ munilevel <- ptax_pins %>%
     muni_current_rate_avg = mean(tax_code_rate),
     muni_min_TC_rate = min(tax_code_rate),
     muni_max_TC_rate = max(tax_code_rate),
-    
-    muni_avg_C2_bill_noexe = mean(ifelse(between(class,200,300) & all_exemptions == 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
-    muni_avg_C2_bill_withexe = mean(ifelse(between(class,200,300) & all_exemptions > 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
+    muni_avg_C2_bill_noexe = mean(ifelse(between(class,200,299) & all_exemptions == 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
+    muni_avg_C2_bill_withexe = mean(ifelse(between(class,200,299) & all_exemptions > 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
     
 ) %>%
   mutate(
