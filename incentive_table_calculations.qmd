@@ -8,11 +8,7 @@ format:
     tbl-cap-location: margin
 ---
 
-MVH to-do suggestions:
-1. Rename "Alea_Cat" variable (at least to Nimbus)
-2. Equalization factors --> create single variables
-3. Conform to 'between' command
-
+MVH to-do suggestions: 1. Rename "Alea_Cat" variable (at least to Nimbus) 2. Equalization factors --\> create single variables 3. Conform to 'between' command
 
 # Data Preparation
 
@@ -42,7 +38,7 @@ FitFlextableToPage <- function(ft, pgwidth = 6){
 }
 ```
 
-```{r}
+```{r message = FALSE}
 # all pins for 2022
 ptax_pins <- read_csv("Output/Dont_Upload/0_joined_PIN_data_2022.csv") %>% 
   # Allows for merging
@@ -195,7 +191,8 @@ ptax_pins %>% filter(class == 239) %>% mutate(difference = round(equalized_av - 
 -   239 is some form of subsidized farm land. Using the assessment ratio to back out the value does not work.\
 -   Could include something like: `untaxable_value = ifelse(class == 239, equalized_av-taxed_value, untaxable_value)` - COMPLETED
 
-## MVH: I DON'T KNOW WHAT THAT MEANS ^^
+## MVH: I DON'T KNOW WHAT THAT MEANS \^\^
+
 ## Maybe case studies?
 
 ```{r include = FALSE}
@@ -306,7 +303,7 @@ table_cook %>%
 
 ```
 
-# MVH: I THINK WE CAN REWRITE THIS SECTION...
+\<span style="color:green;"\>MVH: I THINK WE CAN REWRITE THIS SECTION</span>
 
 **Taxed value** is the amount of value that was actually taxed in order to pay for taxing agencies levies. It includes frozen EAV within an area + taxable EAV for residential properties net exemptions and abatements. It also includes the equalized assessed value of incentive properties at their current, lower assessment ratios. `final_tax_to_dist` is used to calculate the amount that was collected by local government agencies and then divided by the tax rate to calculate the amount of value that was taxed, or the **taxable equalized assessed value (TEAV)**.
 
@@ -378,12 +375,12 @@ flextable(cty_MC_table) %>%
 
 ## Municipality Level Stats
 
-- Frankfort has 1 PIN in Cook County   
-- East Dundee has 2  
-- Homer Glen has 3  
-- University Park has 4
-- Oak Brook, Deer Park, Deerfield, & Bensenville each have less than 75 PINs in Cook County, IL
-- Ignore stats for these Municipalities. Simple rounding errors may cause bizarre results for rate changes & other calculations.
+-   Frankfort has 1 PIN in Cook County\
+-   East Dundee has 2\
+-   Homer Glen has 3\
+-   University Park has 4
+-   Oak Brook, Deer Park, Deerfield, & Bensenville each have less than 75 PINs in Cook County, IL
+-   Ignore stats for these Municipalities. Simple rounding errors may cause bizarre results for rate changes & other calculations.
 
 ## MVH: I THINK WE JUST OMIT THOSE OBSERVATIONS.
 
@@ -534,7 +531,6 @@ table_mc_percentages %>%
   formatPercentage(columns = 3:15, digits = 2)
 ```
 
-
 # Tax Rates
 
 ```{r}
@@ -551,7 +547,6 @@ MuniLevel <- read_csv("./Output/ptaxsim_muni_level_2006-2022.csv") %>%
 eqfact22 <- 2.9237 # 2022 CC equalization factor
 eqfact21 <- 3.0027 # 2021 CC Equalization Factor
 ```
-
 
 ```{r}
 muni_class_AleaCats <- ptax_pins %>%
@@ -586,7 +581,10 @@ muni_class_AleaCats <- ptax_pins %>%
             current_taxable_eav = sum(taxed_av*eq2022),  ## taxable implies taxed in this code section. Need to update variable name and table references to the variable. 
 eav_taxed = sum(taxed_av*eq2022),
 eav_taxable = sum(taxable_eav),
+#eav_taxed2 = sum(final_tax_to_dist / (tax_code_rate/100), na.rm=TRUE),
+
 eav_untaxable = sum(untaxable_value_eav),
+eav_max = sum(fmv*loa*eq2022),
            
  pins_in_class = n(),
             all_exemptions = sum(all_exemptions),   # in EAV
@@ -594,14 +592,15 @@ eav_untaxable = sum(untaxable_value_eav),
 eav_incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, eav, 0), na.rm = TRUE),
             loa = mean((loa*classgroup_PC ) / sum(classgroup_PC), na.rm=TRUE),
            final_tax_to_dist = sum(final_tax_to_dist),
-           final_tax_to_tif = sum(final_tax_to_tif)
+           final_tax_to_tif = sum(final_tax_to_tif),
   ) %>%
   
   mutate(
+#eav_taxed_dif = eav_taxed-eav_taxed2,
 #eav_incents_inTIFs = fmv_incents_inTIFs / eq2022,
 
     # approximation for if assessments went from 10% to 25%, similar to other commercial and industrial property in Cook County
-    new_av = ifelse(incent_prop == "Incentive", (av/loa)*0.25, av),   # for incentive properties
+   # new_av = ifelse(incent_prop == "Incentive", (av/loa)*0.25, av),   # for incentive properties
     
     new_TEAV_noIncents = ifelse(incent_prop ==  "Incentive", (current_taxable_eav/loa)*0.25, current_taxable_eav),
     new_TEAV_noC6 = ifelse(class_group == "6", (current_taxable_eav/loa)*0.25 , current_taxable_eav),
@@ -615,10 +614,9 @@ eav_incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, eav, 0)
     
     # amount of EAV from taxing an additional 15% of the AV if incentive properties didn't exist
     forgone_EAV_incent = ifelse(incent_prop == "Incentive", 
-                                new_TEAV_noIncents - (current_taxable_eav), 0),
+                                new_TEAV_noIncents - (eav_taxed), 0),
     forgone_TIF_EAV = fmv_tif_increment * loa * eq2022,
-    forgone_EAV_overlap = ifelse(fmv_incents_inTIFs > 0, fmv_incents_inTIFs/loa
-, 0)
+    forgone_EAV_overlap = ifelse(fmv_incents_inTIFs > 0, fmv_incents_inTIFs*loa*eq2022, 0)
   ) %>%
   
   mutate(pct_fmv_untaxable = fmv_untaxable_value / fmv,
@@ -636,25 +634,28 @@ ungroup() %>%
     muni_levy = sum(final_tax_to_dist),
     muni_exemptions = sum(all_exemptions), # all exe_ variables except exe_abate
     muni_abatements = sum(abatements),
-    muni_forgoneTIF = sum(forgone_TIF_EAV, na.rm=TRUE),
-    muni_forgone_EAV_incent = sum(forgone_EAV_incent, na.rm=TRUE),
-    muni_TEAV_noC6 = sum(new_TEAV_noC6, na.rm=TRUE),
-    muni_TEAV_noC7 = sum(new_TEAV_noC7, na.rm=TRUE),
-    muni_TEAV_noC8 = sum(new_TEAV_noC8, na.rm=TRUE),
+    muni_forgoneTIF = sum(forgone_TIF_EAV),
+    muni_forgone_EAV_incent = sum(forgone_EAV_incent),
+    muni_TEAV_noC6 = sum(new_TEAV_noC6),
+    muni_TEAV_noC7 = sum(new_TEAV_noC7),
+    muni_TEAV_noC8 = sum(new_TEAV_noC8),
     muni_current_TEAV = sum(current_taxable_eav),
     muni_TEAV_noExe = sum(new_TEAV_noExemps),
     muni_TEAV_noAbate= sum(new_TEAV_noAbates),
     muni_TEAV_noInc = sum(new_TEAV_noIncents),
-    muni_TEAV_vacant_noInc = sum(new_TEAV_vacant_noIncents, na.rm = TRUE),
+    muni_TEAV_vacant_noInc = sum(new_TEAV_vacant_noIncents),
 muni_forgone_eav_overlap_incents_inTIFs = sum(forgone_EAV_overlap),
- cur_munilevel_rate = mean(cur_munilevel_rate)
+ cur_munilevel_rate = mean(cur_munilevel_rate),
+muni_eav_max = sum(eav_max)
     
+
+
   ) %>%
   mutate(muni_current_rate = cur_munilevel_rate) %>%
   mutate(
     # Absolute maximum TEAV: No Exemptions, no abatements, no TIFS, no Incentive properties
     # Commercial and industrial assessed at 25%
-    muni_TEAV_max = muni_current_TEAV + muni_exemptions + muni_abatements + muni_forgoneTIF + muni_forgone_EAV_incent,
+    muni_TEAV_max = muni_current_TEAV + muni_exemptions + muni_abatements + muni_forgoneTIF + muni_forgone_EAV_incent - muni_forgone_eav_overlap_incents_inTIFs,
     
     # no exemptions or incentive classifications:
     muni_TEAV_neither = muni_current_TEAV + muni_exemptions + muni_forgone_EAV_incent,
@@ -685,7 +686,13 @@ alt_rates <- alt_rates %>%
          change_neither =  muni_rate_neither - muni_current_rate,
          change_max = muni_rate_lowest - muni_current_rate,
          change_noAbate = muni_rate_noAbate- muni_current_rate,
-         change_vacants = muni_rate_vacant - muni_current_rate)
+         change_vacants = muni_rate_vacant - muni_current_rate) 
+
+# roundfuntion <- function(x){
+# ifelse(x<0.1 & x> -0.1, 0, return(x))
+# }
+# 
+# alt_rates <- alt_rates %>% mutate(across(change_noExe:change_vacant, ifelse, (x<0.1 & x> -0.1, 0, return(x)) ))
 
 alt_rates <- alt_rates %>%   
   # drop munis with only a few PINs in them. They get weird results from rounding issues (I think)
@@ -694,6 +701,7 @@ alt_rates <- alt_rates %>%
   filter(!clean_name  %in% c("Frankfort", "Homer Glen",  "Oak Brook", "East Dundee", "University Park",  "Bensenville", "Hinsdale", "Roselle", "Deer Park", "Deerfield")) 
 
 
+write_csv(alt_rates, "Output/incentive_table_calculations.csv")
 ```
 
 > TAX RATE CALCULATIONS DO NOT SEEM RIGHT
@@ -767,7 +775,6 @@ datatable(tbl3,
                     ))
 ```
 
-
 # Alternative Calculations
 
 ## Assessed Value (AV) Tables
@@ -805,4 +812,3 @@ datatable(table,
   formatCurrency(c('Currently Taxed AV', 'Assessed Market Value'), digits = 0) %>%
 formatPercentage('% AV Incentivized', digits = 2)
 ```
-
