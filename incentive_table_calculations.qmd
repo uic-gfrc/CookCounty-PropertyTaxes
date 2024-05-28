@@ -8,15 +8,20 @@ format:
     tbl-cap-location: margin
 ---
 
+MVH to-do suggestions:
+1. Rename "Alea_Cat" variable (at least to Nimbus)
+2. Equalization factors --> create single variables
+3. Conform to 'between' command
+
+
 # Data Preparation
 
 ```{r setup, warning = FALSE, output = FALSE}
 
 library(tidyverse)
 library(DT)
+# MVH is dubious:
 library(flextable) # for exporting to word or PDF files. Kable does not do that
-
-library(sf)
 
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 
@@ -25,7 +30,6 @@ set_flextable_defaults(theme_fun = theme_vanilla,
                        line_spacing = 1,
                        big.mark = ",",
                        )
-# keypins <- read_csv("Output/all_keypins.csv")
 
 options(DT.options = list())
 
@@ -41,20 +45,21 @@ FitFlextableToPage <- function(ft, pgwidth = 6){
 ```{r}
 # all pins for 2022
 ptax_pins <- read_csv("Output/Dont_Upload/0_joined_PIN_data_2022.csv") %>% 
+  # Allows for merging
   mutate(class = as.numeric(class)) %>%
     select(-c(propclass_1dig:av.y))
 
+# Helpful for identifying projects because lawyers keep great records.
 bor <- read_csv("Output/borappeals.csv") %>%
   mutate(project_appellant = paste(project_id, sep = "-", appellant))
 
 # temporary work-around until we have full keypin list:
 proj_xwalk <- read_csv("Output/all_keypins.csv")               
 # all commercial valuation properties but made with very unreliable data from commercial valuation dataset. 
+# MVH: IS IT THAT THE DATA IS UNRELIABLE OR JUST FIRST PASS?
 
 # combine project IDs to PINs:
 ptax_pins <- ptax_pins %>% left_join(proj_xwalk)
-
-
 
 #  create tc_muninames from helper file:
 source("scripts/helper_tc_muninames_2022.R")
@@ -76,10 +81,12 @@ ptax_pins <- ptax_pins %>%
   left_join(class_dict, by =  c("class" = "class_code")) %>%
   mutate(clean_name = ifelse(is.na(clean_name), "Unincorporated", clean_name)) 
 
+# BOR shortfall: We only have the data if they appeal!
 
 bor_pins <- bor %>% 
   group_by(pin) %>% 
   arrange(desc(tax_year)) %>%
+  # Does this just grab the first PIN?
   summarize(pin = first(pin),
             class_bor = list(unique(class)),
             appellant = first(appellant),
@@ -89,11 +96,13 @@ bor_pins <- bor %>%
 
 ptax_pins <- ptax_pins %>% left_join(bor_pins, by = "pin")
 
-# now do it the other way and compare 
+# now do it the other way and compare
+# MVH: I THINK THIS NEEDS SOME ELABORATION
+
 ptax_pins <- ptax_pins %>% 
   mutate( both_ids = project_id,
-          both_ids = ifelse(is.na(both_ids), keypin, both_ids ),
-          both_ids = ifelse(is.na(both_ids) & (class > 299 & class < 900), pin, both_ids))
+          both_ids = ifelse(is.na(both_ids), keypin, both_ids),
+          both_ids = ifelse(is.na(both_ids) & between(class, 300, 899), pin, both_ids))
 
 ```
 
@@ -101,10 +110,12 @@ ptax_pins <- ptax_pins %>%
 
 <!--- Don't use tax_amount_exe for calculations below because it is the "naive" calculation of the current tax rate * exempt eav discussed in the exemptions research. --->
 
+# MVH: NEW METHODOLOGY REQUIRES FURTHER EXPLANATION.
+
 > Taxed Value refers to what taxing agencies did tax to pay for their levies. We use the portion of the tax bill that does NOT go to TIFs to calculate the portion of the composite levy paid by each PIN and then sum up from there.
 
 ```{r}
-eq2022 <- 2.9237
+eq2022 <- 2.9237 #example of eq factor proliferation
 
 
 commercial_classes <- c(401:435, 490, 491, 492, 496:499,
@@ -128,9 +139,7 @@ ptax_pins <- ptax_pins %>%
           (class_group == 8 & class %in% commercial_classes ) ~ "8A",
           (class_group == 8 & class %in% industrial_classes ) ~ "8B",
           TRUE ~ as.character(class_group))) %>%
-  
   mutate(
-    
     # taxing district revenue = taxable eav * tax rate so rearrange the formula:
     taxed_eav = final_tax_to_dist / tax_code_rate*100,
     taxed_av =  taxed_eav / eq2022, # current value that taxing agencies can tax for their levies
@@ -138,20 +147,20 @@ ptax_pins <- ptax_pins %>%
     # taxable AV = equalized assessed value net TIF increments, gross exemptions
     taxable_av = (final_tax_to_dist / tax_code_rate *100 + all_exemptions + abatements)/ eq2022, 
     
-    
     # FMV * assessment rate = AV
     taxed_fmv = taxed_av / loa, 
+    # MVH: For some reason I thought we had gotten rid of the "taxable" concept.
     taxable_fmv = taxable_av / loa,
-taxable_eav = taxable_av * eq2022,
+    taxable_eav = taxable_av * eq2022,
 
     # untaxable value = exempt EAV from abatements and exemptions
     untaxable_value_eav = all_exemptions + abatements + 
       ## TIF increment EAV above frozen EAV, which becomes TIF revenue
       (final_tax_to_tif /  tax_code_rate*100 +
          ## difference between 25% and reduced level of assessment for incentive class properties 
-         ifelse(incent_prop=="Incentive", 
-               ((taxable_av - taxed_av)*eq2022), 0) ) ,
-    untaxable_value_eav = ifelse(class == 239, equalized_av-taxed_eav, untaxable_value_eav), 
+         ifelse(incent_prop == "Incentive", 
+               ((taxable_av - taxed_av)*eq2022), 0)),
+        untaxable_value_eav = ifelse(class == 239, equalized_av-taxed_eav, untaxable_value_eav), 
     
     untaxable_value_av = untaxable_value_eav / eq2022,
     untaxable_value_fmv = untaxable_value_av / loa,
@@ -165,8 +174,7 @@ taxable_eav = taxable_av * eq2022,
 
     ) %>%
   select(tax_code, class, pin, taxed_fmv, # taxable_fmv, 
-         untaxable_value_fmv, fmv_inTIF, fmv_tif_increment, fmv, total_billed, final_tax_to_dist, final_tax_to_tif, tax_code_rate, eav, equalized_av, av, everything()) 
-# %>% mutate_if(is.numeric, ~replace_na(., 0)) 
+         untaxable_value_fmv, fmv_inTIF, fmv_tif_increment, fmv, total_billed, final_tax_to_dist, ... =        final_tax_to_tif, tax_code_rate, eav, equalized_av, av, everything())
 
 
 ```
@@ -187,6 +195,9 @@ ptax_pins %>% filter(class == 239) %>% mutate(difference = round(equalized_av - 
 -   239 is some form of subsidized farm land. Using the assessment ratio to back out the value does not work.\
 -   Could include something like: `untaxable_value = ifelse(class == 239, equalized_av-taxed_value, untaxable_value)` - COMPLETED
 
+## MVH: I DON'T KNOW WHAT THAT MEANS ^^
+## Maybe case studies?
+
 ```{r include = FALSE}
 # Are there any properties where the taxed_eav is greater than the original eav value? Nope! yay.
 ptax_pins %>% filter(equalized_av - taxed_eav < -1)
@@ -194,7 +205,6 @@ ptax_pins %>% filter(equalized_av - taxed_eav < -1)
 
 ```{r eval=FALSE, include=FALSE}
 stopifnot(
- # (ptax_pins$equalized_av - ptax_pins$eav <= 1000),
   (ptax_pins$taxed_eav - ptax_pins$equalized_av <= 10)
 )
 
@@ -210,11 +220,10 @@ stopifnot(
 
 table_cook <- ptax_pins %>%
   summarize(cty_PC = n(),
-            cty_projects = n_distinct(both_ids), # mostly for industrial and commercial properties
-            fmv_incentive = sum(ifelse(class >=600 & class <=900, fmv, 0), na.rm = TRUE),
+            cty_projects = n_distinct(both_ids), # mostly for industrial and commercial properties...MVH: WHY?
+            fmv_incentive = sum(ifelse(between(class, 600, 900), fmv, 0), na.rm = TRUE),
             fmv_taxed =  sum(taxed_fmv, na.rm=TRUE),
-           # fmv_taxable = sum(taxable_fmv, na.rm=TRUE),
-            fmv_incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, fmv, 0), na.rm = TRUE),
+            fmv_incents_inTIFs = sum(ifelse(between(class, 600, 900) & in_tif == 1, fmv, 0), na.rm = TRUE),
             fmv_inTIF = sum(fmv_inTIF, na.rm=TRUE),
             fmv_tif_increment = sum(fmv_tif_increment, na.rm=TRUE),
             fmv_untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
@@ -227,7 +236,7 @@ table_cook <- ptax_pins %>%
             cty_fmv_commercial = sum(ifelse(class %in% commercial_classes, fmv, 0), na.rm = TRUE),
             cty_levy = sum(final_tax_to_dist),
             cty_current_rate_avg = mean(tax_code_rate),
-            
+      # C2 Bills
             cty_avg_C2_bill_noexe = mean(ifelse(between(class,200,299) & all_exemptions == 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
             cty_avg_C2_bill_withexe = mean(ifelse(between(class,200,299) & all_exemptions > 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
            cty_av_taxed = sum(taxed_av, na.rm = TRUE),
@@ -237,10 +246,10 @@ table_cook <- ptax_pins %>%
   mutate(pct_fmv_untaxable = fmv_untaxable_value / fmv,
          pct_fmv_taxed = fmv_taxed / fmv,
          cty_pct_av_taxed = cty_av_taxed / cty_av,
-         cty_pct_av_untaxable = cty_untaxable_value_av/cty_av ) 
+         cty_pct_av_untaxable = cty_untaxable_value_av/cty_av) 
 
 table_cook %>% 
-  select(cty_PC, fmv_taxed, fmv_untaxable_value, fmv ) %>%
+  select(cty_PC, fmv_taxed, fmv_untaxable_value, fmv) %>%
   flextable() %>% 
   set_header_labels(cty_PC = 'PINs', cty_projects = "Project IDs", 
                     fmv = 'Total FMV', 
@@ -253,6 +262,8 @@ table_cook %>%
 ```{r}
 #| label: tbl-untaxableFMV-Cook
 #| tbl-cap: "**Untaxable FMV in Cook County.**        Taxed FMV represents the property value that was actually taxed by local taxing jurisdictions and is equal to the amount levied. We use the the portion of an individuals tax bill that does NOT go to a TIF to calculate the composite levy for taxing jursidictions."
+
+# MVH: I DONT KNOW WHAT THAT MEANS ^^
 
 table_cook %>% 
   select(fmv, fmv_tif_increment, fmv_exemptions, fmv_abatements, 
@@ -295,6 +306,8 @@ table_cook %>%
 
 ```
 
+# MVH: I THINK WE CAN REWRITE THIS SECTION...
+
 **Taxed value** is the amount of value that was actually taxed in order to pay for taxing agencies levies. It includes frozen EAV within an area + taxable EAV for residential properties net exemptions and abatements. It also includes the equalized assessed value of incentive properties at their current, lower assessment ratios. `final_tax_to_dist` is used to calculate the amount that was collected by local government agencies and then divided by the tax rate to calculate the amount of value that was taxed, or the **taxable equalized assessed value (TEAV)**.
 
 ::: aside
@@ -320,17 +333,18 @@ cty_MC_table <- ptax_pins %>%
 
   summarize(cty_MC_PC = n(),
             cty_MC_projects = n_distinct(both_ids), # mostly for industrial and commercial properties
-            cty_MC_fmv_incentive = sum(ifelse(class >= 600 & class <= 900, fmv, 0), na.rm = TRUE),
+            cty_MC_fmv_incentive = sum(ifelse(between(class, 600, 900), fmv, 0), na.rm = TRUE),
             cty_MC_fmv_taxed =  sum(taxed_fmv, na.rm=TRUE),
 
 ## I don't think this variable means anything... delete?
+## MVH: IS THIS THE MAJOR CLASS SECTION?
             cty_MC_fmv_taxable = sum(taxable_fmv, na.rm=TRUE),
 
             cty_MC_av_taxed  = sum(taxed_av, na.rm=TRUE),
 
             cty_MC_av_taxable = sum(taxable_av, na.rm=TRUE),
 
-            cty_MC_fmv_incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, fmv, 0), na.rm = TRUE),
+            cty_MC_fmv_incents_inTIFs = sum(ifelse(between(class, 600, 900) & in_tif == 1, fmv, 0), na.rm = TRUE),
             cty_MC_fmv_inTIF = sum(fmv_inTIF, na.rm=TRUE),
             cty_MC_fmv_tif_increment = sum(fmv_tif_increment, na.rm=TRUE),
             cty_MC_fmv_untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
@@ -344,7 +358,8 @@ cty_MC_table <- ptax_pins %>%
             cty_MC_levy_paid = sum(final_tax_to_dist),
             cty_MC_current_rate_avg = mean(tax_code_rate),
             
-            cty_avg_C2_bill_noexe = mean(ifelse(between(class,200, 299) & all_exemptions == 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
+            cty_avg_C2_bill_noexe = mean(ifelse(between(class, 200, 299) & all_exemptions == 0,
+                (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
             cty_avg_C2_bill_withexe = mean(ifelse(between(class,200, 299) & all_exemptions > 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
             cty_fmv = mean(cty_fmv)
             
@@ -370,6 +385,8 @@ flextable(cty_MC_table) %>%
 - Oak Brook, Deer Park, Deerfield, & Bensenville each have less than 75 PINs in Cook County, IL
 - Ignore stats for these Municipalities. Simple rounding errors may cause bizarre results for rate changes & other calculations.
 
+## MVH: I THINK WE JUST OMIT THOSE OBSERVATIONS.
+
 ```{r}
 #| label: tbl-muni-levelstats
 #| tbl-cap: "Municipality Level Summary Statistics"
@@ -383,12 +400,12 @@ munilevel <- ptax_pins %>%
     muni_PC_industrial  = sum(ifelse(class %in% industrial_classes, 1, 0), na.rm = TRUE),
     muni_PC_commercial = sum(ifelse(class %in% commercial_classes, 1, 0), na.rm = TRUE),
     muni_PC_inTIF = sum(in_tif),
-    muni_PC_withincents = sum(ifelse(class >=600 & class <=900, 1, 0), na.rm = TRUE),
-    muni_PC_incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, 1, 0), na.rm = TRUE),
-
+    muni_PC_withincents = sum(ifelse(between(class, 600, 900), 1, 0), na.rm = TRUE),
+    muni_PC_incents_inTIFs = sum(ifelse(between(class, 600, 900) & in_tif == 1, 1, 0), na.rm = TRUE),
     muni_PC_claimed_exe = sum(ifelse(all_exemptions > 0, 1, 0)),
-
-    muni_projects = n_distinct(both_ids), # mostly for industrial and commercial properties
+  
+  # Projects primarily apply to commercial and industrial property.
+    muni_projects = n_distinct(both_ids),
     muni_fmv_incentive = sum(ifelse(class >=600 & class <=900, fmv, 0), na.rm = TRUE),
     muni_fmv_taxable = sum(taxable_fmv, na.rm=TRUE),
     muni_fmv_taxed = sum(taxed_fmv, na.rm=TRUE),
@@ -397,7 +414,7 @@ munilevel <- ptax_pins %>%
     muni_fmv_exempt = sum(all_exemptions/eq2022/loa, na.rm=TRUE),
     muni_fmv_abated = sum(abatements/eq2022/loa, na.rm = TRUE),
     muni_fmv_tif_increment = sum(fmv_tif_increment, na.rm=TRUE),
-    muni_fmv_abates_inTIF = sum(ifelse(class >=600 & class <=900 & in_tif == 1 & abatements >0 , fmv, 0), na.rm = TRUE),
+    muni_fmv_abates_inTIF = sum(ifelse(between(class, 600, 900) & in_tif == 1 & abatements >0 , fmv, 0), na.rm = TRUE),
 
     muni_fmv_untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
 
@@ -412,8 +429,8 @@ munilevel <- ptax_pins %>%
     muni_max_TC_rate = max(tax_code_rate),
     muni_avg_C2_bill_noexe = mean(ifelse(between(class,200,299) & all_exemptions == 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
     muni_avg_C2_bill_withexe = mean(ifelse(between(class,200,299) & all_exemptions > 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
-    
 ) %>%
+ # Move to creating muni-level data.
   mutate(
     muni_range_TC_rate = muni_max_TC_rate - muni_min_TC_rate,
 muni_effective_rate =  muni_levy / muni_fmv * 100
@@ -459,8 +476,7 @@ table_muni_mc <- ptax_pins %>%
     proptype_pincount = n(),
     projects = n_distinct(both_ids), # mostly for industrial and commercial properties
     fmv_incentive = sum(ifelse(class >=600 & class <=900, fmv, 0), na.rm = TRUE),
-    # fmv_taxable = sum(taxable_fmv, na.rm=TRUE),
-fmv_taxed = sum(taxed_fmv),
+    fmv_taxed = sum(taxed_fmv),
     pins_withincents = sum(ifelse(class >=600 & class <=900 & in_tif == 1, 1, 0), na.rm = TRUE),
     
     incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, fmv, 0), na.rm = TRUE),
@@ -475,9 +491,7 @@ fmv_taxed = sum(taxed_fmv),
          pct_incents = fmv_incentive / muni_fmv)
   
 table_muni_mc %>% 
-  select(-c(starts_with("muni"))) %>%
-# %>%
-#    select(clean_name, class_group, projects, proptype_pincount, fmv, taxable_fmv, untaxable_value, pct_fmv_untaxable, fmv_tif_increment, fmv_inTIF, fmv_incentive, incents_inTIFs, everything() )
+  select(-c(starts_with("muni")))
 
   datatable(rownames = FALSE,
          colnames = c('Municipality' = 'clean_name', 'Major Class' = 'class_group', 
@@ -530,21 +544,17 @@ table_mc_percentages %>%
 
 table_proptype <- ptax_pins %>% 
   group_by(Alea_cat) %>%
-    summarize(proptype_pincount = n(),
-          #  projects = n_distinct(both_ids), # mostly for industrial and commercial properties
-            fmv_incentive = sum(ifelse(class >=600 & class <=900, fmv, 0), na.rm = TRUE),
-            fmv_taxed = sum(taxed_fmv, na.rm=TRUE),
-            incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, fmv, 0), na.rm = TRUE),
-            fmv_inTIF = sum(fmv_inTIF, na.rm=TRUE),
-            fmv_tif_increment = sum(fmv_tif_increment, na.rm=TRUE),
-            untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
-            fmv = sum(fmv, na.rm=TRUE),
-
-          #  zero_bill = sum(zero_bill, na.rm=TRUE),
-            
-) %>%
+  summarize(proptype_pincount = n(),
+          fmv_incentive = sum(ifelse(class >=600 & class <=900, fmv, 0), na.rm = TRUE),
+          fmv_taxed = sum(taxed_fmv, na.rm=TRUE),
+          incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, fmv, 0), na.rm = TRUE),
+          fmv_inTIF = sum(fmv_inTIF, na.rm=TRUE),
+          fmv_tif_increment = sum(fmv_tif_increment, na.rm=TRUE),
+          untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
+          fmv = sum(fmv, na.rm=TRUE)
+          ) %>%
   mutate(pct_fmv_untaxable = untaxable_value / fmv) %>%
-   select(Alea_cat, proptype_pincount, fmv, fmv_taxed, untaxable_value, pct_fmv_untaxable, fmv_tif_increment, fmv_inTIF, fmv_incentive, incents_inTIFs, everything() )
+   select(Alea_cat, proptype_pincount, fmv, fmv_taxed, untaxable_value, pct_fmv_untaxable, fmv_tif_increment, fmv_inTIF, fmv_incentive, incents_inTIFs, everything())
 
 
 flextable(table_proptype) %>% 
@@ -562,16 +572,13 @@ nonres_pins2022 <- ptax_pins %>%
   arrange(keypin, class) %>%
   mutate(min_class = first(class),
          max_class = last(class)) %>% 
-  filter(max_class > 399 & max_class < 900) %>%
+  filter(between(class, 400, 900)) %>%
   ungroup()
 
-
-#nonres_pins2022 <- nonres_pins2022 %>% group_by(keypin) %>% mutate(proj_hasincentive = class)
 table <- nonres_pins2022 %>% 
   group_by(Alea_cat) %>%
   
       summarize(proptype_pincount = n(),
-          #  projects = n_distinct(both_ids), # mostly for industrial and commercial properties
             fmv_incentive = sum(ifelse(class >=600 & class <=900, fmv, 0), na.rm = TRUE),
             taxable_fmv = sum(taxable_fmv, na.rm=TRUE),
             taxed_fmv = sum(taxed_fmv, na.rm=TRUE),
@@ -739,9 +746,10 @@ table2 <- nonres_pins2022 %>%
           project_count = n_distinct(both_ids), 
           fmv = sum(av / loa, na.rm=TRUE), 
           fmv_incent = sum(ifelse(between(class, 600, 899), av/loa, 0), na.rm=TRUE),
-
           av_incent = sum(ifelse(between(class, 600, 899), (av/loa)*0.25, 0), na.rm=TRUE),
-          av_adjusted = sum(ifelse(between(class, 600, 899), (av/loa)*0.25, av), na.rm=TRUE), # AV if level of assessment was 25% for everyone
+    # AV if level of assessment was 25% for everyone
+    # MVH: DOES THIS INCLUDE RESIDENTIAL??
+          av_adjusted = sum(ifelse(between(class, 600, 899), (av/loa)*0.25, av), na.rm=TRUE),
          fmv = sum(av/loa, na.rm=TRUE),
          av = sum(av, na.rm=TRUE)) %>%
   mutate(pct_av_incent = av_incent / av_adjusted,
@@ -754,8 +762,6 @@ datatable(table2,
                        'PIN Count' = 'pin_count', 'Projects' = 'project_count', 
                        'Current AV' = 'av',
                        'FMV' = 'fmv',
-                     #  'FMV with Incent.Class.' = 'fmv_incent',
-                      # 'AV with Incent.Class.' = 'av_incent',
                        'AV if 25% LOA' = 'av_adjusted', 
                        'AV Incentivized (%)' = 'pct_av_incent',
                        'FMV Incentivized (%)' = 'pct_fmv_incent'
@@ -809,23 +815,6 @@ MuniLevel <- read_csv("./Output/ptaxsim_muni_level_2006-2022.csv") %>%
   left_join(nicknames) %>% 
   select(clean_name, cur_comp_muni_rate) %>%
   rename(cur_munilevel_rate = cur_comp_muni_rate)
-
-
-# MC_sums <- read_csv("./Output/ptaxsim_muni_MC_2006-2022.csv") %>% 
-#   filter(year == 2022) %>% 
-#   left_join(nicknames) 
-# 
-# tc_class <- read_csv("./Output/ptaxsim_TC_Class_summaries_2006-2022.csv") %>% 
-#   filter(year == 2022)
-# 
-# muni_class_sums <- read_csv("./Output/ptaxsim_muni_class_summaries_2006-2022.csv") %>%
-#     mutate(class_group = str_sub(class, 1,1),
-#          class_group = case_when(
-#           (class_group == 5 & class %in% commercial_classes) ~ "5A",
-#           (class_group == 5 & class %in% industrial_classes) ~ "5B",
-#           (class_group == 8 & class %in% commercial_classes ) ~ "8A",
-#           (class_group == 8 & class %in% industrial_classes ) ~ "8B",
-#           TRUE ~ as.character(class_group)))
 
 eqfact22 <- 2.9237 # 2022 CC equalization factor
 eqfact21 <- 3.0027 # 2021 CC Equalization Factor
