@@ -835,8 +835,8 @@ eqfact21 <- 3.0027 # 2021 CC Equalization Factor
 ```{r}
 muni_class_AleaCats <- ptax_pins %>%
   left_join(MuniLevel) %>%
-  group_by(clean_name, 
-           class_group, incent_prop, 
+  group_by(clean_name, incent_prop, 
+           class_group, 
          #  Alea_cat
   ) %>%
   summarize(classgroup_PC = n(),
@@ -855,7 +855,6 @@ muni_class_AleaCats <- ptax_pins %>%
             fmv_industrial = sum(ifelse(class %in% industrial_classes, fmv, 0), na.rm = TRUE),
             fmv_commercial = sum(ifelse(class %in% commercial_classes, fmv, 0), na.rm = TRUE),
 
-            levy = sum(final_tax_to_dist),
             current_rate_avg = mean(tax_code_rate),
             avg_C2_bill_noexe = mean(ifelse(between(class,200,299) & all_exemptions == 0, (final_tax_to_dist + final_tax_to_tif), NA), na.rm=TRUE),
             avg_C2_bill_withexe = mean(ifelse(between(class,200,299) & all_exemptions > 0, (final_tax_to_dist + final_tax_to_tif), NA), na.rm=TRUE),
@@ -873,8 +872,8 @@ eav_untaxable = sum(untaxable_value_eav),
             abatements = sum(exe_abate),            # in EAV
 eav_incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, eav, 0), na.rm = TRUE),
             loa = mean((loa*classgroup_PC ) / sum(classgroup_PC), na.rm=TRUE),
-           # final_tax_to_dist = sum(final_tax_to_dist),
-           # final_tax_to_tif = sum(final_tax_to_tif)
+           final_tax_to_dist = sum(final_tax_to_dist),
+           final_tax_to_tif = sum(final_tax_to_tif)
   ) %>%
   
   mutate(
@@ -897,8 +896,8 @@ eav_incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, eav, 0)
     forgone_EAV_incent = ifelse(incent_prop == "Incentive", 
                                 new_TEAV_noIncents - (current_taxable_eav), 0),
     forgone_TIF_EAV = fmv_tif_increment * loa * eq2022,
-    forgone_EAV_overlap = ifelse(eav_incents_inTIFs > 0,
-eav_taxable - eav_taxed, 0)
+    forgone_EAV_overlap = ifelse(fmv_incents_inTIFs > 0, fmv_incents_inTIFs/loa
+, 0)
   ) %>%
   
   mutate(pct_fmv_untaxable = fmv_untaxable_value / fmv,
@@ -913,7 +912,7 @@ ungroup() %>%
   group_by(clean_name) %>% 
   mutate(
     muni_PC = sum(classgroup_PC),
-    munilevy = sum(final_tax_to_dist),
+    muni_levy = sum(final_tax_to_dist),
     muni_exemptions = sum(all_exemptions), # all exe_ variables except exe_abate
     muni_abatements = sum(abatements),
     muni_forgoneTIF = sum(forgone_TIF_EAV, na.rm=TRUE),
@@ -926,7 +925,7 @@ ungroup() %>%
     muni_TEAV_noAbate= sum(new_TEAV_noAbates),
     muni_TEAV_noInc = sum(new_TEAV_noIncents),
     muni_TEAV_vacant_noInc = sum(new_TEAV_vacant_noIncents, na.rm = TRUE),
-muni_TEAV_overlap_incents_inTIFs = sum(eav_)
+muni_forgone_eav_overlap_incents_inTIFs = sum(forgone_EAV_overlap),
  cur_munilevel_rate = mean(cur_munilevel_rate)
     
   ) %>%
@@ -939,16 +938,16 @@ muni_TEAV_overlap_incents_inTIFs = sum(eav_)
     # no exemptions or incentive classifications:
     muni_TEAV_neither = muni_current_TEAV + muni_exemptions + muni_forgone_EAV_incent,
     
-    muni_rate_noExe = munilevy / muni_TEAV_noExe * 100,
-    muni_rate_noAbate = munilevy / muni_TEAV_noAbate * 100,
-    muni_rate_noInc = munilevy / muni_TEAV_noInc * 100,
-    muni_rate_neither = munilevy / muni_TEAV_neither * 100, 
-    muni_rate_noTIFs = munilevy / (muni_current_TEAV + muni_forgoneTIF) * 100,
-    muni_rate_vacant = munilevy / muni_TEAV_vacant_noInc* 100,
-    muni_rate_lowest = munilevy / muni_TEAV_max * 100,
-    muni_rate_noC6 = munilevy / muni_TEAV_noC6 * 100,
-    muni_rate_noC7 = munilevy / muni_TEAV_noC7 * 100,
-    muni_rate_noC8 = munilevy / muni_TEAV_noC8 * 100
+    muni_rate_noExe = muni_levy / muni_TEAV_noExe * 100,
+    muni_rate_noAbate = muni_levy / muni_TEAV_noAbate * 100,
+    muni_rate_noInc = muni_levy / muni_TEAV_noInc * 100,
+    muni_rate_neither = muni_levy / muni_TEAV_neither * 100, 
+    muni_rate_noTIFs = muni_levy / (muni_current_TEAV + muni_forgoneTIF) * 100,
+    muni_rate_vacant = muni_levy / muni_TEAV_vacant_noInc* 100,
+    muni_rate_lowest = muni_levy / muni_TEAV_max * 100,
+    muni_rate_noC6 = muni_levy / muni_TEAV_noC6 * 100,
+    muni_rate_noC7 = muni_levy / muni_TEAV_noC7 * 100,
+    muni_rate_noC8 = muni_levy / muni_TEAV_noC8 * 100
     
   ) 
 
