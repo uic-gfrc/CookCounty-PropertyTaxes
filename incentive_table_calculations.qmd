@@ -8,7 +8,13 @@ format:
     tbl-cap-location: margin
 ---
 
-MVH to-do suggestions: 1. Rename "Alea_Cat" variable (at least to Nimbus) 2. Equalization factors --\> create single variables 3. Conform to 'between' command
+MVH to-do suggestions:
+
+1\. Rename "Alea_Cat" variable (at least to Nimbus)
+
+2\. Equalization factors --\> create single variables
+
+3\. Conform to 'between' command
 
 # Data Preparation
 
@@ -143,13 +149,13 @@ ptax_pins <- ptax_pins %>%
     taxed_av =  taxed_eav / eq2022, # current value that taxing agencies can tax for their levies
     
     # taxable AV = equalized assessed value net TIF increments, gross exemptions
-    taxable_av = (final_tax_to_dist / tax_code_rate *100 + all_exemptions + abatements)/ eq2022, 
+    #taxable_av = (final_tax_to_dist / tax_code_rate *100 + all_exemptions + abatements)/ eq2022, 
     
     # FMV * assessment rate = AV
     taxed_fmv = taxed_av / loa, 
     # MVH: For some reason I thought we had gotten rid of the "taxable" concept.
-    taxable_fmv = taxable_av / loa,
-    taxable_eav = taxable_av * eq2022,
+   # taxable_fmv = taxable_av / loa,
+   # taxable_eav = taxable_av * eq2022,
 
     # untaxable value = exempt EAV from abatements and exemptions
     untaxable_value_eav = all_exemptions + abatements + 
@@ -157,7 +163,7 @@ ptax_pins <- ptax_pins %>%
       (final_tax_to_tif /  tax_code_rate*100 +
          ## difference between 25% and reduced level of assessment for incentive class properties 
          ifelse(incent_prop == "Incentive", 
-               ((taxable_av - taxed_av)*eq2022), 0)),
+               ((av/loa*2.5 - taxed_av)*eq2022), 0)),
         untaxable_value_eav = ifelse(class == 239, equalized_av-taxed_eav, untaxable_value_eav), 
     
     untaxable_value_av = untaxable_value_eav / eq2022,
@@ -179,7 +185,7 @@ ptax_pins <- ptax_pins %>%
 
 > Total Value should equal Current Taxable Value + non-Taxable Value where non-Taxable Value = Value in TIF Increment + Reduced Value from Policy Choices where Reduced Value = Tax Exempt Value from Homeowners exemptions or abatements + Reduced Value from lower levels of assessments due to incentive classifications.
 
-```{r include = FALSE}
+```{r include = FALSE, eval=FALSE}
 #ptax_pins %>% filter(equalized_av - (taxed_eav + untaxable_value_eav) > 100)
 
 #ptax_pins %>% filter(equalized_av - eav > 10) 
@@ -188,16 +194,9 @@ ptax_pins %>% filter(class == 239) %>% mutate(difference = round(equalized_av - 
 
 ```
 
-> What is class 239? That is the class that is consistently not equalling 0 in the test above.
+> What is class 239? That is the class that is consistently not equaling 0 in the test above.
 
--   239 is some form of subsidized farm land. Using the assessment ratio to back out the value does not work.\
--   Could include something like: `untaxable_value = ifelse(class == 239, equalized_av-taxed_value, untaxable_value)` - COMPLETED
-
-::: callout-note
-MVH: I DON'T KNOW WHAT THAT MEANS. Maybe case studies?
-:::
-
-## 
+-   239 is some form of subsidized farm land. Using the assessment ratio to back out the value does not work. Could add something like: `untaxable_value = ifelse(class == 239, equalized_av-taxed_value, untaxable_value)` - COMPLETED AWM
 
 ```{r include = FALSE}
 # Are there any properties where the taxed_eav is greater than the original eav value? Nope! yay.
@@ -341,11 +340,11 @@ cty_MC_table <- ptax_pins %>%
 
 ## I don't think this variable means anything... delete?
 ## MVH: IS THIS THE MAJOR CLASS SECTION?
-            cty_MC_fmv_taxable = sum(taxable_fmv, na.rm=TRUE),
+          #  cty_MC_fmv_taxable = sum(taxable_fmv, na.rm=TRUE),
 
             cty_MC_av_taxed  = sum(taxed_av, na.rm=TRUE),
 
-            cty_MC_av_taxable = sum(taxable_av, na.rm=TRUE),
+         #   cty_MC_av_taxable = sum(taxable_av, na.rm=TRUE),
 
             cty_MC_fmv_incents_inTIFs = sum(ifelse(between(class, 600, 900) & in_tif == 1, fmv, 0), na.rm = TRUE),
             cty_MC_fmv_inTIF = sum(fmv_inTIF, na.rm=TRUE),
@@ -375,7 +374,7 @@ cty_MC_table <- ptax_pins %>%
 
 flextable(cty_MC_table) %>% 
   set_header_labels(class_group = "Property Type", cty_MC_PC = 'PINs',# projects = "Project IDs", 
-                    cty_fmv = 'Total FMV', cty_MC_fmv_taxable = 'Taxable FMV', cty_MC_fmv_untaxable_value = 'Value not Taxable for Levy', cty_MC_fmv_incentive = "FMV with Incent.Class.", cty_MC_fmv_inTIF = 'FMV in TIFs', cty_MC_fmv_tif_increment = 'TIF Increment FMV' , pct_cty_MC_fmv_untaxable = 'Value not Taxed (%)', cty_MC_incentive_fmv = 'FMV with Incent. Classification', cty_MC_incents_inTIFs = 'FMV with Incent. Class. in TIFs' )
+                    cty_fmv = 'Total FMV', cty_MC_fmv_taxed = 'Taxed FMV', cty_MC_fmv_untaxable_value = 'Value not Taxable for Levy', cty_MC_fmv_incentive = "FMV with Incent.Class.", cty_MC_fmv_inTIF = 'FMV in TIFs', cty_MC_fmv_tif_increment = 'TIF Increment FMV' , pct_cty_MC_fmv_untaxable = 'Value not Taxed (%)', cty_MC_incentive_fmv = 'FMV with Incent. Classification', cty_MC_incents_inTIFs = 'FMV with Incent. Class. in TIFs' )
 
 ```
 
@@ -413,7 +412,7 @@ munilevel <- ptax_pins %>%
   # Projects primarily apply to commercial and industrial property.
     muni_projects = n_distinct(both_ids),
     muni_fmv_incentive = sum(ifelse(class >=600 & class <=900, fmv, 0), na.rm = TRUE),
-    muni_fmv_taxable = sum(taxable_fmv, na.rm=TRUE),
+    #muni_fmv_taxable = sum(taxable_fmv, na.rm=TRUE),
     muni_fmv_taxed = sum(taxed_fmv, na.rm=TRUE),
 
     muni_fmv_inTIF = sum(fmv_inTIF, na.rm=TRUE),
@@ -421,7 +420,7 @@ munilevel <- ptax_pins %>%
     muni_fmv_abated = sum(abatements/eq2022/loa, na.rm = TRUE),
     muni_fmv_tif_increment = sum(fmv_tif_increment, na.rm=TRUE),
     muni_fmv_abates_inTIF = sum(ifelse(between(class, 600, 900) & in_tif == 1 & abatements >0 , fmv, 0), na.rm = TRUE),
-
+    muni_fmv_incents_inTIF = sum(ifelse(between(class, 600, 900) & in_tif == 1, fmv, 0), na.rm = TRUE),
     muni_fmv_untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
 
     muni_fmv = sum(fmv, na.rm=TRUE), 
@@ -436,7 +435,7 @@ munilevel <- ptax_pins %>%
     muni_avg_C2_bill_noexe = mean(ifelse(between(class,200,299) & all_exemptions == 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
     muni_avg_C2_bill_withexe = mean(ifelse(between(class,200,299) & all_exemptions > 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
 ) %>%
- # Move to creating muni-level data.
+
   mutate(
     muni_range_TC_rate = muni_max_TC_rate - muni_min_TC_rate,
 muni_effective_rate =  muni_levy / muni_fmv * 100
@@ -454,13 +453,16 @@ munilevel %>% datatable(rownames=FALSE)
 ### Muni Percentages
 
 ```{r}
-table_muni_percentages <- munilevel %>%
+table_muni_percentages <- munilevel %>%   
+filter(!clean_name  %in% c("Frankfort", "Homer Glen",  "Oak Brook", "East Dundee", "University Park",  "Bensenville", "Hinsdale", "Roselle", "Deer Park", "Deerfield"))  %>%
+
   mutate(
          pct_fmv_taxed = muni_fmv_taxed / muni_fmv,
          pct_fmv_w_incentclass = muni_fmv_incentive / muni_fmv,
          pct_fmv_inTIF = muni_fmv_inTIF / muni_fmv,
          pct_fmv_in_tif_increment = muni_fmv_tif_increment / muni_fmv,
-         pct_untaxable_value = muni_fmv_untaxable_value / muni_fmv,
+         pct_fmv_untaxable_value = muni_fmv_untaxable_value / muni_fmv,
+pct_fmv_incents_inTIFs = muni_fmv_incents_inTIF / muni_fmv
          )  %>%
   select(clean_name, starts_with("pct"))
 
@@ -526,14 +528,15 @@ table_mc_percentages <- table_muni_mc %>%
   mutate(pct_PC_proptype = proptype_pincount/muni_PC_total,
          pct_projects = projects / muni_projects,
          pct_fmv_incentive = fmv_incentive / muni_fmv_incentive,
-         pct_fmv_taxed = fmv_taxed / muni_fmv_taxable,
-         pct_PC_withincents = pins_withincents / muni_PC_withincents,
-         pct_PC_incents_inTIF = incents_inTIFs / muni_PC_incents_inTIFs,
+         pct_fmv_taxed = fmv_taxed / muni_fmv_taxed,
          pct_fmv_inTIF = fmv_inTIF / muni_fmv_inTIF,
          pct_fmv_tif_increment = fmv_tif_increment / muni_fmv_tif_increment,
          pct_untaxable_value = fmv_untaxable_value / muni_fmv_untaxable_value,
          pct_fmv = fmv / muni_fmv,
-         pct_zero_bill = zero_bill / muni_zero_bill
+         pct_zero_bill = zero_bill / muni_zero_bill,
+         pct_PC_withincents = pins_withincents / muni_PC_withincents,
+         pct_PC_incents_inTIF = incents_inTIFs / muni_fmv,
+
          ) %>%
   select(clean_name, class_group, starts_with("pct"))
 
@@ -577,7 +580,7 @@ muni_class_AleaCats <- ptax_pins %>%
             fmv = sum(fmv, na.rm=TRUE),
             fmv_exemptions = sum(all_exemptions/eq2022/loa, na.rm=TRUE),
             fmv_abatements = sum(exe_abate/eq2022/loa, na.rm=TRUE),
-            #   zero_bill = sum(zero_bill, na.rm=TRUE),
+            zero_bill = sum(zero_bill, na.rm=TRUE),
             fmv_residential = sum(ifelse(class %in% c(200:399), fmv, 0), na.rm = TRUE),
             fmv_industrial = sum(ifelse(class %in% industrial_classes, fmv, 0), na.rm = TRUE),
             fmv_commercial = sum(ifelse(class %in% commercial_classes, fmv, 0), na.rm = TRUE),
@@ -589,9 +592,9 @@ muni_class_AleaCats <- ptax_pins %>%
             untaxable_value_av = sum(untaxable_value_av, na.rm=TRUE),
             av = sum(av),
 # eav_taxed
-            current_taxable_eav = sum(taxed_av*eq2022),  ## taxable implies taxed in this code section. Need to update variable name and table references to the variable. 
+            eav_taxed = sum(taxed_av*eq2022),  ## taxable implies taxed in this code section. Need to update variable name and table references to the variable. 
 eav_taxed = sum(taxed_av*eq2022),
-eav_taxable = sum(taxable_eav),
+#eav_taxable = sum(taxable_eav),
 #eav_taxed2 = sum(final_tax_to_dist / (tax_code_rate/100), na.rm=TRUE),
 
 eav_untaxable = sum(untaxable_value_eav),
@@ -604,6 +607,7 @@ eav_incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, eav, 0)
             loa = mean((loa*classgroup_PC ) / sum(classgroup_PC), na.rm=TRUE),
            final_tax_to_dist = sum(final_tax_to_dist),
            final_tax_to_tif = sum(final_tax_to_tif),
+eav = sum(eav)
   ) %>%
   
   mutate(
@@ -613,19 +617,19 @@ eav_incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, eav, 0)
     # approximation for if assessments went from 10% to 25%, similar to other commercial and industrial property in Cook County
    # new_av = ifelse(incent_prop == "Incentive", (av/loa)*0.25, av),   # for incentive properties
     
-    new_TEAV_noIncents = ifelse(incent_prop ==  "Incentive", (current_taxable_eav/loa)*0.25, current_taxable_eav),
-    new_TEAV_noC6 = ifelse(class_group == "6", (current_taxable_eav/loa)*0.25 , current_taxable_eav),
-    new_TEAV_noC7 = ifelse(class_group %in% c("7-big", "7-small"), (current_taxable_eav/loa)*0.25, current_taxable_eav),
-    new_TEAV_noC8 = ifelse(class_group %in% c("8A", "8B"), (current_taxable_eav/loa)*0.25, current_taxable_eav),
+    new_TEAV_noIncents = ifelse(incent_prop ==  "Incentive", (eav_taxed/loa)*0.25, eav_taxed),
+    new_TEAV_noC6 = ifelse(class_group == "6", (eav_taxed/loa)*0.25 , eav_taxed),
+    new_TEAV_noC7 = ifelse(class_group %in% c("7-big", "7-small"), (eav_taxed/loa)*0.25, eav_taxed),
+    new_TEAV_noC8 = ifelse(class_group %in% c("8A", "8B"), (eav_taxed/loa)*0.25, eav_taxed),
     
-    new_TEAV_vacant_noIncents = ifelse(incent_prop ==  "Incentive", 0, current_taxable_eav),
+    new_TEAV_vacant_noIncents = ifelse(incent_prop ==  "Incentive", 0, eav_taxed),
     
-    new_TEAV_noExemps = current_taxable_eav + all_exemptions, # does not include abatements
-    new_TEAV_noAbates = current_taxable_eav + abatements, # include only abatements, not other exemption types
+    new_TEAV_noExemps = eav_taxed + all_exemptions, # does not include abatements
+    new_TEAV_noAbates = eav_taxed + abatements, # include only abatements, not other exemption types
     
     # amount of EAV from taxing an additional 15% of the AV if incentive properties didn't exist
     forgone_EAV_incent = ifelse(incent_prop == "Incentive", 
-                                new_TEAV_noIncents - (eav_taxed), 0),
+                                new_TEAV_noIncents - eav_taxed, 0),
     forgone_TIF_EAV = fmv_tif_increment * loa * eq2022,
     forgone_EAV_overlap = ifelse(fmv_incents_inTIFs > 0, fmv_incents_inTIFs*loa*eq2022, 0)
   ) %>%
@@ -633,7 +637,9 @@ eav_incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, eav, 0)
   mutate(pct_fmv_untaxable = fmv_untaxable_value / fmv,
          pct_fmv_taxed = fmv_taxed / fmv,
          pct_av_taxed = av_taxed / av,
-         pct_av_untaxable = untaxable_value_av/av ) 
+         pct_av_untaxable = untaxable_value_av/av ,
+pct_eav_taxed = eav_taxed / eav,
+) 
 
 
 alt_rates <- muni_class_AleaCats %>% 
@@ -650,7 +656,7 @@ ungroup() %>%
     muni_TEAV_noC6 = sum(new_TEAV_noC6),
     muni_TEAV_noC7 = sum(new_TEAV_noC7),
     muni_TEAV_noC8 = sum(new_TEAV_noC8),
-    muni_current_TEAV = sum(current_taxable_eav),
+    muni_current_TEAV = sum(eav_taxed),
     muni_TEAV_noExe = sum(new_TEAV_noExemps),
     muni_TEAV_noAbate= sum(new_TEAV_noAbates),
     muni_TEAV_noInc = sum(new_TEAV_noIncents),
@@ -786,16 +792,19 @@ datatable(tbl3,
                     ))
 ```
 
+# Export Tables
+
 ```{r}
 library(readxl)
 
-tablelist <- list("Muni Level Sums" = munilevel, "Class Summaries" = muni_class_AleaCats, 
+tablelist <- list(
+"Muni Level Sums" = munilevel, "Muni Percentages" = table_muni_percentages,
 "Class Summaries" = table_muni_mc, "Class Percentages" = table_mc_percentages, 
-"Muni Percentages" = table_muni_percentages, "Tax Rate Hypotheticals" = alt_rates
+"Class Summaries" = muni_class_AleaCats, "Tax Rate Hypotheticals" = alt_rates
 )
 
 
-writexl::write_xlsx(tablelist, "Output/calculation_output_preliminary.xlsx")
+#writexl::write_xlsx(tablelist, "Output/calculation_output_preliminary.xlsx")
 ```
 
 # Alternative Calculations
