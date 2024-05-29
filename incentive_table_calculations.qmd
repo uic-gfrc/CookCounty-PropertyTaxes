@@ -150,10 +150,12 @@ ptax_pins <- ptax_pins %>%
   mutate(
     # taxing district revenue = taxable eav * tax rate so rearrange the formula:
     taxed_eav = final_tax_to_dist / tax_code_rate*100,
+    total_value_eav = (final_tax_to_dist + final_tax_to_tif)/ tax_code_rate * 100 + all_exemptions + abatements,
+    
     taxed_av =  taxed_eav / eq2022, # current value that taxing agencies can tax for their levies
     
-    # taxable AV = equalized assessed value net TIF increments, gross exemptions
-    #taxable_av = (final_tax_to_dist / tax_code_rate *100 + all_exemptions + abatements)/ eq2022, 
+    # taxable AV = equalized assessed value net TIF increments, gross exemptions. Used for calculating untaxable value
+    taxable_av = (final_tax_to_dist / tax_code_rate *100 + all_exemptions + abatements)/ eq2022, 
     
     # FMV * assessment rate = AV
     taxed_fmv = taxed_av / loa, 
@@ -164,9 +166,11 @@ ptax_pins <- ptax_pins %>%
       ## TIF increment EAV above frozen EAV, which becomes TIF revenue
       (final_tax_to_tif /  tax_code_rate*100) +
       
-      ## difference between 25% and reduced level of assessment for incentive class properties
+      ## difference between 25% and reduced level of assessment for incentive class properties. Excludes TIF increment when calculating the difference! 
          ifelse(between(class, 600, 900), 
-               (taxed_av/loa*0.25 - taxed_av)*eq2022, 0),
+                (taxable_av - taxed_av)*eq2022, 0),
+
+           #    (taxed_av/loa*0.25 - taxed_av)*eq2022, 0),
     
     #  manually adjust untaxable value of class 239 properties
    untaxable_value_eav = ifelse(class == 239, equalized_av-taxed_eav, untaxable_value_eav), 
@@ -219,9 +223,7 @@ stopifnot(
 
 ## Cook County Total Value
 
-> Numbers will be slightly different than Sankey graph due to using more accurate levels of assessment when calculating the Fair Market Value of properties. There is a typo in the sankey graphs: says 665 billion for cook county and it should be 605 billion.
-
-> subtract overlap
+> Numbers will be slightly different than Sankey graph due to using more accurate levels of assessment when calculating the Fair Market Value of properties. There is a typo in the sankey graphs: says 665 billion for cook county and it should be 606 billion.
 
 ```{r}
 #| label: tbl-cooktotals
@@ -600,32 +602,27 @@ muni_class_AleaCats <- ptax_pins %>%
             av_taxed = sum(taxed_av, na.rm = TRUE),
             untaxable_value_av = sum(untaxable_value_av, na.rm=TRUE),
             av = sum(av),
-# eav_taxed
-            eav_taxed = sum(taxed_av*eq2022),  ## taxable implies taxed in this code section. Need to update variable name and table references to the variable. 
-eav_taxed = sum(taxed_av*eq2022),
-#eav_taxable = sum(taxable_eav),
-#eav_taxed2 = sum(final_tax_to_dist / (tax_code_rate/100), na.rm=TRUE),
-
-eav_untaxable = sum(untaxable_value_eav),
-eav_max = sum(fmv*loa*eq2022),
-           
- pins_in_class = n(),
+            # eav_taxed
+            eav_taxed = sum(taxed_av*eq2022), 
+            
+            eav_untaxable = sum(untaxable_value_eav),
+            eav_max = sum(fmv*loa*eq2022),
+            
+            pins_in_class = n(),
             all_exemptions = sum(all_exemptions),   # in EAV
             abatements = sum(exe_abate),            # in EAV
-eav_incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, eav, 0), na.rm = TRUE),
+            eav_incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, eav, 0), na.rm = TRUE),
             loa = mean((loa*classgroup_PC ) / sum(classgroup_PC), na.rm=TRUE),
            final_tax_to_dist = sum(final_tax_to_dist),
            final_tax_to_tif = sum(final_tax_to_tif),
-eav = sum(eav)
+           eav = sum(eav)
   ) %>%
   
   mutate(
-#eav_taxed_dif = eav_taxed-eav_taxed2,
 #eav_incents_inTIFs = fmv_incents_inTIFs / eq2022,
 
     # approximation for if assessments went from 10% to 25%, similar to other commercial and industrial property in Cook County
    # new_av = ifelse(incent_prop == "Incentive", (av/loa)*0.25, av),   # for incentive properties
-    
     new_TEAV_noIncents = ifelse(incent_prop ==  "Incentive", (eav_taxed/loa)*0.25, eav_taxed),
     new_TEAV_noC6 = ifelse(class_group == "6", (eav_taxed/loa)*0.25 , eav_taxed),
     new_TEAV_noC7 = ifelse(class_group %in% c("7-big", "7-small"), (eav_taxed/loa)*0.25, eav_taxed),
@@ -640,15 +637,16 @@ eav = sum(eav)
     forgone_EAV_incent = ifelse(incent_prop == "Incentive", 
                                 new_TEAV_noIncents - eav_taxed, 0),
     forgone_TIF_EAV = fmv_tif_increment * loa * eq2022,
-    forgone_EAV_overlap = ifelse(fmv_incents_inTIFs > 0, fmv_incents_inTIFs*loa*eq2022, 0)
+    forgone_EAV_overlap = ifelse(fmv_incents_inTIFs > 0, fmv_incents_inTIFs*loa*eq2022, 0),
+    
+
   ) %>%
   
   mutate(pct_fmv_untaxable = fmv_untaxable_value / fmv,
          pct_fmv_taxed = fmv_taxed / fmv,
          pct_av_taxed = av_taxed / av,
-         pct_av_untaxable = untaxable_value_av/av ,
-pct_eav_taxed = eav_taxed / eav,
-) 
+         pct_av_untaxable = untaxable_value_av/av,
+         pct_eav_taxed = eav_taxed / eav) 
 
 
 alt_rates <- muni_class_AleaCats %>% 
@@ -658,6 +656,8 @@ ungroup() %>%
   summarise(
     muni_PC = sum(classgroup_PC),
     muni_levy = sum(final_tax_to_dist),
+    muni_eav_taxed = sum(eav_taxed),
+
     muni_exemptions = sum(all_exemptions), # all exe_ variables except exe_abate
     muni_abatements = sum(abatements),
     muni_forgoneTIF = sum(forgone_TIF_EAV),
@@ -670,18 +670,17 @@ ungroup() %>%
     muni_TEAV_noAbate= sum(new_TEAV_noAbates),
     muni_TEAV_noInc = sum(new_TEAV_noIncents),
     muni_TEAV_vacant_noInc = sum(new_TEAV_vacant_noIncents),
-muni_forgone_eav_overlap_incents_inTIFs = sum(forgone_EAV_overlap),
- cur_munilevel_rate = mean(cur_munilevel_rate),
-muni_eav_max = sum(eav_max)
-    
-
-
-  ) %>%
+    muni_forgone_eav_overlap_incents_inTIFs = sum(forgone_EAV_overlap),
+    cur_munilevel_rate = mean(cur_munilevel_rate),
+    muni_eav_max = sum(eav_max)  
+    ) %>%
   mutate(muni_current_rate = cur_munilevel_rate) %>%
   mutate(
     # Absolute maximum TEAV: No Exemptions, no abatements, no TIFS, no Incentive properties
     # Commercial and industrial assessed at 25%
-    muni_TEAV_max = muni_current_TEAV + muni_exemptions + muni_abatements + muni_forgoneTIF + muni_forgone_EAV_incent - muni_forgone_eav_overlap_incents_inTIFs,
+    muni_TEAV_max = muni_current_TEAV + muni_exemptions + muni_abatements + muni_forgoneTIF + muni_forgone_EAV_incent,
+   # - muni_forgone_eav_overlap_incents_inTIFs
+ #  ,
     
     # no exemptions or incentive classifications:
     muni_TEAV_neither = muni_current_TEAV + muni_exemptions + muni_forgone_EAV_incent,
@@ -695,14 +694,15 @@ muni_eav_max = sum(eav_max)
     muni_rate_lowest = muni_levy / muni_TEAV_max * 100,
     muni_rate_noC6 = muni_levy / muni_TEAV_noC6 * 100,
     muni_rate_noC7 = muni_levy / muni_TEAV_noC7 * 100,
-    muni_rate_noC8 = muni_levy / muni_TEAV_noC8 * 100
-    
+    muni_rate_noC8 = muni_levy / muni_TEAV_noC8 * 100,
+    muni_rate_avgerror = muni_levy / muni_eav_taxed * 100
   ) 
 
 
 
 alt_rates <- alt_rates %>% 
-  mutate(change_noExe =  muni_rate_noExe - muni_current_rate,
+  mutate(change_error_dif = muni_rate_avgerror - muni_current_rate,
+    change_noExe =  muni_rate_noExe - muni_current_rate,
          change_noInc = muni_rate_noInc - muni_current_rate,
          change_noC6 = muni_rate_noC6 - muni_current_rate,
          change_noC7 = muni_rate_noC7 - muni_current_rate,
@@ -726,8 +726,6 @@ alt_rates <- alt_rates %>%
   # East Dundee, University Park, Bensenville, Hinsdale, Roeselle, Deerfield are below 15% in Cook County
   filter(!clean_name  %in% c("Frankfort", "Homer Glen",  "Oak Brook", "East Dundee", "University Park",  "Bensenville", "Hinsdale", "Roselle", "Deer Park", "Deerfield")) 
 
-
-write_csv(alt_rates, "Output/incentive_table_calculations.csv")
 ```
 
 > TAX RATE CALCULATIONS DO NOT SEEM RIGHT
@@ -778,7 +776,7 @@ datatable(tbl2,
 
 tbl3 <- alt_rates %>%
   select(clean_name, change_noExe, change_noInc, change_noC6, change_noC7, change_noC8, change_noAbate, change_noTIFs, 
-         change_neither, change_max, change_vacants) %>%
+         change_neither, change_max, change_vacants, change_error_dif) %>%
 #mutate(across(change_noExe:change_noTIFs, mean, na.rm=TRUE) ) %>%
   distinct() %>%
   mutate(across(change_noExe:change_vacants, round, digits = 2)) %>% as.data.frame()
@@ -796,7 +794,8 @@ datatable(tbl3,
 
                        'Rate if No Incentive Classes & No Exemptions' = 'change_neither',
                        'Rate if No TIF Increments' = 'change_noTIFs',
-                       'Maxiumum Rate Change' = 'change_max'
+                       'Maxiumum Rate Change' = 'change_max',
+                       'Error from Tax Code Rate Aggregation' = 'change_error_dif'
                        
                     ))
 ```
@@ -809,11 +808,12 @@ library(readxl)
 tablelist <- list(
 "Muni Level Sums" = munilevel, "Muni Percentages" = table_muni_percentages,
 "Class Summaries" = table_muni_mc, "Class Percentages" = table_mc_percentages, 
-"Class Summaries" = muni_class_AleaCats, "Tax Rate Hypotheticals" = alt_rates
+# "Class Summaries" = muni_class_AleaCats, 
+"Tax Rate Hypotheticals" = alt_rates
 )
 
 
-#writexl::write_xlsx(tablelist, "Output/calculation_output_preliminary.xlsx")
+writexl::write_xlsx(tablelist, "Output/calculation_output_preliminary.xlsx")
 ```
 
 # Alternative Calculations
