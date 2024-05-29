@@ -229,64 +229,64 @@ stopifnot(
 #| label: tbl-cooktotals
 #| tbl-cap: "**FMV of PINs in Cook County**       Taxed FMV represents the property value that was actually taxed by local taxing jurisdictions and is equal to the amount levied. We use the the portion of an individuals tax bill that does NOT go to a TIF to calculate the composite levy for taxing jursidictions."
 
+
 table_cook <- ptax_pins %>%
-  summarize(cty_PC = n(),
-            cty_projects = n_distinct(both_ids), # mostly for industrial and commercial properties...MVH: WHY?
-            fmv_incentive = sum(ifelse(between(class, 600, 900), fmv, 0), na.rm = TRUE),
-            fmv_taxed =  sum(taxed_fmv, na.rm=TRUE),
-            fmv_incents_inTIFs = sum(ifelse(between(class, 600, 900) & in_tif == 1, fmv, 0), na.rm = TRUE),
-            fmv_inTIF = sum(fmv_inTIF, na.rm=TRUE),
-            fmv_tif_increment = sum(fmv_tif_increment, na.rm=TRUE),
-            fmv_untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
-            fmv = sum(fmv, na.rm=TRUE),
-            fmv_exemptions = sum(all_exemptions/eq2022/loa, na.rm=TRUE),
-            fmv_abatements = sum((abatements/eq2022)/loa, na.rm=TRUE),
-            cty_zero_bill = sum(zero_bill, na.rm=TRUE),
-            cty_fmv_residential = sum(ifelse(class %in% c(200:399), fmv, 0), na.rm = TRUE),
-            cty_fmv_industrial = sum(ifelse(class %in% industrial_classes, fmv, 0), na.rm = TRUE),
-            cty_fmv_commercial = sum(ifelse(class %in% commercial_classes, fmv, 0), na.rm = TRUE),
-            cty_levy = sum(final_tax_to_dist),
-            cty_current_rate_avg = mean(tax_code_rate),
-      # C2 Bills
-            cty_avg_C2_bill_noexe = mean(ifelse(between(class,200,299) & all_exemptions == 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
-            cty_avg_C2_bill_withexe = mean(ifelse(between(class,200,299) & all_exemptions > 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
-           cty_av_taxed = sum(taxed_av, na.rm = TRUE),
-           cty_untaxable_value_av = sum(untaxable_value_av, na.rm=TRUE),
-           cty_av = sum(av)
-  ) %>%
-  mutate(pct_fmv_untaxable = fmv_untaxable_value / fmv,
-         pct_fmv_taxed = fmv_taxed / fmv,
-         cty_pct_av_taxed = cty_av_taxed / cty_av,
-         cty_pct_av_untaxable = cty_untaxable_value_av/cty_av) 
+  summarize(
+    cty_PC = n(),
+    cty_projects = n_distinct(both_ids), # mostly for industrial and commercial properties...MVH: WHY?
+    cty_fmv_incentive = sum(ifelse(between(class, 600, 900), fmv, 0), na.rm = TRUE),
+    cty_fmv_taxed =  sum(taxed_fmv, na.rm=TRUE),
+    cty_fmv_incents_inTIFs = sum(ifelse(between(class, 600, 900) & in_tif == 1, fmv, 0), na.rm = TRUE),
+    cty_fmv_inTIF = sum(fmv_inTIF, na.rm=TRUE),
+    cty_fmv_tif_increment = sum(fmv_tif_increment, na.rm=TRUE),
+    cty_fmv_untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
+    cty_fmv = sum(fmv, na.rm=TRUE),
+    cty_fmv_exemptions = sum(all_exemptions/eq2022/loa, na.rm=TRUE),
+    cty_fmv_abatements = sum((abatements/eq2022)/loa, na.rm=TRUE),
+    cty_zero_bill = sum(zero_bill, na.rm=TRUE),
+    cty_fmv_residential = sum(ifelse(class %in% c(200:399), fmv, 0), na.rm = TRUE),
+    cty_fmv_industrial = sum(ifelse(class %in% industrial_classes, fmv, 0), na.rm = TRUE),
+    cty_fmv_commercial = sum(ifelse(class %in% commercial_classes, fmv, 0), na.rm = TRUE),
+    cty_levy = sum(final_tax_to_dist),
+    cty_current_rate_avg = mean(tax_code_rate),
+    cty_avg_C2_bill_noexe = mean(ifelse(between(class,200,299) & all_exemptions == 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
+    cty_avg_C2_bill_withexe = mean(ifelse(between(class,200,299) & all_exemptions > 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
+    cty_av_taxed = sum(taxed_av, na.rm = TRUE),
+    cty_untaxable_value_av = sum(untaxable_value_av, na.rm=TRUE),
+    cty_av = sum(av)) %>% 
+  mutate(
+    cty_pct_fmv_untaxable = cty_fmv_untaxable_value / cty_fmv,
+    cty_pct_fmv_taxed = cty_fmv_taxed / cty_fmv,
+    cty_pct_av_taxed = cty_av_taxed / cty_av,
+    cty_pct_av_untaxable = cty_untaxable_value_av/cty_av)
+
 
 table_cook %>% 
-  select(cty_PC, fmv_taxed, fmv_untaxable_value, fmv) %>%
+  select(cty_PC, cty_fmv_taxed, cty_fmv_untaxable_value, cty_fmv) %>%
   flextable() %>% 
   set_header_labels(cty_PC = 'PINs', cty_projects = "Project IDs", 
-                    fmv = 'Total FMV', 
-                    fmv_taxed = 'Taxed FMV', fmv_untaxable_value = 'Value not Taxable\nfor Levy',
-                    pct_fmv_untaxable = 'Value not Taxed (%)'
+                    cty_fmv = 'Total FMV', 
+                    cty_fmv_taxed = 'Taxed FMV', fmv_untaxable_value = 'Value not Taxable\nfor Levy',
+                    cty_pct_fmv_untaxable = 'Value not Taxed (%)'
                   ) %>%   FitFlextableToPage()
 
 ```
 
 ```{r}
 #| label: tbl-untaxableFMV-Cook
-#| tbl-cap: "**Untaxable FMV in Cook County.**        Taxed FMV represents the property value that was actually taxed by local taxing jurisdictions and is equal to the amount levied. We use the the portion of an individuals tax bill that does NOT go to a TIF to calculate the composite levy for taxing jursidictions."
-
-# MVH: I DONT KNOW WHAT THAT MEANS ^^
+#| tbl-cap: "**Untaxable FMV in Cook County.**"
 
 table_cook %>% 
-  select(fmv, fmv_tif_increment, fmv_exemptions, fmv_abatements, 
-         pct_fmv_untaxable, ) %>%
+  select(cty_fmv, cty_fmv_tif_increment, cty_fmv_exemptions, cty_fmv_abatements, 
+         cty_pct_fmv_untaxable, ) %>%
   flextable() %>% 
   set_header_labels(
-                    fmv = 'Total FMV', 
-                    fmv_tif_increment = 'TIF Increment FMV' ,
-                    fmv_exemptions = 'Exempt Value: Exemptions',
-                    fmv_abatements = 'Exempt Value: Abatements',
-                    fmv_untaxable_value = 'Value not Taxable \nfor Levy',
-                    pct_fmv_untaxable = 'County FMV not Taxed (%)'
+                   cty_fmv = 'Total FMV', 
+                    cty_fmv_tif_increment = 'TIF Increment FMV' ,
+                    cty_fmv_exemptions = 'Exempt Value: Exemptions',
+                    cty_fmv_abatements = 'Exempt Value: Abatements',
+                    cty_fmv_untaxable_value = 'Value not Taxable \nfor Levy',
+                    cty_pct_fmv_untaxable = 'County FMV not Taxed (%)'
 ) %>%   FitFlextableToPage()
 ```
 
@@ -305,14 +305,14 @@ table_cook %>%
 #| tbl-cap: "**FMV of properties with incentive classifications and TIF increment.**      Value in TIFs, value within the TIF that can be taxed by local taxing jurisdictions, value of properties that have reduced levels of assessments from incentive classifications, and the value that is both in a TIF and has a reduced LOA."
 
 table_cook %>% 
-  select(fmv, fmv_inTIF, fmv_tif_increment, fmv_incentive, fmv_incents_inTIFs) %>%
+  select(cty_fmv, cty_fmv_inTIF, cty_fmv_tif_increment, cty_fmv_incentive, cty_fmv_incents_inTIFs) %>%
   flextable() %>% 
   set_header_labels(
-                    fmv = 'Total FMV', 
-                    fmv_inTIF = 'FMV in TIFs',
-                    fmv_tif_increment = 'TIF Increment FMV' ,
-                    fmv_incentive = "FMV with Incent.Class.", 
-                    fmv_incents_inTIFs = 'FMV with Incent. Class. in TIFs'
+                    cty_fmv = 'Total FMV', 
+                    cty_fmv_inTIF = 'FMV in TIFs',
+                    cty_fmv_tif_increment = 'TIF Increment FMV' ,
+                    cty_fmv_incentive = "FMV with Incent.Class.", 
+                    cty_fmv_incents_inTIFs = 'FMV with Incent. Class. in TIFs'
 )%>%   FitFlextableToPage()
 
 ```
@@ -339,45 +339,33 @@ The Taxed Value, when converted to the Fair Market Value (FMV) represents the am
 #| label: tbl-cooktotals-majorclass
 #| tbl-cap: "**Summed FMV of PINs in Cook County by Property Class.**      Untaxable EAV includes homeowner exemptions for 200 level properties, abatements for other property class types, EAV in the TIF increment, and EAV that has been reduced due to incentive classifications"
 
-
 cty_MC_table <- ptax_pins %>%
-  mutate(cty_fmv = sum(fmv, na.rm=TRUE)) %>%
-    group_by(class_group) %>%
-
-  summarize(cty_MC_PC = n(),
-            cty_MC_projects = n_distinct(both_ids), # mostly for industrial and commercial properties
-            cty_MC_fmv_incentive = sum(ifelse(between(class, 600, 900), fmv, 0), na.rm = TRUE),
-            cty_MC_fmv_taxed =  sum(taxed_fmv, na.rm=TRUE),
-
-## I don't think this variable means anything... delete?
-## MVH: IS THIS THE MAJOR CLASS SECTION?
-          #  cty_MC_fmv_taxable = sum(taxable_fmv, na.rm=TRUE),
-
-            cty_MC_av_taxed  = sum(taxed_av, na.rm=TRUE),
-
-         #   cty_MC_av_taxable = sum(taxable_av, na.rm=TRUE),
-
-            cty_MC_fmv_incents_inTIFs = sum(ifelse(between(class, 600, 900) & in_tif == 1, fmv, 0), na.rm = TRUE),
-            cty_MC_fmv_inTIF = sum(fmv_inTIF, na.rm=TRUE),
-            cty_MC_fmv_tif_increment = sum(fmv_tif_increment, na.rm=TRUE),
-            cty_MC_fmv_untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
-            cty_MC_fmv = sum(fmv, na.rm=TRUE),
-            cty_MC_fmv_exemptions = sum(all_exemptions/eq2022/loa, na.rm=TRUE),
-            cty_MC_fmv_abatements = sum(abatements/eq2022/loa, na.rm=TRUE),
-            cty_MC_cty_zero_bill = sum(zero_bill, na.rm=TRUE),
-            cty_MC_fmv_residential = sum(ifelse(class %in% c(200:399), fmv, 0), na.rm = TRUE),
-            cty_MC_fmv_industrial = sum(ifelse(class %in% industrial_classes, fmv, 0), na.rm = TRUE),
-            cty_MC_fmv_commercial = sum(ifelse(class %in% commercial_classes, fmv, 0), na.rm = TRUE),
-            cty_MC_levy_paid = sum(final_tax_to_dist),
-            cty_MC_current_rate_avg = mean(tax_code_rate),
-            
-            cty_avg_C2_bill_noexe = mean(ifelse(between(class, 200, 299) & all_exemptions == 0,
-                (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
-            cty_avg_C2_bill_withexe = mean(ifelse(between(class,200, 299) & all_exemptions > 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
-            cty_fmv = mean(cty_fmv)
-            
+  group_by(class_group) %>%
+  summarize(
+    cty_MC_PC = n(),
+    cty_MC_projects = n_distinct(both_ids), # mostly for industrial and commercial properties
+    cty_MC_fmv_incentive = sum(ifelse(between(class, 600, 900), fmv, 0), na.rm = TRUE),
+    cty_MC_fmv_taxed =  sum(taxed_fmv, na.rm=TRUE),
+    cty_MC_av_taxed  = sum(taxed_av, na.rm=TRUE),
+    cty_MC_fmv_incents_inTIFs = sum(ifelse(between(class, 600, 900) & in_tif == 1, fmv, 0), na.rm = TRUE),
+    cty_MC_fmv_inTIF = sum(fmv_inTIF, na.rm=TRUE),
+    cty_MC_fmv_tif_increment = sum(fmv_tif_increment, na.rm=TRUE),
+    cty_MC_fmv_untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
+    cty_MC_fmv = sum(fmv, na.rm=TRUE),
+    cty_MC_fmv_exemptions = sum(all_exemptions/eq2022/loa, na.rm=TRUE),
+    cty_MC_fmv_abatements = sum(abatements/eq2022/loa, na.rm=TRUE),
+    cty_MC_cty_zero_bill = sum(zero_bill, na.rm=TRUE),
+    cty_MC_fmv_residential = sum(ifelse(class %in% c(200:399), fmv, 0), na.rm = TRUE),
+    cty_MC_fmv_industrial = sum(ifelse(class %in% industrial_classes, fmv, 0), na.rm = TRUE),
+    cty_MC_fmv_commercial = sum(ifelse(class %in% commercial_classes, fmv, 0), na.rm = TRUE),
+    cty_MC_levy_paid = sum(final_tax_to_dist),
+    cty_MC_current_rate_avg = mean(tax_code_rate),
+    
+    cty_MC_avg_C2_bill_noexe = mean(ifelse(between(class, 200, 299) & all_exemptions == 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
+    cty_MC_avg_C2_bill_withexe = mean(ifelse(between(class,200, 299) & all_exemptions > 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
   ) %>%
-  mutate(pct_cty_MC_fmv_untaxable = cty_MC_fmv_untaxable_value / cty_MC_fmv,
+  mutate( cty_fmv = sum(cty_MC_fmv),
+    pct_cty_MC_fmv_untaxable = cty_MC_fmv_untaxable_value / cty_MC_fmv,
          pct_fmv_taxed = cty_MC_fmv_taxed / cty_fmv,
          pct_MC_levy_paid = cty_MC_levy_paid / sum(cty_MC_levy_paid) )
 
