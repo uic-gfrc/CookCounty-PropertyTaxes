@@ -118,6 +118,10 @@ MVH: NEW METHODOLOGY REQUIRES FURTHER EXPLANATION.
 
 > Taxed Value refers to what taxing agencies did tax to pay for their levies. We use the portion of the tax bill that does NOT go to TIFs to calculate the portion of the composite levy paid by each PIN and then sum up from there.
 
+::: callout-warning
+Do not double count untaxable value when adding value in TIFs and incentive class property value.
+:::
+
 ```{r}
 eq2022 <- 2.9237 #example of eq factor proliferation
 
@@ -153,31 +157,34 @@ ptax_pins <- ptax_pins %>%
     
     # FMV * assessment rate = AV
     taxed_fmv = taxed_av / loa, 
-    # MVH: For some reason I thought we had gotten rid of the "taxable" concept.
-   # taxable_fmv = taxable_av / loa,
-   # taxable_eav = taxable_av * eq2022,
 
-    # untaxable value = exempt EAV from abatements and exemptions
+      ## untaxable value = exempt EAV from abatements and exemptions
     untaxable_value_eav = all_exemptions + abatements + 
+      
       ## TIF increment EAV above frozen EAV, which becomes TIF revenue
-      (final_tax_to_tif /  tax_code_rate*100 +
-         ## difference between 25% and reduced level of assessment for incentive class properties 
-         ifelse(incent_prop == "Incentive", 
-               ((av/loa*2.5 - taxed_av)*eq2022), 0)),
-        untaxable_value_eav = ifelse(class == 239, equalized_av-taxed_eav, untaxable_value_eav), 
+      (final_tax_to_tif /  tax_code_rate*100) +
+      
+      ## difference between 25% and reduced level of assessment for incentive class properties
+         ifelse(between(class, 600, 900), 
+               (taxed_av/loa*0.25 - taxed_av)*eq2022, 0),
+    
+    #  manually adjust untaxable value of class 239 properties
+   untaxable_value_eav = ifelse(class == 239, equalized_av-taxed_eav, untaxable_value_eav), 
     
     untaxable_value_av = untaxable_value_eav / eq2022,
     untaxable_value_fmv = untaxable_value_av / loa,
-    
+    exempt_eav_inTIF = ifelse(in_tif == 1, all_exemptions, 0),
     exempt_eav= all_exemptions + abatements,
     exempt_fmv = exempt_eav / eq2022 / loa, 
     
     fmv_inTIF = ifelse(in_tif==1, av/loa, 0),
     fmv_tif_increment = ifelse(final_tax_to_tif > 0, ((final_tax_to_tif / (tax_code_rate/100)) / eq2022 ) / loa, 0),
-    
 
+    fmv_incents_inTIF = ifelse(between(class, 600, 900) & in_tif == 1, fmv, 0),
+ 
+    eav_incents_inTIF = fmv * loa * eq2022
     ) %>%
-  select(tax_code, class, pin, taxed_fmv, # taxable_fmv, 
+  select(tax_code, class, pin, taxed_fmv,
          untaxable_value_fmv, fmv_inTIF, fmv_tif_increment, fmv, total_billed, final_tax_to_dist, final_tax_to_tif, tax_code_rate, eav, equalized_av, av, everything())
 
 
@@ -213,6 +220,8 @@ stopifnot(
 ## Cook County Total Value
 
 > Numbers will be slightly different than Sankey graph due to using more accurate levels of assessment when calculating the Fair Market Value of properties. There is a typo in the sankey graphs: says 665 billion for cook county and it should be 605 billion.
+
+> subtract overlap
 
 ```{r}
 #| label: tbl-cooktotals
@@ -470,7 +479,7 @@ pct_fmv_incents_inTIFs = muni_fmv_incents_inTIF / muni_fmv
 
 table_muni_percentages%>% 
   datatable(rownames = FALSE) %>%
-  formatPercentage(columns = 2:6, digits = 2)
+  formatPercentage(columns = 2:7, digits = 2)
 ```
 
 # County and Municipality by Major Class Types
