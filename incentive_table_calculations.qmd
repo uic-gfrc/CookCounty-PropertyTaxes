@@ -10,7 +10,6 @@ format:
 
 MVH to-do suggestions:
 
-
 1\. Conform to 'between' command
 
 # Data Preparation
@@ -18,9 +17,9 @@ MVH to-do suggestions:
 ```{r setup, warning = FALSE, output = FALSE}
 
 library(tidyverse)
-library(DT)
-# MVH is dubious:
-library(flextable) # for exporting to word or PDF files. Kable does not do that
+library(DT)        # for interactive html tables on website
+library(flextable) # best for exporting to word or PDF files.
+
 
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 
@@ -44,20 +43,21 @@ FitFlextableToPage <- function(ft, pgwidth = 6){
 ```{r message = FALSE}
 # all pins for 2022
 ptax_pins <- read_csv("Output/Dont_Upload/0_joined_PIN_data_2022.csv") %>% 
-  # Allows for merging
-  mutate(class = as.numeric(class)) %>%
-    select(-c(propclass_1dig:av.y))
+  mutate(class = as.numeric(class)) %>%         # Allows for joining later
+    select(-c(propclass_1dig:av.y))             
 
-# Helpful for identifying projects because lawyers keep great records.
+# Workaround for identifying more project IDs. 
+# Used Appeal ID to create unique identifier to group PINs.
 bor <- read_csv("Output/borappeals.csv") %>%
   mutate(project_appellant = paste(project_id, sep = "-", appellant))
 
-# temporary work-around until we have full keypin list:
+# Cleaned PIN-Project list after cleaning the commercial valuatoin dataset found online. 
+# Another temporary work-around until we (maybe) have full keypin list:
 proj_xwalk <- read_csv("Output/all_keypins.csv")               
-# all commercial valuation properties but made with very unreliable data from commercial valuation dataset. 
-# MVH: IS IT THAT THE DATA IS UNRELIABLE OR JUST FIRST PASS?
+# all commercial valuation properties but made with not-quite-clean data from commercial valuation dataset on Cook County Data Portal (which was made from combining the Methodology worksheets) 
+# Values are also only the FIRST PASS assessments and do not include appeals or changes in values
 
-# combine project IDs to PINs:
+# Join project IDs to PINs:
 ptax_pins <- ptax_pins %>% left_join(proj_xwalk)
 
 #  create tc_muninames from helper file:
@@ -80,13 +80,12 @@ ptax_pins <- ptax_pins %>%
   left_join(class_dict, by =  c("class" = "class_code")) %>%
   mutate(clean_name = ifelse(is.na(clean_name), "Unincorporated", clean_name)) 
 
-# BOR shortfall: We only have the data if they appeal!
+# BOR data source shortfall: We only have the data if they appeal!
 
 bor_pins <- bor %>% 
   group_by(pin) %>% 
   arrange(desc(tax_year)) %>%
-  # Does this just grab the first PIN?
-  summarize(pin = first(pin),
+  summarize(pin = first(pin),              # grabs first occurance of unique PIN
             class_bor = list(unique(class)),
             appellant = first(appellant),
             project_id = first(project_id), 
@@ -110,8 +109,6 @@ ptax_pins <- ptax_pins %>%
 ::: callout-note
 MVH: NEW METHODOLOGY REQUIRES FURTHER EXPLANATION.
 :::
-
-
 
 ```{r}
 eq2022 <- 2.9237 #example of eq factor proliferation
@@ -145,10 +142,11 @@ ptax_pins <- ptax_pins %>%
     
     taxed_av =  taxed_eav / eq2022, # current value that taxing agencies can tax for their levies
     
-    # taxable AV = equalized assessed value net TIF increments, gross exemptions. Used for calculating untaxable value
+    ## taxable AV = equalized assessed value net TIF increments, gross exemptions. 
+    ## Used for calculating untaxable value further below
     taxable_av = (final_tax_to_dist / tax_code_rate *100 + all_exemptions + abatements)/ eq2022, 
     
-    # FMV * assessment rate = AV
+    ## FMV * assessment rate = AV
     taxed_fmv = taxed_av / loa, 
 
       ## untaxable value = exempt EAV from abatements and exemptions
@@ -158,24 +156,27 @@ ptax_pins <- ptax_pins %>%
       (final_tax_to_tif /  tax_code_rate*100) +
       
       ## difference between 25% and reduced level of assessment for incentive class properties. Excludes TIF increment when calculating the difference! 
-         ifelse(between(class, 600, 900), 
-                (taxable_av - taxed_av)*eq2022, 0),
-
-           #    (taxed_av/loa*0.25 - taxed_av)*eq2022, 0),
+      ifelse(between(class, 600, 900), 
+             (taxable_av - taxed_av)*eq2022, 0),
     
     #  manually adjust untaxable value of class 239 properties
-   untaxable_value_eav = ifelse(class == 239, equalized_av-taxed_eav, untaxable_value_eav), 
+    untaxable_value_eav = ifelse(class == 239, 
+                                 equalized_av-taxed_eav, untaxable_value_eav), 
     
     untaxable_value_av = untaxable_value_eav / eq2022,
     untaxable_value_fmv = untaxable_value_av / loa,
-    exempt_eav_inTIF = ifelse(in_tif == 1, all_exemptions, 0),
+    exempt_eav_inTIF = ifelse(in_tif == 1, 
+                              all_exemptions, 0),
     exempt_eav= all_exemptions + abatements,
     exempt_fmv = exempt_eav / eq2022 / loa, 
     
-    fmv_inTIF = ifelse(in_tif==1, av/loa, 0),
-    fmv_tif_increment = ifelse(final_tax_to_tif > 0, ((final_tax_to_tif / (tax_code_rate/100)) / eq2022 ) / loa, 0),
+    fmv_inTIF = ifelse(in_tif==1, 
+                       av/loa, 0),
+    fmv_tif_increment = ifelse(final_tax_to_tif > 0, 
+                               ((final_tax_to_tif / (tax_code_rate/100)) / eq2022 ) / loa, 0),
 
-    fmv_incents_inTIF = ifelse(between(class, 600, 900) & in_tif == 1, fmv, 0),
+    fmv_incents_inTIF = ifelse(between(class, 600, 900) & in_tif == 1, 
+                               fmv, 0),
  
     eav_incents_inTIF = fmv * loa * eq2022
     ) %>%
@@ -187,15 +188,8 @@ ptax_pins <- ptax_pins %>%
 
 > Total Value should equal Current Taxable Value + non-Taxable Value where non-Taxable Value = Value in TIF Increment + Reduced Value from Policy Choices where Reduced Value = Tax Exempt Value from Homeowners exemptions or abatements + Reduced Taxable Value from lower levels of assessments due to incentive classifications.
 
-$$
-\mbox{Total Value = Taxed Value + Untaxable Value}
-$$
-$$
-\mbox{Untaxable Value = TIF Increment + Exemptions + Abatements + Reduced Taxable Value from lower levels of assessments due to incentive classification}
-$$
-$$
-\mbox{Reduced Taxable Value from Incentive Classification Decreased Levels of Assessments = (25% * EAV - ~10% * EAV)}
-$$
+$$\mbox{Total Value = Taxed Value + Untaxable Value}$$ *where* $$\mbox{Untaxable Value = TIF Increment + Exemptions + Abatements + Reduced Taxable Value from Lower Incentive Class Assessment Ratios}$$ *where* $$\mbox{Reduced Taxable Value from Incentive Classification Levels of Assessments}$$$$ \mbox{= (25% * EAV - ~10% * EAV)} $$
+
 ```{r include = FALSE, eval=FALSE}
 #ptax_pins %>% filter(equalized_av - (taxed_eav + untaxable_value_eav) > 100)
 
@@ -209,11 +203,11 @@ $$
 
 ### 239 is some form of subsidized farm land. Using the assessment ratio to back out the value does not work. Could add something like: `untaxable_value = ifelse(class == 239, equalized_av-taxed_value, untaxable_value)` - COMPLETED AWM
 
+## "The Farmland Assessment Law establishes capitalized net income as the basis for the EAV of farmland. Each year, thenet income is determined for each PI of cropland. The net income is then capitalized by the five-year Federal Land Bank rate to determine an agricultural economic value (AEV) for each PI. The AEV for each PI is then multiplied by 33 1/3 percent (.3333), the product of which is the EAV. A listing of the 2024 EAVs of cropland by PI is given in Table 1. By law, the EAV of permanent pasture should be at one-third and the EAV of other farmland should be at one-sixth of these values."
+
 ptax_pins %>% filter(class == 239) %>% mutate(difference = round(equalized_av - (taxed_eav + untaxable_value_eav)), .before = taxed_fmv ) %>% arrange(desc(difference)) %>% head()
 
 ```
-
-
 
 ```{r include = FALSE}
 # Are there any properties where the taxed_eav is greater than the original eav value? Nope! yay.
@@ -231,10 +225,6 @@ stopifnot(
 
 > Numbers will be slightly different than Sankey graph due to using more accurate levels of assessment when calculating the Fair Market Value of properties. There is a typo in the sankey graphs: says 665 billion for cook county and it should be 606 billion.
 
-
-
-
-
 $$
 \mbox{AV = Fair Market Value * Level of Assessment}
 $$
@@ -243,17 +233,13 @@ $$
 \mbox{Tax Rate} = \frac{\mbox{Amount Levied by Taxing Districts}}{\mbox{Taxable Value}}
 $$
 
-
 > Taxed Value refers to what taxing agencies did tax to pay for their levies. We use the portion of the tax bill that does NOT go to TIFs to calculate the portion of the composite levy paid by each PIN and then sum up from there.
-
-
 
 $$
 \mbox{Final Tax to District} = {\mbox{Tax Code Rate}}*{\mbox{Taxable Value of PIN}}
-$$
-$$
-\mbox{Fair Market Value} = {\frac{\mbox{final_tax_to_dist + final_tax_to_tif}}{\mbox{tax_code_rate}} + \mbox{Exemptions + Abatements}}
-$$
+$$ $$
+\mbox{Fair Market Value} = {\frac{\mbox{final_tax_to_dist + final_tax_to_tif}}{\mbox{tax_code_rate}} + \mbox{Exemptions + Abatements}}$$
+
 ```{r}
 #| label: tbl-cooktotals
 #| tbl-cap: "**FMV of PINs in Cook County**       Taxed FMV represents the property value that was actually taxed by local taxing jurisdictions and is equal to the amount levied. We use the the portion of an individuals tax bill that does NOT go to a TIF to calculate the composite levy for taxing jursidictions."
@@ -411,17 +397,12 @@ cty_MC_table %>%
 
 # Municipality Level Stats
 
--   Frankfort has 1 PIN in Cook County\
-
--   East Dundee has 2\
-
--   Homer Glen has 3\
-
+-   Frankfort has 1 PIN in Cook County
+-   East Dundee has 2
+-   Homer Glen has 3
 -   University Park has 4
-
 -   Oak Brook, Deer Park, Deerfield, & Bensenville each have less than 75 PINs in Cook County, IL
-
--   Ignore stats for these Municipalities. Simple rounding errors may cause bizarre results for rate changes & other calculations.
+    -   *Ignore stats for these Municipalities. Simple rounding errors may cause bizarre results for rate changes & other calculations. These municipalities are dropped from summary tables in this website but are included in exported files.*
 
 ```{r}
 munilevel <- ptax_pins %>% 
@@ -728,7 +709,8 @@ alt_rates <- alt_rates %>%
          change_neither =  muni_rate_neither - muni_current_rate,
          change_max = muni_rate_lowest - muni_current_rate,
          change_noAbate = muni_rate_noAbate- muni_current_rate,
-         change_vacants = muni_rate_vacant - muni_current_rate) 
+         change_vacants = muni_rate_vacant - muni_current_rate)  #%>%
+#mutate(across(.cols = change_noExe:change_vacants), .func = .x-change_error_dif)
 
 # roundfuntion <- function(x){
 # ifelse(x<0.1 & x> -0.1, 0, return(x))
@@ -837,7 +819,6 @@ tablelist <- list(
   "Muni Sums" = munilevel,
   "Muni Class Summaries" = muni_mc_table, 
   "Muni Class Percentages" = table_muni_mc_percentages, 
-  # "Class Summaries" = muni_class_AleaCats, 
   "Muni Tax Rate Hypotheticals" = alt_rates,
   "Cook Sums" = table_cook,
   "Cook Class Sums" = cty_MC_table
@@ -845,42 +826,4 @@ tablelist <- list(
 
 
 writexl::write_xlsx(tablelist, "Output/calculation_output_preliminary.xlsx")
-```
-
-# Alternative Calculations
-
-## Assessed Value (AV) Tables
-
-## Incentive and non-Incentive, Commercial and Industrial Properties
-
-```{r eval = FALSE}
-#| label: tbl-propertybreakdown
-#| tbl-cap: "Breakdown of incentivized properties within commercial and industrial properties"
-
-table <- nonres_pins2022 %>% 
-      filter(Alea_cat != "Land") %>%
-
-  group_by(clean_name, incent_prop, Alea_cat) %>%   # projects can be counted twice if the project has incentive and normal commercial/industrial prop classes.
-  summarize(pin_count = n(),
-         project_count = n_distinct(keypin),
-         projects_bor = n_distinct(both_ids),
-         av_adjusted = sum(ifelse(between(class, 600, 899), av*2.5, av)),
-         av_incent = sum(ifelse(between(class, 600, 899), av*2.5, 0)),
-         av=sum(av),
-)  %>%
-  mutate(#AV_incent = av_adjusted - av,
-           pct_incent = av_incent / av_adjusted)
-
-
-datatable(table,
-          rownames= FALSE,
-          colnames = c('Municipality' = 'clean_name', 'Incentivized?' = 'incent_prop',
-                       'Property Type' = 'Alea_cat', 'PINs in Projects' = 'pin_count', 
-                       'Project Count' = 'project_count',
-                       'Currently Taxed AV' = 'av',
-                       'Total Assessed Market Value' = 'av_adjusted',
-      'Assessed Market Value' = 'av_incent', 
-      '% AV Incentivized' = 'pct_incent' )  ) %>%
-  formatCurrency(c('Currently Taxed AV', 'Assessed Market Value'), digits = 0) %>%
-formatPercentage('% AV Incentivized', digits = 2)
 ```
