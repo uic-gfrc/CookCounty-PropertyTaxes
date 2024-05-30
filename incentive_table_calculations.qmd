@@ -188,7 +188,8 @@ ptax_pins <- ptax_pins %>%
 
 > Total Value should equal Current Taxable Value + non-Taxable Value where non-Taxable Value = Value in TIF Increment + Reduced Value from Policy Choices where Reduced Value = Tax Exempt Value from Homeowners exemptions or abatements + Reduced Taxable Value from lower levels of assessments due to incentive classifications.
 
-$$\mbox{Total Value = Taxed Value + Untaxable Value}$$ *where* $$\mbox{Untaxable Value = TIF Increment + Exemptions + Abatements + Reduced Taxable Value from Lower Incentive Class Assessment Ratios}$$ *where* $$\mbox{Reduced Taxable Value from Incentive Classification Levels of Assessments}$$$$ \mbox{= (25% * EAV - ~10% * EAV)} $$
+$$\mbox{Total Value = Taxed Value + Untaxable Value}$$ *where* $$\mbox{Untaxable Value = TIF Increment + Exemptions + Abatements + Reduced Taxable Value from Lower Incentive Class Assessment Ratios}$$ *where* $$\mbox{Reduced Taxable Value from Incentive Classification Levels of Assessments}$$
+$$ \mbox{= (25% * EAV - ~10% * EAV)} $$
 
 ```{r include = FALSE, eval=FALSE}
 #ptax_pins %>% filter(equalized_av - (taxed_eav + untaxable_value_eav) > 100)
@@ -237,8 +238,9 @@ $$
 
 $$
 \mbox{Final Tax to District} = {\mbox{Tax Code Rate}}*{\mbox{Taxable Value of PIN}}
-$$ $$
-\mbox{Fair Market Value} = {\frac{\mbox{final_tax_to_dist + final_tax_to_tif}}{\mbox{tax_code_rate}} + \mbox{Exemptions + Abatements}}$$
+$$ 
+$$\mbox{Fair Market Value} = {\frac{\mbox{final tax to dist + final tax to TIF}}{\mbox{tax code rate}} + \mbox{Exemptions + Abatements}}
+$$
 
 ```{r}
 #| label: tbl-cooktotals
@@ -312,6 +314,12 @@ table_cook %>%
 table_cook %>% 
   select(cty_av, cty_av_taxed, cty_untaxable_value_av, cty_pct_av_taxed, cty_pct_av_untaxable ) %>%
   flextable() %>% 
+  set_header_labels(
+                   cty_av = 'Total AV', 
+                    cty_av_taxed = 'Taxed AV' ,
+                    cty_untaxable_value_av = 'AV Not Taxed',
+                    cty_pct_av_taxed = '% Taxed',
+                    cty_pct_av_untaxable = '% Not Taxed') %>%
    FitFlextableToPage()
 ```
 
@@ -436,15 +444,18 @@ munilevel <- ptax_pins %>%
     muni_zero_bill = sum(zero_bill, na.rm=TRUE),
     muni_levy = sum(final_tax_to_dist),
     muni_current_rate_avg = mean(tax_code_rate),
+    muni_eav_taxed = sum(taxed_av*eq2022), 
+
     muni_min_TC_rate = min(tax_code_rate),
     muni_max_TC_rate = max(tax_code_rate),
-    muni_avg_C2_bill_noexe = mean(ifelse(between(class,200,299) & all_exemptions == 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
+    muni_avg_C2_bill_noexe = mean(ifelse(between(class,200,299) & all_exemptions == 0, (final_tax_to_dist + final_tax_to_tif), NA), na.rm=TRUE),
     muni_avg_C2_bill_withexe = mean(ifelse(between(class,200,299) & all_exemptions > 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
 muni_eav = sum(eav)) %>%
 
   mutate(
     muni_range_TC_rate = muni_max_TC_rate - muni_min_TC_rate,
     muni_effective_rate =  muni_levy / muni_fmv * 100, 
+muni_pct_eav_taxed = muni_levy / muni_eav_taxed,
 
          pct_fmv_taxed = muni_fmv_taxed / muni_fmv,
          pct_fmv_w_incentclass = muni_fmv_incentive / muni_fmv,
@@ -458,7 +469,9 @@ pct_fmv_incents_inTIFs = muni_fmv_incents_inTIF / muni_fmv ) %>%
 
   ungroup() %>%
   select(clean_name, everything())
+
 ```
+
 
 ```{r}
 #| label: tbl-muni-levelstats
@@ -584,7 +597,8 @@ muni_mc_table <- ptax_pins %>%
          pct_zero_bill = zero_bill / muni_zero_bill,
          pct_PC_withincents = pins_withincents / muni_PC_withincents,
          pct_fmv_incents_inTIF = fmv_incents_inTIFs / sum(fmv_incents_inTIFs),
-         pct_eav_incents_inTIF = eav_incents_inTIFs / sum(eav)
+         pct_eav_incents_inTIF = eav_incents_inTIFs / sum(eav),
+pct_eav_taxed = eav_taxed / muni_eav_taxed
   )
 ```
 
