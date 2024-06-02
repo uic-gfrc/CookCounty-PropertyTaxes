@@ -10,7 +10,6 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
 library(tidyverse)
 library(data.table)
-library(gstat)
 library(ptaxsim)
 library(glue)
 library(DBI)
@@ -24,6 +23,7 @@ library(DBI)
   
 ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2022.0.0.db")
 
+# Identify relevant agency names, numbers, and minor types from agency_info table
 
 muni_agency_names <- DBI::dbGetQuery(
   ptaxsim_db_conn,
@@ -33,6 +33,8 @@ muni_agency_names <- DBI::dbGetQuery(
   OR agency_num = '020060000'  
   "
   )
+
+# Identify tax codes associated with relevant agencies
 
 muni_tax_codes <- DBI::dbGetQuery(
   ptaxsim_db_conn,
@@ -45,6 +47,8 @@ muni_tax_codes <- DBI::dbGetQuery(
   .con = ptaxsim_db_conn
   ))
 
+# Pull in the tax code rates
+
 tax_codes <- DBI::dbGetQuery(
   ptaxsim_db_conn,
   glue_sql("
@@ -56,6 +60,7 @@ tax_codes <- DBI::dbGetQuery(
   )
   )
 
+# Identify PINs associated with tax codes
 
 cook_pins <- DBI::dbGetQuery(
     ptaxsim_db_conn, 
@@ -76,7 +81,8 @@ ccao_loa <- read_csv("./inputs/ccao_loa.csv") %>%
 )
 
   
-  # has eav values for each tax code
+# tif_distribution table contains eav 
+
 tif_distrib <- DBI::dbGetQuery(
     ptaxsim_db_conn,
     glue_sql(
@@ -94,17 +100,19 @@ tif_distrib <- DBI::dbGetQuery(
 Equalization factor for 2022 is 2.9237. Use this to calculate the taxable AV from EAV. 
 
 ```{r}
-# Tax Bills ---------------------------------------------------------------
+# 2022 Tax Bills ---------------------------------------------------------------
+
+# Create value for 2022 equalization factor
+
 eq2022 = 2.9237
 
-# pin-taxing agency combinations for tax bills
-taxbills <- tax_bill(2022,  cook_pins$pin, 
-                     #  pin_dt = exe_dt, # default option, change for "no exemption" simulation
-                     simplify = FALSE)
+# Use PTAXSIM::tax_bill to pull tax bill information at PIN level
+# simplify = FALSE dramatically increases the data for each PIN
 
+taxbills <- tax_bill(2022,  cook_pins$pin, simplify = FALSE)
 
+# Summarizes information from PIN-agency level to PIN level
 
-#  billed properties with 14-digit PINs  
 pin14_bills <- taxbills %>%
     
   mutate(total_bill = final_tax_to_dist + final_tax_to_tif,
@@ -114,7 +122,7 @@ pin14_bills <- taxbills %>%
 
   
   summarize(total_billed = sum(total_bill, na.rm = TRUE), # total on someone's property tax bill
-            av = first(av),            # FMV * level of assessment. AV value (final pass) pulled from `pin` table in  PTAXSIM
+            av = first(av),            # PINs appear multiple times, uses first av appearance
             eq_av = first(eq_av),      # equalized AV = potential taxable value for homeowners
             eav = first(eav),          # EAV after exemptions are subtracted. 
             taxing_agency_count = n(), # number of taxing agencies that tax the pin
@@ -141,12 +149,17 @@ rm(taxbills)
 # joins tax code variable by pin
 exemption_data <- lookup_pin(2022, cook_pins$pin) %>%
   left_join(cook_pins, by = c("pin", "class")) %>%
+  
+# Future preps for potential future obtained loa's
   left_join(ccao_loa, by = c("year", "class" = "class_code")) %>%
   
   mutate(all_exemptions = exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
          exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 ,
-         abatements = exe_abate,
+         abatements = exe_abate, #abatements get their own variable
          fmv = av / loa) %>%
+  
+# Create binary variables for exemptions
+  
   mutate(zero_bill = ifelse(eav <= all_exemptions, 1, 0),
          has_HO_exemp = ifelse(exe_homeowner > 0, 1, 0),
          has_SF_exemp = ifelse(exe_senior > 0, 1, 0),
@@ -157,21 +170,23 @@ exemption_data <- lookup_pin(2022, cook_pins$pin) %>%
          has_DV_exemp = ifelse(exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 > 0, 1, 0),
          has_AB_exemp = ifelse(exe_abate > 0, 1, 0),
          in_tif = ifelse(tax_code_num %in% tif_distrib$tax_code_num, 1, 0)
-         
   )
-
 
 rm(cook_pins)
 
 
-  # change variable type to character so the join works.
-  # class_dict$class_code <- as.character(class_dict$class_code)
-  # 
-  # # use the property class to make the major property types
-  # # joins the class_dict file to the pin_data classes
-  # exemption_data <- class_dict %>%
-  #   right_join(exemption_data, by = c("class_code" = "class"), 
-  #              relationship = "many-to-many")
+#  change variable type to character so the join works.
+  
+#class_dict$class_code <- as.character(class_dict$class_code)
+
+  # use the property class to make the major property types
+  # joins the class_dict file to the pin_data classes
+  exemption_data <- class_dict %>%
+    right_join(exemption_data
+               #, 
+              # by = "class",
+              # relationship = "many-to-many"
+              )
 ```
 
 
@@ -180,7 +195,7 @@ rm(cook_pins)
   
   ## summarize pin level data to the tax code level for each type of property class
   exemptions_inCook_perTC <- exemption_data %>%
-    group_by(tax_code_num, class_code) %>%
+    group_by(tax_code_num, class) %>%
     summarize(year = first(year), 
               av = sum(av, na.rm = TRUE),
               eq_av = sum(eq_av, na.rm = TRUE),
