@@ -76,9 +76,7 @@ cook_pins <- DBI::dbGetQuery(
 source("scripts/helper_tc_muninames_2022.R")
 
 ccao_loa <- read_csv("./inputs/ccao_loa.csv") %>% 
-  mutate(
-  class_code = as.character(class_code)
-)
+  mutate(class_code = as.character(class_code))
 
   
 # tif_distribution table contains eav 
@@ -181,16 +179,16 @@ rm(cook_pins)
 
   # use the property class to make the major property types
   # joins the class_dict file to the pin_data classes
-  exemption_data <- class_dict %>%
-    right_join(exemption_data
-               #, 
-              # by = "class",
-              # relationship = "many-to-many"
-              )
+  # exemption_data <- class_dict %>%
+  #   right_join(exemption_data
+  #              #, 
+  #             # by = "class",
+  #             # relationship = "many-to-many"
+  #             )
 ```
 
 
-```{r}
+```{r eval = FALSE}
 # Summarize PIN Exemptions ------------------------------------------------
   
   ## summarize pin level data to the tax code level for each type of property class
@@ -233,12 +231,14 @@ rm(cook_pins)
   
   exemptions_inCook_perTC <- exemptions_inCook_perTC %>% 
     left_join(tc_muninames)
-  
-  
-  # Join Bills and Exemptions  ----------------------------------------------
+```
+
+
+```{r}
+# Join Bills and Exemptions  ----------------------------------------------
   
   ## Add exemption types and values to the tax bill data at PIN level
-  joined_pin_data <- left_join(pin14_bills, exemption_data, by = c("pin", "class" = "class_code" ))  %>%
+  joined_pin_data <- left_join(pin14_bills, exemption_data, by = c("pin", "class" ))  %>%
     rename(av = av.x,
            eav =  eav.x,
            equalized_av = eav.y)
