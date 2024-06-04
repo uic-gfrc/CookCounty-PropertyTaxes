@@ -1,3 +1,61 @@
 ---
-title: "Homestead Exemptions' Effects on Tax Rates"
+title: "Effects on Tax Rates"
 ---
+
+```{r}
+library(tidyverse)
+library(DT)
+
+nicknames <- readxl::read_excel("../Necessary_Files/muni_shortnames.xlsx")
+
+muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006-2022.csv") %>% 
+  left_join(nicknames)
+
+MuniLevel_CompRates <- muni_sums %>%  
+  filter(year == 2022) %>% 
+  select(clean_name, cur_comp_muni_rate, new_comp_muni_rate, tif_share, zero_bills, final_tax_to_dist) %>%
+  mutate(cur_comp_muni_rate = cur_comp_muni_rate/100,
+new_comp_muni_rate = new_comp_muni_rate / 100 ,
+rate_change = cur_comp_muni_rate - new_comp_muni_rate) %>%
+  select(clean_name, rate_change, cur_comp_muni_rate, new_comp_muni_rate, final_tax_to_dist) %>% arrange(desc(rate_change))
+
+datatable(MuniLevel_CompRates, rownames = FALSE,
+          colnames = c('Municipality' = 'clean_name', 
+                       'Composite Tax Rate Change'='rate_change', 
+                       'Current Comp. Rate' = 'cur_comp_muni_rate', 
+                       'Hypothetical Rate' = 'new_comp_muni_rate', 
+                       #'%Rev to TIF' = 'tif_share', 'Count of $0 Tax Bills' = 'zero_bills', 
+                       'Composite Levy' = 'final_tax_to_dist'),
+          caption = "Table 1: 2022 Current and Hypothetical Composite Tax Rates if GHE $0") %>%
+  formatPercentage(c('Current Comp. Rate', 'Hypothetical Rate', 
+                    # '%Rev to TIF'
+                    'Composite Tax Rate Change'
+                     ), 
+                   digits = 2) %>%  
+  formatCurrency('Composite Levy', digits = 0)
+
+
+
+MuniLevel_CompRates <- muni_sums %>% 
+  filter(year == 2021) %>%
+  select(clean_name, cur_comp_muni_rate, new_comp_muni_rate, tif_share, zero_bills, final_tax_to_dist) %>%
+  mutate(cur_comp_muni_rate = cur_comp_muni_rate/100,
+new_comp_muni_rate = new_comp_muni_rate / 100 ,
+rate_change = cur_comp_muni_rate - new_comp_muni_rate) %>%
+  select(clean_name, rate_change, cur_comp_muni_rate, new_comp_muni_rate, final_tax_to_dist) %>% arrange(desc(rate_change))
+
+datatable(MuniLevel_CompRates, rownames = FALSE,
+          colnames = c('Municipality' = 'clean_name', 
+                       'Composite Tax Rate Change'='rate_change', 
+                       'Current Comp. Rate' = 'cur_comp_muni_rate', 
+                       'Hypothetical Rate' = 'new_comp_muni_rate', 
+                       #'%Rev to TIF' = 'tif_share', 'Count of $0 Tax Bills' = 'zero_bills', 
+                       'Composite Levy' = 'final_tax_to_dist'),
+          caption = "Table 1: 2021 Current and Hypothetical Composite Tax Rates if GHE $0") %>%
+  formatPercentage(c('Current Comp. Rate', 'Hypothetical Rate', 
+                    # '%Rev to TIF'
+                    'Composite Tax Rate Change'
+                     ), 
+                   digits = 2) %>%  
+  formatCurrency('Composite Levy', digits = 0)
+```
