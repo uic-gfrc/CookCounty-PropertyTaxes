@@ -1,81 +1,41 @@
 ---
-title: "Homestead Exemption Use in Cook County"
+title: "Use in Cook County"
 ---
 
-Taxcode Level
+```{r setup, warning=FALSE, message = FALSE}
+library(tidyverse)
+library(DT)
 
-```{r taxcode_level, echo=FALSE}
+nicknames <- readxl::read_excel("../Necessary_Files/muni_shortnames.xlsx")
 
-### NEED NEW DATA SOURCE ###
-
-#exemptions_by_class_per_TC <- read_csv("3_Exemption_Details_output-Cook_Exemps_byClassandTaxcode.csv")
-
-
-cooktotals <- exemptions_by_class_per_TC %>%
-  summarize(
-    av = sum(av, na.rm = TRUE),
-    eav = sum(eav, na.rm = TRUE),
-    total_exempt_eav = sum(
-      exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner +
-        exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate,
-      na.rm = TRUE
-    ),
-    homeowners_exemption = sum(exe_homeowner),
-    senior_exemption = sum(exe_senior, na.rm = TRUE),
-    freeze_exemption = sum(exe_freeze, na.rm = TRUE),
-    pin_count = n()
-  ) %>%
-  pivot_longer(cols = av:pin_count,
-               names_to = "Variables",
-               values_to = "Cook County Totals")
-
-munitotals <- exemptions_by_class_per_TC %>%
-  filter(tax_code_num %in% muni_tax_codes$tax_code_num) %>%
-  summarize(
-    av = sum(av, na.rm = TRUE),
-    eav = sum(eav, na.rm = TRUE),
-    total_exempt_eav = sum(
-      exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner +
-        exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate,
-      na.rm = TRUE
-    ),
-    homeowners_exemption = sum(exe_homeowner),
-    senior_exemption = sum(exe_senior, na.rm = TRUE),
-    freeze_exemption = sum(exe_freeze, na.rm = TRUE),
-    pin_count = n()
-  ) %>%
-  pivot_longer(cols = av:pin_count,
-               names_to = "Variables",
-               values_to = "Municipality Totals")
+muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006-2022.csv") %>% 
+  left_join(nicknames)
+```
 
 
-total_exemptions <- left_join(cooktotals, munitotals)
-total_exemptions
+```{r}
+muni_sums %>% filter(year == 2022) %>% summarize(av = sum(av), 
+                        eav = sum(eav), 
+                        eq_av = sum(equalized_av),
+                        'Taxed EAV' = sum(current_taxable_eav),
+                        'All Exemptions' = sum(all_exemptions), 
+                        'GHE' = sum(exe_homeowner), 
+                        'Senior Exemp.' = sum(exe_senior), 
+                        'Freeze Exemp.' = sum(exe_freeze), 
+                        'PINs in Muni' = sum(pins_in_muni),
+                        'PINs with Exemptions' = sum(has_HO_exemp))  %>% 
+  pivot_longer(cols = c(av:'PINs with Exemptions'), names_to = "Totals", values_to = "Values")
+
+muni_sums %>% filter(year == 2021) %>% summarize(av = sum(av), 
+                        eav = sum(eav), 
+                        eq_av = sum(equalized_av),
+                        'Taxed EAV' = sum(current_taxable_eav),
+                        'All Exemptions' = sum(all_exemptions), 
+                        'GHE' = sum(exe_homeowner), 
+                        'Senior Exemp.' = sum(exe_senior), 
+                        'Freeze Exemp.' = sum(exe_freeze), 
+                        'PINs in Muni' = sum(pins_in_muni))  %>% 
+  pivot_longer(cols = c(av:'PINs in Muni'), names_to = "Totals", values_to = "Values")
 
 ```
 
-At the municipal level:
-
-``` {r exemptiontype-permuni, include = FALSE}
-
-exemptype_totals_permuni <- exemptions_by_class_per_TC %>% 
-  mutate(tax_code_num = as.character(tax_code_num)) %>%
-  left_join(muni_tax_codes) %>%
-  left_join(muni_agency_names) %>%
-  filter(tax_code_num %in% muni_tax_codes$tax_code_num)%>%
-  group_by(agency_num, agency_name) %>%
-  summarize(av = sum(av, na.rm = TRUE),
-            eav=sum(eav, na.rm=TRUE),
-            total_exempt_eav_inMuni = sum(exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
-                         exe_disabled + exe_vet_returning + exe_vet_dis + exe_abate, na.rm=TRUE),
-            exe_homeowner = sum(exe_homeowner, na.rm=TRUE),
-            exe_senior = sum(exe_senior, na.rm=TRUE),
-            exe_freeze = sum(exe_freeze, na.rm=TRUE),
-            exe_longtime_homeowner = sum(exe_longtime_homeowner, na.rm=TRUE),
-            exe_disabled = sum(exe_disabled, na.rm=TRUE),
-            exe_vet_returning = sum(exe_vet_returning, na.rm=TRUE),
-            exe_vet_dis = sum(exe_vet_dis, na.rm=TRUE),
-            exe_abate = sum(exe_abate, na.rm=TRUE),
-            muni_pin_count = n())
-
-```
