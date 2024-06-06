@@ -31,8 +31,8 @@ nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
  # Set years for loop to run.
  
 years <-(2016:2022)
+years <- 2016
 # Create empty dataframes for the loop to populate.
-
 county_sums <- NULL
 
 muni_level_summary <- NULL
@@ -45,13 +45,18 @@ muni_class_summary <- NULL
 commercial_classes <- c(401:435, 490, 491, 492, 496:499,
                         500:535,590, 591, 592, 597:599, 
                         700:799,
-                        800:835, 891, 892, 897, 899)  
+                        800:835, 891, 892, 897, 899)   %>% as.character()
 
 industrial_classes <- c(480:489,493, 
                         550:589, 593,
                         600:699,
-                        850:890, 893
-)
+                        850:890, 893  %>% as.character()
+) %>% as.character()
+
+
+is.integer64 <- function(x){
+  class(x)=="integer64"
+}
 
 
 # Loop Start --------------------------------------------------------------
@@ -76,6 +81,8 @@ for(i in years){
   
   
   agency_dt<- dbGetQuery(ptaxsim_db_conn, paste('SELECT * FROM agency WHERE year = ', i, ';'))
+  agency_dt <- agency_dt %>%  mutate_if(is.integer64, as.double)
+
   tax_codes <- dbGetQuery(ptaxsim_db_conn, paste('SELECT DISTINCT tax_code_num, tax_code_rate FROM tax_code WHERE year = ', i, ';'))
   
   
@@ -120,7 +127,8 @@ for(i in years){
   ccao_loa <- read_csv("./inputs/ccao_loa.csv") %>% 
     mutate(class_code = as.character(class_code)) %>%  
     filter(year == i) %>% 
-    select(-year)
+    select(-year) %>%
+    mutate(loa = as.numeric(loa))
   
   # Tax Bills ---------------------------------------------------------------
   
@@ -129,10 +137,10 @@ for(i in years){
   taxbills <- tax_bill(year_variable,  cook_pins$pin, 
                        simplify = FALSE)
   
-  
-  
+
   #  billed properties with 14-digit PINs  
   pin14_bills <- taxbills %>%
+    mutate_if(is.integer64, as.double) %>%
     group_by(tax_code, class, pin) %>%
     
     mutate(total_bill = final_tax_to_dist + final_tax_to_tif, # from each taxing agency
@@ -169,6 +177,8 @@ for(i in years){
   # joins tax code variable by pin
   
   exemption_data <- lookup_pin(i, cook_pins$pin) %>%
+    mutate_if(is.integer64, as.double ) %>%
+    
     left_join(cook_pins, by = c("pin", "class")) %>%
     
     # Future preps for potential future obtained loa's
@@ -252,6 +262,7 @@ joined_pin_data <- joined_pin_data %>%
       
       ## FMV * assessment rate = AV
       taxed_fmv = taxed_av / loa, 
+      fmv = av / loa, 
       
       ## untaxable value = exempt EAV from abatements and exemptions
       untaxable_value_eav = all_exemptions + abatements + 
@@ -281,8 +292,7 @@ joined_pin_data <- joined_pin_data %>%
       
       fmv_incents_inTIF = ifelse(between(class, 600, 900) & in_tif == 1, 
                                  fmv, 0),
-      
-      eav_incents_inTIF = fmv * loa * eq_factor
+      eav_incents_inTIF = fmv_incents_inTIF * loa * eq_factor
     ) %>%
     select(tax_code, class, pin, taxed_fmv,
            untaxable_value_fmv, fmv_inTIF, fmv_tif_increment, fmv, total_billed, final_tax_to_dist, final_tax_to_tif, tax_code_rate, eav, equalized_av, av, everything())
