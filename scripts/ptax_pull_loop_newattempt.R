@@ -30,9 +30,8 @@ nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
 
  # Set years for loop to run.
  
-years <-(2006:2022)
-
- # Create empty dataframes for the loop to populate.
+years <-(2016:2022)
+# Create empty dataframes for the loop to populate.
 
 county_sums <- NULL
 
@@ -211,44 +210,7 @@ for(i in years){
   
   # Summarize PIN Exemptions ------------------------------------------------
   
-  ## Cook Tax Code Level ------------------------------------------
-  # ## summarize pin level data to the tax code level for each type of property class
-  # exemptions_inCook_perTC <- exemption_data %>%
-  #   group_by(tax_code_num, class_code) %>%
-  #   summarize(year = first(year), 
-  #             av = sum(av, na.rm = TRUE),
-  #             eav=sum(eav, na.rm=TRUE),
-  #             pin_count = n(),  # number of pins within each tax code and property combo
-  #             
-  #             all_exemptions = sum(all_exemptions),
-  #             
-  #             exe_homeowner = sum(exe_homeowner, na.rm=TRUE),
-  #             exe_senior = sum(exe_senior, na.rm=TRUE),
-  #             exe_freeze = sum(exe_freeze, na.rm=TRUE),
-  #             exe_longtime_homeowner = sum(exe_longtime_homeowner, na.rm=TRUE),
-  #             exe_disabled = sum(exe_disabled, na.rm=TRUE),
-  #             exe_vet_returning = sum(exe_vet_returning, na.rm=TRUE),
-  #             exe_vet_dis_lt50 = sum(exe_vet_dis_lt50, na.rm=TRUE),
-  #             exe_vet_dis_50_69 = sum(exe_vet_dis_50_69, na.rm=TRUE),
-  #             exe_vet_dis_ge70 = sum(exe_vet_dis_ge70, na.rm=TRUE),
-  #             exe_vet_dis = sum(exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70, na.rm=TRUE),
-  #             exe_abate = sum(exe_abate, na.rm=TRUE),
-  #             
-  #             zero_bills = sum(zero_bill),
-  #             has_HO_exemp = sum(has_HO_exemp),
-  #             has_SF_exemp = sum(has_SF_exemp),
-  #             has_FR_exemp = sum(has_FR_exemp),
-  #             has_LTHO_exemp = sum(has_LTHO_exemp),
-  #             has_DI_exemp = sum(has_DI_exemp),
-  #             has_VR_exemp = sum(has_VR_exemp),
-  #             has_DV_exemp = sum(has_DV_exemp),
-  #             has_AB_exemp = sum(has_AB_exemp)
-  #   )
-  # 
-  # 
-  # exemptions_inCook_perTC <- exemptions_inCook_perTC %>% 
-  #   left_join(tc_muninames)
-  # 
+  
   
   # Join Bills and Exemptions  ----------------------------------------------
   
@@ -334,10 +296,10 @@ joined_pin_data <- joined_pin_data %>%
       cty_PC_residential = sum(ifelse(class %in% c(200:399), 1, 0), na.rm = TRUE),
       cty_PC_industrial  = sum(ifelse(class %in% industrial_classes, 1, 0), na.rm = TRUE),
       cty_PC_commercial = sum(ifelse(class %in% commercial_classes, 1, 0), na.rm = TRUE),
-      cty_PC_inTIF = sum(in_tif),
+      cty_PC_inTIF = sum(in_tif, na.rm=TRUE),
       cty_PC_withincents = sum(ifelse(between(class, 600, 900), 1, 0), na.rm = TRUE),
       cty_PC_incents_inTIFs = sum(ifelse(between(class, 600, 900) & in_tif == 1, 1, 0), na.rm = TRUE),
-      cty_PC_claimed_exe = sum(ifelse(all_exemptions > 0, 1, 0)),
+      cty_PC_claimed_exe = sum(ifelse(all_exemptions > 0, 1, 0), na.rm=TRUE),
       cty_fmv_incentive = sum(ifelse(between(class, 600, 900), fmv, 0), na.rm = TRUE),
       cty_fmv_taxed =  sum(taxed_fmv, na.rm=TRUE),
       cty_fmv_incents_inTIFs = sum(ifelse(between(class, 600, 900) & in_tif == 1, fmv, 0), na.rm = TRUE),
@@ -351,13 +313,21 @@ joined_pin_data <- joined_pin_data %>%
       cty_fmv_residential = sum(ifelse(class %in% c(200:399), fmv, 0), na.rm = TRUE),
       cty_fmv_industrial = sum(ifelse(class %in% industrial_classes, fmv, 0), na.rm = TRUE),
       cty_fmv_commercial = sum(ifelse(class %in% commercial_classes, fmv, 0), na.rm = TRUE),
-      cty_levy = sum(final_tax_to_dist),
-      cty_current_rate_avg = mean(tax_code_rate),
+      cty_levy = sum(final_tax_to_dist, na.rm=TRUE),
+      cty_current_rate_avg = mean(tax_code_rate, na.rm=TRUE),
       cty_avg_C2_bill_noexe = mean(ifelse(between(class,200,299) & all_exemptions == 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
       cty_avg_C2_bill_withexe = mean(ifelse(between(class,200,299) & all_exemptions > 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
       cty_av_taxed = sum(taxed_av, na.rm = TRUE),
       cty_untaxable_value_av = sum(untaxable_value_av, na.rm=TRUE),
-      cty_av = sum(av)) %>% 
+      cty_av = sum(av, na.rm=TRUE),
+      has_HO_exemp = sum(has_HO_exemp, na.rm=TRUE),
+      has_SF_exemp = sum(has_SF_exemp, na.rm=TRUE),
+      has_FR_exemp = sum(has_FR_exemp, na.rm=TRUE),
+      has_LTHO_exemp = sum(has_LTHO_exemp, na.rm=TRUE),
+      has_DI_exemp = sum(has_DI_exemp, na.rm=TRUE),
+      has_VR_exemp = sum(has_VR_exemp, na.rm=TRUE),
+      has_DV_exemp = sum(has_DV_exemp, na.rm=TRUE),
+      has_AB_exemp = sum(has_AB_exemp, na.rm=TRUE)) %>% 
     mutate(
       cty_pct_fmv_untaxable = cty_fmv_untaxable_value / cty_fmv,
       cty_pct_fmv_taxed = cty_fmv_taxed / cty_fmv,
@@ -381,7 +351,7 @@ if(is.data.frame(county_sums)){county_sums <- rbind(county_sums, county_sums2)}e
       muni_PC_residential = sum(ifelse(class %in% c(200:399), 1, 0), na.rm = TRUE),
       muni_PC_industrial  = sum(ifelse(class %in% industrial_classes, 1, 0), na.rm = TRUE),
       muni_PC_commercial = sum(ifelse(class %in% commercial_classes, 1, 0), na.rm = TRUE),
-      muni_PC_inTIF = sum(in_tif),
+      muni_PC_inTIF = sum(in_tif, na.rm=TRUE),
       muni_PC_withincents = sum(ifelse(between(class, 600, 900), 1, 0), na.rm = TRUE),
       muni_PC_incents_inTIFs = sum(ifelse(between(class, 600, 900) & in_tif == 1, 1, 0), na.rm = TRUE),
       muni_PC_claimed_exe = sum(ifelse(all_exemptions > 0, 1, 0)),
@@ -400,14 +370,23 @@ if(is.data.frame(county_sums)){county_sums <- rbind(county_sums, county_sums2)}e
       muni_fmv_industrial = sum(ifelse(class %in% industrial_classes, fmv, 0), na.rm = TRUE),
       muni_fmv_commercial = sum(ifelse(class %in% commercial_classes, fmv, 0), na.rm = TRUE),
       muni_zero_bill = sum(zero_bill, na.rm=TRUE),
-      muni_levy = sum(final_tax_to_dist),
-      muni_current_rate_avg = mean(tax_code_rate),
-      muni_eav_taxed = sum(taxed_av*eq_factor),
+      muni_levy = sum(final_tax_to_dist, na.rm=TRUE),
+      muni_current_rate_avg = mean(tax_code_rate, na.rm=TRUE),
+      muni_eav_taxed = sum(taxed_av*eq_factor, na.rm=TRUE),
       muni_min_TC_rate = min(tax_code_rate),
       muni_max_TC_rate = max(tax_code_rate),
       muni_avg_C2_bill_noexe = mean(ifelse(between(class,200,299) & all_exemptions == 0, (final_tax_to_dist + final_tax_to_tif), NA), na.rm=TRUE),
       muni_avg_C2_bill_withexe = mean(ifelse(between(class,200,299) & all_exemptions > 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
-      muni_eav = sum(eav)) %>%
+      muni_eav = sum(eav, na.rm=TRUE),
+      zero_bills = sum(zero_bill, na.rm=TRUE),
+      has_HO_exemp = sum(has_HO_exemp, na.rm=TRUE),
+      has_SF_exemp = sum(has_SF_exemp, na.rm=TRUE),
+      has_FR_exemp = sum(has_FR_exemp, na.rm=TRUE),
+      has_LTHO_exemp = sum(has_LTHO_exemp, na.rm=TRUE),
+      has_DI_exemp = sum(has_DI_exemp, na.rm=TRUE),
+      has_VR_exemp = sum(has_VR_exemp, na.rm=TRUE),
+      has_DV_exemp = sum(has_DV_exemp, na.rm=TRUE),
+      has_AB_exemp = sum(has_AB_exemp, na.rm=TRUE)) %>%
     
     mutate(
       year = year_variable,
@@ -488,11 +467,8 @@ rm(muni_level_summary2)
     mutate(total_bill_current = final_tax_to_dist + final_tax_to_tif) %>%
     rename(cur_comp_muni_rate = tax_code_rate) %>%
     mutate(current_taxable_eav = final_tax_to_dist/(cur_comp_muni_rate/100),
-           new_taxable_eav = final_tax_to_dist/(cur_comp_muni_rate/100) + exe_homeowner) %>%
-    mutate(new_comp_muni_rate = (final_tax_to_dist / new_taxable_eav)*100) %>%
-    mutate(new_comp_muni_rate = ifelse(is.nan(new_comp_muni_rate), cur_comp_muni_rate, new_comp_muni_rate),
            year = year_variable ) %>%
-    select(year, clean_name, major_class_code, cur_comp_muni_rate, new_comp_muni_rate, current_taxable_eav, new_taxable_eav, everything()) %>%
+    select(year, clean_name, major_class_code, cur_comp_muni_rate, current_taxable_eav, everything()) %>%
     setNames(paste0('muni_mc_', names(.))) 
   
   
@@ -573,10 +549,10 @@ rm(muni_level_summary2)
 # Export CSVs ------------------------------------------------------------
 
 
-write_csv(county_sums, "./Output/ptaxsim_cook_level_2006-2022.csv")
+write_csv(county_sums, "./Output/ptaxsim_cook_level_2016-2022.csv")
 
-write_csv(muni_level_summary, "./Output/ptaxsim_muni_level_2006-2022.csv")
-write_csv(muni_MC_summary, "./Output/ptaxsim_muni_MC_2006-2022.csv")
+write_csv(muni_level_summary, "./Output/ptaxsim_muni_level_2016-2022.csv")
+write_csv(muni_MC_summary, "./Output/ptaxsim_muni_MC_2016-2022.csv")
 # write_csv(muni_class_summary, "./Output/ptaxsim_muni_class_summaries_2006-2022.csv")
 
 
