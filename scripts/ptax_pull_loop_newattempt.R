@@ -31,7 +31,6 @@ nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
  # Set years for loop to run.
  
 years <-(2016:2022)
-years <- 2016
 # Create empty dataframes for the loop to populate.
 county_sums <- NULL
 
@@ -128,7 +127,7 @@ for(i in years){
     mutate(class_code = as.character(class_code)) %>%  
     filter(year == i) %>% 
     select(-year) %>%
-    mutate(loa = as.numeric(loa))
+    mutate(loa = as.numeric(loa)) %>% mutate(loa = ifelse(loa == 0, NA, loa))
   
   # Tax Bills ---------------------------------------------------------------
   
@@ -187,7 +186,9 @@ for(i in years){
     mutate(all_exemptions = exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
              exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 ,
            abatements = exe_abate, #abatements get their own variable
-           fmv = av / loa) %>%
+           fmv = av / loa,
+         #  fmv = ifelse(is.nan(fmv), 0, fmv)
+           ) %>%
     
     # Create binary variables for exemptions
     
@@ -262,7 +263,10 @@ joined_pin_data <- joined_pin_data %>%
       
       ## FMV * assessment rate = AV
       taxed_fmv = taxed_av / loa, 
+      #taxed_fmv = ifelse(is.nan(taxed_fmv), 0, taxed_fmv),
+      
       fmv = av / loa, 
+      #fmv = ifelse(is.nan(fmv), 0, fmv),
       
       ## untaxable value = exempt EAV from abatements and exemptions
       untaxable_value_eav = all_exemptions + abatements + 
@@ -280,15 +284,23 @@ joined_pin_data <- joined_pin_data %>%
       
       untaxable_value_av = untaxable_value_eav / eq_factor,
       untaxable_value_fmv = untaxable_value_av / loa,
+      untaxable_value_fmv = ifelse(is.nan(untaxable_value_av), 0, untaxable_value_av),
+      
       exempt_eav_inTIF = ifelse(in_tif == 1, 
                                 all_exemptions, 0),
       exempt_eav= all_exemptions + abatements,
-      exempt_fmv = exempt_eav / eq_factor / loa, 
+      exempt_fmv = exempt_eav / eq_factor / loa,
+    #  exempt_fmv = ifelse(is.nan(exempt_fmv), 0 , exempt_fmv),
+      
       
       fmv_inTIF = ifelse(in_tif==1, 
                          av/loa, 0),
+      # fmv_inTIF = ifelse(is.nan(fmv_inTIF), 0 , fmv_inTIF),
+      
       fmv_tif_increment = ifelse(final_tax_to_tif > 0, 
                                  ((final_tax_to_tif / (tax_code_rate/100)) / eq_factor ) / loa, 0),
+ #    fmv_tif_increment = ifelse(is.nan(fmv_tif_increment), 0 , fmv_tif_increment),
+      
       
       fmv_incents_inTIF = ifelse(between(class, 600, 900) & in_tif == 1, 
                                  fmv, 0),
@@ -298,6 +310,7 @@ joined_pin_data <- joined_pin_data %>%
            untaxable_value_fmv, fmv_inTIF, fmv_tif_increment, fmv, total_billed, final_tax_to_dist, final_tax_to_tif, tax_code_rate, eav, equalized_av, av, everything())
   
   ## County Level -----------------------------------------------------------
+  joined_pin_data <- joined_pin_data %>% mutate(loa = ifelse(loa==0, NA, loa))
   
   county_sums2 <- joined_pin_data %>% 
     ungroup() %>%
