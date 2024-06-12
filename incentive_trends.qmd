@@ -1,5 +1,5 @@
 ---
-title: "Incentive Classification Use Descriptive Statistics (2012-2022)"
+title: "Incentive Classification Use Descriptive Statistics"
 subtitle: "PIN Level of Analysis"
 author: "MVH & AWM"
 date: "June 12, 2024"
@@ -12,15 +12,9 @@ format:
     code-overflow: wrap
     toc: true
     toc-location: left
-    tbl-cap-location: margin
-    fig-cap-location: top
-    grid:
-      sidebar-width: 200px
-      body-width: 900px
-      margin-width: 200px
 knitr: 
   opts_chunk:
-    warning: false
+    warning: true
     message: false
 ---
 
@@ -44,7 +38,7 @@ options(DT.options = list())
 
 # read in class summaries at the tax code level
 
-df <- read_csv("./Output/ptaxsim_TC_Class_summaries_2006-2022.csv")
+df <- read_csv("./Output/ptaxsim_TC_Class_summaries_2006-2021.csv")
 
 df %>%
   group_by(year) %>%
@@ -59,14 +53,10 @@ df_all <- left_join(df, cde, by = "class")
 
 ind_comm_cc <- df_all %>%
   filter(between(class, 500, 899)) %>%
-  filter(between(year, 2012, 2022))
+  filter(between(year, 2011, 2021)) %>%
+  rename(land_use = Alea_cat)
 
-write_csv(ind_comm_cc, "pin_count_tables.csv")
-
-# just for 2022
-
-ind_comm_cc_2022 <- ind_comm_cc %>%
-  filter(year == 2022)
+#write_csv(ind_comm_cc, "pin_count_tables.csv")
 
 ```
 
@@ -77,12 +67,29 @@ ind_comm_cc_2022 <- ind_comm_cc %>%
 #| tbl-cap: "Commercial and Industrial PINs in Cook County (2012 - 2022)"
 #| tbl-subcap: "Total, Incentive Class, and Non-Incentive Class PIN Counts"
 
-county_pin_count <- ind_comm_cc %>%
-  group_by(year, Alea_cat, incent_prop) %>%
-  rename(land_use = Alea_cat) %>%
-  reframe()
-  
+year_pins <- ind_comm_cc %>%
+  group_by(year) %>%
+  summarize(n_year = n())
 
+table <- ind_comm_cc %>%
+  group_by(year) %>%
+  group_by(year, land_use) %>%
+  summarize(
+    proptype_pincount = n(),
+            n_incent = sum(ifelse(incent_prop == "Incentive", 1, 0)),
+            n_nonincent = sum(ifelse(incent_prop == "Non-Incentive", 1, 0))) %>%
+  mutate(pct_incent = n_incent / proptype_pincount) %>%
+  #left_join(year_pins, by = "year") %>%
+  arrange(desc(year)) %>%
+  mutate(year = as.character(year))
+
+
+
+
+flextable(table) %>% 
+  set_header_labels(year = "Year", land_use = "Land Use", proptype_pincount = 'Total', n_incent = "Incent. Class", n_nonincent = "No Incent. Class",
+                    pct_incent = "% Incent. Class") %>%
+  set_table_properties( layout = "autofit", width = .75)
 
 ```
 
