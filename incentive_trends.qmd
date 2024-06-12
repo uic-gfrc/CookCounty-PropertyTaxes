@@ -20,7 +20,7 @@ format:
       margin-width: 200px
 knitr: 
   opts_chunk:
-    warning: true
+    warning: false
     message: false
 ---
 
@@ -31,28 +31,57 @@ knitr:
 
 library(tidyverse)
 library(glue)
+library(DT)
+library(flextable)
+
+set_flextable_defaults(theme_fun = theme_vanilla, 
+                       padding = 2,
+                       line_spacing = 1,
+                       big.mark = ",",
+                       )
+
+options(DT.options = list())
 
 # read in class summaries at the tax code level
 
 df <- read_csv("./Output/ptaxsim_TC_Class_summaries_2006-2022.csv")
 
+df %>%
+  group_by(year) %>%
+  summarize(n = n())
+
+cde <- read_csv("./Necessary_Files/class_dict_expanded.csv") %>%
+  rename(class = class_code)
+
+df_all <- left_join(df, cde, by = "class")
+
 # filter to industrial and commercial from 2012 to 2022
 
-ind_comm_cc <- df %>%
+ind_comm_cc <- df_all %>%
   filter(between(class, 500, 899)) %>%
   filter(between(year, 2012, 2022))
+
+write_csv(ind_comm_cc, "pin_count_tables.csv")
+
+# just for 2022
 
 ind_comm_cc_2022 <- ind_comm_cc %>%
   filter(year == 2022)
 
 ```
 
-# 2022 Incentive Classification Use
-
-## County-Wide
+# County-Wide
 
 ```{r}
+#| label: tbl-cooktotals
+#| tbl-cap: "Commercial and Industrial PINs in Cook County (2012 - 2022)"
+#| tbl-subcap: "Total, Incentive Class, and Non-Incentive Class PIN Counts"
 
+county_pin_count <- ind_comm_cc %>%
+  group_by(year, Alea_cat, incent_prop) %>%
+  rename(land_use = Alea_cat) %>%
+  reframe()
+  
 
 
 ```
