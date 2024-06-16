@@ -18,3 +18,75 @@ knitr:
     message: false
 ---
 
+```{r setup}
+#| output: FALSE
+
+# Load libraries
+
+library(tidyverse)
+library(glue)
+library(DT)
+library(flextable)
+
+# Set table formatting defaults--change theme to something less ugly.
+
+set_flextable_defaults(theme_fun = theme_vanilla, 
+                       padding = 2,
+                       line_spacing = 1,
+                       big.mark = ",",
+                       )
+
+options(DT.options = list())
+
+```
+
+
+```{r load_data}
+#| output: FALSE
+
+# Read in muni class level data 2006-2021: 87610 obs of 41 variables
+df <- read_csv("./Output/ptaxsim_muni_class_summaries_2006-2021.csv") |>
+  rename(n_pins = pins_in_muni) |>
+  as.data.frame()
+
+# Import relevant variables from extended class dictionary
+class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv") |>
+  select(class = class_code, land_use = Alea_cat, incent_prop, ar = assess_ratio) |>
+  as.data.frame()
+
+# Join summaries w/ class dictionary
+comm_ind <- left_join(df, class_dict, by = "class")
+
+# Make new variables and cull dataset
+comm_ind <- comm_ind |>
+  # Filter to years 2010-2021: 65802 obs.
+  # Using 2010 instead of 2011 to calculate 2011 changes
+  filter(between(year, 2010, 2021)) |>
+  # Filter to industrial and commercial properties: 26969 obs.
+  filter(land_use %in% c("Industrial", "Commercial")) |>
+  # Want to remove the NFPs: 24882 obs.
+  filter(!between(class, 400, 499)) |>
+  # Calculate "FMV"
+  mutate(fmv = av/ar) |>
+  # Calculate AV values if no incentives (could have calculated with AR)
+  mutate(no_incent_av = fmv*.25) |>
+  arrange(clean_name, class, year) |>
+  group_by(clean_name, class) |>
+  # Annual change in number of PINs
+  mutate(yoy_pin_delta = (n_pins - lag(n_pins))/lag(n_pins)) |>
+  # Annual change in AV
+  mutate(yoy_av_delta = (av - lag(av))/lag(av)) |>
+  # Annual change in FMV
+  mutate(yoy_fmv_delta = (fmv - lag(fmv))/lag(fmv)) |>
+  ungroup() |>
+  # Get rid of extra lag year
+  filter(year != 2010)
+
+```
+
+# Tables
+
+
+
+
+# Graphs
