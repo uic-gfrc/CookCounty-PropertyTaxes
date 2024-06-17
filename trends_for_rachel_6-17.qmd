@@ -57,7 +57,7 @@ class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv") |>
 # Join summaries w/ class dictionary
 comm_ind <- left_join(df, class_dict, by = "class")
 
-# Make new variables and cull dataset
+# Make new and select relevant county-wide PIN variables
 comm_ind <- comm_ind |>
   # Filter to years 2010-2021: 65802 obs.
   # Using 2010 instead of 2011 to calculate 2011 changes
@@ -70,23 +70,91 @@ comm_ind <- comm_ind |>
   mutate(fmv = av/ar) |>
   # Calculate AV values if no incentives (could have calculated with AR)
   mutate(no_incent_av = fmv*.25) |>
-  arrange(clean_name, class, year) |>
-  group_by(clean_name, class) |>
-  # Annual change in number of PINs
-  mutate(yoy_pin_delta = (n_pins - lag(n_pins))/lag(n_pins)) |>
-  # Annual change in AV
-  mutate(yoy_av_delta = (av - lag(av))/lag(av)) |>
-  # Annual change in FMV
-  mutate(yoy_fmv_delta = (fmv - lag(fmv))/lag(fmv)) |>
+  # Reframe to relevant variables
+  group_by(year, clean_name, incent_prop, land_use) |>
+  summarize(n_pins = sum(n_pins), av = sum(av), fmv = sum(fmv),
+            .groups = 'drop') |>
+  # Calculate lags
   ungroup() |>
-  # Get rid of extra lag year
-  filter(year != 2010)
+  group_by(clean_name, incent_prop, land_use) |>
+  mutate(lag_n_pins = lag(n_pins),
+         lag_av = lag(av),
+         lag_fmv = lag(fmv)) |>
+  ungroup() |>
+  # Remove 2010 from df
+  filter(year != 2010) |>
+  # Select relevant variables
+  select(year, clean_name, land_use, incent_prop, n_pins, lag_n_pins, av, lag_av, 
+         fmv, lag_fmv) |>
+  # Calculate YoY deltas
+  mutate(yoy_pin_delta = (n_pins - lag_n_pins) / lag_n_pins,
+         yoy_av_delta = (av - lag_av) / lag_av,
+         yoy_fmv_delta = (fmv - lag_fmv) / lag_fmv) |>
+  ungroup() |>
+  # Select Useful Variables
+  select(year, clean_name, incent_prop, land_use, n_pins, yoy_pin_delta, 
+         av, yoy_av_delta, fmv, yoy_fmv_delta)
+
+county_trends <- left_join(df, class_dict, by = "class")
+
+county_trends <- county_trends |>
+  # Filter to years 2010-2021: 65802 obs.
+  # Using 2010 instead of 2011 to calculate 2011 changes
+  filter(between(year, 2010, 2021)) |>
+  # Filter to industrial and commercial properties: 26969 obs.
+  filter(land_use %in% c("Industrial", "Commercial")) |>
+  # Want to remove the NFPs: 24882 obs.
+  filter(!between(class, 400, 499)) |>
+  # Calculate "FMV"
+  mutate(fmv = av/ar) |>
+  # Calculate AV values if no incentives (could have calculated with AR)
+  mutate(no_incent_av = fmv*.25) |>
+   # Reframe to relevant variables
+  group_by(year, incent_prop, land_use) |>
+  summarize(n_pins = sum(n_pins), av = sum(av), fmv = sum(fmv),
+            .groups = 'drop') |>
+  # Calculate lags
+  ungroup() |>
+  arrange(year) |>
+  group_by(incent_prop, land_use) |>
+  mutate(lag_n_pins = lag(n_pins),
+         lag_av = lag(av),
+         lag_fmv = lag(fmv)) |>
+  ungroup() |>
+  # Remove 2010 from df
+  filter(year != 2010) |>
+  # Select relevant variables
+  select(year, land_use, incent_prop, n_pins, lag_n_pins, av, lag_av, 
+         fmv, lag_fmv) |>
+  # Calculate YoY deltas
+  group_by(year, land_use, incent_prop) |>
+  mutate(yoy_pin_delta = (n_pins - lag_n_pins) / lag_n_pins,
+         yoy_av_delta = (av - lag_av) / lag_av,
+         yoy_fmv_delta = (fmv - lag_fmv) / lag_fmv) |>
+  ungroup() |>
+  # Select Useful Variables
+  select(year, incent_prop, land_use, n_pins, yoy_pin_delta, 
+         av, yoy_av_delta, fmv, yoy_fmv_delta)
 
 ```
 
 # Tables
 
+```{r pin_count_tables}
 
+table1 <- 
 
+```
 
 # Graphs
+
+```{r annual_delta_n}
+#| label: cook-n-delta
+#| fig-cap: "Annual Change in Industrial and Commercial PIN Counts"
+#| fig-cap-loc: "top"
+
+county_trends |>
+  filter(land_use == "")
+  ggplot(aes(x = year, y = yoy_pin_delta, color = incent_prop, by = incent_prop)) + 
+  geom_step() +
+  theme_void()
