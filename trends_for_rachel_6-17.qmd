@@ -55,13 +55,13 @@ class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv") |>
   as.data.frame()
 
 # Join summaries w/ class dictionary
-comm_ind <- left_join(df, class_dict, by = "class")
+df_temp <- left_join(df, class_dict, by = "class")
 
 # Make new and select relevant county-wide PIN variables
-comm_ind <- comm_ind |>
+muni_data <- df_temp |>
   # Filter to years 2010-2021: 65802 obs.
-  # Using 2010 instead of 2011 to calculate 2011 changes
-  filter(between(year, 2010, 2021)) |>
+  # Using 2010 instead of 2011 to calculate 2011 changes (if we later want those)
+  filter(between(year, 2011, 2021)) |>
   # Filter to industrial and commercial properties: 26969 obs.
   filter(land_use %in% c("Industrial", "Commercial")) |>
   # Want to remove the NFPs: 24882 obs.
@@ -72,32 +72,31 @@ comm_ind <- comm_ind |>
   mutate(no_incent_av = fmv*.25) |>
   # Reframe to relevant variables
   group_by(year, clean_name, incent_prop, land_use) |>
-  summarize(n_pins = sum(n_pins), av = sum(av), fmv = sum(fmv),
-            .groups = 'drop') |>
-  # Calculate lags
-  ungroup() |>
-  group_by(clean_name, incent_prop, land_use) |>
-  mutate(lag_n_pins = lag(n_pins),
-         lag_av = lag(av),
-         lag_fmv = lag(fmv)) |>
-  ungroup() |>
-  # Remove 2010 from df
-  filter(year != 2010) |>
-  # Select relevant variables
-  select(year, clean_name, land_use, incent_prop, n_pins, lag_n_pins, av, lag_av, 
-         fmv, lag_fmv) |>
-  # Calculate YoY deltas
-  mutate(yoy_pin_delta = (n_pins - lag_n_pins) / lag_n_pins,
-         yoy_av_delta = (av - lag_av) / lag_av,
-         yoy_fmv_delta = (fmv - lag_fmv) / lag_fmv) |>
-  ungroup() |>
-  # Select Useful Variables
-  select(year, clean_name, incent_prop, land_use, n_pins, yoy_pin_delta, 
-         av, yoy_av_delta, fmv, yoy_fmv_delta)
+  reframe(n_pins = sum(n_pins), av = sum(av), fmv = sum(fmv)) 
 
-county_trends <- left_join(df, class_dict, by = "class")
+###RETURN TO THIS SECTION TO CREATE MUNI LAGS###
+  
+  # Calculate lags RETURN TO THIS
+  # group_by(clean_name, incent_prop, land_use) |>
+  # mutate(lag_n_pins = lag(n_pins),
+  #        lag_av = lag(av),
+  #        lag_fmv = lag(fmv)) |>
+  # ungroup() |>
+  # # Remove 2010 from df
+  # filter(year != 2010) |>
+  # # Select relevant variables
+  # select(year, clean_name, land_use, incent_prop, n_pins, lag_n_pins, av, lag_av, 
+  #        fmv, lag_fmv) |>
+  # # Calculate YoY deltas
+  # mutate(yoy_pin_delta = (n_pins - lag_n_pins) / lag_n_pins,
+  #        yoy_av_delta = (av - lag_av) / lag_av,
+  #        yoy_fmv_delta = (fmv - lag_fmv) / lag_fmv) |>
+  # ungroup() |>
+  # # Select Useful Variables
+  # select(year, clean_name, incent_prop, land_use, n_pins, yoy_pin_delta, 
+  #        av, yoy_av_delta, fmv, yoy_fmv_delta)
 
-county_trends <- county_trends |>
+county_trends <- df_temp |> #see df_temp created above
   # Filter to years 2010-2021: 65802 obs.
   # Using 2010 instead of 2011 to calculate 2011 changes
   filter(between(year, 2010, 2021)) |>
@@ -140,9 +139,89 @@ county_trends <- county_trends |>
 
 # Tables
 
-```{r pin_count_tables}
+```{r value_tables}
 
-table1 <- 
+sum_table_1 <- muni_data |>
+  filter(year == 2021) |>
+  filter(incent_prop == "Incentive") |>
+  group_by(clean_name) |>
+  mutate(pins = sum(n_pins),
+         fmv = sum(fmv)) |>
+  reframe(clean_name, pins, fmv) |>
+  arrange(desc(pins)) |>
+  distinct() |>
+  head(11)
+
+sum_table_2 <- muni_data |>
+  filter(year == 2021) |>
+  filter(incent_prop == "Incentive") |>
+  group_by(clean_name) |>
+  mutate(pins = sum(n_pins),
+         fmv = sum(fmv)) |>
+  reframe(clean_name, pins, fmv) |>
+  arrange(desc(fmv)) |>
+  distinct() |>
+  head(11)
+
+sums_table <- bind_cols(sum_table_1, sum_table_2)
+
+write_csv(sums_table, "sums_table.csv")
+
+```
+
+```{r perc_tables}
+
+perc_table_1 <- muni_data |>
+  filter(year == 2021) |>
+  group_by(clean_name) |>
+  mutate(muni_pins = sum(n_pins),
+         muni_fmv = sum(fmv)) |>
+  ungroup() |>
+  group_by(clean_name, incent_prop) |>
+  mutate(incent_pin_count = ifelse(incent_prop == "Incentive", n_pins,
+         0)) |>
+  mutate(non_incent_pin_count = ifelse(incent_prop == "Non-Incentive", n_pins,
+         0)) |>
+  mutate(incent_fmv = ifelse(incent_prop == "Incentive", fmv,
+         0)) |>
+  mutate(non_incent_fmv = ifelse(incent_prop == "Non-Incentive", fmv,
+         0)) |>
+  ungroup() |>
+  group_by(clean_name) |>
+  mutate(incent_pin_muni_perc = incent_pin_count/muni_pins) |>
+  mutate(incent_fmv_muni_perc = incent_fmv/muni_fmv) |>
+  reframe(clean_name, incent_pin_muni_perc, incent_fmv_muni_perc) |>
+  arrange(desc(incent_pin_muni_perc)) |>
+  distinct() |>
+  head(10)
+
+perc_table_2 <- muni_data |>
+  filter(year == 2021) |>
+  group_by(clean_name) |>
+  mutate(muni_pins = sum(n_pins),
+         muni_fmv = sum(fmv)) |>
+  ungroup() |>
+  group_by(clean_name, incent_prop) |>
+  mutate(incent_pin_count = ifelse(incent_prop == "Incentive", n_pins,
+         0)) |>
+  mutate(non_incent_pin_count = ifelse(incent_prop == "Non-Incentive", n_pins,
+         0)) |>
+  mutate(incent_fmv = ifelse(incent_prop == "Incentive", fmv,
+         0)) |>
+  mutate(non_incent_fmv = ifelse(incent_prop == "Non-Incentive", fmv,
+         0)) |>
+  ungroup() |>
+  group_by(clean_name) |>
+  mutate(incent_pin_muni_perc = incent_pin_count/muni_pins) |>
+  mutate(incent_fmv_muni_perc = incent_fmv/muni_fmv) |>
+  reframe(clean_name, incent_pin_muni_perc, incent_fmv_muni_perc) |>
+  arrange(desc(incent_fmv_muni_perc)) |>
+  distinct() |>
+  head(10)
+
+perc_table <- bind_cols(perc_table_1, perc_table_2)
+
+write_csv(perc_table, "perc_table.csv")
 
 ```
 
