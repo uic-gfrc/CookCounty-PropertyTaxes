@@ -5,11 +5,11 @@ author: "Michael Van Hulle"
 date: "June 17, 2024"
 format: 
   html:
-    embed-resources: true
+    #embed-resources: true
     theme: lumen
     code-fold: true
-    code-line-numbers: true
-    code-overflow: wrap
+   # code-line-numbers: true
+    #code-overflow: wrap
     toc: true
     toc-location: left
 knitr: 
@@ -19,8 +19,6 @@ knitr:
 ---
 
 ```{r setup}
-#| output: FALSE
-
 # Load libraries
 
 library(tidyverse)
@@ -72,7 +70,11 @@ muni_data <- df_temp |>
   mutate(no_incent_av = fmv*.25) |>
   # Reframe to relevant variables
   group_by(year, clean_name, incent_prop, land_use) |>
-  reframe(n_pins = sum(n_pins), av = sum(av), fmv = sum(fmv)) 
+  reframe(n_pins = sum(n_pins), 
+          av = sum(av), 
+          fmv = sum(fmv)) 
+
+
 
 ###RETURN TO THIS SECTION TO CREATE MUNI LAGS###
   
@@ -114,7 +116,9 @@ county_trends <- df_temp |> #see df_temp created above
             .groups = 'drop') |>
   # Calculate lags
   ungroup() |>
-  arrange(year) |>
+  arrange(year) 
+
+county_trends <- county_trends |>
   group_by(incent_prop, land_use) |>
   mutate(lag_n_pins = lag(n_pins),
          lag_av = lag(av),
@@ -130,10 +134,10 @@ county_trends <- df_temp |> #see df_temp created above
   mutate(yoy_pin_delta = (n_pins - lag_n_pins) / lag_n_pins,
          yoy_av_delta = (av - lag_av) / lag_av,
          yoy_fmv_delta = (fmv - lag_fmv) / lag_fmv) |>
-  ungroup() |>
-  # Select Useful Variables
-  select(year, incent_prop, land_use, n_pins, yoy_pin_delta, 
-         av, yoy_av_delta, fmv, yoy_fmv_delta)
+   ungroup() # |>
+  # # Select Useful Variables
+  # select(year, incent_prop, land_use, n_pins, yoy_pin_delta, 
+  #        av, yoy_av_delta, fmv, yoy_fmv_delta)
 
 ```
 
@@ -253,10 +257,11 @@ sums_table <- bind_cols(sum_pins, sum_fmv, sum_ind_pin, sum_ind_fmv, sum_comm_pi
 
 write_csv(sums_table, "sums_table.csv")
 
+sums_table
+
 ```
 
 ```{r perc_tables}
-
 # What if I log it?
 # 
 
@@ -396,7 +401,10 @@ perc_comm_pin <- muni_data |>
   arrange(desc(incent_pin_muni_perc)) |>
   distinct() |>
   head(10)
+```
 
+
+```{r perc_tables-fmv}
 fmv_perc <- muni_data |>
   filter(year == 2021) |>
   group_by(clean_name) |>
@@ -447,7 +455,7 @@ fmv_ind_perc <- muni_data |>
   head(10)
 
 fmv_comm_perc <- muni_data |>
-  filter(land_use == "Commercial") |.
+  filter(land_use == "Commercial") |>
   filter(year == 2021) |>
   group_by(clean_name) |>
   mutate(muni_pins = sum(n_pins),
@@ -479,10 +487,9 @@ write_csv(perc_table, "perc_table.csv")
 
 # Graphs
 
-```{r annual_delta_n}
-#| label: cook-n-delta
+```{r}
+#| label: fig-cook-n-delta
 #| fig-cap: "Annual Change in Industrial and Commercial PIN Counts"
-#| fig-cap-loc: "top"
 
 county_trends |>
   filter(land_use == "")
