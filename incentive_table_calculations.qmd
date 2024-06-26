@@ -1,5 +1,5 @@
 ---
-title: "Summary Table Calcualtions - All stats"
+title: "Summary Table Calculations - All stats"
 format: 
   html:
     code-fold: true
@@ -188,8 +188,7 @@ ptax_pins <- ptax_pins %>%
 
 > Total Value should equal Current Taxable Value + non-Taxable Value where non-Taxable Value = Value in TIF Increment + Reduced Value from Policy Choices where Reduced Value = Tax Exempt Value from Homeowners exemptions or abatements + Reduced Taxable Value from lower levels of assessments due to incentive classifications.
 
-$$\mbox{Total Value = Taxed Value + Untaxable Value}$$ *where* $$\mbox{Untaxable Value = TIF Increment + Exemptions + Abatements + Reduced Taxable Value from Lower Incentive Class Assessment Ratios}$$ *where* $$\mbox{Reduced Taxable Value from Incentive Classification Levels of Assessments}$$
-$$ \mbox{= (25% * EAV - ~10% * EAV)} $$
+$$\mbox{Total Value = Taxed Value + Untaxable Value}$$ *where* $$\mbox{Untaxable Value = TIF Increment + Exemptions + Abatements + Reduced Taxable Value from Lower Incentive Class Assessment Ratios}$$ *where* $$\mbox{Reduced Taxable Value from Incentive Classification Levels of Assessments}$$ $$ \mbox{= (25% * EAV - ~10% * EAV)} $$
 
 ```{r include = FALSE, eval=FALSE}
 #ptax_pins %>% filter(equalized_av - (taxed_eav + untaxable_value_eav) > 100)
@@ -238,10 +237,9 @@ $$
 
 $$
 \mbox{Final Tax to District} = {\mbox{Tax Code Rate}}*{\mbox{Taxable Value of PIN}}
-$$ 
+$$
 
 $$\mbox{Fair Market Value} = {\frac{\mbox{final tax to dist + final tax to TIF}}{\mbox{tax code rate}} + \mbox{Exemptions + Abatements}}$$
-
 
 ```{r}
 #| label: tbl-cooktotals
@@ -251,42 +249,128 @@ $$\mbox{Fair Market Value} = {\frac{\mbox{final tax to dist + final tax to TIF}}
 table_cook <- ptax_pins %>%
   summarize(
     cty_PC = n(),
-    cty_projects = n_distinct(both_ids), # mostly for industrial and commercial properties...MVH: WHY?
+    cty_PC_industrial = sum(ifelse(class %in% industrial_classes, 1, 0), na.rm = TRUE),
+    cty_PC_commercial = sum(ifelse(class %in% commercial_classes, 1, 0), na.rm = TRUE),
+    cty_PC_com_incent = sum(ifelse(class %in% commercial_classes & incent_prop == "Incentive", 1, 0), na.rm = TRUE),
+    cty_PC_com_incent_inTIF = sum(ifelse(class %in% commercial_classes & incent_prop == "Incentive" & in_tif == 1, 1, 0), na.rm = TRUE),
+    cty_PC_ind_incent = sum(ifelse(class %in% industrial_classes & incent_prop == "Incentive", 1, 0), na.rm = TRUE),
+    cty_PC_ind_incent_inTIF = sum(ifelse(class %in% industrial_classes & incent_prop == "Incentive" & in_tif == 1, 1, 0), na.rm = TRUE),
+
+    cty_PC_incent = sum(ifelse(incent_prop == "Incentive", 1, 0)),
+
+    cty_PC_comandind =  sum(ifelse((class %in% commercial_classes | class %in% industrial_classes), 1, 0)),
+
+    cty_PC_comandind_inTIF =  sum(ifelse((class %in% commercial_classes | class %in% industrial_classes) & in_tif == 1, 1, 0)),
+    cty_PC_incent_inTIF =  sum(ifelse(between(class, 600, 900) & in_tif == 1, 1, 0)),
+
+    cty_projects = n_distinct(both_ids), # mostly for industrial and commercial properties. Purposely not assigning keypins to residential properties. 
+
     cty_fmv_incentive = sum(ifelse(between(class, 600, 900), fmv, 0), na.rm = TRUE),
     cty_fmv_taxed =  sum(taxed_fmv, na.rm=TRUE),
-    cty_fmv_incents_inTIFs = sum(ifelse(between(class, 600, 900) & in_tif == 1, fmv, 0), na.rm = TRUE),
+    cty_fmv_incent_inTIF = sum(ifelse(between(class, 600, 900) & in_tif == 1, fmv, 0), na.rm = TRUE),
     cty_fmv_inTIF = sum(fmv_inTIF, na.rm=TRUE),
     cty_fmv_tif_increment = sum(fmv_tif_increment, na.rm=TRUE),
     cty_fmv_untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
     cty_fmv = sum(fmv, na.rm=TRUE),
     cty_fmv_exemptions = sum(all_exemptions/eq2022/loa, na.rm=TRUE),
     cty_fmv_abatements = sum((abatements/eq2022)/loa, na.rm=TRUE),
-    cty_zero_bill = sum(zero_bill, na.rm=TRUE),
     cty_fmv_residential = sum(ifelse(class %in% c(200:399), fmv, 0), na.rm = TRUE),
     cty_fmv_industrial = sum(ifelse(class %in% industrial_classes, fmv, 0), na.rm = TRUE),
+    cty_fmv_indwithincent = sum(ifelse(class %in% industrial_classes & incent_prop == "Incentive", fmv, 0), na.rm = TRUE),
+    cty_fmv_ind_incent_inTIF= sum(ifelse(class %in% industrial_classes & incent_prop == "Incentive" & in_tif == 1, fmv, 0), na.rm = TRUE),
+
     cty_fmv_commercial = sum(ifelse(class %in% commercial_classes, fmv, 0), na.rm = TRUE),
-    cty_levy = sum(final_tax_to_dist),
+    cty_fmv_comwithincent = sum(ifelse(class %in% commercial_classes & incent_prop == "Incentive", fmv, 0), na.rm = TRUE),
+    cty_fmv_com_incent_inTIF= sum(ifelse(class %in% commercial_classes & incent_prop == "Incentive" & in_tif == 1, fmv, 0), na.rm = TRUE),
+
+    cty_fmv_comandind = sum(ifelse(class %in% c(commercial_classes, industrial_classes) , fmv, 0), na.rm = TRUE),
+
+   
+ cty_levy = sum(final_tax_to_dist),
     cty_current_rate_avg = mean(tax_code_rate),
     cty_avg_C2_bill_noexe = mean(ifelse(between(class,200,299) & all_exemptions == 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
     cty_avg_C2_bill_withexe = mean(ifelse(between(class,200,299) & all_exemptions > 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
     cty_av_taxed = sum(taxed_av, na.rm = TRUE),
     cty_untaxable_value_av = sum(untaxable_value_av, na.rm=TRUE),
-    cty_av = sum(av)) %>% 
+    cty_av = sum(av),
+    cty_zero_bill = sum(zero_bill, na.rm=TRUE),
+) %>% 
   mutate(
     cty_pct_fmv_untaxable = cty_fmv_untaxable_value / cty_fmv,
     cty_pct_fmv_taxed = cty_fmv_taxed / cty_fmv,
-    cty_pct_av_taxed = cty_av_taxed / cty_av,
-    cty_pct_av_untaxable = cty_untaxable_value_av/cty_av)
+    cty_pct_fmv_incentinTIF = cty_fmv_incent_inTIF / cty_fmv_incentive,
 
+    cty_pct_av_taxed = cty_av_taxed / cty_av,
+    cty_pct_av_untaxable = cty_untaxable_value_av/cty_av,
+
+    cty_pct_incent_oftotalPC = cty_PC_incent / cty_PC,  # incentive pins / all PINs
+    cty_pct_incent_ofcomPC = cty_PC_com_incent / cty_PC_commercial,  # incentive pins / commercial PINs
+    cty_pct_incent_ofindPC = cty_PC_ind_incent / cty_PC_industrial,  # incentive pins / commercial PINs
+cty_pct_PC_incent_inTIF = cty_PC_incent_inTIF / cty_PC_incent        # count of incentive classes in TIFs / count of incentive Class PINs
+
+)
 
 table_cook %>% 
   select(cty_PC, cty_fmv_taxed, cty_fmv_untaxable_value, cty_fmv) %>%
   flextable() %>% 
   set_header_labels(cty_PC = 'PINs', cty_projects = "Project IDs", 
                     cty_fmv = 'Total FMV', 
-                    cty_fmv_taxed = 'Taxed FMV', fmv_untaxable_value = 'Value not Taxable\nfor Levy',
+                    cty_fmv_taxed = 'Taxed FMV', cty_fmv_untaxable_value = 'FMV not Taxed\nfor Levy',
                     cty_pct_fmv_untaxable = 'Value not Taxed (%)'
                   ) %>%   FitFlextableToPage()
+```
+
+```{r}
+#| label: tbl-cooktotals-comandind
+#| tbl-cap: "**Commercial and Industrial PINs in Cook County**   3.2% of industrial and commercial PINs (aka \"revenue producing PINs\") FMV has an incentive classification (4.55% when using PIN counts). Of the PINs that have incentive classification, 41.5% of the FMV is located within a TIF (43.9% when using PIN counts)."
+
+table_cook %>% 
+mutate(cty_pct_fmv_both_incent = cty_fmv_comwithincent / cty_fmv_comandind,
+cty_pct_PC_both_incent = cty_PC_incent / cty_PC_comandind,
+cty_pct_PC_both_incent_inTIF = cty_PC_incent_inTIF / cty_PC_incent,
+cty_pct_fmv_both_incent_inTIF = cty_fmv_incent_inTIF / cty_fmv_incentive,
+) %>%
+
+select(cty_PC_comandind, cty_PC_incent_inTIF, cty_fmv_comandind, cty_pct_fmv_incentinTIF,
+cty_fmv, cty_pct_PC_both_incent, cty_pct_fmv_both_incent, cty_pct_PC_both_incent_inTIF) %>%
+flextable() %>% 
+FitFlextableToPage()
+```
+
+```{r}
+#| label: tbl-cooktotals-commercial
+#| tbl-cap: "**Commercial PINs in Cook County**  4.1% of commercial PINs FMV has an incentive classification (1.2% when using PIN counts). Of the commercial PINs that have incentive classification, 55.9% of the FMV is located within a TIF (40.5% when using PIN counts). "
+
+table_cook %>% 
+mutate(cty_pct_fmv_com_incent = cty_fmv_comwithincent / cty_fmv_commercial,
+       cty_pct_fmv_com_incent_inTIF = cty_fmv_com_incent_inTIF / cty_fmv_comwithincent,
+
+       cty_pct_PC_com_incent_inTIF = cty_PC_com_incent_inTIF / cty_PC_com_incent) %>%
+
+  select(cty_PC_commercial, cty_PC_com_incent, cty_pct_incent_ofcomPC, cty_pct_PC_com_incent_inTIF,
+cty_fmv_commercial, cty_pct_incent_ofcomPC, cty_pct_fmv_com_incent, cty_pct_fmv_com_incent_inTIF) %>%
+  flextable() %>% 
+FitFlextableToPage()
+
+```
+
+```{r}
+#| label: tbl-cooktotals-industrial
+#| tbl-cap: "**Industrial PINs in Cook County**  36.7% of industrial PINs FMV has an incentive classification (13.7% when using PIN counts). Of the Industrial PINs that have incentive classification, 35.7% of the FMV is located within a TIF (44% when using PIN counts). "
+
+table_cook %>% 
+mutate(cty_pct_fmv_ind_incent = cty_fmv_indwithincent / cty_fmv_industrial,
+       cty_pct_fmv_ind_incent_inTIF = cty_fmv_ind_incent_inTIF / cty_fmv_indwithincent,
+
+       cty_pct_PC_ind_incent_inTIF = cty_PC_ind_incent_inTIF / cty_PC_ind_incent) %>%
+
+  select(cty_PC_industrial, cty_PC_ind_incent, cty_PC_ind_incent_inTIF, 
+        cty_pct_incent_ofindPC, cty_pct_fmv_ind_incent_inTIF, cty_pct_PC_ind_incent_inTIF,
+
+cty_fmv_industrial, cty_pct_fmv_ind_incent,  
+) %>%
+  flextable() %>% 
+FitFlextableToPage()
 
 ```
 
@@ -330,14 +414,14 @@ table_cook %>%
 
 table_cook %>% 
   select(cty_fmv, cty_fmv_inTIF, cty_fmv_tif_increment, 
-         cty_fmv_incentive, cty_fmv_incents_inTIFs) %>%
+         cty_fmv_incentive, cty_fmv_incent_inTIF) %>%
   flextable() %>% 
   set_header_labels(
                     cty_fmv = 'Total FMV', 
                     cty_fmv_inTIF = 'FMV in TIFs',
                     cty_fmv_tif_increment = 'TIF Increment FMV' ,
                     cty_fmv_incentive = "FMV with Incent.Class.", 
-                    cty_fmv_incents_inTIFs = 'FMV with Incent. Class. in TIFs'
+                    cty_fmv_incents_inTIF = 'FMV with Incent. Class. in TIFs'
 )%>%   FitFlextableToPage()
 
 ```
@@ -364,7 +448,7 @@ cty_MC_table <- ptax_pins %>%
     cty_MC_fmv_incentive = sum(ifelse(between(class, 600, 900), fmv, 0), na.rm = TRUE),
     cty_MC_fmv_taxed =  sum(taxed_fmv, na.rm=TRUE),
     cty_MC_av_taxed  = sum(taxed_av, na.rm=TRUE),
-    cty_MC_fmv_incents_inTIFs = sum(ifelse(between(class, 600, 900) & in_tif == 1, fmv, 0), na.rm = TRUE),
+    cty_MC_fmv_incent_inTIF = sum(ifelse(between(class, 600, 900) & in_tif == 1, fmv, 0), na.rm = TRUE),
     cty_MC_fmv_inTIF = sum(fmv_inTIF, na.rm=TRUE),
     cty_MC_fmv_tif_increment = sum(fmv_tif_increment, na.rm=TRUE),
     cty_MC_fmv_untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
@@ -408,13 +492,11 @@ cty_MC_table %>%
 
 *Ignore stats for these Municipalities. Simple rounding errors may cause bizarre results for rate changes & other calculations. These municipalities are dropped from summary tables in this website but are included in exported files.*
 
-
 -   Frankfort has 1 PIN in Cook County
 -   East Dundee has 2
 -   Homer Glen has 3
 -   University Park has 4
 -   Oak Brook, Deer Park, Deerfield, & Bensenville each have less than 75 PINs in Cook County, IL
-
 
 ```{r}
 munilevel <- ptax_pins %>% 
@@ -476,7 +558,6 @@ pct_fmv_incents_inTIFs = muni_fmv_incents_inTIF / muni_fmv ) %>%
 
 ```
 
-
 ```{r}
 #| label: tbl-muni-levelstats
 #| tbl-cap: "Municipality Level Summary Statistics"
@@ -515,8 +596,9 @@ ccao_loa <- read_csv("./inputs/ccao_loa.csv") %>%
 muni_rate <- read_csv("./Output/ptaxsim_muni_level_2006-2022.csv") %>%
   filter(year == 2022) %>%
   left_join(nicknames) %>% 
-  select(clean_name, cur_comp_muni_rate) %>%
-  rename(cur_munilevel_rate = cur_comp_muni_rate)
+  select(clean_name, muni_current_rate_avg, muni_pct_eav_taxed,# cur_comp_muni_rate
+) %>%
+  rename(cur_munilevel_rate = muni_current_rate_avg)
 ```
 
 ```{r create-muni-mc-table}
