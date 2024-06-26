@@ -81,14 +81,14 @@ ind_comm_cc_lags <- ind_comm_cc |>
             av_nonincent = sum(ifelse(incent_prop == "Non-Incentive", TC_C_AV, 0))) |>
   
   
-  # mutate(
-  #   pincount_lag = lag(proptype_pincount, 1),
-  #   av_lag = lag(proptype_av, 1),
-  #   n_incent_lag = lag(n_incent, 1),
-  #   n_nonincent_lag = lag(n_nonincent, 1),
-  #   av_incent_lag = lag(av_incent, 1),
-  #   av_nonincent_lag = lag(av_nonincent, 1)
-  # )
+  mutate(
+    pincount_lag = plm::lag(proptype_pincount, 1),
+    av_lag = plm::lag(proptype_av, 1),
+    n_incent_lag = plm::lag(n_incent, 1),
+    n_nonincent_lag = plm::lag(n_nonincent, 1),
+    av_incent_lag = plm::lag(av_incent, 1),
+    av_nonincent_lag = plm::lag(av_nonincent, 1)
+  )
 
 ind_comm_cc_trends <- ind_comm_cc_lags |>
   group_by(year, land_use, incent_prop) |>
@@ -105,7 +105,8 @@ ind_comm_cc_trends <- ind_comm_cc_lags |>
 ```{r}
 #| label: tbl-cooktotals
 #| tbl-cap: "Commercial and Industrial PINs in Cook County (2012 - 2022)"
-#| tbl-subcap: "Total, Incentive Class, and Non-Incentive Class PIN Counts"
+
+# #| tbl-subcap: "Total, Incentive Class, and Non-Incentive Class PIN Counts"
 
 year_pins <- ind_comm_cc %>%
   group_by(year) %>%
@@ -153,7 +154,7 @@ flextable(table) %>%
 
 # Multiverse Analysis
 
-```{r}
+```{r eval=FALSE}
 
 df_1 <- df %>%
   left_join(cde, by = "class") |>
