@@ -36,7 +36,6 @@ comm_ind_pins <- cook_pins |>
   left_join(cde, by = "class") |>
   filter(Alea_cat %in% c("Commercial", "Industrial"))
 
-
 # 119k distinct pins
 
 distinct_pins <- comm_ind_pins |>
@@ -57,8 +56,13 @@ comm_ind_pins_ever <- DBI::dbGetQuery(
    WHERE pin IN ({distinct_pins$pin*})
   ",
   .con = ptaxsim_db_conn
-  ))
+  )) |>
+  mutate(class = as.numeric(class)) |>
+  left_join(cde, by = "class") |> #Whoops! It got lost! Need to merge it back in!
+  mutate(comparable_props = as.character(comparable_props))
 
+comm_ind_pins_ever <- comm_ind_pins_ever |>
+  as.data.frame()
 
 ## Write CSV to Output Folder
 
