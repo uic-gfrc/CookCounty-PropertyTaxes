@@ -844,7 +844,7 @@ datatable(tbl1,
 
 
 
-```{r}
+```{r include = FALSE, eval=FALSE}
 
 tbl2 <- alt_rates %>% 
   select(clean_name, 
@@ -872,24 +872,53 @@ datatable(tbl2,
 ```
 
 
-## Error in Rate Change due to Rounding
-
 
 ```{r}
-tbl3 <- alt_rates %>%
-  select(clean_name, 
-         change_noExe, change_noInc, 
-         change_noC6, change_noC7, change_noC8, 
-         change_noAbate,
-         change_noTIFs, 
-         change_neither, 
-         change_max, change_vacants, 
-         change_error_dif) %>%
-#mutate(across(change_noExe:change_noTIFs, mean, na.rm=TRUE) ) %>%
-  distinct() %>%
-  mutate(across(change_noExe:change_error_dif, round, digits = 2)) %>% as.data.frame()
+#| label: tbl-adjustedratechange
+#| 
 
-datatable(tbl3,
+# tbl3 <- alt_rates %>%
+#   select(clean_name, 
+#          change_noExe, change_noInc, 
+#          change_noC6, change_noC7, change_noC8, 
+#          change_noAbate,
+#          change_noTIFs, 
+#          change_neither, 
+#          change_max, change_vacants, 
+#          change_error_dif) %>%
+# #mutate(across(change_noExe:change_noTIFs, mean, na.rm=TRUE) ) %>%
+#   distinct() %>%
+#   mutate(across(change_noExe:change_error_dif, round, digits = 2)) %>% as.data.frame()
+# 
+# datatable(tbl3,
+#           rownames= FALSE,
+#           colnames = c('Municipality' = 'clean_name',   
+#                        'Rate Change from Taxing GHE Exempt EAV' = 'change_noExe', 
+#                        'Rate Change: No Abatements' = 'change_noAbate',
+#                        'Rate Change from Additional Commerc & Indust. Value' = 'change_noInc', 
+#                        'Rate Change: Incent. Prop. Lose All Value' = 'change_vacants',
+#                        'Rate Change: No C6 AV Reduction' = 'change_noC6',
+#                        'Rate Change: No C7 AV Reduction' = 'change_noC7',
+#                        'Rate Change: No C8 AV Reduction' = 'change_noC8',
+# 
+#                        'Rate if No Incentive Classes & No Exemptions' = 'change_neither',
+#                        'Rate if No TIF Increments' = 'change_noTIFs',
+#                        'Maxiumum Rate Change' = 'change_max',
+#                        'Error from Tax Code Rate Aggregation' = 'change_error_dif'
+#                        
+#                     ))
+# 
+
+
+
+table4_adjusted <- alt_rates %>% 
+mutate(across(change_noExe:change_vacants, ~ . - change_error_dif))  %>%
+mutate(across(starts_with("change"), round, digits = 2)) %>% 
+
+select(clean_name, starts_with("change")) %>%
+select(-change_error_dif)
+
+datatable(table4_adjusted,
           rownames= FALSE,
           colnames = c('Municipality' = 'clean_name',   
                        'Rate Change from Taxing GHE Exempt EAV' = 'change_noExe', 
@@ -902,18 +931,8 @@ datatable(tbl3,
 
                        'Rate if No Incentive Classes & No Exemptions' = 'change_neither',
                        'Rate if No TIF Increments' = 'change_noTIFs',
-                       'Maxiumum Rate Change' = 'change_max',
-                       'Error from Tax Code Rate Aggregation' = 'change_error_dif'
-                       
-                    ))
-
-
-
-
-alt_rates %>% 
-mutate(across(change_noExe:change_vacants, ~ . - change_error_dif))  %>%
-select(clean_name, starts_with("change")) %>%
-select(-change_error_dif)
+                       'Maxiumum Rate Change' = 'change_max')
+)
 
 
 ```
