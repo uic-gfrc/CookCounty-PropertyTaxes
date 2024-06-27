@@ -8,10 +8,6 @@ format:
     tbl-cap-location: margin
 ---
 
-MVH to-do suggestions:
-
-1\. Conform to 'between' command
-
 # Data Preparation
 
 ```{r setup, warning = FALSE, output = FALSE}
@@ -105,10 +101,6 @@ ptax_pins <- ptax_pins %>%
 ```
 
 <!--- Don't use tax_amount_exe for calculations below because it is the "naive" calculation of the current tax rate * exempt eav discussed in the exemptions research. --->
-
-::: callout-note
-MVH: NEW METHODOLOGY REQUIRES FURTHER EXPLANATION.
-:::
 
 ```{r}
 eq2022 <- 2.9237 #example of eq factor proliferation
@@ -850,6 +842,8 @@ datatable(tbl1,
                       ))
 ```
 
+
+
 ```{r}
 
 tbl2 <- alt_rates %>% 
@@ -876,6 +870,10 @@ datatable(tbl2,
                        
                     ))
 ```
+
+
+## Error in Rate Change due to Rounding
+
 
 ```{r}
 tbl3 <- alt_rates %>%
@@ -908,6 +906,16 @@ datatable(tbl3,
                        'Error from Tax Code Rate Aggregation' = 'change_error_dif'
                        
                     ))
+
+
+
+
+alt_rates %>% 
+mutate(across(change_noExe:change_vacants, ~ . - change_error_dif))  %>%
+select(clean_name, starts_with("change")) %>%
+select(-change_error_dif)
+
+
 ```
 
 # Export Tables
