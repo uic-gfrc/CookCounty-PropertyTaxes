@@ -12,6 +12,7 @@ format:
     code-overflow: wrap
     toc: true
     toc-location: left
+    df-print: paged
 knitr: 
   opts_chunk:
     warning: true
@@ -38,8 +39,8 @@ options(DT.options = list())
 
 # read in class summaries at the tax code level
 
-df <- read_csv("./Output/ptaxsim_TC_Class_summaries_2006-2021.csv")
-
+#df <- read_csv("./Output/ptaxsim_TC_Class_summaries_2006-2021.csv")
+df <- read_csv("./Output/ptaxsim_muni_class_summaries_2006-2022.csv")
 df %>%
   group_by(year) %>%
   summarize(n = n())
@@ -53,7 +54,7 @@ df_all <- left_join(df, cde, by = "class")
 
 ind_comm_cc <- df_all %>%
   filter(between(class, 500, 899)) %>%
-  filter(between(year, 2011, 2021)) %>%
+  #filter(between(year, 2011, 2021)) %>%
   rename(land_use = Alea_cat)
 
 #write_csv(ind_comm_cc, "pin_count_tables.csv")
@@ -66,22 +67,22 @@ ind_comm_cc <- ind_comm_cc |>
   mutate(year = as.factor(year),
          land_use = as.factor(land_use),
          incent_prop = as.factor(incent_prop),
-         agency_num = as.factor(agency_num),
+        # agency_num = as.factor(agency_num),
          class_1dig = as.factor(class_1dig))
 
 ind_comm_cc_lags <- ind_comm_cc |>
-  group_by(year, land_use, incent_prop) |>
+  ungroup() |>
   arrange(year) |>
-  mutate(
-    proptype_pincount = n(),
-    proptype_av = sum(TC_C_AV),
-            n_incent = sum(ifelse(incent_prop == "Incentive", 1, 0)),
-            n_nonincent = sum(ifelse(incent_prop == "Non-Incentive", 1, 0)),
-            av_incent = sum(ifelse(incent_prop == "Incentive", TC_C_AV, 0)),
-            av_nonincent = sum(ifelse(incent_prop == "Non-Incentive", TC_C_AV, 0))) |>
-  
-  
-  mutate(
+
+  group_by(year, land_use, incent_prop) |>
+  summarize(
+    proptype_pincount = sum(pins_in_muni, na.rm=TRUE),
+    proptype_av = sum(av, na.rm=TRUE),
+            n_incent = sum(ifelse(incent_prop == "Incentive", pins_in_muni, 0), na.rm = TRUE),
+                           n_nonincent = sum(ifelse(incent_prop == "Non-Incentive", pins_in_muni, 0), na.rm=TRUE),
+            av_incent = sum(ifelse(incent_prop == "Incentive", av, 0), na.rm=TRUE),
+            av_nonincent = sum(ifelse(incent_prop == "Non-Incentive", av, 0), na.rm=TRUE)) |>
+    mutate(
     pincount_lag = plm::lag(proptype_pincount, 1),
     av_lag = plm::lag(proptype_av, 1),
     n_incent_lag = plm::lag(n_incent, 1),
@@ -110,15 +111,15 @@ ind_comm_cc_trends <- ind_comm_cc_lags |>
 
 year_pins <- ind_comm_cc %>%
   group_by(year) %>%
-  summarize(n_year = n())
+  summarize(n_year = sum(pins_in_muni))
 
 table <- ind_comm_cc %>%
   group_by(year) %>%
   group_by(year, land_use) %>%
   summarize(
-    proptype_pincount = n(),
-            n_incent = sum(ifelse(incent_prop == "Incentive", 1, 0)),
-            n_nonincent = sum(ifelse(incent_prop == "Non-Incentive", 1, 0))) %>%
+    proptype_pincount = sum(pins_in_muni),
+            n_incent = sum(ifelse(incent_prop == "Incentive", pins_in_muni, 0)),
+            n_nonincent = sum(ifelse(incent_prop == "Non-Incentive", pins_in_muni, 0))) %>%
   mutate(pct_incent = n_incent / proptype_pincount) %>%
   #left_join(year_pins, by = "year") %>%
   arrange(desc(year)) %>%
@@ -154,19 +155,82 @@ flextable(table) %>%
 
 # Multiverse Analysis
 
-```{r eval=FALSE}
+```{r}
 
-df_1 <- df %>%
-  left_join(cde, by = "class") |>
-  mutate(fmv = av_clerk/assessment_ratio) |>
-  group_by(year, class) |>
-  reframe(n = n(), class_year_fmv = sum(fmv)) |>
-  group_by(year, class) |>
-  arrange(year) |>
-  mutate(base_year_fmv = first(class_year_fmv)) |>
-  mutate(base_year_n = first(n)) |>
-  ungroup() |>
-  mutate(fmv_growth = class_year_fmv/base_year_fmv,
-         n_growth = n/base_year_n)
+df_1 <- df_all %>%
+  mutate(fmv = av/assess_ratio) |>
+  group_by(class, year) |>
+  summarize(n = sum(pins_in_muni), 
+            class_year_fmv = sum(fmv, na.rm=TRUE),
 
+           #   levy_idx = total_final_levy / (total_final_levy[year == "2011"]),
+  #av_idx = av / (av[year == "2011"]),
+  ) |>
+ # group_by(year, class) |>
+ # arrange(year) |>mutate() |>
+ # mutate() |>
+ # ungroup() |>
+  mutate(            
+   # base_year_fmv = class_year_fmv[year == "2006"],
+        base_year_fmv = class_year_fmv[year == min(year)],
+            base_year_n = n[year == min(year)],
+
+            #base_year_n = n[year == "2006"],
+            fmv_growth = class_year_fmv/base_year_fmv,
+         n_growth = n/base_year_n
+       ) |>
+  filter(class != 0)
+
+df_1
+```
+
+```{r}
+
+df_1 <- df_all %>%
+  mutate(fmv = av/assess_ratio) |>
+  group_by(class, year) |>
+  summarize(n = sum(pins_in_muni), 
+            class_year_fmv = sum(fmv, na.rm=TRUE),
+
+           #   levy_idx = total_final_levy / (total_final_levy[year == "2011"]),
+  #av_idx = av / (av[year == "2011"]),
+  ) |>
+ # group_by(year, class) |>
+ # arrange(year) |>mutate() |>
+ # mutate() |>
+ # ungroup() |>
+  mutate(            
+   # base_year_fmv = class_year_fmv[year == "2006"],
+        base_year_fmv = class_year_fmv[year == min(year)],
+            base_year_n = n[year == min(year)],
+
+            #base_year_n = n[year == "2006"],
+            fmv_growth = class_year_fmv/base_year_fmv,
+         n_growth = n/base_year_n
+       ) |>
+  filter(class != 0)
+
+df_1
+```
+```{r}
+
+df_1 <- df_all %>%
+  mutate(fmv = av/assess_ratio) |>
+  group_by(Alea_cat, incent_prop, year) |>
+  summarize(n = sum(pins_in_muni), 
+            class_year_fmv = sum(fmv, na.rm=TRUE),
+
+  ) |>
+
+  mutate(            
+   # base_year_fmv = class_year_fmv[year == "2006"],
+        base_year_fmv = class_year_fmv[year == min(year)],
+            base_year_n = n[year == min(year)],
+
+            #base_year_n = n[year == "2006"],
+            fmv_growth = class_year_fmv/base_year_fmv,
+         n_growth = n/base_year_n
+       ) 
+
+df_1 %>% select(year, Alea_cat, incent_prop, fmv_growth, n_growth) %>% filter(year == 2022)
 ```
