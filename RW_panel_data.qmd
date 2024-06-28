@@ -1,0 +1,45 @@
+---
+title: "Panel Data Generation Machine"
+format: html
+---
+
+```{r setup}
+#| Output: FALSE
+
+library(tidyverse)
+
+```
+
+```{r df_simplify}
+#| Output: FALSE
+
+df <- read_csv("./Output/comm_ind_PINs_2006-2022.csv")
+
+```
+
+Changes from helper file:
+
+1. Calculation of FMV
+2. Drop exemption-related variables
+3. Changed LoA for incentive classifications to 11.42%--need to change in helper file.
+
+```{r changes}
+
+df <- df |>
+  mutate(assess_ratio = as.numeric(assess_ratio)) |>
+  mutate(incent_prop = as.factor(incent_prop))
+
+df <- df |>
+  mutate(assess_ratio = ifelse(incent_prop == "Incentive", .1142, assess_ratio)) |>
+  mutate(fmv = av_clerk/assess_ratio) |>
+  select(!(starts_with("exe_"))) |>
+  select(-loa_2022, -Option2, -Res_nonRes, -assessment_level, -used_in2021)
+
+```
+
+```{r csv_print}
+#| eval: false
+
+write_csv(df, "./Output/panel_data_6-28.csv")
+
+```
