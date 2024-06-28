@@ -43,13 +43,17 @@ options(DT.options = list())
 #| output: FALSE
 
 # Read in muni class level data 2006-2021: 87610 obs of 41 variables
-df <- read_csv("./Output/ptaxsim_muni_class_summaries_2006-2021.csv") |>
-  rename(n_pins = pins_in_muni) |>
+df <- read_csv("./Output/ptaxsim_muni_class_summaries_2006-2022.csv") |>
+  rename(n_pins = muni_c_pins_in_muni,
+         av = muni_c_av) |>
   as.data.frame()
 
 # Import relevant variables from extended class dictionary
 class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv") |>
-  select(class = class_code, land_use = Alea_cat, incent_prop, ar = assess_ratio) |>
+  select(class = class_code, 
+         land_use = Alea_cat, 
+         incent_prop, 
+         ar = assess_ratio) |>
   as.data.frame()
 
 # Join summaries w/ class dictionary
@@ -57,12 +61,9 @@ df_temp <- left_join(df, class_dict, by = "class")
 
 # Make new and select relevant county-wide PIN variables
 muni_data <- df_temp |>
-  # Filter to years 2010-2021: 65802 obs.
-  # Using 2010 instead of 2011 to calculate 2011 changes (if we later want those)
-  filter(between(year, 2011, 2021)) |>
   # Filter to industrial and commercial properties: 26969 obs.
   filter(land_use %in% c("Industrial", "Commercial")) |>
-  # Want to remove the NFPs: 24882 obs.
+  # Want to remove the NFPs
   filter(!between(class, 400, 499)) |>
   # Calculate "FMV"
   mutate(fmv = av/ar) |>
@@ -72,10 +73,25 @@ muni_data <- df_temp |>
   group_by(year, clean_name, incent_prop, land_use) |>
   reframe(n_pins = sum(n_pins), 
           av = sum(av), 
-          fmv = sum(fmv)) 
+          fmv = sum(fmv))
+
+# Make new and select relevant county-wide PIN variables
+muni_landuse_data <- df_temp |>
+  # Want to remove the NFPs
+  filter(!between(class, 400, 499)) |>
+  # Calculate "FMV"
+  mutate(fmv = av/ar) |>
+  # Calculate AV values if no incentives (could have calculated with AR)
+  mutate(no_incent_av = fmv*.25) |>
+  # Reframe to relevant variables
+  group_by(year, clean_name, incent_prop, land_use) |>
+  summarize(n_pins = sum(n_pins), 
+          av = sum(av), 
+          fmv = sum(fmv))
+```
 
 
-
+```{r create-lag-variables}
 ###RETURN TO THIS SECTION TO CREATE MUNI LAGS###
   
   # Calculate lags RETURN TO THIS
@@ -97,12 +113,13 @@ muni_data <- df_temp |>
   # # Select Useful Variables
   # select(year, clean_name, incent_prop, land_use, n_pins, yoy_pin_delta, 
   #        av, yoy_av_delta, fmv, yoy_fmv_delta)
+```
 
+
+```{r create-county-trends}
 county_trends <- df_temp |> #see df_temp created above
-  # Filter to years 2010-2021: 65802 obs.
-  # Using 2010 instead of 2011 to calculate 2011 changes
-  filter(between(year, 2010, 2021)) |>
-  # Filter to industrial and commercial properties: 26969 obs.
+
+  # Filter to industrial and commercial properties
   filter(land_use %in% c("Industrial", "Commercial")) |>
   # Want to remove the NFPs: 24882 obs.
   filter(!between(class, 400, 499)) |>
@@ -112,7 +129,9 @@ county_trends <- df_temp |> #see df_temp created above
   mutate(no_incent_av = fmv*.25) |>
    # Reframe to relevant variables
   group_by(year, incent_prop, land_use) |>
-  summarize(n_pins = sum(n_pins), av = sum(av), fmv = sum(fmv),
+  summarize(n_pins = sum(n_pins), 
+            av = sum(av), 
+            fmv = sum(fmv),
             .groups = 'drop') |>
   # Calculate lags
   ungroup() |>
@@ -124,8 +143,13 @@ county_trends <- county_trends |>
          lag_av = lag(av),
          lag_fmv = lag(fmv)) |>
   ungroup() |>
-  # Remove 2010 from df
-  filter(year != 2010) |>
+  # # Remove 2010 from df
+  # filter(year != 2010) |>
+  
+  # Remove 2006 from df
+    filter(year != 2006) |>
+
+  
   # Select relevant variables
   select(year, land_use, incent_prop, n_pins, lag_n_pins, av, lag_av, 
          fmv, lag_fmv) |>
@@ -145,19 +169,30 @@ county_trends <- county_trends |>
 
 ```{r sum_tables}
 
-county_mean <- muni_data |>
-  filter(year == 2021) |>
-  filter(incent_prop == "Incentive") |>
-  #group_by(land_use) |>
-  mutate(avg_fmv = mean(fmv),
-         pins = sum(n_pins)) |>
-  #group_by(land_use) |>
-  #reframe(avg_fmv, pins) |>
-  distinct()
 
-# MEAN FMV: 69337420
-# MEAN IND. FMV: 86530848
-# MEAN COMM. FMV: 48511577
+county_mean <- muni_data |>
+  ungroup() |>
+  group_by(year) |>
+  summarize(cty_avg_fmv = mean(fmv, na.rm=TRUE),
+         cty_pins = sum(n_pins, na.rm=TRUE))
+
+county_landuse_mean <- muni_data |>
+  ungroup() |>
+  group_by(year, land_use) |>
+  summarize(landuse_avg_fmv = mean(fmv),
+         landuse_cty_pins = sum(n_pins))
+
+county_landuse_incentive_mean <- muni_data |>
+  ungroup() |>
+  group_by(year, land_use, incent_prop) |>
+  summarize(landuse_avg_fmv = mean(fmv),
+         landuse_cty_pins = sum(n_pins))
+
+# MEAN FMV: 69,337,420
+# MEAN IND. FMV: 86,530,848      AWM MEAN IND. number 2021:   $112,294,640
+#                                MEAN IND. INCENT. FMV :       $86,530,848
+# MEAN COMM. FMV: 48,511,577     AWM MEAN COMMERCIAL 2021:    $416,168,914
+#                                MEAN COM INCENT. FMV =        $48,511,577
 # Tot PINs: 3652
 # Comm. PINs.: 835
 # Ind. PINs: 2817

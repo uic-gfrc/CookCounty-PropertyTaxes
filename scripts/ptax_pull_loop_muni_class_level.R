@@ -366,6 +366,13 @@ joined_pin_data <- joined_pin_data %>%
  }
 
 
+# Rename Variables -------------------------------------------------------
+
+muni_class_summary <- muni_class_summary %>%
+  rename(clean_name = muni_c_clean_name, 
+         year = muni_c_year,
+         class = muni_c_class
+)
 # Export CSVs ------------------------------------------------------------
 
 

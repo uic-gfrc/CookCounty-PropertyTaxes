@@ -122,8 +122,8 @@ ptax_pins <- ptax_pins %>%
          class_group = case_when(
           (class_group == 5 & class %in% commercial_classes) ~ "5A",
           (class_group == 5 & class %in% industrial_classes) ~ "5B",
-          class_group == 7 &  class < 742 ~ "7-small",
-          class_group == 7 &  class >= 742 ~ "7-big",
+          class_group == 7 &  class < 742 ~ "7A",
+          class_group == 7 &  class >= 742 ~ "7B",
           (class_group == 8 & class %in% commercial_classes ) ~ "8A",
           (class_group == 8 & class %in% industrial_classes ) ~ "8B",
           TRUE ~ as.character(class_group))) %>%
@@ -594,7 +594,7 @@ muni_rate <- read_csv("./Output/ptaxsim_muni_level_2006-2022.csv") %>%
 ```
 
 ```{r create-muni-mc-table}
-incentive_majorclasses <- c("6", "7-small", "7-big", "8A", "8B")
+incentive_majorclasses <- c("6", "7A", "7B", "8A", "8B")
 
 muni_mc_table <- ptax_pins %>%
   left_join(muni_rate) %>%
@@ -642,7 +642,7 @@ muni_mc_table <- ptax_pins %>%
       class_group %in% incentive_majorclasses,
       (eav_taxed/loa)*0.25, eav_taxed),
     new_TEAV_noC6 = ifelse(class_group == "6", (eav_taxed/loa)*0.25 , eav_taxed),
-    new_TEAV_noC7 = ifelse(class_group %in% c("7-big", "7-small"), (eav_taxed/loa)*0.25, eav_taxed),
+    new_TEAV_noC7 = ifelse(class_group %in% c("7B", "7A"), (eav_taxed/loa)*0.25, eav_taxed),
     new_TEAV_noC8 = ifelse(class_group %in% c("8A", "8B"), (eav_taxed/loa)*0.25, eav_taxed),
     
     new_TEAV_vacant_noIncents = ifelse(class_group %in% incentive_majorclasses,
