@@ -49,8 +49,8 @@ commercial_classes <- c(401:435, 490, 491, 492, 496:499,
 industrial_classes <- c(480:489,493,
                         550:589, 593,
                         600:699,
-                        850:890, 893  %>% as.character()
-) %>% as.character()
+                        850:890, 893 ) %>% as.character()
+
 
 
 is.integer64 <- function(x){
@@ -127,7 +127,8 @@ for(i in years){
     mutate(class_code = as.character(class_code)) %>%
     filter(year == i) %>%
     select(-year) %>%
-    mutate(loa = as.numeric(loa)) %>% mutate(loa = ifelse(loa == 0, NA, loa))
+    mutate(loa = as.numeric(loa)) %>% 
+    mutate(loa = ifelse(loa == 0, NA, loa))
 
   # Tax Bills ---------------------------------------------------------------
 
@@ -158,10 +159,10 @@ for(i in years){
               tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE),           # revenue lost due to exemptions
               tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE),   # total rev before all exemptions
               tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE), # total rev after all exemptions
-              rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE),     # not used
-              rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE),       # not used
-              rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE),     # not used
-              tif_share = mean(tif_share, na.rm=TRUE),                # not used
+              rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE),     # not used currently
+              rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE),       # not used currently
+              rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE),     # not used currently
+              tif_share = mean(tif_share, na.rm=TRUE),                # not used currently
     )  %>%
     mutate(propclass_1dig = str_sub(class, 1, 1))
 
@@ -180,18 +181,17 @@ for(i in years){
 
     left_join(cook_pins, by = c("pin", "class")) %>%
 
-    # Future preps for potential future obtained loa's
+    # Future step for potential future obtained loa's
+    # Also takes care of different levels of assessment in past years
     left_join(ccao_loa, by = c("class" = "class_code")) %>%
 
     mutate(all_exemptions = exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner +
              exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 ,
-           abatements = exe_abate, #abatements get their own variable
+           abatements = exe_abate,          # abatements get their own variable
            fmv = av / loa,
-         #  fmv = ifelse(is.nan(fmv), 0, fmv)
            ) %>%
 
     # Create binary variables for exemptions
-
     mutate(zero_bill = ifelse(eav <= all_exemptions, 1, 0),
            has_HO_exemp = ifelse(exe_homeowner > 0, 1, 0),
            has_SF_exemp = ifelse(exe_senior > 0, 1, 0),
@@ -205,8 +205,6 @@ for(i in years){
     )
 
   rm(cook_pins)
-
-
 
 
   # change variable type to character so the join works.
@@ -245,8 +243,8 @@ joined_pin_data <- joined_pin_data %>%
          class_group = case_when(
            (class_group == 5 & class %in% commercial_classes) ~ "5A",
            (class_group == 5 & class %in% industrial_classes) ~ "5B",
-           class_group == 7 &  class < 742 ~ "7-small",
-           class_group == 7 &  class >= 742 ~ "7-big",
+           class_group == 7 &  class < 742 ~ "7A",    # developments less than $2 million
+           class_group == 7 &  class >= 742 ~ "7B",   # developments greater than $2 million
            (class_group == 8 & class %in% commercial_classes ) ~ "8A",
            (class_group == 8 & class %in% industrial_classes ) ~ "8B",
            TRUE ~ as.character(class_group))) %>%
@@ -255,7 +253,7 @@ joined_pin_data <- joined_pin_data %>%
       taxed_eav = final_tax_to_dist / tax_code_rate*100,
       total_value_eav = (final_tax_to_dist + final_tax_to_tif)/ tax_code_rate * 100 + all_exemptions + abatements,
 
-      taxed_av =  taxed_eav / eq_factor, # current value that taxing agencies can tax for their levies
+      taxed_av =  taxed_eav / eq_factor,     # current value that taxing agencies can tax for their levies
 
       ## taxable AV = equalized assessed value net TIF increments, gross exemptions.
       ## Used for calculating untaxable value further below
@@ -263,10 +261,7 @@ joined_pin_data <- joined_pin_data %>%
 
       ## FMV * assessment rate = AV
       taxed_fmv = taxed_av / loa,
-      #taxed_fmv = ifelse(is.nan(taxed_fmv), 0, taxed_fmv),
-
       fmv = av / loa,
-      #fmv = ifelse(is.nan(fmv), 0, fmv),
 
       ## untaxable value = exempt EAV from abatements and exemptions
       untaxable_value_eav = all_exemptions + abatements +
