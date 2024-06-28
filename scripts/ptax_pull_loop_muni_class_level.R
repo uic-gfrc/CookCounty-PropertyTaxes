@@ -356,7 +356,7 @@ joined_pin_data <- joined_pin_data %>%
     mutate(current_taxable_eav = final_tax_to_dist/(cur_comp_muni_rate/100),
            year = year_variable ) %>%
     select(year, clean_name, class, cur_comp_muni_rate, current_taxable_eav, everything()) %>%
-    setNames(paste0('muni_c_', names(.))) 
+    setNames(paste0('muni_c_', names(.)))
 
 
   # bind muni level yearly data together
@@ -366,15 +366,13 @@ joined_pin_data <- joined_pin_data %>%
  }
 
 
-# Rename Variables --------------------------------------------------------
-
-muni_class_summary <- muni_class_summary %>%
-  rename(clean_name = muni_c_clean_name,
-         year = muni_c_year,
-         class = muni_c_class
-         )
-
-
 # Export CSVs ------------------------------------------------------------
 
+
+
 write_csv(muni_class_summary, "./Output/ptaxsim_muni_class_summaries_2006-2022.csv")
+
+
+# write_csv(tc_mc_summaries, "./Output/ptaxsim_TC_MC_summaries_2006-2022.csv")
+# write_csv(tc_class_summaries, "./Output/ptaxsim_TC_Class_summaries_2006-2022.csv")
+

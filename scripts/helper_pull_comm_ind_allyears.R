@@ -101,7 +101,7 @@ comm_ind_tc_names <- comm_ind_tc_ever |>
   left_join(nicknames)
 
 comm_ind_pins_ever <- comm_ind_pins_ever |>
-  left_join(comm_ind_tc_temp, by = c("year", "tax_code_num"))
+  left_join(comm_ind_tc_names, by = c("year", "tax_code_num"))
 
 comm_ind_pins_ever <- comm_ind_pins_ever |>
   as.data.frame()
