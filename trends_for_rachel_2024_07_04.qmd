@@ -78,11 +78,13 @@ df_temp <- left_join(df_temp, ccao_loa, by = c("class" = "class_code", "year"))
 
 ## aggregated straight to county level
 
-```{r county-sums}
+```{r}
+#| label: tbl-county-sums
+#| tbl-cap: "County level stats aggregated from PIN level data. Includes ALL commercial and industrial PINs."
 
 q = c(.25, .5, .75)
 
-county_data <- df_temp |>
+county_summary <- df_temp |>
   # Filter to industrial and commercial properties: 26969 obs.
   filter(land_use %in% c("Industrial", "Commercial")) |>
   
@@ -107,14 +109,49 @@ county_data <- df_temp |>
             max_fmv_all = max(fmv, na.rm=TRUE),
             fmv_mean = mean(fmv, na.rm=TRUE),
             fmv = sum(fmv, na.rm=TRUE))
+
+county_summary %>% filter(year == 2021)
+```
+
+
+```{r}
+#| label: tbl-county-incentive-sums
+#| tbl-cap: "County level stats aggregated from PIN level data. Includes ALL commercial and industrial PINs."
+
+q = c(.25, .5, .75)
+
+county_incentives <- df_temp |>
+  # Filter to industrial and commercial properties: 26969 obs.
+  filter(land_use %in% c("Industrial", "Commercial")) |>
+  filter(incent_prop == "Incentive") |>
+
+  # Calculate "FMV"
+  mutate(fmv = av/ar) |>
+  mutate(fmv = ifelse(is.na(fmv), 0, fmv)) |>
+  group_by(year#, incent_prop, land_use 
+) |>
+  arrange(desc(fmv)) %>%
+  
+  summarize(n_pins = sum(n_pins, na.rm=TRUE), 
+            min_fmv_all = min(fmv, na.rm = TRUE),
+            quant25_all_fmv = round(quantile(fmv, probs = q[1])),
+            quant50_all_fmv = round(quantile(fmv, probs = q[2])),
+            quant75_all_fmv = round(quantile(fmv, probs = q[3])),
+            max_fmv_all = max(fmv, na.rm=TRUE),
+            fmv_mean = mean(fmv, na.rm=TRUE),
+            fmv = sum(fmv, na.rm=TRUE))
+
+county_incentives %>% filter(year == 2021)
+```
+```{r}
+#writexl::write_xlsx(muni_incentive_data, "muni_incentive_values.csv")
 ```
 
 ```{r}
-county_mean <- county_data
+#| label: tbl-create-county-trends
+#| tbl-cap: "**Industrial and Commercial Values** Aggregated from PIN level data. Includes ALL commercial and industrial PINs."
 
-```
 
-```{r create-county-trends}
 county_trends <- df_temp |> #see df_temp created above
 
   # Filter to industrial and commercial properties
@@ -134,7 +171,7 @@ county_trends <- df_temp |> #see df_temp created above
 
 county_trends <- county_trends |>
   group_by(incent_prop, land_use) |>
-  arrange(desc(year)) |>
+  arrange(year) |>
   mutate(lag_n_pins = lag(n_pins),
          lag_av = lag(av),
          lag_fmv = lag(fmv)) |>
@@ -156,12 +193,17 @@ county_trends <- county_trends |>
          yoy_fmv_delta = (fmv - lag_fmv) / lag_fmv) |>
    ungroup() 
 
+county_trends %>% filter(year == 2021)
 ```
 
 
 ## Aggregated to Muni level, then find average muni
 
-```{r muni-sums}
+```{r}
+#| label: tbl-muni-sums
+#| tbl-cap: "Industrial and Commercial Properties aggregated to Municipality level. Includes all industrial and commercial properties, both with and without incentives."
+
+
 # Make new and select relevant county-wide PIN variables
 muni_data <- df_temp |>
   # Filter to industrial and commercial properties: 26969 obs.
@@ -186,6 +228,14 @@ muni_data <- df_temp |>
             max_fmv_all = max(fmv, na.rm=TRUE),
             fmv_mean = mean(fmv, na.rm=TRUE),
             fmv = sum(fmv, na.rm=TRUE))
+muni_data %>% filter(year == 2021)
+```
+
+
+```{r}
+#| label: tbl-muni-landuse-sums
+#| tbl-cap: "Industrial and Commercial Properties aggregated to Municipality level. Includes all industrial and commercial properties, both with and without incentives."
+
 
 # Make new and select relevant county-wide PIN variables
 muni_landuse_data <- df_temp |>
@@ -204,28 +254,25 @@ muni_landuse_data <- df_temp |>
             max_fmv_all = max(fmv, na.rm=TRUE),
             fmv_mean = mean(fmv, na.rm=TRUE),
             fmv = sum(fmv, na.rm=TRUE))
+
+muni_landuse_data %>% filter(year == 2021)
 ```
 
 
-```{r sum_tables}
-
-county_muni <- muni_data |>
-  ungroup() |>
-  group_by(year) |>
-  summarize(
-         cty_pins = sum(n_pins, na.rm=TRUE),
-            min_fmv_all = min(min_fmv_all, na.rm = TRUE),
-            quant25_all_fmv = round(quantile(quant25_all, probs = q[1])),
-            quant50_all_fmv = round(quantile(quant50_all, probs = q[2])),
-            quant75_all_fmv = round(quantile(quant75_all, probs = q[3])),
-            max_fmv_all = max(max_fmv_all, na.rm=TRUE),
-            fmv_mean = mean(fmv_mean, na.rm=TRUE),
-            fmv = sum(fmv, na.rm=TRUE))
+```{r}
+#| label: tbl-muni-incentive-sums
+#| tbl-cap: "Incentive Class Industrial and Commercial Properties aggregated to Municipality level. Includes all industrial and commercial properties with incentives property classes (including 400-level properties)"
 
 
-county_muni_landuse_mean <- df_temp |>
-  ungroup() |>
-  group_by(year, land_use) |>
+# Make new and select relevant county-wide PIN variables
+muni_incentive_data <- df_temp |>
+  # Want to remove the NFPs
+  filter(incent_prop == "Incentive") |>
+  # Calculate "FMV"
+  mutate(fmv = av/ar) |>
+  mutate(fmv = ifelse(is.na(fmv), 0, fmv)) |>
+
+  group_by(year, clean_name) |>
   summarize(n_pins = sum(n_pins, na.rm=TRUE), 
             min_fmv_all = min(fmv, na.rm = TRUE),
             quant25_all_fmv = round(quantile(fmv, probs = q[1])),
@@ -235,12 +282,135 @@ county_muni_landuse_mean <- df_temp |>
             fmv_mean = mean(fmv, na.rm=TRUE),
             fmv = sum(fmv, na.rm=TRUE))
 
+muni_incentive_data %>% filter(year == 2021)
+```
 
-county_landuse_incentive_mean <- muni_data |>
+### Find "Average" Municipality
+
+
+```{r }
+#| label: tbl-countyfrommuni
+#| tbl-cap: "For all commercial and industrial PINs. County level stats created from the aggregated municipalities. "
+
+
+county_total_from_muni_data <- muni_data |>
+  group_by(year) |>
+  summarize(
+         cty_pins = sum(n_pins, na.rm=TRUE),
+            min_fmv_all = min(min_fmv_all, na.rm = TRUE),
+            quant25_all_fmv = round(quantile(quant25_all_fmv, probs = q[1])),
+            quant50_all_fmv = round(quantile(quant50_all_fmv, probs = q[2])),
+            quant75_all_fmv = round(quantile(quant75_all_fmv, probs = q[3])),
+            max_fmv_all = max(max_fmv_all, na.rm=TRUE),
+            fmv_mean = mean(fmv_mean, na.rm=TRUE),
+            fmv = sum(fmv, na.rm=TRUE))
+
+county_total_from_muni_data %>% filter(year == 2021)
+```
+
+```{r}
+county_incent_from_munis <- muni_incentive_data %>%
+   group_by(year) |>
+  summarize(
+     n_munis = n(),
+         cty_pins = sum(n_pins, na.rm=TRUE),
+            min_fmv_all = min(min_fmv_all, na.rm = TRUE),
+            quant25_all_fmv = round(quantile(quant25_all_fmv, probs = q[1])),
+            quant50_all_fmv = round(quantile(quant50_all_fmv, probs = q[2])),
+            quant75_all_fmv = round(quantile(quant75_all_fmv, probs = q[3])),
+            max_fmv_all = max(max_fmv_all, na.rm=TRUE),
+            fmv_mean = mean(fmv_mean, na.rm=TRUE),
+            fmv = sum(fmv, na.rm=TRUE), 
+        
+         )
+county_incent_from_munis %>% filter(year == 2021)
+```
+
+```{r }
+#| label: tbl-countyfrommuni-incentiveprops
+#| tbl-cap: "For all commercial and industrial PINs. County level stats created from the aggregated municipalities. "
+
+county_landuse_incentives <- muni_landuse_data |>
+  filter(incent_prop == "Incentive") |>
+  group_by(year, land_use) |>
+  summarize(
+         cty_pins = sum(n_pins, na.rm=TRUE),
+            min_fmv_all = min(min_fmv_all, na.rm = TRUE),
+            quant25_all_fmv = round(quantile(quant25_all_fmv, probs = q[1])),
+            quant50_all_fmv = round(quantile(quant50_all_fmv, probs = q[2])),
+            quant75_all_fmv = round(quantile(quant75_all_fmv, probs = q[3])),
+            max_fmv_all = max(max_fmv_all, na.rm=TRUE),
+            fmv_mean = mean(fmv_mean, na.rm=TRUE),
+            fmv = sum(fmv, na.rm=TRUE),
+         muni_count = n()) |>
   ungroup() |>
-  group_by(year, land_use, incent_prop) |>
-  summarize(landuse_avg_fmv = mean(fmv),
-         landuse_cty_pins = sum(n_pins))
+    group_by(year) |>
+  mutate(
+         tot_cty_pins = sum(cty_pins, na.rm=TRUE),
+            tot_min_fmv_all = min(min_fmv_all, na.rm = TRUE),
+            tot_quant25_all_fmv = round(quantile(quant25_all_fmv, probs = q[1], na.rm=TRUE)),
+            tot_quant50_all_fmv = round(quantile(quant50_all_fmv, probs = q[2], na.rm=TRUE)),
+            tot_quant75_all_fmv = round(quantile(quant75_all_fmv, probs = q[3], na.rm=TRUE)),
+            tot_max_fmv_all = max(max_fmv_all, na.rm=TRUE),
+            tot_fmv_mean = mean(fmv_mean, na.rm=TRUE),
+            tot_fmv = sum(fmv, na.rm=TRUE))
+county_landuse_incentives %>% filter(year == 2021)
+```
+
+```{r }
+#| label: tbl-countyfrommuni-incentiveprops-together
+#| tbl-cap: "For all incentive commercial and industrial PINs. County level stats created from the aggregated municipalities. "
+
+county_landuse_incentives <- muni_landuse_data |>
+  filter(incent_prop == "Incentive") |>
+  group_by(year) |>
+  summarize(
+         cty_pins = sum(n_pins, na.rm=TRUE),
+            min_fmv_all = min(min_fmv_all, na.rm = TRUE),
+            quant25_all_fmv = round(quantile(quant25_all_fmv, probs = q[1])),
+            quant50_all_fmv = round(quantile(quant50_all_fmv, probs = q[2])),
+            quant75_all_fmv = round(quantile(quant75_all_fmv, probs = q[3])),
+            max_fmv_all = max(max_fmv_all, na.rm=TRUE),
+            fmv_mean = mean(fmv_mean, na.rm=TRUE),
+            fmv = sum(fmv, na.rm=TRUE)) |>
+  ungroup() |>
+    group_by(year) |>
+  mutate(
+         tot_cty_pins = sum(cty_pins, na.rm=TRUE),
+            tot_min_fmv_all = min(min_fmv_all, na.rm = TRUE),
+            tot_quant25_all_fmv = round(quantile(quant25_all_fmv, probs = q[1])),
+            tot_quant50_all_fmv = round(quantile(quant50_all_fmv, probs = q[2])),
+            tot_quant75_all_fmv = round(quantile(quant75_all_fmv, probs = q[3])),
+            tot_max_fmv_all = max(max_fmv_all, na.rm=TRUE),
+            tot_fmv_mean = mean(fmv_mean, na.rm=TRUE),
+            tot_fmv = sum(fmv, na.rm=TRUE))
+
+county_landuse_incentives %>% filter(year == 2021)
+```
+
+
+
+## 2021 Summary stats
+
+```{r}
+# county_muni_landuse_mean <- df_temp |>
+#   ungroup() |>
+#   group_by(year, land_use) |>
+#   summarize(n_pins = sum(n_pins, na.rm=TRUE), 
+#             min_fmv_all = min(fmv, na.rm = TRUE),
+#             quant25_all_fmv = round(quantile(fmv, probs = q[1])),
+#             quant50_all_fmv = round(quantile(fmv, probs = q[2])),
+#             quant75_all_fmv = round(quantile(fmv, probs = q[3])),
+#             max_fmv_all = max(fmv, na.rm=TRUE),
+#             fmv_mean = mean(fmv, na.rm=TRUE),
+#             fmv = sum(fmv, na.rm=TRUE))
+
+
+# county_landuse_incentive_mean <- muni_data |>
+#   ungroup() |>
+#   group_by(year, land_use, incent_prop) |>
+#   summarize(landuse_avg_fmv = mean(fmv),
+#          landuse_cty_pins = sum(n_pins))
 
 # MEAN FMV: 69,337,420
 # MEAN IND. FMV: 86,530,848      AWM MEAN IND. number 2021:   $112,294,640
@@ -251,16 +421,15 @@ county_landuse_incentive_mean <- muni_data |>
 # Comm. PINs.: 835
 # Ind. PINs: 2817
   
-muni_medians <- muni_data |>
+muni_medians <- muni_landuse_data |>
   filter(year == 2021) |>
   filter(incent_prop == "Incentive") |>
   filter(land_use == "Industrial") |>
   group_by(clean_name, land_use) |>
-  mutate(pins = sum(n_pins),
-         fmv = sum(fmv)) |>  
-  reframe(clean_name, land_use, pins, fmv) |>
-  arrange(fmv) |>
-  distinct()
+  summarize(pins = sum(n_pins),
+         fmv = sum(fmv),
+         mean_fmv =mean(fmv))
+
 
 #### MEDIANS ####
 
@@ -272,7 +441,7 @@ muni_medians <- muni_data |>
 ## MEDIAN PINs (comm): 8 (Glenwood)
   
 
-sum_pins <- muni_data |>
+sum_pins <- muni_landuse_data |>
   filter(year == 2021) |>
   filter(incent_prop == "Incentive") |>
   group_by(clean_name) |>
@@ -283,7 +452,7 @@ sum_pins <- muni_data |>
   distinct() |>
   head(11)
 
-sum_fmv <- muni_data |>
+sum_fmv <- muni_landuse_data |>
   filter(year == 2021) |>
   filter(incent_prop == "Incentive") |>
   group_by(clean_name) |>
@@ -294,7 +463,7 @@ sum_fmv <- muni_data |>
   distinct() |>
   head(11)
 
-sum_ind_pin <- muni_data |>
+sum_ind_pin <- muni_landuse_data |>
   filter(year == 2021) |>
   filter(incent_prop == "Incentive") |>
   filter(land_use == "Industrial") |>
@@ -306,7 +475,7 @@ sum_ind_pin <- muni_data |>
   distinct() |>
   head(11)
 
-sum_ind_fmv <- muni_data |>
+sum_ind_fmv <- muni_landuse_data |>
   filter(year == 2021) |>
   filter(incent_prop == "Incentive") |>
   filter(land_use == "Industrial") |>
@@ -318,7 +487,7 @@ sum_ind_fmv <- muni_data |>
   distinct() |>
   head(11)
 
-sum_comm_pin <- muni_data |>
+sum_comm_pin <- muni_landuse_data |>
   filter(year == 2021) |>
   filter(incent_prop == "Incentive") |>
   filter(land_use == "Commercial") |>
@@ -330,7 +499,7 @@ sum_comm_pin <- muni_data |>
   distinct() |>
   head(11)
 
-sum_comm_fmv <- muni_data |>
+sum_comm_fmv <- muni_landuse_data |>
   filter(year == 2021) |>
   filter(incent_prop == "Incentive") |>
   filter(land_use == "Commercial") |>
@@ -344,13 +513,12 @@ sum_comm_fmv <- muni_data |>
 
 sums_table <- bind_cols(sum_pins, sum_fmv, sum_ind_pin, sum_ind_fmv, sum_comm_pin, sum_comm_fmv)
 
-write_csv(sums_table, "sums_table.csv")
+write_csv(sums_table, "sums_table2021.csv")
 
 sums_table
 
 ```
 
-## 2021 Summary stats
 
 ```{r perc_tables}
 # What if I log it?
@@ -364,7 +532,7 @@ sums_table
 # Ind. PINs %: 0.029419137
  
 
-county_mean_df <- muni_data |>
+county_mean_df <- muni_landuse_data |>
   filter(year == 2021) |>
   mutate(county_pins = sum(n_pins),
          county_fmv = sum(fmv)) |>
@@ -390,7 +558,7 @@ county_mean_df <- muni_data |>
 ## MEDIAN % PINs (ind): 0.18181818
 ## MEDIAN % PINs (comm): 0.013245033
 
-med_percs_df <- muni_data |>
+med_percs_df <- muni_landuse_data |>
   filter(year == 2021) |>
   filter(land_use == "Commercial") |>
   group_by(clean_name) |>
@@ -419,7 +587,7 @@ med_percs_df <- muni_data |>
 
 #############
 
-pin_perc <- muni_data |>
+pin_perc <- muni_landuse_data |>
   filter(year == 2021) |>
   group_by(clean_name) |>
   mutate(muni_pins = sum(n_pins),
@@ -443,7 +611,7 @@ pin_perc <- muni_data |>
   distinct() |>
   head(10)
 
-perc_ind_pin <- muni_data |>
+perc_ind_pin <- muni_landuse_data |>
   filter(year == 2021) |>
   filter(land_use == "Industrial") |>
   group_by(clean_name) |>
@@ -468,7 +636,7 @@ perc_ind_pin <- muni_data |>
   distinct() |>
   head(10)
 
-perc_comm_pin <- muni_data |>
+perc_comm_pin <- muni_landuse_data |>
   filter(land_use == "Commercial") |>
   filter(year == 2021) |>
   group_by(clean_name) |>
@@ -496,7 +664,7 @@ perc_comm_pin <- muni_data |>
 
 
 ```{r perc_tables-fmv}
-fmv_perc <- muni_data |>
+fmv_perc <- muni_landuse_data |>
   filter(year == 2021) |>
   group_by(clean_name) |>
   mutate(muni_pins = sum(n_pins),
@@ -520,7 +688,7 @@ fmv_perc <- muni_data |>
   distinct() |>
   head(10)
 
-fmv_ind_perc <- muni_data |>
+fmv_ind_perc <- muni_landuse_data |>
   filter(land_use == "Industrial") |>
   filter(year == 2021) |>
   group_by(clean_name) |>
@@ -545,7 +713,7 @@ fmv_ind_perc <- muni_data |>
   distinct() |>
   head(10)
 
-fmv_comm_perc <- muni_data |>
+fmv_comm_perc <- muni_landuse_data |>
   filter(land_use == "Commercial") |>
   filter(year == 2021) |>
   group_by(clean_name) |>
@@ -572,16 +740,142 @@ fmv_comm_perc <- muni_data |>
 
 perc_table <- bind_cols(pin_perc, perc_ind_pin, perc_comm_pin, fmv_perc, fmv_ind_perc, fmv_comm_perc)
 
-write_csv(perc_table, "perc_table.csv")
-
+write_csv(perc_table, "perc_table2021.csv")
+perc_table
 ```
 
 
 ## 2022 Summary stats
 
+```{r export-sums2022}
+# county_muni_landuse_mean <- df_temp |>
+#   ungroup() |>
+#   group_by(year, land_use) |>
+#   summarize(n_pins = sum(n_pins, na.rm=TRUE), 
+#             min_fmv_all = min(fmv, na.rm = TRUE),
+#             quant25_all_fmv = round(quantile(fmv, probs = q[1])),
+#             quant50_all_fmv = round(quantile(fmv, probs = q[2])),
+#             quant75_all_fmv = round(quantile(fmv, probs = q[3])),
+#             max_fmv_all = max(fmv, na.rm=TRUE),
+#             fmv_mean = mean(fmv, na.rm=TRUE),
+#             fmv = sum(fmv, na.rm=TRUE))
+
+
+# county_landuse_incentive_mean <- muni_data |>
+#   ungroup() |>
+#   group_by(year, land_use, incent_prop) |>
+#   summarize(landuse_avg_fmv = mean(fmv),
+#          landuse_cty_pins = sum(n_pins))
+
+# MEAN FMV: 69,337,420
+# MEAN IND. FMV: 86,530,848      AWM MEAN IND. number 2021:   $112,294,640
+#                                MEAN IND. INCENT. FMV :       $86,530,848
+# MEAN COMM. FMV: 48,511,577     AWM MEAN COMMERCIAL 2021:    $416,168,914
+#                                MEAN COM INCENT. FMV =        $48,511,577
+# Tot PINs: 3652
+# Comm. PINs.: 835
+# Ind. PINs: 2817
+  
+muni_medians <- muni_landuse_data |>
+  filter(year == 2022) |>
+  filter(incent_prop == "Incentive") |>
+  filter(land_use == "Industrial") |>
+  group_by(clean_name, land_use) |>
+  summarize(pins = sum(n_pins),
+         fmv = sum(fmv),
+         mean_fmv =mean(fmv))
+
+
+#### MEDIANS ####
+
+## MEDIAN FMV (all): 22256970 (Blue Island)
+## MEDIAN FMV (ind): 24673650 (Calumet City)
+## MEDIAN FMV (comm): 12054120 (Midlothian)
+## MEDIAN PINs (all): 17 (Maywood, Summit)
+## MEDIAN PINs (ind): 19 (Northlake)
+## MEDIAN PINs (comm): 8 (Glenwood)
+  
+
+sum_pins <- muni_landuse_data |>
+  filter(year == 2022) |>
+  filter(incent_prop == "Incentive") |>
+  group_by(clean_name) |>
+  mutate(pins = sum(n_pins),
+         fmv = sum(fmv)) |>
+  reframe(clean_name, pins, fmv) |>
+  arrange(desc(pins)) |>
+  distinct() |>
+  head(11)
+
+sum_fmv <- muni_landuse_data |>
+  filter(year == 2022) |>
+  filter(incent_prop == "Incentive") |>
+  group_by(clean_name) |>
+  mutate(pins = sum(n_pins),
+         fmv = sum(fmv)) |>
+  reframe(clean_name, pins, fmv) |>
+  arrange(desc(fmv)) |>
+  distinct() |>
+  head(11)
+
+sum_ind_pin <- muni_landuse_data |>
+  filter(year == 2022) |>
+  filter(incent_prop == "Incentive") |>
+  filter(land_use == "Industrial") |>
+  group_by(clean_name) |>
+  mutate(pins = sum(n_pins),
+         fmv = sum(fmv)) |>
+  reframe(clean_name, land_use, pins, fmv) |>
+  arrange(desc(pins)) |>
+  distinct() |>
+  head(11)
+
+sum_ind_fmv <- muni_landuse_data |>
+  filter(year == 2022) |>
+  filter(incent_prop == "Incentive") |>
+  filter(land_use == "Industrial") |>
+  group_by(clean_name) |>
+  mutate(pins = sum(n_pins),
+         fmv = sum(fmv)) |>
+  reframe(clean_name, land_use, pins, fmv) |>
+  arrange(desc(fmv)) |>
+  distinct() |>
+  head(11)
+
+sum_comm_pin <- muni_landuse_data |>
+  filter(year == 2022) |>
+  filter(incent_prop == "Incentive") |>
+  filter(land_use == "Commercial") |>
+  group_by(clean_name) |>
+  mutate(pins = sum(n_pins),
+         fmv = sum(fmv)) |>
+  reframe(clean_name, land_use, pins, fmv) |>
+  arrange(desc(pins)) |>
+  distinct() |>
+  head(11)
+
+sum_comm_fmv <- muni_landuse_data |>
+  filter(year == 2022) |>
+  filter(incent_prop == "Incentive") |>
+  filter(land_use == "Commercial") |>
+  group_by(clean_name) |>
+  mutate(pins = sum(n_pins),
+         fmv = sum(fmv)) |>
+  reframe(clean_name, land_use, pins, fmv) |>
+  arrange(desc(fmv)) |>
+  distinct() |>
+  head(11)
+
+sums_table <- bind_cols(sum_pins, sum_fmv, sum_ind_pin, sum_ind_fmv, sum_comm_pin, sum_comm_fmv)
+
+write_csv(sums_table, "sums_table2022.csv")
+
+sums_table
+
+```
+
 ```{r perc_tables2022}
-# What if I log it?
-# 
+
 
 # MEAN FMV %: 0.1027012
 # MEAN IND. FMV %: 0.07020653
@@ -591,7 +885,7 @@ write_csv(perc_table, "perc_table.csv")
 # Ind. PINs %: 0.029419137
  
 
-county_mean_df <- muni_data |>
+county_mean_df <- muni_landuse_data |>
   filter(year == 2022) |>
   mutate(county_pins = sum(n_pins),
          county_fmv = sum(fmv)) |>
@@ -617,7 +911,7 @@ county_mean_df <- muni_data |>
 ## MEDIAN % PINs (ind): 0.18181818
 ## MEDIAN % PINs (comm): 0.013245033
 
-med_percs_df <- muni_data |>
+med_percs_df <- muni_landuse_data |>
   filter(year == 2022) |>
   filter(land_use == "Commercial") |>
   group_by(clean_name) |>
@@ -646,7 +940,7 @@ med_percs_df <- muni_data |>
 
 #############
 
-pin_perc <- muni_data |>
+pin_perc <- muni_landuse_data |>
   filter(year == 2022) |>
   group_by(clean_name) |>
   mutate(muni_pins = sum(n_pins),
@@ -670,7 +964,7 @@ pin_perc <- muni_data |>
   distinct() |>
   head(10)
 
-perc_ind_pin <- muni_data |>
+perc_ind_pin <- muni_landuse_data |>
   filter(year == 2022) |>
   filter(land_use == "Industrial") |>
   group_by(clean_name) |>
@@ -695,7 +989,7 @@ perc_ind_pin <- muni_data |>
   distinct() |>
   head(10)
 
-perc_comm_pin <- muni_data |>
+perc_comm_pin <- muni_landuse_data |>
   filter(land_use == "Commercial") |>
   filter(year == 2022) |>
   group_by(clean_name) |>
@@ -723,7 +1017,7 @@ perc_comm_pin <- muni_data |>
 
 
 ```{r perc_tables-fmv2022}
-fmv_perc <- muni_data |>
+fmv_perc <- muni_landuse_data |>
   filter(year == 2022) |>
   group_by(clean_name) |>
   mutate(muni_pins = sum(n_pins),
@@ -747,7 +1041,7 @@ fmv_perc <- muni_data |>
   distinct() |>
   head(10)
 
-fmv_ind_perc <- muni_data |>
+fmv_ind_perc <- muni_landuse_data |>
   filter(land_use == "Industrial") |>
   filter(year == 2022) |>
   group_by(clean_name) |>
@@ -772,7 +1066,7 @@ fmv_ind_perc <- muni_data |>
   distinct() |>
   head(10)
 
-fmv_comm_perc <- muni_data |>
+fmv_comm_perc <- muni_landuse_data |>
   filter(land_use == "Commercial") |>
   filter(year == 2022) |>
   group_by(clean_name) |>
@@ -799,6 +1093,7 @@ fmv_comm_perc <- muni_data |>
 
 perc_table <- bind_cols(pin_perc, perc_ind_pin, perc_comm_pin, fmv_perc, fmv_ind_perc, fmv_comm_perc)
 
+perc_table
 write_csv(perc_table, "perc_table_2022.csv")
 
 ```
@@ -813,6 +1108,7 @@ write_csv(perc_table, "perc_table_2022.csv")
 ```{r}
 #| label: fig-cook-PC-change
 #| fig-cap: "Annual Change in Industrial and Commercial PIN Counts"
+#| eval: false
 
 county_trends |>
   filter(land_use == "Industrial" | land_use == "Commercial") |>
