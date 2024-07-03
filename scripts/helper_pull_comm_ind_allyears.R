@@ -16,8 +16,9 @@ nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
 
 ## Pulls ALL distinct PINs that existed between 2006 and 2022.
 ## Syntax: "*" means "all the things" "pin" references the table w/in PTAXSIM DB
-## Takes a while to run. (~1 min w/ 64GB RAM or 28GB M2 Chip)
-## ~31.47 million obs. (PIN-YEAR combos)
+        ##  OLD COMMENT: Takes a while to run. (~1 min w/ 64GB RAM or 28GB M2 Chip)
+        ## ~31.47 million obs. when including all PINs each year (PIN-YEAR combos)
+## 1,661,125 PINs when only including classes 400 to 899
 ## Change to numeric to merge w/ CDE
 
 cook_pins <- DBI::dbGetQuery(
@@ -25,6 +26,8 @@ cook_pins <- DBI::dbGetQuery(
   glue_sql(
     "SELECT DISTINCT *
   FROM pin
+  WHERE class > 399 
+  AND class < 900
   ",
   .con = ptaxsim_db_conn
   )) |>
@@ -32,7 +35,9 @@ cook_pins <- DBI::dbGetQuery(
 
 ## Filter to just industrial/commercial properties INCLUDING relevant Maj. Class 4
 ## ~1.6mil obs
-## MVH NOTE: WE SHOULD RENAME ALEA_CAT TO SOMETHING MORE, ERRR, OBJECTIVE SOUNDING.
+
+## Note: Alea_cat is a variable created by Alea in the class_dict file that indicates land use type.
+## Land use type is based off of the description provided for property classes.
 
 comm_ind_pins <- cook_pins |>
   left_join(cde, by = "class") |>
@@ -108,5 +113,6 @@ comm_ind_pins_ever <- comm_ind_pins_ever |>
 
 ## Write CSV to Output Folder
 
-write_csv(comm_ind_pins_ever, "./Output/comm_ind_PINs_2006-2022.csv")
+# write_csv(comm_ind_pins_ever, "./Output/comm_ind_PINs_2006-2022.csv")
 
+write_csv(com_ind_descriptives, "./Output/com_ind_descriptives.csv", na = "")
