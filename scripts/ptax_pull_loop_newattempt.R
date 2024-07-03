@@ -38,6 +38,8 @@ muni_level_summary <- NULL
 
 muni_MC_summary <- NULL
 
+muni_proptype_summary <- NULL
+
 muni_class_summary <- NULL
 
 
@@ -245,8 +247,8 @@ joined_pin_data <- joined_pin_data %>%
          class_group = case_when(
            (class_group == 5 & class %in% commercial_classes) ~ "5A",
            (class_group == 5 & class %in% industrial_classes) ~ "5B",
-           class_group == 7 &  class < 742 ~ "7-small",
-           class_group == 7 &  class >= 742 ~ "7-big",
+           class_group == 7 &  class < 742 ~ "7A",
+           class_group == 7 &  class >= 742 ~ "7B",
            (class_group == 8 & class %in% commercial_classes ) ~ "8A",
            (class_group == 8 & class %in% industrial_classes ) ~ "8B",
            TRUE ~ as.character(class_group))) %>%
@@ -369,7 +371,15 @@ if(is.data.frame(county_sums)){county_sums <- rbind(county_sums, county_sums2)}e
   muni_level_summary2 <- joined_pin_data %>%
     ungroup() %>%
     group_by(clean_name) %>%
+    arrange(fmv) %>%
     summarize(
+      mean_fmv_all = mean(fmv),
+      median_fmv_all = median(fmv),
+      min_fmv_all = min(fmv),
+      quant25_all_fmv = round(quantile(fmv, probs = q[1])), 
+      quant50_all_fmv = round(quantile(fmv, probs = q[2])),
+      quant75_all_fmv = round(quantile(fmv, probs = q[3])),
+      max_fmv_all = max(av),
       muni_PC_total = n(),
       muni_PC_residential = sum(ifelse(class %in% c(200:399), 1, 0), na.rm = TRUE),
       muni_PC_industrial  = sum(ifelse(class %in% industrial_classes, 1, 0), na.rm = TRUE),
@@ -410,6 +420,7 @@ if(is.data.frame(county_sums)){county_sums <- rbind(county_sums, county_sums2)}e
       has_VR_exemp = sum(has_VR_exemp, na.rm=TRUE),
       has_DV_exemp = sum(has_DV_exemp, na.rm=TRUE),
       has_AB_exemp = sum(has_AB_exemp, na.rm=TRUE)) %>%
+    
 
     mutate(
       year = year_variable,
@@ -433,6 +444,88 @@ if(is.data.frame(county_sums)){county_sums <- rbind(county_sums, county_sums2)}e
 # bind muni level yearly data together
 if(is.data.frame(muni_level_summary)){muni_level_summary <- rbind(muni_level_summary, muni_level_summary2)}else{muni_level_summary <- muni_level_summary2}
 rm(muni_level_summary2)
+
+
+## Muni Property Type Level --------------------------------------------------------------
+
+muni_proptype_summary2 <- joined_pin_data %>%
+  ungroup() %>%
+  group_by(clean_name, incent_type) %>%
+  arrange(fmv) %>%
+  summarize(
+    mean_fmv_all = mean(fmv),
+    median_fmv_all = median(fmv),
+    min_fmv_all = min(fmv),
+    quant25_all_fmv = round(quantile(fmv, probs = q[1])), 
+    quant50_all_fmv = round(quantile(fmv, probs = q[2])),
+    quant75_all_fmv = round(quantile(fmv, probs = q[3])),
+    max_fmv_all = max(av),
+    muni_PC_total = n(),
+    muni_PC_residential = sum(ifelse(class %in% c(200:399), 1, 0), na.rm = TRUE),
+    muni_PC_industrial  = sum(ifelse(class %in% industrial_classes, 1, 0), na.rm = TRUE),
+    muni_PC_commercial = sum(ifelse(class %in% commercial_classes, 1, 0), na.rm = TRUE),
+    muni_PC_inTIF = sum(in_tif, na.rm=TRUE),
+    muni_PC_withincents = sum(ifelse(between(class, 600, 900), 1, 0), na.rm = TRUE),
+    muni_PC_incents_inTIFs = sum(ifelse(between(class, 600, 900) & in_tif == 1, 1, 0), na.rm = TRUE),
+    muni_PC_claimed_exe = sum(ifelse(all_exemptions > 0, 1, 0)),
+    muni_fmv_incentive = sum(ifelse(class >=600 & class <=900, fmv, 0), na.rm = TRUE),
+    muni_fmv_taxed = sum(taxed_fmv, na.rm=TRUE),
+    muni_fmv_inTIF = sum(fmv_inTIF, na.rm=TRUE),
+    muni_fmv_exempt = sum(all_exemptions/eq_factor/loa, na.rm=TRUE),
+    muni_fmv_abated = sum(abatements/eq_factor/loa, na.rm = TRUE),
+    muni_fmv_tif_increment = sum(fmv_tif_increment, na.rm=TRUE),
+    muni_fmv_abates_inTIF = sum(ifelse(between(class, 600, 900) & in_tif == 1 & abatements >0 , fmv, 0), na.rm = TRUE),
+    muni_fmv_incents_inTIF = sum(ifelse(between(class, 600, 900) & in_tif == 1, fmv, 0), na.rm = TRUE),
+    muni_fmv_untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
+    
+    muni_fmv = sum(fmv, na.rm=TRUE),
+    muni_fmv_residential = sum(ifelse(class %in% c(200:399), fmv, 0), na.rm = TRUE),
+    muni_fmv_industrial = sum(ifelse(class %in% industrial_classes, fmv, 0), na.rm = TRUE),
+    muni_fmv_commercial = sum(ifelse(class %in% commercial_classes, fmv, 0), na.rm = TRUE),
+    muni_zero_bill = sum(zero_bill, na.rm=TRUE),
+    muni_levy = sum(final_tax_to_dist, na.rm=TRUE),
+    muni_current_rate_avg = mean(tax_code_rate, na.rm=TRUE),
+    muni_eav_taxed = sum(taxed_av*eq_factor, na.rm=TRUE),
+    muni_min_TC_rate = min(tax_code_rate),
+    muni_max_TC_rate = max(tax_code_rate),
+    muni_avg_C2_bill_noexe = mean(ifelse(between(class,200,299) & all_exemptions == 0, (final_tax_to_dist + final_tax_to_tif), NA), na.rm=TRUE),
+    muni_avg_C2_bill_withexe = mean(ifelse(between(class,200,299) & all_exemptions > 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
+    muni_eav = sum(eav, na.rm=TRUE),
+    zero_bills = sum(zero_bill, na.rm=TRUE),
+    has_HO_exemp = sum(has_HO_exemp, na.rm=TRUE),
+    has_SF_exemp = sum(has_SF_exemp, na.rm=TRUE),
+    has_FR_exemp = sum(has_FR_exemp, na.rm=TRUE),
+    has_LTHO_exemp = sum(has_LTHO_exemp, na.rm=TRUE),
+    has_DI_exemp = sum(has_DI_exemp, na.rm=TRUE),
+    has_VR_exemp = sum(has_VR_exemp, na.rm=TRUE),
+    has_DV_exemp = sum(has_DV_exemp, na.rm=TRUE),
+    has_AB_exemp = sum(has_AB_exemp, na.rm=TRUE)) %>%
+  
+  
+  mutate(
+    year = year_variable,
+    muni_range_TC_rate = muni_max_TC_rate - muni_min_TC_rate,
+    muni_effective_rate =  muni_levy / muni_fmv * 100,
+    muni_pct_eav_taxed = muni_levy / muni_eav_taxed,
+    
+    pct_fmv_taxed = muni_fmv_taxed / muni_fmv,
+    pct_fmv_w_incentclass = muni_fmv_incentive / muni_fmv,
+    pct_fmv_inTIF = muni_fmv_inTIF / muni_fmv,
+    pct_fmv_in_tif_increment = muni_fmv_tif_increment / muni_fmv,
+    pct_fmv_untaxable_value = muni_fmv_untaxable_value / muni_fmv,
+    pct_fmv_incents_inTIFs = muni_fmv_incents_inTIF / muni_fmv ) %>%
+  mutate(across(starts_with("muni_fmv_"), round, digits = 0)) %>%
+  
+  mutate(across(contains(c("rate", "pct","bill")), round, digits = 3) ) %>%
+  
+  select(year, clean_name, everything())
+
+
+# bind muni level yearly data together
+if(is.data.frame(muni_proptype_summary)){muni_proptype_summary <- rbind(muni_proptype_summary, muni_proptype_summary2)}else{muni_proptype_summary <- muni_proptype_summary2}
+rm(muni_proptype_summary2)
+
+
 
 
 
