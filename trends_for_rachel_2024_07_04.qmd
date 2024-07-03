@@ -41,14 +41,12 @@ set_flextable_defaults(theme_fun = theme_vanilla,
 options(DT.options = list())
 
 
-ccao_loa <- read_csv("./inputs/ccao_loa.csv") %>% 
-  mutate(class_code = as.character(class_code))
 
-```
-
-
-```{r load_data}
-#| output: FALSE
+ccao_loa <- read_csv("./inputs/ccao_loa.csv") %>%
+    mutate(class_code = as.character(class_code)) %>%
+    mutate(loa = as.numeric(loa)) %>% 
+    mutate(loa = ifelse(loa == 0, NA, loa)) |>
+  rename(ar = loa)
 
 # Read in muni class level data 2006-2021: 87610 obs of 41 variables
 df <- read_csv("./Output/ptaxsim_muni_class_summaries_2006-2022.csv") |>
@@ -63,45 +61,58 @@ class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv") |>
          incent_prop, 
        #   ar = assess_ratio This is only the LOA for recent tax years. Rates have changed over time! 
          ) |>
-    mutate(class = as.character(class))|>
-
-  as.data.frame()
+    mutate(class = as.character(class))
 
 # Join summaries w/ class dictionary
 df_temp <- left_join(df, class_dict, by = "class")
 df_temp <- left_join(df_temp, ccao_loa, by = c("class" = "class_code", "year"))
-
-# Make new and select relevant county-wide PIN variables
-muni_data <- df_temp |>
-  # Filter to industrial and commercial properties: 26969 obs.
-  filter(land_use %in% c("Industrial", "Commercial")) |>
-  # Want to remove the NFPs
-  filter(!between(class, 400, 499)) |>
-  # Calculate "FMV"
-  mutate(fmv = av/ar) |>
-  # Calculate AV values if no incentives (could have calculated with AR)
-  mutate(no_incent_av = fmv*.25) |>
-  # Reframe to relevant variables
-  group_by(year, clean_name, incent_prop, land_use) |>
-  reframe(n_pins = sum(n_pins), 
-          av = sum(av), 
-          fmv = sum(fmv))
-
-# Make new and select relevant county-wide PIN variables
-muni_landuse_data <- df_temp |>
-  # Want to remove the NFPs
-  filter(!between(class, 400, 499)) |>
-  # Calculate "FMV"
-  mutate(fmv = av/ar) |>
-  # Calculate AV values if no incentives (could have calculated with AR)
-  mutate(no_incent_av = fmv*.25) |>
-  # Reframe to relevant variables
-  group_by(year, clean_name, incent_prop, land_use) |>
-  summarize(n_pins = sum(n_pins), 
-          av = sum(av), 
-          fmv = sum(fmv))
 ```
 
+
+
+
+
+
+
+# Tables
+
+## aggregated straight to county level
+
+```{r county-sums}
+
+q = c(.25, .5, .75)
+
+county_data <- df_temp |>
+  # Filter to industrial and commercial properties: 26969 obs.
+  filter(land_use %in% c("Industrial", "Commercial")) |>
+  
+  # Want to remove the NFPs <---- do we though?? not for profits get incentive classifications too?
+  # filter(!between(class, 400, 499)) |>
+  
+  # Calculate "FMV"
+  mutate(fmv = av/ar) |>
+  mutate(fmv = ifelse(is.na(fmv), 0, fmv)) |>
+  # Calculate AV values if no incentives (could have calculated with AR)
+#  mutate(no_incent_av = fmv*.25) |>
+  # Reframe to relevant variables
+  group_by(year#, incent_prop, land_use 
+) |>
+  arrange(desc(fmv)) %>%
+  
+  summarize(n_pins = sum(n_pins, na.rm=TRUE), 
+            min_fmv_all = min(fmv, na.rm = TRUE),
+            quant25_all_fmv = round(quantile(fmv, probs = q[1])),
+            quant50_all_fmv = round(quantile(fmv, probs = q[2])),
+            quant75_all_fmv = round(quantile(fmv, probs = q[3])),
+            max_fmv_all = max(fmv, na.rm=TRUE),
+            fmv_mean = mean(fmv, na.rm=TRUE),
+            fmv = sum(fmv, na.rm=TRUE))
+```
+
+```{r}
+county_mean <- county_data
+
+```
 
 ```{r create-county-trends}
 county_trends <- df_temp |> #see df_temp created above
@@ -109,24 +120,21 @@ county_trends <- df_temp |> #see df_temp created above
   # Filter to industrial and commercial properties
   filter(land_use %in% c("Industrial", "Commercial")) |>
   # Want to remove the NFPs: 24882 obs.
-  filter(!between(class, 400, 499)) |>
+  #filter(!between(class, 400, 499)) |>
   # Calculate "FMV"
   mutate(fmv = av/ar) |>
-  # Calculate AV values if no incentives (could have calculated with AR)
-  mutate(no_incent_av = fmv*.25) |>
-   # Reframe to relevant variables
+  mutate(fmv = ifelse(is.na(fmv), 0, fmv)) |>
   group_by(year, incent_prop, land_use) |>
-  summarize(n_pins = sum(n_pins), 
-            av = sum(av), 
-            fmv = sum(fmv),
-          #  .groups = 'drop'
+  summarize(n_pins = sum(n_pins, na.rm=TRUE), 
+            av = sum(av, na.rm=TRUE), 
+            fmv = sum(fmv, na.rm=TRUE),
             ) |>
-  # Calculate lags
   ungroup() |>
   arrange(year) 
 
 county_trends <- county_trends |>
   group_by(incent_prop, land_use) |>
+  arrange(desc(year)) |>
   mutate(lag_n_pins = lag(n_pins),
          lag_av = lag(av),
          lag_fmv = lag(fmv)) |>
@@ -135,7 +143,7 @@ county_trends <- county_trends |>
   # filter(year != 2010) |>
   
   # Remove 2006 from df
-    filter(year != 2006) |>
+  #  filter(year != 2006) |>
 
   
   # Select relevant variables
@@ -146,45 +154,87 @@ county_trends <- county_trends |>
   mutate(yoy_pin_delta = (n_pins - lag_n_pins) / lag_n_pins,
          yoy_av_delta = (av - lag_av) / lag_av,
          yoy_fmv_delta = (fmv - lag_fmv) / lag_fmv) |>
-   ungroup() # |>
-  # # Select Useful Variables
-  # select(year, incent_prop, land_use, n_pins, yoy_pin_delta, 
-  #        av, yoy_av_delta, fmv, yoy_fmv_delta)
+   ungroup() 
 
 ```
 
 
-## Alea County Table
+## Aggregated to Muni level, then find average muni
 
-```{r}
+```{r muni-sums}
+# Make new and select relevant county-wide PIN variables
+muni_data <- df_temp |>
+  # Filter to industrial and commercial properties: 26969 obs.
+  filter(land_use %in% c("Industrial", "Commercial")) |>
+  
+  # Want to remove the NFPs <---- do we though?? not for profits get incentive classifications too?
+  # filter(!between(class, 400, 499)) |>
+  
+  # Calculate "FMV"
+  mutate(fmv = av/ar) |>
+  mutate(fmv = ifelse(is.na(fmv), 0, fmv)) |>
 
-  summarize(
-    median_eav = round(median(eav)), 
-    median_av = round(median(av)), 
-    avg_av = round(mean(av)),
-    avg_eav = round(mean(eav)),
-    C2_pins_in_muni = n(),
-    C2_current_exemptions = sum(all_exemptions, na.rm = TRUE),
-    C2_HO_exemps = sum(exe_homeowner, na.rm = TRUE),
-  ) 
+  group_by(year, clean_name#, incent_prop, land_use
+  ) |>
+  arrange(desc(fmv)) %>%
+
+  summarize(n_pins = sum(n_pins, na.rm=TRUE), 
+            min_fmv_all = min(fmv, na.rm = TRUE),
+            quant25_all_fmv = round(quantile(fmv, probs = q[1])),
+            quant50_all_fmv = round(quantile(fmv, probs = q[2])),
+            quant75_all_fmv = round(quantile(fmv, probs = q[3])),
+            max_fmv_all = max(fmv, na.rm=TRUE),
+            fmv_mean = mean(fmv, na.rm=TRUE),
+            fmv = sum(fmv, na.rm=TRUE))
+
+# Make new and select relevant county-wide PIN variables
+muni_landuse_data <- df_temp |>
+  # Want to remove the NFPs
+  #filter(!between(class, 400, 499)) |>
+  # Calculate "FMV"
+  mutate(fmv = av/ar) |>
+    mutate(fmv = ifelse(is.na(fmv), 0, fmv)) |>
+
+  group_by(year, clean_name, incent_prop, land_use) |>
+  summarize(n_pins = sum(n_pins, na.rm=TRUE), 
+            min_fmv_all = min(fmv, na.rm = TRUE),
+            quant25_all_fmv = round(quantile(fmv, probs = q[1])),
+            quant50_all_fmv = round(quantile(fmv, probs = q[2])),
+            quant75_all_fmv = round(quantile(fmv, probs = q[3])),
+            max_fmv_all = max(fmv, na.rm=TRUE),
+            fmv_mean = mean(fmv, na.rm=TRUE),
+            fmv = sum(fmv, na.rm=TRUE))
 ```
 
-# Tables
 
 ```{r sum_tables}
 
-
-county_mean <- muni_data |>
+county_muni <- muni_data |>
   ungroup() |>
   group_by(year) |>
-  summarize(cty_avg_fmv = mean(fmv, na.rm=TRUE),
-         cty_pins = sum(n_pins, na.rm=TRUE))
+  summarize(
+         cty_pins = sum(n_pins, na.rm=TRUE),
+            min_fmv_all = min(min_fmv_all, na.rm = TRUE),
+            quant25_all_fmv = round(quantile(quant25_all, probs = q[1])),
+            quant50_all_fmv = round(quantile(quant50_all, probs = q[2])),
+            quant75_all_fmv = round(quantile(quant75_all, probs = q[3])),
+            max_fmv_all = max(max_fmv_all, na.rm=TRUE),
+            fmv_mean = mean(fmv_mean, na.rm=TRUE),
+            fmv = sum(fmv, na.rm=TRUE))
 
-county_landuse_mean <- muni_data |>
+
+county_muni_landuse_mean <- df_temp |>
   ungroup() |>
   group_by(year, land_use) |>
-  summarize(landuse_avg_fmv = mean(fmv),
-         landuse_cty_pins = sum(n_pins))
+  summarize(n_pins = sum(n_pins, na.rm=TRUE), 
+            min_fmv_all = min(fmv, na.rm = TRUE),
+            quant25_all_fmv = round(quantile(fmv, probs = q[1])),
+            quant50_all_fmv = round(quantile(fmv, probs = q[2])),
+            quant75_all_fmv = round(quantile(fmv, probs = q[3])),
+            max_fmv_all = max(fmv, na.rm=TRUE),
+            fmv_mean = mean(fmv, na.rm=TRUE),
+            fmv = sum(fmv, na.rm=TRUE))
+
 
 county_landuse_incentive_mean <- muni_data |>
   ungroup() |>
