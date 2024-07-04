@@ -1,6 +1,6 @@
 library(tidyverse)
 library(ptaxsim)
-library(DBI) #Guess we don't need the "here" package anymore?
+library(DBI) 
 library(glue)
 
 # Instantiate DB connection.
@@ -9,8 +9,9 @@ ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2022.
 
 # Read in class dictionary
 cde <- read_csv("./Necessary_Files/class_dict_expanded.csv") |>
-  mutate(class = as.character(class_code)) # rename to match other data frames
-
+  mutate(class = as.character(class_code)) |>  # rename to match other data frames
+  select(-c(loa_2022, class_desc, land, last2dig, Res_nonRes, assessment_level, used_in2021, class_code))
+  
 
 # Bring in the Level of Assessments for each year. They have changed over time!! 
 ccao_loa <- read_csv("./inputs/ccao_loa.csv") %>% 
@@ -18,7 +19,42 @@ ccao_loa <- read_csv("./inputs/ccao_loa.csv") %>%
   filter(year > 2005) %>% 
   select(-class_code)
 
-# nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
+
+## Pull Muni Taxing Agency Names from agency_info table
+muni_agency_names <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT DISTINCT agency_num, agency_name, minor_type
+    FROM agency_info
+    WHERE minor_type = 'MUNI'
+    OR agency_num = '020060000'
+    "
+)
+
+
+# muni_tax_codes <- DBI::dbGetQuery(
+#   ptaxsim_db_conn,
+#   glue_sql("
+#   SELECT year, agency_num, tax_code_num
+#   FROM tax_code
+#   WHERE agency_num IN ({muni_agency_names$agency_num*})
+#   ",
+#            .con = ptaxsim_db_conn
+#   ))
+
+# # Identify tax codes associated with relevant agencies
+# Pull in the tax code rates
+tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT DISTINCT year, agency_num, tax_code_num, tax_code_rate
+  FROM tax_code
+  WHERE agency_num IN ({muni_agency_names$agency_num*})
+  ",
+           .con = ptaxsim_db_conn
+  )
+)
+
+nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx") 
 
 ## Pulls ALL distinct PINs that existed between 2006 and 2022.
 ## Syntax: "*" means "all the things" "pin" references the table w/in PTAXSIM DB
@@ -42,12 +78,11 @@ cook_pins <- DBI::dbGetQuery(
 
 
 # 119k distinct pins were a commercial or industrial property for at least 1 year
-distinct_pins <- comm_ind_pins |>
+distinct_pins <- cook_pins |>
   select(pin) |>
   distinct(pin)
 
 # 3124 distinct tax codes
-
 # distinct_tc <- comm_ind_pins |>
 #   select(tax_code_num) |>
 #   distinct()
@@ -59,11 +94,6 @@ distinct_pins <- comm_ind_pins |>
 ## ~1.8mil PINs
 ## Note: Alea_cat is a variable created by Alea in the class_dict file that indicates land use type.
 ## Land use type is based off of the description provided for property classes.
-
-
-
-# comm_ind_pins <- cook_pins |>
-#   left_join(cde, by = "class") 
 
 
 ## Excluding the Exemption variables except for abatements.
@@ -81,36 +111,24 @@ comm_ind_pins_ever <- DBI::dbGetQuery(
   left_join(ccao_loa, by = c("year", "class")) |>
   mutate(comparable_props = as.character(comparable_props))
 
-## Identify all tax codes found w/ all prior PINs
 
-# comm_ind_tc_ever <- DBI::dbGetQuery(
-#   ptaxsim_db_conn,
-#   glue_sql(
-#     "SELECT DISTINCT *
-#    FROM tax_code
-#    WHERE tax_code_num IN ({distinct_tc$tax_code_num*})
-#   ",
-#     .con = ptaxsim_db_conn
-#   ))
 
-## Muni Names
-
-muni_agency_names <- DBI::dbGetQuery(
+tif_distrib <- DBI::dbGetQuery(
   ptaxsim_db_conn,
-  "SELECT DISTINCT agency_num, agency_name, minor_type
-    FROM agency_info
-    WHERE minor_type = 'MUNI'
-    OR agency_num = '020060000'
-    "
-)
+  glue_sql(
+  "SELECT *
+  FROM tif_distribution
+  ", 
+    .con = ptaxsim_db_conn)
+  )
 
 ## Merge PIN data with muni names
 
-comm_ind_tc_names <- comm_ind_tc_ever |>
-  filter(agency_num %in% muni_agency_names$agency_num) |>
-  rename(agency_number = agency_num) |>
-  mutate(agency_number = as.numeric(agency_number)) |>
-  left_join(nicknames)
+# comm_ind_tc_names <- comm_ind_tc_ever |>
+#   filter(agency_num %in% muni_agency_names$agency_num) |>
+#   rename(agency_number = agency_num) |>
+#   mutate(agency_number = as.numeric(agency_number)) |>
+#   left_join(nicknames)
 
 comm_ind_pins_ever <- comm_ind_pins_ever |>
   left_join(comm_ind_tc_names, by = c("year", "tax_code_num"))
