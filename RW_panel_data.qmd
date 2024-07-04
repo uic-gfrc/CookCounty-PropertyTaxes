@@ -10,36 +10,53 @@ library(tidyverse)
 
 ```
 
+# Helper File: "helper_pull_comm_ind_allyears.R" (changed 7-4-24)
+
+## Changes: 
+
+Removed exemption variables
+Accounted for LOA changes over time
+TIF indicator
+
+## Notes
+
+LOAs over time: Taken from CCAO
+
 ```{r df_simplify}
 #| Output: FALSE
 
-df <- read_csv("./Output/comm_ind_PINs_2006-2022.csv")
+df_2006_2022 <- read_csv("./Output/comm_ind_PINs_2006-2022.csv")
+
+df_2012_2022 <- df_2006_2022 |>
+  filter(between(year, 2012, 2022))
 
 ```
 
-Changes from helper file:
 
-1. Calculation of FMV
-2. Drop exemption-related variables
-3. Changed LoA for incentive classifications to 11.42%--need to change in helper file.
+```{r csv_print}
+#| eval: false
+
+write_csv(df_2006_2022, "./Output/panel_data_2006-2022_2024_07_04.csv")
+
+write_csv(df_2012_2022, "./Output/panel_data_2006-2022_2024_07_04.csv")
+
+```
+
+# Old Changes
 
 ```{r changes}
+#| eval: FALSE
+
+# No longer relevant after 7-4 helper file.
 
 df <- df |>
   mutate(assess_ratio = as.numeric(assess_ratio)) |>
   mutate(incent_prop = as.factor(incent_prop))
 
 df <- df |>
-  mutate(assess_ratio2 = ifelse(incent_prop == "Incentive", .1142, assess_ratio)) |>
+  mutate(assess_ratio = ifelse(incent_prop == "Incentive", .1142, assess_ratio)) |>
   mutate(fmv = av_clerk/assess_ratio) |>
   select(!(starts_with("exe_"))) |>
   select(-loa_2022, -Option2, -Res_nonRes, -assessment_level, -used_in2021)
-
-```
-
-```{r csv_print}
-#| eval: false
-
-write_csv(df, "./Output/panel_data_2024_07_02.csv")
 
 ```
