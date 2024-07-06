@@ -1,8 +1,8 @@
 ---
-title: "Incentive Classification Use Over Time (2011-2021)"
+title: "Incentive Classification Use Over Time (2011-2022)"
 subtitle: "PIN-level Trends in Value & Frequency of Use"
-author: "Michael Van Hulle"
-date: "June 17, 2024"
+author: "Michael Van Hulle & Alea Wilbur-Mujtaba"
+date: "July 5, 2024"
 format: 
   html:
     embed-resources: true
@@ -29,13 +29,14 @@ library(tidyverse)
 library(glue)
 library(DT)
 library(flextable)
+library(kableExtra)
 
 # Set table formatting defaults--change theme to something less ugly.
 
 set_flextable_defaults(theme_fun = theme_vanilla, 
                        padding = 2,
-                       line_spacing = 1,
-                       big.mark = ",",
+                       #line_spacing = 1,
+                       big.mark = ","
                        )
 
 options(DT.options = list())
@@ -66,17 +67,92 @@ class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv") |>
 # Join summaries w/ class dictionary
 df_temp <- left_join(df, class_dict, by = "class")
 df_temp <- left_join(df_temp, ccao_loa, by = c("class" = "class_code", "year"))
+
+FitFlextableToPage <- function(ft, pgwidth = 6){
+
+  ft_out <- ft %>% autofit()
+
+  ft_out <- width(ft_out, width = dim(ft_out)$widths*pgwidth /(flextable_dim(ft_out)$widths))
+  return(ft_out)
+}
+
 ```
 
 # Tables
 
 ## County-Wide Summaries
 
-### 2022
+### All Commercial and Industrial PINs
+
+```{r}
+#| label: tbl-2022and2021-county-sums
+#| tbl-cap: "County level stats aggregated from PIN level data. Includes ALL commercial and industrial PINs."
+#| tbl-subcap: 
+#|   - "County level stats aggregated from PIN level data. Includes ALL commercial and industrial PINs. (2022)"
+#|   - "2021"
+#| layout-ncol: 2
+
+q = c(.25, .5, .75)
+
+county_summary <- df_temp |>
+  # Filter to industrial and commercial properties: 26969 obs.
+  filter(land_use %in% c("Industrial", "Commercial")) |>
+  
+  # Want to remove the NFPs <---- do we though?? not for profits get incentive classifications too?
+  # filter(!between(class, 400, 499)) |>
+  
+  # Calculate "FMV"
+  mutate(fmv = av/ar) |>
+  mutate(fmv = ifelse(is.na(fmv), 0, fmv)) |>
+  # Calculate AV values if no incentives (could have calculated with AR)
+#  mutate(no_incent_av = fmv*.25) |>
+  # Reframe to relevant variables
+  group_by(year#, incent_prop, land_use 
+) |>
+  arrange(desc(fmv)) %>%
+  
+  summarize(n_pins = sum(n_pins, na.rm=TRUE), 
+            min_fmv_all = min(fmv, na.rm = TRUE),
+            quant25_all_fmv = round(quantile(fmv, probs = q[1])),
+            quant50_all_fmv = round(quantile(fmv, probs = q[2])),
+            quant75_all_fmv = round(quantile(fmv, probs = q[3])),
+            max_fmv_all = max(fmv, na.rm=TRUE),
+            fmv_mean = mean(fmv, na.rm=TRUE),
+            fmv = sum(fmv, na.rm=TRUE))
+  
+vars_4fn <- c("n_pins", "min_fmv_all", "quant25_all_fmv", "quant50_all_fmv", "quant75_all_fmv", "max_fmv_all", "fmv_mean", "fmv")
+
+labels_4fn <- c("PIN Count", "Min. FMV", "25th Quantile", "50th Quantile", "75th Quantile", "Max. FMV", "Avg. FMV", "Total FMV")
+
+df_labels <- data.frame(vars_4fn, labels_4fn)
+
+
+ county_summary %>%
+  filter(year == 2022) %>%
+  pivot_longer(cols = n_pins:fmv, names_to = "Variables") %>% select(-year) %>%
+   mutate(Variables = ifelse(Variables %in% df_labels$vars_4fn, df_labels$labels_4fn, "Need Name")) %>%
+  flextable() %>% set_header_labels(value = "2022 FMV Values") %>%
+   FitFlextableToPage()
+
+ county_summary |>
+  filter(year == 2021) |>
+  pivot_longer(cols = n_pins:fmv, names_to = "Variables") %>% select(-year) %>%
+   mutate(Variables = ifelse(Variables %in% df_labels$vars_4fn, df_labels$labels_4fn, "Need Name")) %>% 
+   flextable() %>%
+   set_header_labels(value = "2021 FMV Values") %>%
+   FitFlextableToPage()
+
+ 
+
+```
+
+
 
 ```{r}
 #| label: tbl-2022-county-sums
 #| tbl-cap: "County level stats aggregated from PIN level data. Includes ALL commercial and industrial PINs. (2022)"
+#| eval: false
+#| include: false
 
 q = c(.25, .5, .75)
 
@@ -106,23 +182,36 @@ county_summary <- df_temp |>
             fmv_mean = mean(fmv, na.rm=TRUE),
             fmv = sum(fmv, na.rm=TRUE))
 
-county_summary %>% filter(year == 2022)
+county_summary %>% filter(year == 2022) %>% pivot_longer(cols = n_pins:fmv, names_to = "Variables") %>% select(-year) %>%
+   mutate(Variables = ifelse(Variables %in% df_labels$vars_4fn, df_labels$labels_4fn, "Need Name")) %>% 
+   flextable() %>%
+   set_header_labels(value = "2022 FMV Values") %>%
+   FitFlextableToPage()
 ```
-### 2021
+
 
 ```{r}
 #| label: tbl-2021-county-sums
 #| tbl-cap: "County level stats aggregated from PIN level data. Includes ALL commercial and industrial PINs. (2021)"
+#| eval: false
+#| include: false
 
 county_summary |>
-  filter(year == 2021)
+  filter(year == 2021) %>%   pivot_longer(cols = n_pins:fmv, names_to = "Variables") %>% select(-year) %>%
+   mutate(Variables = ifelse(Variables %in% df_labels$vars_4fn, df_labels$labels_4fn, "Need Name")) %>% 
+   flextable() %>%
+   set_header_labels(value = "2021 FMV Values") %>%
+   FitFlextableToPage()
 
 ```
-### 2022
+
+### All Incentive Commercial and Industrial Properties
 
 ```{r}
 #| label: tbl-2022-county-incentive-sums
-#| tbl-cap: "County level stats aggregated from PIN level data. Includes ALL commercial and industrial incentive class PINs. (2022)"
+#| tbl-cap: "County level stats aggregated from PIN level data. Includes ALL commercial and industrial **incentive** class PINs."
+#| layout-ncol: 2
+
 
 q = c(.25, .5, .75)
 
@@ -147,27 +236,27 @@ county_incentives <- df_temp |>
             fmv_mean = mean(fmv, na.rm=TRUE),
             fmv = sum(fmv, na.rm=TRUE))
 
-county_incentives %>% filter(year == 2022)
+county_incentives %>% filter(year == 2022) %>%  
+  pivot_longer(cols = n_pins:fmv, names_to = "Variables") %>% select(-year) %>%
+   mutate(Variables = ifelse(Variables %in% df_labels$vars_4fn, df_labels$labels_4fn, "Need Name")) %>% 
+   flextable() %>%
+   set_header_labels(value = "2022 Values") %>%
+   FitFlextableToPage()
+
+
+county_incentives %>% filter(year == 2021) %>% 
+  pivot_longer(cols = n_pins:fmv, names_to = "Variables") %>% select(-year) %>%
+   mutate(Variables = ifelse(Variables %in% df_labels$vars_4fn, df_labels$labels_4fn, "Need Name")) %>% 
+   flextable() %>%
+   set_header_labels(value = "2021 Values") %>%
+   FitFlextableToPage()
 ```
 
-```{r}
-#writexl::write_xlsx(muni_incentive_data, "muni_incentive_values.csv")
-```
-
-### 2021
-
-```{r}
-#| label: tbl-2021-county-incentive-sums
-#| tbl-cap: "County level stats aggregated from PIN level data. Includes ALL commercial and industrial incentive class PINs. (2021)"
-
-county_incentives %>% filter(year == 2021)
-```
-
-### 2022
+### Industrial Incentive vs. Commercial Incentive
 
 ```{r}
 #| label: tbl-2022-create-county-trends
-#| tbl-cap: "**Industrial and Commercial Values** Aggregated from PIN level data. Includes ALL commercial and industrial PINs. (2022)"
+#| tbl-cap: "**Industrial Incentive vs Commercial Incentive Values** Aggregated from PIN level data. Tax Years 2022 and 2021."
 
 
 county_trends <- df_temp |> #see df_temp created above
@@ -194,12 +283,6 @@ county_trends <- county_trends |>
          lag_av = lag(av),
          lag_fmv = lag(fmv)) |>
   ungroup() |>
-  # # Remove 2010 from df
-  # filter(year != 2010) |>
-  
-  # Remove 2006 from df
-  #  filter(year != 2006) |>
-
   
   # Select relevant variables
   select(year, land_use, incent_prop, n_pins, lag_n_pins, av, lag_av, 
@@ -208,21 +291,18 @@ county_trends <- county_trends |>
   group_by(year, land_use, incent_prop) |>
   mutate(yoy_pin_delta = (n_pins - lag_n_pins) / lag_n_pins,
          yoy_av_delta = (av - lag_av) / lag_av,
-         yoy_fmv_delta = (fmv - lag_fmv) / lag_fmv) |>
-   ungroup() 
+         yoy_fmv_delta = (fmv - lag_fmv) / lag_fmv)
 
-county_trends %>% filter(year == 2022)
+county_trends %>% filter(year == 2022)  %>% 
+  pivot_longer(cols = n_pins:yoy_fmv_delta, names_to = "Variables")  %>%
+   select(-year) %>%
+ #  mutate(Variables = ifelse(Variables %in% df_labels$vars_4fn, df_labels$labels_4fn, "Need Name")) %>% 
+  flextable()
 
-```
 
-### 2021
 
-```{r}
-#| label: tbl-2021-create-county-trends
-#| tbl-cap: "**Industrial and Commercial Values** Aggregated from PIN level data. Includes ALL commercial and industrial PINs. (2022)"
-#| 
 county_trends |> 
-  filter(year == 2021)
+  filter(year == 2021) |> flextable()
 
 ```
 
