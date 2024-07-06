@@ -274,10 +274,11 @@ county_trends <- df_temp |> #see df_temp created above
             fmv = sum(fmv, na.rm=TRUE),
             ) |>
   ungroup() |>
+  mutate(incent_prop_use = paste(land_use, incent_prop)) |>
   arrange(year) 
 
 county_trends <- county_trends |>
-  group_by(incent_prop, land_use) |>
+  group_by(incent_prop_use) |>
   arrange(year) |>
   mutate(lag_n_pins = lag(n_pins),
          lag_av = lag(av),
@@ -285,24 +286,31 @@ county_trends <- county_trends |>
   ungroup() |>
   
   # Select relevant variables
-  select(year, land_use, incent_prop, n_pins, lag_n_pins, av, lag_av, 
+  select(year, incent_prop_use, n_pins, lag_n_pins, av, lag_av, 
          fmv, lag_fmv) |>
   # Calculate YoY deltas
-  group_by(year, land_use, incent_prop) |>
-  mutate(yoy_pin_delta = (n_pins - lag_n_pins) / lag_n_pins,
-         yoy_av_delta = (av - lag_av) / lag_av,
-         yoy_fmv_delta = (fmv - lag_fmv) / lag_fmv)
+  group_by(year, incent_prop_use) |>
+  mutate(yoy_pin_delta = round((n_pins - lag_n_pins) / lag_n_pins, digits =2),
+         yoy_av_delta = round((av - lag_av) / lag_av, digits = 2),
+         yoy_fmv_delta = round((fmv - lag_fmv) / lag_fmv, digits = 2)) %>% ungroup() 
 
 county_trends %>% filter(year == 2022)  %>% 
+  select(-year) %>%
   pivot_longer(cols = n_pins:yoy_fmv_delta, names_to = "Variables")  %>%
-   select(-year) %>%
- #  mutate(Variables = ifelse(Variables %in% df_labels$vars_4fn, df_labels$labels_4fn, "Need Name")) %>% 
-  flextable()
+  pivot_wider(id_cols = "Variables", names_from = incent_prop_use ) %>%
+  #  mutate(Variables = ifelse(Variables %in% df_labels$vars_4fn, df_labels$labels_4fn, "Need Name")) %>% 
+  
+  flextable() 
 
 
 
 county_trends |> 
-  filter(year == 2021) |> flextable()
+  filter(year == 2021) %>%  pivot_longer(cols = n_pins:yoy_fmv_delta, names_to = "Variables")  %>%
+  pivot_wider(id_cols = "Variables", names_from = incent_prop_use ) %>%
+  #  mutate(Variables = ifelse(Variables %in% df_labels$vars_4fn, df_labels$labels_4fn, "Need Name")) %>% 
+  
+  flextable() 
+
 
 ```
 
