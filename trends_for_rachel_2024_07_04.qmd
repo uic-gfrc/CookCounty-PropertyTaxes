@@ -120,9 +120,9 @@ county_summary <- df_temp |>
             fmv_mean = mean(fmv, na.rm=TRUE),
             fmv = sum(fmv, na.rm=TRUE))
   
-vars_4fn <- c("n_pins", "min_fmv_all", "quant25_all_fmv", "quant50_all_fmv", "quant75_all_fmv", "max_fmv_all", "fmv_mean", "fmv")
+vars_4fn <- c("n_pins", "min_fmv_all", "quant25_all_fmv", "quant50_all_fmv", "quant75_all_fmv", "max_fmv_all", "fmv_mean", "fmv", "cty_pins")
 
-labels_4fn <- c("PIN Count", "Min. FMV", "25th Quantile", "50th Quantile", "75th Quantile", "Max. FMV", "Avg. FMV", "Total FMV")
+labels_4fn <- c("PIN Count", "Min. FMV", "25th Quantile", "50th Quantile", "75th Quantile", "Max. FMV", "Avg. FMV", "Total FMV", "PIN Count")
 
 df_labels <- data.frame(vars_4fn, labels_4fn)
 
@@ -439,12 +439,13 @@ muni_incentive_data |>
 
 ```
 
-### Finding the "Median" Municipality
+# Finding the "Median" Municipality
 
 
 ```{r}
-#| label: tbl-2022-countyfrommuni
-#| tbl-cap: "For all commercial and industrial PINs. County level stats created from the aggregated municipalities. (2022)"
+#| label: tbl-countyfrommuni
+#| tbl-cap: "Municipality summary statistics include all commercial and industrial PINs within each municipality. County level \"median municipality\" stats created from the aggregated municipalities."
+#| layout-ncol: 2
 
 
 county_total_from_muni_data <- muni_data |>
@@ -459,19 +460,31 @@ county_total_from_muni_data <- muni_data |>
             fmv_mean = mean(fmv_mean, na.rm=TRUE),
             fmv = sum(fmv, na.rm=TRUE))
 
-county_total_from_muni_data %>% filter(year == 2022)
-```
+county_total_from_muni_data %>% filter(year == 2022) %>% 
+  pivot_longer(cols = cty_pins:fmv, names_to = "Variables") %>% select(-year) %>%
+   mutate(Variables = ifelse(Variables %in% df_labels$vars_4fn, df_labels$labels_4fn, "Need Name")) %>% 
+   flextable() %>%
+   set_header_labels(Variables = "Median Municipality Values", value = "2022 Values") %>%
+   FitFlextableToPage()
 
-```{r}
-#| label: tbl-2021-countyfrommuni
-#| tbl-cap: "For all commercial and industrial PINs. County level stats created from the aggregated municipalities. (2021)"
 
 county_total_from_muni_data |>
-  filter(year == 2021)
-
+  filter(year == 2021)  %>%
+  pivot_longer(cols = cty_pins:fmv, names_to = "Variables") %>% select(-year) %>%
+   mutate(Variables = ifelse(Variables %in% df_labels$vars_4fn, df_labels$labels_4fn, "Need Name")) %>% 
+   flextable() %>%
+   set_header_labels(Variables = "Median Municipality Values", value = "2021 Values") %>%
+   FitFlextableToPage()
 ```
 
-```{r 2022_munis_to_county}
+
+```{r}
+#| label: tbl-munis_to_county
+#| tbl-cap: "Median Municiaplity. Values aggregated to the Municpality level and then summary statistics are calcuated for the Municiaplities."
+#| layout-ncol: 2
+#| 
+
+
 county_incent_from_munis <- muni_incentive_data %>%
    group_by(year) |>
   summarize(
@@ -486,19 +499,25 @@ county_incent_from_munis <- muni_incentive_data %>%
             fmv = sum(fmv, na.rm=TRUE), 
         
          )
-county_incent_from_munis %>% filter(year == 2022)
-```
-
-```{r 2021_munis_to_county}
+county_incent_from_munis %>% filter(year == 2022) %>%  pivot_longer(cols = cty_pins:fmv, names_to = "Variables") %>% select(-year) %>%
+   mutate(Variables = ifelse(Variables %in% df_labels$vars_4fn, df_labels$labels_4fn, "Need Name")) %>% 
+   flextable() %>%
+   set_header_labels(Variables = "Median Municipality Values", value = "2022 Values") %>%
+   FitFlextableToPage()
 
 county_incent_from_munis |>
-  filter(year == 2021)
+  filter(year == 2021)  %>% 
+  pivot_longer(cols = cty_pins:fmv, names_to = "Variables") %>% select(-year) %>%
+   mutate(Variables = ifelse(Variables %in% df_labels$vars_4fn, df_labels$labels_4fn, "Need Name")) %>% 
+   flextable() %>%
+   set_header_labels(Variables = "Median Municipality Values", value = "2021 Values") %>%
+   FitFlextableToPage()
 
 ```
 
 ```{r}
 #| label: tbl-2022-countyfrommuni-incentiveprops
-#| tbl-cap: "For all commercial and industrial PINs. County level stats created from the aggregated municipalities. (2022)"
+#| tbl-cap: "For all commercial and industrial **incentive** PINs. County level stats created from the aggregated municipalities."
 
 county_landuse_incentives <- muni_landuse_data |>
   filter(incent_prop == "Incentive") |>
@@ -524,21 +543,33 @@ county_landuse_incentives <- muni_landuse_data |>
             tot_max_fmv_all = max(max_fmv_all, na.rm=TRUE),
             tot_fmv_mean = mean(fmv_mean, na.rm=TRUE),
             tot_fmv = sum(fmv, na.rm=TRUE))
-county_landuse_incentives %>% filter(year == 2022)
-```
 
-```{r}
-#| label: tbl-2021-countyfrommuni-incentiveprops
-#| tbl-cap: "For all commercial and industrial PINs. County level stats created from the aggregated municipalities. (2021)"
+
+
+county_landuse_incentives %>% filter(year == 2022) %>%   pivot_longer(cols = cty_pins:fmv, names_to = "Variables") %>% select(-year) %>%
+  pivot_wider(id_cols = "Variables", names_from = land_use) %>%
+   mutate(Variables = ifelse(Variables %in% df_labels$vars_4fn, df_labels$labels_4fn, "Need Name")) %>% 
+   flextable() %>%
+   set_header_labels(Variables = "Median Municipality Values", value = "2022 Values") %>%
+   FitFlextableToPage()
+
+
 
 county_landuse_incentives |>
-  filter(year == 2021)
+  filter(year == 2021) %>%   pivot_longer(cols = cty_pins:fmv, names_to = "Variables") %>% select(-year) %>%
+    pivot_wider(id_cols = "Variables", names_from = land_use) %>%
+
+   mutate(Variables = ifelse(Variables %in% df_labels$vars_4fn, df_labels$labels_4fn, "Need Name")) %>% 
+   flextable() %>%
+   set_header_labels(Variables = "Median Municipality Values", value = "2021 Values") %>%
+   FitFlextableToPage()
 
 ```
 
 ```{r }
 #| label: tbl-2022-countyfrommuni-incentiveprops-together
-#| tbl-cap: "For all incentive commercial and industrial PINs. County level stats created from the aggregated municipalities. (2022)"
+#| tbl-cap: "For all **incentive** commercial and industrial PINs. County level stats created from the aggregated municipalities."
+#| layout-ncol: 2
 
 county_landuse_incentives <- muni_landuse_data |>
   filter(incent_prop == "Incentive") |>
@@ -551,28 +582,27 @@ county_landuse_incentives <- muni_landuse_data |>
             quant75_all_fmv = round(quantile(quant75_all_fmv, probs = q[3])),
             max_fmv_all = max(max_fmv_all, na.rm=TRUE),
             fmv_mean = mean(fmv_mean, na.rm=TRUE),
-            fmv = sum(fmv, na.rm=TRUE)) |>
-  ungroup() |>
-    group_by(year) |>
-  mutate(
-         tot_cty_pins = sum(cty_pins, na.rm=TRUE),
-            tot_min_fmv_all = min(min_fmv_all, na.rm = TRUE),
-            tot_quant25_all_fmv = round(quantile(quant25_all_fmv, probs = q[1])),
-            tot_quant50_all_fmv = round(quantile(quant50_all_fmv, probs = q[2])),
-            tot_quant75_all_fmv = round(quantile(quant75_all_fmv, probs = q[3])),
-            tot_max_fmv_all = max(max_fmv_all, na.rm=TRUE),
-            tot_fmv_mean = mean(fmv_mean, na.rm=TRUE),
-            tot_fmv = sum(fmv, na.rm=TRUE))
+            fmv = sum(fmv, na.rm=TRUE)) 
 
-county_landuse_incentives %>% filter(year == 2022)
-```
+county_landuse_incentives %>% filter(year == 2022) %>%   
+  ungroup%>%
+  pivot_longer(cols = cty_pins:fmv, names_to = "Variables") %>% 
+   mutate(Variables = ifelse(Variables %in% df_labels$vars_4fn, df_labels$labels_4fn, "Need Name")) %>%   select(-year) %>%
 
-```{r}
-#| label: tbl-2021-countyfrommuni-incentiveprops-together
-#| tbl-cap: "For all incentive commercial and industrial PINs. County level stats created from the aggregated municipalities. (2021)"
+   flextable() %>%
+  
+   set_header_labels(Variables = "Median Municipality Values, 2022", value = "2022 Values") %>%
+   FitFlextableToPage()
+
 
 county_landuse_incentives |>
-  filter(year == 2021)
+  filter(year == 2021) %>%   
+  ungroup() %>%
+  pivot_longer(cols = cty_pins:fmv, names_to = "Variables") %>% select(-year) %>%
+   mutate(Variables = ifelse(Variables %in% df_labels$vars_4fn, df_labels$labels_4fn, "Need Name")) %>% 
+   flextable() %>%
+   set_header_labels(Variables = "Median Municipality Values. 2021", value = "2021 Values") %>%
+   FitFlextableToPage()
 
 ```
 
