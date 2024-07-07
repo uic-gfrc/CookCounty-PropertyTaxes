@@ -19,10 +19,8 @@ knitr:
     message: false
 ---
 
-# Top of Code
 
-
-```{r setup}
+```{r setup, message = FALSE, warning = FALSE}
 # Load libraries
 
 library(tidyverse)
@@ -444,7 +442,7 @@ muni_incentive_data |>
 
 ```{r}
 #| label: tbl-countyfrommuni
-#| tbl-cap: "Municipality summary statistics include all commercial and industrial PINs within each municipality. County level \"median municipality\" stats created from the aggregated municipalities."
+#| tbl-cap: "Municipality summary statistics include **all commercial and industrial PINs** within each municipality. County level \"median municipality\" stats created from the aggregated municipalities."
 #| layout-ncol: 2
 
 
@@ -480,7 +478,7 @@ county_total_from_muni_data |>
 
 ```{r}
 #| label: tbl-munis_to_county
-#| tbl-cap: "Median Municiaplity. Values aggregated to the Municpality level and then summary statistics are calcuated for the Municiaplities."
+#| tbl-cap: "Median Municiaplity. Values aggregated to the Municpality level and then summary statistics are calcuated for the Municiaplities. **Only includes incentive class properties** when calculating summary values."
 #| layout-ncol: 2
 #| 
 
@@ -488,7 +486,7 @@ county_total_from_muni_data |>
 county_incent_from_munis <- muni_incentive_data %>%
    group_by(year) |>
   summarize(
-     n_munis = n(),
+    # n_munis = n(),
          cty_pins = sum(n_pins, na.rm=TRUE),
             min_fmv_all = min(min_fmv_all, na.rm = TRUE),
             quant25_all_fmv = round(quantile(quant25_all_fmv, probs = q[1])),
@@ -517,7 +515,8 @@ county_incent_from_munis |>
 
 ```{r}
 #| label: tbl-2022-countyfrommuni-incentiveprops
-#| tbl-cap: "For all commercial and industrial **incentive** PINs. County level stats created from the aggregated municipalities."
+#| tbl-cap: "For all commercial and industrial **incentive** PINs. County level stats created from the aggregated municipalities. 98 Municipalities used incentive property classes in 2021 and 99 municipalities did so in 2022."
+#| layout-ncol: 2
 
 county_landuse_incentives <- muni_landuse_data |>
   filter(incent_prop == "Incentive") |>
@@ -531,7 +530,8 @@ county_landuse_incentives <- muni_landuse_data |>
             max_fmv_all = max(max_fmv_all, na.rm=TRUE),
             fmv_mean = mean(fmv_mean, na.rm=TRUE),
             fmv = sum(fmv, na.rm=TRUE),
-         muni_count = n()) |>
+       #  muni_count = n()
+         ) |>
   ungroup() |>
     group_by(year) |>
   mutate(
@@ -550,7 +550,7 @@ county_landuse_incentives %>% filter(year == 2022) %>%   pivot_longer(cols = cty
   pivot_wider(id_cols = "Variables", names_from = land_use) %>%
    mutate(Variables = ifelse(Variables %in% df_labels$vars_4fn, df_labels$labels_4fn, "Need Name")) %>% 
    flextable() %>%
-   set_header_labels(Variables = "Median Municipality Values", value = "2022 Values") %>%
+   set_header_labels(Variables = "2022 Median Municipality Values", value = "2022 Values") %>%
    FitFlextableToPage()
 
 
@@ -561,7 +561,7 @@ county_landuse_incentives |>
 
    mutate(Variables = ifelse(Variables %in% df_labels$vars_4fn, df_labels$labels_4fn, "Need Name")) %>% 
    flextable() %>%
-   set_header_labels(Variables = "Median Municipality Values", value = "2021 Values") %>%
+   set_header_labels(Variables = "2021 Median Municipality Values", value = "2021 Values") %>%
    FitFlextableToPage()
 
 ```
