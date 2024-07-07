@@ -1,9 +1,23 @@
 ---
-title: "Untitled"
-format: docx
+title: "Incentive Classification Time-Series Dataset"
+subtitle: "Assessing Data Collinearity and Relationships Over Time"
+author: "Michael Van Hulle & Alea Wilbur-Mujtaba"
+date: "July 5, 2024"
+format: 
+  html:
+    embed-resources: true
+    theme: lumen
+    code-fold: true
+    code-line-numbers: true
+    code-overflow: wrap
+    toc: true
+    toc-location: left
+    df-print: paged
+knitr: 
+  opts_chunk:
+    warning: true
+    message: false
 ---
-
-# Descriptive Statistics
 
 ```{r setup}
 #| output: FALSE
@@ -11,7 +25,27 @@ format: docx
 # Load packages
 
 library(tidyverse)
-library(corr)
+library(corrr)
+library(glue)
+library(DT)
+library(flextable)
+library(kableExtra)
+
+# Set table formatting defaults
+
+set_flextable_defaults(theme_fun = theme_vanilla, 
+                       padding = 2,
+                       #line_spacing = 1,
+                       big.mark = ","
+                       )
+
+options(DT.options = list())
+
+FitFlextableToPage <- function(ft, pgwidth = 6){
+  ft_out <- ft %>% autofit()
+  ft_out <- width(ft_out, width = dim(ft_out)$widths*pgwidth /(flextable_dim(ft_out)$widths))
+  return(ft_out)
+}
 
 # Run helper file
 
@@ -31,11 +65,124 @@ rm(helper_objects, keep)
 
 ```
 
+# Data "Quirks"
 
-```{r gather_data}
+## Missing Values
 
+We want to make sure that we aren't missing values for key variables and also want to know if the missing values change by year.
+These factors are especially salient to determining our ability to assemble a panel data and used fixed effects as opposed to some other form of time-series analysis.
 
+```{r missing_values_2006_2012_2022}
+#| label: missing_values_all_years
+#| tbl-cap: "Comparison of Missing Values Across Years"
+#| tbl-cap-location: top
+#| tbl-subcap: "Commercial and Industrial PINs: 2006, 2012, 2022"
+
+missing_values_all_years <- comm_ind |>
+  filter(year %in% c("2006", "2012", "2022")) |>
+  rename(land_use = Alea_cat) |>
+  group_by(year) |>
+  summarize(
+    obs = n(),
+    missing_class = first(sum(is.na(class))),
+    missing_fmv = first(sum(is.na(fmv))),
+    missing_av = first(sum(is.na(av_clerk))), 
+    missing_use = first(sum(is.na(land_use))), 
+    missing_incent = first(sum(is.na(incent_prop))), 
+    missing_rate = first(sum(is.na(tax_code_rate))),
+    missing_tc = first(sum(is.na(tax_code_num)))
+)
+
+mvay_long <- missing_values_all_years |>
+  pivot_longer(
+    cols = -year,
+    names_to = "variable",
+    values_to = "count"
+  )
+
+mvay_wide = mvay_long |>
+  pivot_wider(
+    names_from = year,
+    values_from = count
+  )
+
+kable(mvay_wide, format = "html", escape = FALSE) |>
+  kable_styling(full_width = FALSE) |>
+  column_spec(1, width = "3cm")
 
 ```
 
+```{r zero_values_2006_2012_2022}
+#| label: zero_values_all_years
+#| tbl-cap: "Comparison of Zero Values Across Years"
+#| tbl-cap-location: top
+#| tbl-subcap: 
+#|   - "ALL Industrial and Commercial PINs"
+#|   - "Tax Years 2006, 2012, and 2022"
+
+all_year_zero_values <- comm_ind |>
+  #filter(year == "2006") |>
+  filter(year %in% c("2006", "2012", "2022")) |>
+  rename(land_use = Alea_cat) |>
+  group_by(year) |>
+summarize(
+    obs = n(),
+    missing_class = sum(class = 0),
+    missing_fmv = sum(fmv = 0),
+    missing_av = sum(av_clerk = 0), 
+    missing_use = sum(land_use = 0), 
+    missing_incent = sum(incent_prop = 0),
+    missing_rate = first(sum(tax_code_rate = 0))
+)
+
+ayz_long <- all_year_zero_values |>
+  pivot_longer(
+    cols = -year,
+    names_to = "variable",
+    values_to = "count"
+  )
+
+ayz_wide = mvay_long |>
+  pivot_wider(
+    names_from = year,
+    values_from = count
+  )
+
+kable(ayz_wide, format = "html", escape = FALSE) |>
+  kable_styling(full_width = FALSE) |>
+  column_spec(1, width = "3cm")
+
+```
+
+## Serial autocorrelations
+
+Depending on our statistical model, we may need to account for serial autocorrelation for some variables across time. This seems likely with AV given the triennial reassessment cycle and will help us determine the number of lags needed in our model.
+
 # Correlations
+
+## Correlations: 2006 - 2022 Time Period
+
+### Continuous Variables
+
+Notes: 
+
+These correlations are across the entire 2006-2022 time period and are not stratified by year.
+av_clerk is included as our AV variable because that is the final version relied on by taxpayers and governments. Other AV variables were dropped.
+
+```{r corr_all}
+
+corr_matrix <- comm_ind |>
+  select(tax_bill_total, av_clerk, assess_ratio, tax_code_rate, in_tif, incent_prop, years_existed) |>
+  correlate()
+
+corr_df <- corr_matrix %>%
+  shave() %>%
+  fashion(decimals = 2) 
+
+kable(corr_df, format = "html", escape = FALSE) %>%
+  kable_styling(full_width = FALSE) %>%
+  column_spec(1, width = "3cm")
+
+```
+
+
