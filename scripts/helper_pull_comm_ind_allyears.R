@@ -161,8 +161,46 @@ comm_ind_pins_ever <- comm_ind_pins_ever %>%
 ) 
 
 
+pins_existed_check <- comm_ind_pins_ever |>
+  group_by(pin) |>
+  summarize(
+    min_year = min(year),
+    max_year = max(year),
+    years_existed = n()
+  )
+
+comm_ind_pins_ever <- comm_ind_pins_ever |>
+  group_by(pin) |>
+  mutate(
+    years_existed = n(),
+    base_year_fmv_2006 = ifelse(min(year)==2006 & max(year == 2022), fmv[year == 2006], NA),
+    base_year_fmv_2011 = ifelse(years_existed > 10 & max(year) == 2022, fmv[year == 2011], NA),
+    
+    fmv_growth_2006 = fmv/base_year_fmv_2006,
+    fmv_growth_2011 = ifelse(year >=2011, fmv/base_year_fmv_2011, NA),
+    
+  ) 
+
+pins_exist_allyears <- comm_ind_pins_ever %>% 
+  filter(years_existed == 17)
+
+write_csv(comm_ind_pins_ever, "./Output/comm_ind_PINs_2006-2022.csv")
+
+  
+## 96,193 PINs exist every year.
+comm_ind_pins_ever %>% 
+  filter(years_existed == 17) %>%
+  select(year, Alea_cat, incent_prop, fmv_growth_2006) %>% 
+  filter(year == 2022)
+  
+## 100,900 PINs existed since 2011 (and did not become tax exempt)
+comm_ind_pins_ever %>% 
+  filter(max(year) == 2022 & years_existed > 10) %>%
+  select(year, Alea_cat, incent_prop, fmv_growth_2011) %>% 
+  filter(year == 2022) %>% 
+  filter(!is.na(fmv_growth_2011)  ## removes properties where growth was zero because the property became tax exempt
+         )
 ## Write CSV to Output Folder
 
 write_csv(comm_ind_pins_ever, "./Output/comm_ind_PINs_2006-2022.csv")
 
- #write_csv(com_ind_descriptives, "./Output/com_ind_descriptives.csv", na = "")
