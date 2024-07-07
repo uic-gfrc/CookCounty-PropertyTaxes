@@ -30,6 +30,7 @@ library(glue)
 library(DT)
 library(flextable)
 library(kableExtra)
+library(crosstable)
 
 # Set table formatting defaults
 
@@ -72,25 +73,24 @@ rm(helper_objects, keep)
 We want to make sure that we aren't missing values for key variables and also want to know if the missing values change by year.
 These factors are especially salient to determining our ability to assemble a panel data and used fixed effects as opposed to some other form of time-series analysis.
 
-```{r missing_values_2006_2012_2022}
-#| label: missing_values_all_years
-#| tbl-cap: "Comparison of Missing Values Across Years"
+```{r}
+#| label: tbl-missing_values_all_years
+#| tbl-cap: "**Comparison of Select Missing Values Across Years**<br>ALL Commercial and Industrial PINs: 2006, 2012, 2022"
 #| tbl-cap-location: top
-#| tbl-subcap: "Commercial and Industrial PINs: 2006, 2012, 2022"
 
 missing_values_all_years <- comm_ind |>
   filter(year %in% c("2006", "2012", "2022")) |>
   rename(land_use = Alea_cat) |>
   group_by(year) |>
   summarize(
-    obs = n(),
-    missing_class = first(sum(is.na(class))),
-    missing_fmv = first(sum(is.na(fmv))),
-    missing_av = first(sum(is.na(av_clerk))), 
-    missing_use = first(sum(is.na(land_use))), 
-    missing_incent = first(sum(is.na(incent_prop))), 
-    missing_rate = first(sum(is.na(tax_code_rate))),
-    missing_tc = first(sum(is.na(tax_code_num)))
+    "Observations (PIN-Year)" = n(),
+    "Class Code" = sum(is.na(class)),
+    "FMV" = sum(is.na(fmv)),
+    "AV" = first(sum(is.na(av_clerk))), 
+    "Land Use" = first(sum(is.na(land_use))), 
+    "Incentive Dummy" = first(sum(is.na(incent_prop))), 
+   # missing_rate = sum(is.na(tax_code_rate)),
+    "Tax Code" = first(sum(is.na(tax_code_num)))
 )
 
 mvay_long <- missing_values_all_years |>
@@ -111,28 +111,29 @@ kable(mvay_wide, format = "html", escape = FALSE) |>
   column_spec(1, width = "3cm")
 
 ```
+Zeroes were imputed for missing values at one point in our analysis, so we also check for excess zero values.
 
-```{r zero_values_2006_2012_2022}
-#| label: zero_values_all_years
-#| tbl-cap: "Comparison of Zero Values Across Years"
+```{r}
+#| label: tbl-zero_values_all_years
+#| tbl-cap: "**Comparison of Zero Values Across Years**<br>ALL Industrial and Commercial PINs: 2006, 2012, 2022"
 #| tbl-cap-location: top
-#| tbl-subcap: 
-#|   - "ALL Industrial and Commercial PINs"
-#|   - "Tax Years 2006, 2012, and 2022"
 
 all_year_zero_values <- comm_ind |>
-  #filter(year == "2006") |>
   filter(year %in% c("2006", "2012", "2022")) |>
+  group_by(year) |>
+  mutate(year_obs = first(n())) |>
+  ungroup() |>
+  filter(class != 0) |>
   rename(land_use = Alea_cat) |>
   group_by(year) |>
 summarize(
-    obs = n(),
-    missing_class = sum(class = 0),
-    missing_fmv = sum(fmv = 0),
-    missing_av = sum(av_clerk = 0), 
-    missing_use = sum(land_use = 0), 
-    missing_incent = sum(incent_prop = 0),
-    missing_rate = first(sum(tax_code_rate = 0))
+    "Observations (PIN-Year)" = first(year_obs),
+    "Class Code" = sum(class == "0"),
+    "FMV" = sum(fmv == "0"),
+    "AV" = sum(av_clerk == "0"), 
+    "Land Use" = sum(land_use == "0"), 
+    "Incentive Dummy" = sum(incent_prop == "0"),
+    "Tax Code" = sum(tax_code_num == "0")
 )
 
 ayz_long <- all_year_zero_values |>
@@ -162,27 +163,57 @@ Depending on our statistical model, we may need to account for serial autocorrel
 
 ## Correlations: 2006 - 2022 Time Period
 
-### Continuous Variables
-
 Notes: 
 
 These correlations are across the entire 2006-2022 time period and are not stratified by year.
-av_clerk is included as our AV variable because that is the final version relied on by taxpayers and governments. Other AV variables were dropped.
 
-```{r corr_all}
+```{r}
+#| label: tbl-all_year_corrs
+#| tbl-cap: "**Correlations of Main Variables**<br>ALL Industrial & Commercial PINs: 2006-2022"
+#| tbl-cap-location: top
+
+row_name_map <- c(
+  av_clerk = "AV",
+  fmv = "FMV",
+  years_existed = "Incentive Age",
+  base_year_fmv_2006 = "FMV (2006)",
+  base_year_fmv_2011 = "FMV (2011)"
+)
+
+col_name_map <- c(
+  term = "",
+  av_clerk = "AV",
+  fmv = "FMV",
+  years_existed = "Incentive Age",
+  base_year_fmv_2006 = "FMV (2006)",
+  base_year_fmv_2011 = "FMV (2011)"
+)
+
+comm_ind$year <- as.factor(comm_ind$year)
 
 corr_matrix <- comm_ind |>
-  select(tax_bill_total, av_clerk, assess_ratio, tax_code_rate, in_tif, incent_prop, years_existed) |>
+  select(av_clerk, fmv, years_existed, base_year_fmv_2006, base_year_fmv_2011, incent_prop, year) |>
   correlate()
 
-corr_df <- corr_matrix %>%
-  shave() %>%
+corr_df_temp_1 <- corr_matrix |>
+  shave() |>
   fashion(decimals = 2) 
 
-kable(corr_df, format = "html", escape = FALSE) %>%
-  kable_styling(full_width = FALSE) %>%
+corr_df <- as.data.frame(corr_df_temp_1)
+
+new_col_names <- c("Variable", col_name_map[colnames(corr_df)[-1]])
+
+kable(corr_df, format = "html", escape = FALSE, col.names = new_col_names) |>
+  kable_styling(full_width = FALSE) |>
   column_spec(1, width = "3cm")
 
 ```
 
+```{r}
+#| label: tbl-2006_2012_2022_corrs
+#| tbl-cap: "**Correlations of Main Variables**<br>ALL Industrial & Commercial PINs: 2006, 2012, 2022"
+#| tbl-cap-location: top
 
+
+
+```
