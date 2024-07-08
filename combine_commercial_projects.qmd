@@ -2,6 +2,7 @@
 title: "Project level grouping and summarizing"
 format: 
   html:
+    toc-location: left
     code-fold: true
     toc: true
     tbl-cap-location: margin
@@ -81,10 +82,10 @@ ptax_pins <- ptax_pins %>%
   mutate(clean_name = ifelse(is.na(clean_name), "0_Unincorporated", clean_name))
 
 ```
-
 ```{r}
-#| label: tbl-borprojectpins
-#| tbl-cap: "**BoR Appeal PINs associated with Project ID; includes all property classes.** Uses first occurance of the an appeal id and the appealant name to create project IDs for each PIN. This deal with PINS that appealed multiple time and makes each PIN a unique occurance. Takes numbers for athe decimal point in `appealid to create project ID. Uses Board of Review Appeals data from the Cook County Data Portal. Counts number of times each PIN appealed its valuation. 102,619 PINs from BoR data (downloaded May 2024)."
+#| label: tbl-bor-pin-list
+#| tbl-cap: "**BoR Appeal PINs**. Shows list of classes that PIN was between 2006 and 2022 according to Board of Review data of appeals."
+
 
 bor_pins <- bor %>% 
   group_by(pin) %>% 
@@ -95,6 +96,13 @@ bor_pins <- bor %>%
             project_id = first(project_id), 
             timesappealed = n() ) %>%
   mutate(proj_appeallant = paste(project_id, "-", appellant))
+bor_pins %>% head()
+```
+
+```{r}
+#| label: tbl-borprojectpins
+#| tbl-cap: "**BoR Appeal PINs associated with Project ID; includes all property classes.** Uses first occurance of the an appeal id and the appealant name to create project IDs for each PIN. This deal with PINS that appealed multiple time and makes each PIN a unique occurance. Takes numbers for athe decimal point in `appealid to create project ID. Uses Board of Review Appeals data from the Cook County Data Portal. Counts number of times each PIN appealed its valuation. 102,619 PINs from BoR data (downloaded May 2024)."
+
 
  
 bor_pins %>%
