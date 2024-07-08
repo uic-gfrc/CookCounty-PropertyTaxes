@@ -48,6 +48,11 @@ FitFlextableToPage <- function(ft, pgwidth = 6){
   return(ft_out)
 }
 
+comm_ind <- read_csv("./Output/comm_ind_PINs_2006-2022.csv")
+```
+
+
+```{r runscript, eval=FALSE}
 # Run helper file
 
 source("./scripts/helper_pull_comm_ind_allyears.R")
@@ -71,12 +76,15 @@ rm(helper_objects, keep)
 ## Missing Values
 
 We want to make sure that we aren't missing values for key variables and also want to know if the missing values change by year.
-These factors are especially salient to determining our ability to assemble a panel data and used fixed effects as opposed to some other form of time-series analysis.
+These factors are especially salient to determining our ability to assemble a panel data and used fixed effects as opposed to some other form of time-series analysis or spatial analysis.
 
 ```{r}
 #| label: tbl-missing_values_all_years
 #| tbl-cap: "**Comparison of Select Missing Values Across Years**<br>ALL Commercial and Industrial PINs: 2006, 2012, 2022"
 #| tbl-cap-location: top
+
+
+
 
 missing_values_all_years <- comm_ind |>
   filter(year %in% c("2006", "2012", "2022")) |>
@@ -111,6 +119,8 @@ kable(mvay_wide, format = "html", escape = FALSE) |>
   column_spec(1, width = "3cm")
 
 ```
+
+
 Zeroes were imputed for missing values at one point in our analysis, so we also check for excess zero values.
 
 ```{r}
@@ -183,27 +193,57 @@ row_name_map <- c(
 )
 
 col_name_map <- c(
-  term = "",
-  av_clerk = "AV",
+  #term = "",
+  av_clerk = "Final AV",
+  years_existed = "Years PIN Exists",
   fmv = "FMV",
-  years_existed = "Incent.<br>Age",
-  base_year_fmv_2006 = "FMV<br>(2006)",
-  base_year_fmv_2011 = "FMV<br>(2011)"
+  base_year_fmv_2006 = "FMV in 2006",
+  base_year_fmv_2011 = "FMV in 2011"
 )
+
+vars_4fn <- c(
+  #"n_pins", "min_fmv_all", "quant25_all_fmv", "quant50_all_fmv", "quant75_all_fmv", "max_fmv_all", "fmv_mean", "fmv", "cty_pins", 
+            #  "term", 
+              "av_clerk", "years_existed","fmv", "base_year_fmv_2006", "base_year_fmv_2011" )
+
+labels_4fn <- c(
+  #"PIN Count", "Min. FMV", "25th Quantile", "50th Quantile", "75th Quantile", "Max. FMV", "Avg. FMV", "Total FMV", "PIN Count",
+              #  "Variables", 
+                "Final AV",  "Years PIN Exists", "FMV", "FMV in 2006", "FMV in 2011"
+                )
+
+df_labels <- data.frame(vars_4fn, labels_4fn)
+
 
 comm_ind$year <- as.factor(comm_ind$year)
 
 corr_matrix <- comm_ind |>
-  select(av_clerk, fmv, years_existed, base_year_fmv_2006, base_year_fmv_2011, incent_prop, year) |>
+  select(av_clerk, fmv, years_existed,
+         base_year_fmv_2006, base_year_fmv_2011, 
+         incent_prop, Alea_cat, year) |>
   correlate()
+
+
+corr_matrix
+
+corr_matrix <- corr_matrix %>% 
+#  rename(#`Variables` = term,
+ #        `Final AV` = av_clerk, FMV = fmv, `Years PIN Existed` = years_existed) %>%
+     mutate(Variables = ifelse(term %in% df_labels$vars_4fn, df_labels$labels_4fn, "Need Name")) %>%
+  select(Variables, everything(), -term)
+corr_matrix
 
 corr_df_temp_1 <- corr_matrix |>
   shave() |>
-  fashion(decimals = 2) 
+  fashion(decimals = 3)
 
 corr_df <- as.data.frame(corr_df_temp_1)
+    
+new_col_names <- c("Variables", 
+               #    col_name_map[colnames(corr_df)[-1]]
+                                      col_name_map
 
-new_col_names <- c("Variable", col_name_map[colnames(corr_df)[-1]])
+                   )
 
 kable(corr_df, format = "html", escape = FALSE, col.names = new_col_names) |>
   kable_styling(full_width = FALSE) |>
@@ -218,12 +258,14 @@ kable(corr_df, format = "html", escape = FALSE, col.names = new_col_names) |>
 
 corr_matrix_2006 <- comm_ind |>
   filter(year == 2006) |>
-  select(av_clerk, fmv, years_existed, base_year_fmv_2006, base_year_fmv_2011) |>
+  select(av_clerk, fmv, years_existed, 
+         base_year_fmv_2006, base_year_fmv_2011
+         ) |>
   correlate()
 
 corr_temp_2006 <- corr_matrix_2006 |>
   shave() |>
-  fashion(decimals = 2) 
+  fashion(decimals = 3) 
 
 corr_2006 <- as.data.frame(corr_temp_2006)
 
@@ -247,7 +289,7 @@ corr_matrix_2012 <- comm_ind |>
 
 corr_temp_2012 <- corr_matrix_2012 |>
   shave() |>
-  fashion(decimals = 2) 
+  fashion(decimals = 3) 
 
 corr_2012 <- as.data.frame(corr_temp_2012)
 
@@ -266,7 +308,9 @@ kable(corr_2012, format = "html", escape = FALSE, col.names = new_2012_col_names
 
 corr_matrix_2022 <- comm_ind |>
   filter(year == 2022) |>
-  select(av_clerk, fmv, years_existed, base_year_fmv_2006, base_year_fmv_2011) |>
+  select(av_clerk, fmv, years_existed, 
+         base_year_fmv_2006, base_year_fmv_2011
+         ) |>
   correlate()
 
 corr_temp_2022 <- corr_matrix_2022 |>
@@ -289,9 +333,12 @@ kable(corr_2012, format = "html", escape = FALSE, col.names = new_2022_col_names
 #| fig-cap-location: top
 
 comm_ind |>
-  ggplot(aes(x = base_year_fmv_2006, y = fmv)) +
-  geom_point() +
-  theme_void() +
-  facet_grid(rows = vars(year), cols = vars(incent_prop))
+  filter(year == 2022) |>
+ # distinct(year, pin, base_year_fmv_2006) %>%
+  ggplot() +
+  geom_point(aes(x = base_year_fmv_2006, y = fmv)) +
+  theme_classic()# + 
+  # facet_grid(rows = vars(year), cols = vars(incent_prop))
+ #  facet_wrap(~year)
 
 ```
