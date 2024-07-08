@@ -159,6 +159,8 @@ kable(ayz_wide, format = "html", escape = FALSE) |>
 
 Depending on our statistical model, we may need to account for serial autocorrelation for some variables across time. This seems likely with AV given the triennial reassessment cycle and will help us determine the number of lags needed in our model.
 
+[To be inserted]
+
 # Correlations
 
 ## Correlations: 2006 - 2022 Time Period
@@ -175,18 +177,18 @@ These correlations are across the entire 2006-2022 time period and are not strat
 row_name_map <- c(
   av_clerk = "AV",
   fmv = "FMV",
-  years_existed = "Incentive Age",
-  base_year_fmv_2006 = "FMV (2006)",
-  base_year_fmv_2011 = "FMV (2011)"
+  years_existed = "Incent.<br>Age",
+  base_year_fmv_2006 = "FMV<br>(2006)",
+  base_year_fmv_2011 = "FMV<br>(2011)"
 )
 
 col_name_map <- c(
   term = "",
   av_clerk = "AV",
   fmv = "FMV",
-  years_existed = "Incentive Age",
-  base_year_fmv_2006 = "FMV (2006)",
-  base_year_fmv_2011 = "FMV (2011)"
+  years_existed = "Incent.<br>Age",
+  base_year_fmv_2006 = "FMV<br>(2006)",
+  base_year_fmv_2011 = "FMV<br>(2011)"
 )
 
 comm_ind$year <- as.factor(comm_ind$year)
@@ -210,10 +212,86 @@ kable(corr_df, format = "html", escape = FALSE, col.names = new_col_names) |>
 ```
 
 ```{r}
-#| label: tbl-2006_2012_2022_corrs
-#| tbl-cap: "**Correlations of Main Variables**<br>ALL Industrial & Commercial PINs: 2006, 2012, 2022"
+#| label: tbl-corr_2006
+#| tbl-cap: "**Correlations of Main Variables**<br>ALL Industrial & Commercial PINs: 2006"
 #| tbl-cap-location: top
 
+corr_matrix_2006 <- comm_ind |>
+  filter(year == 2006) |>
+  select(av_clerk, fmv, years_existed, base_year_fmv_2006, base_year_fmv_2011) |>
+  correlate()
 
+corr_temp_2006 <- corr_matrix_2006 |>
+  shave() |>
+  fashion(decimals = 2) 
+
+corr_2006 <- as.data.frame(corr_temp_2006)
+
+new_2006_col_names <- c("Variable", col_name_map[colnames(corr_2006)[-1]])
+
+kable(corr_2006, format = "html", escape = FALSE, col.names = new_2006_col_names) |>
+  kable_styling(full_width = FALSE) |>
+  column_spec(1, width = "3cm")
+
+```
+
+```{r}
+#| label: tbl-corr_2012
+#| tbl-cap: "**Correlations of Main Variables**<br>ALL Industrial & Commercial PINs: 2012"
+#| tbl-cap-location: top
+
+corr_matrix_2012 <- comm_ind |>
+  filter(year == 2012) |>
+  select(av_clerk, fmv, years_existed, base_year_fmv_2006, base_year_fmv_2011) |>
+  correlate()
+
+corr_temp_2012 <- corr_matrix_2012 |>
+  shave() |>
+  fashion(decimals = 2) 
+
+corr_2012 <- as.data.frame(corr_temp_2012)
+
+new_2012_col_names <- c("Variable", col_name_map[colnames(corr_2012)[-1]])
+
+kable(corr_2012, format = "html", escape = FALSE, col.names = new_2012_col_names) |>
+  kable_styling(full_width = FALSE) |>
+  column_spec(1, width = "3cm")
+
+```
+
+```{r}
+#| label: tbl-corr_2022
+#| tbl-cap: "**Correlations of Main Variables**<br>ALL Industrial & Commercial PINs: 2022"
+#| tbl-cap-location: top
+
+corr_matrix_2022 <- comm_ind |>
+  filter(year == 2022) |>
+  select(av_clerk, fmv, years_existed, base_year_fmv_2006, base_year_fmv_2011) |>
+  correlate()
+
+corr_temp_2022 <- corr_matrix_2022 |>
+  shave() |>
+  fashion(decimals = 2) 
+
+corr_2022 <- as.data.frame(corr_temp_2022)
+
+new_2022_col_names <- c("Variable", col_name_map[colnames(corr_2022)[-1]])
+
+kable(corr_2012, format = "html", escape = FALSE, col.names = new_2022_col_names) |>
+  kable_styling(full_width = FALSE) |>
+  column_spec(1, width = "2cm")
+
+```
+
+```{r}
+#| label: fig-fmv_baseline_year_strat
+#| fig-cap: "Scatterplots: FMV against Base Year FMV (by Year)"
+#| fig-cap-location: top
+
+comm_ind |>
+  ggplot(aes(x = base_year_fmv_2006, y = fmv)) +
+  geom_point() +
+  theme_void() +
+  facet_grid(rows = vars(year), cols = vars(incent_prop))
 
 ```
