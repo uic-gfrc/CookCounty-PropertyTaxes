@@ -48,7 +48,6 @@ tax_codes <- DBI::dbGetQuery(
   glue_sql("
   SELECT DISTINCT year, agency_num, tax_code_num, tax_code_rate
   FROM tax_code
-  WHERE agency_num IN ({muni_agency_names$agency_num*})
   ",
            .con = ptaxsim_db_conn
   )
