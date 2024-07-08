@@ -131,12 +131,11 @@ joined <- full_join(cook_tax_codes, tax_codes_muni) %>%
 # )
 # muni_tax_codes + unincorp_tax_codes = cook_tax_codes 
 
-tax_codes <- cook_tax_codes %>%
+tax_codes <- joined %>%
+  left_join(muni_agency_names) %>%
   mutate(
-    agency_num = ifelse(
-      tax_code_num %in% tax_codes_muni$tax_code_num, as.character(tax_codes_muni$agency_num), NA),
-    agency_name = ifelse(
-      agency_num %in% muni_agency_names$agency_num, muni_agency_names$agency_name,"Unincorporated")
+ agency_name = ifelse(is.na(agency_name), "Unincorporated", agency_name)
+    #  agency_num %in% muni_agency_names$agency_num, muni_agency_names$agency_name,"Unincorporated")
   )
 
 nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")  %>%
@@ -260,7 +259,8 @@ pins_existed_check <- comm_ind_pins_ever |>
   summarize(
     min_year = min(year),
     max_year = max(year),
-    years_existed = n()
+    years_existed = n(),
+    mean_taxrate = mean(tax_code_rate)
   )
 
 comm_ind_pins_ever <- comm_ind_pins_ever |>
