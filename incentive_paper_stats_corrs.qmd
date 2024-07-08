@@ -194,22 +194,23 @@ These correlations are across the entire 2006-2022 time period and are not strat
 #| label: tbl-all_year_corrs
 #| tbl-cap: "**Correlations of Main Variables**<br>ALL Industrial & Commercial PINs: 2006-2022"
 #| tbl-cap-location: top
+#| warning: false
 
 row_name_map <- c(
   av_clerk = "AV",
   fmv = "FMV",
-  years_existed = "Incent.<br>Age",
+  years_existed = "PIN<br>Age",
   base_year_fmv_2006 = "FMV<br>(2006)",
   base_year_fmv_2011 = "FMV<br>(2011)"
 )
 
 col_name_map <- c(
   #term = "",
-  av_clerk = "Final AV",
-  years_existed = "Years PIN Exists",
+  av_clerk = "AV",
+  years_existed = "PIN<br>Age",
   fmv = "FMV",
-  base_year_fmv_2006 = "FMV in 2006",
-  base_year_fmv_2011 = "FMV in 2011"
+  base_year_fmv_2006 = "FMV<br>(2006)",
+  base_year_fmv_2011 = "FMV<br>(2011)"
 )
 
 vars_4fn <- c(
@@ -220,7 +221,7 @@ vars_4fn <- c(
 labels_4fn <- c(
   #"PIN Count", "Min. FMV", "25th Quantile", "50th Quantile", "75th Quantile", "Max. FMV", "Avg. FMV", "Total FMV", "PIN Count",
               #  "Variables", 
-                "Final AV",  "Years PIN Exists", "FMV", "FMV in 2006", "FMV in 2011"
+                "AV",  "PIN<br>Age", "FMV", "FMV<br>2006", "FMV<br>2011"
                 )
 
 df_labels <- data.frame(vars_4fn, labels_4fn)
@@ -336,16 +337,35 @@ kable(corr_2012, format = "html", escape = FALSE, col.names = new_2022_col_names
 
 ```{r}
 #| label: fig-fmv_baseline_year_strat
-#| fig-cap: "Scatterplots: FMV against Base Year FMV (by Year)"
+#| fig-cap: "Comparison of FMV in 2022 vs. 2026"
 #| fig-cap-location: top
 
 comm_ind |>
+  filter(base_year_fmv_2006 > 0) |>
   filter(year == 2022) |>
- # distinct(year, pin, base_year_fmv_2006) %>%
   ggplot() +
   geom_point(aes(x = base_year_fmv_2006, y = fmv)) +
-  theme_classic()# + 
-  # facet_grid(rows = vars(year), cols = vars(incent_prop))
- #  facet_wrap(~year)
+  theme_classic() +
+  labs(x = "FMV (2006)", y = "FMV (2022)") +
+  scale_x_continuous(labels = dollar_format(scale = 1e-9, suffix = "B")) +
+  scale_y_continuous(labels = dollar_format(scale = 1e-9, suffix = "B"))
+
+```
+
+```{r}
+#| label: fig-fmv_baseline_year_2006_incent_strat
+#| fig-cap: "Comparison of FMV in 2022 vs. 2026<br>by Incentive Classification"
+#| fig-cap-location: top
+
+comm_ind |>
+  filter(base_year_fmv_2006 > 0) |>
+  filter(year == 2022) |>
+  ggplot() +
+  geom_point(aes(x = base_year_fmv_2006, y = fmv)) +
+  theme_classic() +
+  labs(x = "FMV (2006)", y = "FMV (2022)") +
+  scale_x_continuous(labels = dollar_format(scale = 1e-9, suffix = "B")) +
+  scale_y_continuous(labels = dollar_format(scale = 1e-9, suffix = "B")) +
+  facet_grid(cols = vars(incent_prop))
 
 ```
