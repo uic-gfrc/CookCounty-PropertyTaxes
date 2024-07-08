@@ -103,33 +103,10 @@ tax_codes_muni <- DBI::dbGetQuery(
            .con = ptaxsim_db_conn
   ))
   
-tax_codes_muni <- DBI::dbGetQuery(
-  ptaxsim_db_conn,
-  glue_sql("
-  SELECT DISTINCT year, agency_num, tax_code_num, tax_code_rate
-  FROM tax_code
-  WHERE tax_code_num IN ({distinct_cook_TC$tax_code_num*}) AND
-  year IN ({distinct_cook_TC$year*}) AND
-  agency_num IN ({muni_agency_names$agency_num*})
-  ",
-           .con = ptaxsim_db_conn
-  )
-)
  
 joined <- full_join(cook_tax_codes, tax_codes_muni) %>%
   mutate(agency_num = ifelse(is.na(agency_num), "010010000", as.character(agency_num)))
 
-#unincorp_tax_codes <- anti_join(cook_tax_codes, tax_codes_muni, by = c("year", "tax_code_num")) 
-# 
-# %>% 
-#   mutate(
-#     agency_num = ifelse(
-#       tax_code_num %in% tax_codes_muni$tax_code_num, as.character(tax_codes_muni$agency_num), "010010000"),
-#     
-#     agency_name = ifelse(
-#       agency_num %in% muni_agency_names$agency_num, muni_agency_names$agency_name,"Unincorporated")
-# )
-# muni_tax_codes + unincorp_tax_codes = cook_tax_codes 
 
 tax_codes <- joined %>%
   left_join(muni_agency_names) %>%
@@ -147,25 +124,6 @@ nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")  %>%
 tax_codes <- tax_codes %>% 
   left_join(nicknames, by = c("agency_num" = "agency_number")) %>%
   mutate(clean_name = ifelse(is.na(clean_name), "Unincorporated", clean_name))
-  
-
-
-# tax_codes <- DBI::dbGetQuery(
-#   ptaxsim_db_conn,
-#   glue_sql("
-#   SELECT DISTINCT year, tax_code_num, tax_code_rate
-#   FROM tax_code
-#   WHERE tax_code_num IN ({distinct_cook_TC$tax_code_num*}) AND
-#   year IN ({distinct_cook_TC$year*}) 
-#   ",
-#            .con = ptaxsim_db_conn
-#   )
-# ) 
-
- 
-  
-
-
 
 
 # 119k distinct pins were a commercial or industrial property for at least 1 year
@@ -297,5 +255,5 @@ comm_ind_pins_ever %>%
 pins_exist_allyears <- comm_ind_pins_ever %>% 
   filter(years_existed == 17)
 
-write_csv(comm_ind_pins_allyears, "./Output/comm_ind_PINs_2006-2022.csv")
+write_csv(pins_exist_allyears, "./Output/comm_ind_PINs_2006to2022_existallyears.csv")
 
