@@ -49,22 +49,11 @@ FitFlextableToPage <- function(ft, pgwidth = 6){
   return(ft_out)
 }
 
-comm_ind <- read_csv("./Output/comm_ind_PINs_2006-2022.csv")
+#comm_ind <- read_csv("./Output/comm_ind_PINs_2006-2022.csv")
 ```
 
-```{r eval = FALSE}
 
-comm_ind |>
-  filter(year %in% c("2006", "2011", "2022")) |>
-  select(year, pin, fmv) |>
-  group_by(year) |>
-  summarize(PINs = n(), year_fmv = sum(fmv)) |>
-  kable()
-
-
-```
-
-```{r runscript, eval=FALSE}
+```{r runscript}
 # Run helper file
 
 source("./scripts/helper_pull_comm_ind_allyears.R")
@@ -80,6 +69,34 @@ comm_ind <- comm_ind_pins_ever
 rm(list = setdiff(helper_objects, keep))
 
 rm(helper_objects, keep)
+
+```
+
+```{r}
+
+dumb_table <- comm_ind |>
+  filter(year %in% c("2006", "2011", "2022")) |>
+  filter(Alea_cat %in% c("Industrial", "Commercial")) |>
+  select(year, pin, fmv, incent_prop, Alea_cat) |>
+  group_by(year, incent_prop, Alea_cat) |>
+  summarize(PINs = n(), year_fmv_billions = sum(fmv) / 1e9)
+
+kable(dumb_table, format = "html", escape = FALSE) |>
+  kable_styling(full_width = FALSE) |>
+  column_spec(1, width = "3cm")
+
+```
+
+```{r r_as_a_calculator}
+
+# 2006 vs. 2022 Incentivized Commercial:
+
+3.68/.18
+
+# 2011 vs. 2022 Incentivized Commercial:
+ 
+3.68/.914 
+
 
 ```
 
