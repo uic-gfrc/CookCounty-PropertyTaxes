@@ -62,6 +62,7 @@ tax_codes_muni <- DBI::dbGetQuery(
            .con = ptaxsim_db_conn
   ))
 
+
 # 1,643,662 PINs in municipalities
 muni_pins <- DBI::dbGetQuery(
   ptaxsim_db_conn,
@@ -74,49 +75,6 @@ muni_pins <- DBI::dbGetQuery(
     .con = ptaxsim_db_conn
   )) 
 
-# distinct_cook_TC <- cook_pins %>% 
-#   distinct(year, tax_code_num)
-
-# # Identify tax codes taxed by the County
-# Pull in the tax code rates
-# cook_tax_codes <- DBI::dbGetQuery(
-#   ptaxsim_db_conn,
-#   glue_sql("
-#   SELECT DISTINCT year, tax_code_num, tax_code_rate
-#   FROM tax_code
-#   WHERE agency_num = '010010000'    
-#   ",
-#            .con = ptaxsim_db_conn
-#   )
-# )
-
-# # Identify tax codes associated with relevant agencies
-# Pull in the tax code rates
-# tax_codes <- DBI::dbGetQuery(
-#   ptaxsim_db_conn,
-#   glue_sql("
-#   SELECT DISTINCT year, tax_code_num, tax_code_rate
-#   FROM tax_code
-#   WHERE tax_code_num IN ({distinct_cook_TC$tax_code_num*}) AND
-#   year IN ({distinct_cook_TC$year*})
-#   ",
-#            .con = ptaxsim_db_conn
-#   )
-# ) 
-
-
-  
- 
-
-# joined <- full_join(cook_tax_codes, tax_codes_muni) %>%
-#  mutate(agency_num = ifelse(is.na(agency_num), "010010000", as.character(agency_num)))
-
-# 
-# tax_codes <- tax_codes_muni %>%
-#   left_join(muni_agency_names) %>%
-#   mutate(
-#  agency_name = ifelse(is.na(agency_name), "Unincorporated", agency_name)
-#   )
 
 nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")  %>%
   select(agency_number, clean_name, Triad, Township) %>%
