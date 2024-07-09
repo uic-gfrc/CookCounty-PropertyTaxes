@@ -102,3 +102,63 @@ ptax_pins <- read_csv("Output/Dont_Upload/0_joined_PIN_data_2022.csv") %>%
   select(-c(propclass_1dig:av.y))
 
 
+# Abatement PIN checks ---------------------
+
+# for PIN 24264070100000. Part of Truck Stop Pilot W
+
+ptaxsim::lookup_pin(years, "24264070100000")
+
+pins <- "24264070100000"
+pinchecks <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql(
+    "SELECT*
+  FROM pin
+  WHERE pin IN ({pins*}) AND
+  year IN ({years*})
+  ",
+    .con = ptaxsim_db_conn
+  ))
+
+eq22 <- 2.9237
+
+pinchecks %>% filter(year == 2022) %>% 
+  summarize(av = sum(av_clerk)) %>%
+  mutate(eav = av*eq22)
+pinbills <- ptaxsim::tax_bill(2022, "24264070100000",
+                              simplify = FALSE)
+
+
+pinbills %>% filter(year == 2022) %>% 
+  summarize(prebill = sum(tax_amt_pre_exe),
+            postbill = sum(tax_amt_post_exe)) %>% 
+  mutate(dif = prebill-postbill)
+
+abatement <- 1476960
+
+
+
+
+
+
+ptaxsim::lookup_pin(years, "18232000010000")
+
+pins <- "18232000010000"
+
+pinchecks <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql(
+    "SELECT*
+  FROM pin
+  WHERE pin IN ({pins*}) AND
+  year IN ({years*})
+  ",
+    .con = ptaxsim_db_conn
+  ))
+
+pinchecks %>% filter(year == 2022) %>% 
+  summarize(av = sum(av_clerk)) %>%
+  mutate(eav = av*eq22)
+
+pinbills <- ptaxsim::tax_bill(2022, "18232000010000",
+                              simplify = FALSE)
