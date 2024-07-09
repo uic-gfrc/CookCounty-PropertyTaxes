@@ -1,6 +1,6 @@
 library(tidyverse)
 library(ptaxsim)
-library(DBI) 
+library(DBI)
 library(glue)
 
 
@@ -17,17 +17,17 @@ ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2022.
 # Read in class dictionary
 cde <- read_csv("./Necessary_Files/class_dict_expanded.csv") |>
   mutate(class = as.character(class_code)) |>  # rename to match other data frames
-  select(-c(loa_2022, Option2, class_desc, land, vacant_ind, last2dig, 
+  select(-c(loa_2022, Option2, class_desc, land, vacant_ind, last2dig,
             Res_nonRes, assessment_level, used_in2021, class_code)) %>%
   mutate_at(.vars = c("improvement_ind", "incent_prop", "class_1dig", "major_class_code"), .funs = as.character
   )
 
-# Bring in the Level of Assessments for each year. They have changed over time!! 
-ccao_loa <- read_csv("./inputs/ccao_loa.csv") %>% 
+# Bring in the Level of Assessments for each year. They have changed over time!!
+ccao_loa <- read_csv("./inputs/ccao_loa.csv") %>%
   mutate(class = as.character(class_code)) %>%
-  filter(year > 2005) %>% 
+  filter(year > 2005) %>%
   select(-class_code) %>%
-  mutate(loa = as.numeric(loa)) %>% 
+  mutate(loa = as.numeric(loa)) %>%
   mutate(loa = ifelse(loa == 0, NA, loa) # avoid dividing by zero errora
          )
 
@@ -68,13 +68,13 @@ muni_pins <- DBI::dbGetQuery(
   glue_sql(
     "SELECT year, pin, class, tax_code_num
   FROM pin
-  WHERE class > 399 AND class < 900 
+  WHERE class > 399 AND class < 900
   AND tax_code_num IN ({tax_codes_muni$tax_code_num*})
   ",
     .con = ptaxsim_db_conn
-  )) 
+  ))
 
-# distinct_cook_TC <- cook_pins %>% 
+# distinct_cook_TC <- cook_pins %>%
 #   distinct(year, tax_code_num)
 
 # # Identify tax codes taxed by the County
@@ -84,7 +84,7 @@ muni_pins <- DBI::dbGetQuery(
 #   glue_sql("
 #   SELECT DISTINCT year, tax_code_num, tax_code_rate
 #   FROM tax_code
-#   WHERE agency_num = '010010000'    
+#   WHERE agency_num = '010010000'
 #   ",
 #            .con = ptaxsim_db_conn
 #   )
@@ -102,16 +102,16 @@ muni_pins <- DBI::dbGetQuery(
 #   ",
 #            .con = ptaxsim_db_conn
 #   )
-# ) 
+# )
 
 
-  
- 
+
+
 
 # joined <- full_join(cook_tax_codes, tax_codes_muni) %>%
 #  mutate(agency_num = ifelse(is.na(agency_num), "010010000", as.character(agency_num)))
 
-# 
+#
 # tax_codes <- tax_codes_muni %>%
 #   left_join(muni_agency_names) %>%
 #   mutate(
@@ -124,7 +124,7 @@ nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")  %>%
   mutate(agency_number = str_pad(agency_number, width = 9, side = "left", pad = "0"))
 
 
-tax_codes_muni <- tax_codes_muni %>% 
+tax_codes_muni <- tax_codes_muni %>%
   left_join(nicknames, by = c("agency_num" = "agency_number")) %>%
   mutate(clean_name = ifelse(is.na(clean_name), "Unincorporated", clean_name))
 
@@ -154,7 +154,7 @@ comm_ind_pins_ever <- DBI::dbGetQuery(
   )) |>
   mutate_if(is.integer64, as.double ) %>%
   mutate(class = as.character(class)) |>
-  left_join(cde, by = "class") |> 
+  left_join(cde, by = "class") |>
   left_join(ccao_loa, by = c("year", "class")) |>
   mutate(comparable_props = as.character(comparable_props),
          )
@@ -166,18 +166,18 @@ tif_distrib <- DBI::dbGetQuery(
   glue_sql(
   "SELECT DISTINCT year, tax_code_num, tax_code_distribution_pct
   FROM tif_distribution
-  ", 
+  ",
     .con = ptaxsim_db_conn)
-  ) 
+  )
 
 
 commercial_classes <- c(401:435, 490, 491, 492, 496:499,
-                        500:535,590, 591, 592, 597:599, 
+                        500:535,590, 591, 592, 597:599,
                         700:799,
                         800:835, 891, 892, 897, 899
-                        )  
+                        )
 
-industrial_classes <- c(480:489,493, 
+industrial_classes <- c(480:489,493,
                         550:589, 593,
                         600:699,
                         850:890, 893
@@ -192,7 +192,7 @@ comm_ind_pins_ever |>
 
 comm_ind_pins_ever <- comm_ind_pins_ever %>%
   arrange(pin) %>%
-  left_join(tax_codes, by = c("year", "tax_code_num")) %>%
+  left_join(tax_codes_muni, by = c("year", "tax_code_num")) %>%
   left_join(tif_distrib) %>%
   mutate(
     has_AB_exemp = as.character(ifelse(exe_abate > 0, 1, 0)),
@@ -208,7 +208,7 @@ comm_ind_pins_ever <- comm_ind_pins_ever %>%
       (class_group == 8 & class %in% commercial_classes ) ~ "8A",
       (class_group == 8 & class %in% industrial_classes ) ~ "8B",
       TRUE ~ as.character(class_group))
-) 
+)
 
 
 pins_existed_check <- comm_ind_pins_ever |>
@@ -226,33 +226,33 @@ comm_ind_pins_ever <- comm_ind_pins_ever |>
     years_existed = n(),
     base_year_fmv_2006 = ifelse(min(year)==2006 & max(year == 2022), fmv[year == 2006], NA),
     base_year_fmv_2011 = ifelse(years_existed > 10 & max(year) == 2022, fmv[year == 2011], NA),
-    
+
     fmv_growth_2006 = fmv/base_year_fmv_2006,
     fmv_growth_2011 = ifelse(year >=2011, fmv/base_year_fmv_2011, NA),
-    
-  ) 
+
+  )
 
 
 write_csv(comm_ind_pins_ever, "./Output/comm_ind_PINs_2006-2022.csv")
 
 comm_ind_pins_ever %>% filter(is.na(tax_code_rate))
-  
+
 ## 96,193 PINs exist every year.
-comm_ind_pins_ever %>% 
+comm_ind_pins_ever %>%
   filter(years_existed == 17) %>%
-  select(year, Alea_cat, incent_prop, fmv_growth_2006) %>% 
+  select(year, Alea_cat, incent_prop, fmv_growth_2006) %>%
   filter(year == 2022)
-  
+
 ## 100,900 PINs existed since 2011 (and did not become tax exempt)
 ## 102,717 PINs if not filtering for NA fmv growth
-comm_ind_pins_ever %>% 
+comm_ind_pins_ever %>%
   filter(max(year) == 2022 & years_existed > 10) %>%
-  select(year, Alea_cat, incent_prop, fmv_growth_2011) %>% 
-  filter(year == 2022)# %>% 
+  select(year, Alea_cat, incent_prop, fmv_growth_2011) %>%
+  filter(year == 2022)# %>%
 #  filter(!is.na(fmv_growth_2011)  ## removes properties where growth was zero because the property became tax exempt
         # )
 ## Write CSV to Output Folder
-pins_exist_allyears <- comm_ind_pins_ever %>% 
+pins_exist_allyears <- comm_ind_pins_ever %>%
   filter(years_existed == 17)
 
 write_csv(pins_exist_allyears, "./Output/comm_ind_PINs_2006to2022_existallyears.csv")
