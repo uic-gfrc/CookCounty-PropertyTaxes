@@ -245,12 +245,13 @@ comm_ind_pins_ever %>%
   filter(year == 2022)
   
 ## 100,900 PINs existed since 2011 (and did not become tax exempt)
+## 102,717 PINs if not filtering for NA fmv growth
 comm_ind_pins_ever %>% 
   filter(max(year) == 2022 & years_existed > 10) %>%
   select(year, Alea_cat, incent_prop, fmv_growth_2011) %>% 
-  filter(year == 2022) %>% 
-  filter(!is.na(fmv_growth_2011)  ## removes properties where growth was zero because the property became tax exempt
-         )
+  filter(year == 2022)# %>% 
+#  filter(!is.na(fmv_growth_2011)  ## removes properties where growth was zero because the property became tax exempt
+        # )
 ## Write CSV to Output Folder
 pins_exist_allyears <- comm_ind_pins_ever %>% 
   filter(years_existed == 17)
