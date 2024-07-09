@@ -52,32 +52,43 @@ muni_agency_names <- DBI::dbGetQuery(
 ## 1,661,125 PINs when only including classes 400 to 899
 ## Change to numeric to merge w/ CDE
 
-cook_pins <- DBI::dbGetQuery(
+tax_codes_muni <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT DISTINCT year, agency_num, tax_code_num, tax_code_rate
+  FROM tax_code
+  WHERE agency_num IN ({muni_agency_names$agency_num*})
+  ",
+           .con = ptaxsim_db_conn
+  ))
+
+# 1,643,662 PINs in municipalities
+muni_pins <- DBI::dbGetQuery(
   ptaxsim_db_conn,
   glue_sql(
     "SELECT year, pin, class, tax_code_num
   FROM pin
-  WHERE class > 399 
-  AND class < 900
+  WHERE class > 399 AND class < 900 
+  AND tax_code_num IN ({tax_codes_muni$tax_code_num*})
   ",
     .con = ptaxsim_db_conn
   )) 
 
-distinct_cook_TC <- cook_pins %>% 
-  distinct(year, tax_code_num)
+# distinct_cook_TC <- cook_pins %>% 
+#   distinct(year, tax_code_num)
 
 # # Identify tax codes taxed by the County
 # Pull in the tax code rates
-cook_tax_codes <- DBI::dbGetQuery(
-  ptaxsim_db_conn,
-  glue_sql("
-  SELECT DISTINCT year, tax_code_num, tax_code_rate
-  FROM tax_code
-  WHERE agency_num = '010010000'    
-  ",
-           .con = ptaxsim_db_conn
-  )
-)
+# cook_tax_codes <- DBI::dbGetQuery(
+#   ptaxsim_db_conn,
+#   glue_sql("
+#   SELECT DISTINCT year, tax_code_num, tax_code_rate
+#   FROM tax_code
+#   WHERE agency_num = '010010000'    
+#   ",
+#            .con = ptaxsim_db_conn
+#   )
+# )
 
 # # Identify tax codes associated with relevant agencies
 # Pull in the tax code rates
@@ -93,27 +104,19 @@ cook_tax_codes <- DBI::dbGetQuery(
 #   )
 # ) 
 
-tax_codes_muni <- DBI::dbGetQuery(
-  ptaxsim_db_conn,
-  glue_sql("
-  SELECT DISTINCT year, agency_num, tax_code_num, tax_code_rate
-  FROM tax_code
-  WHERE agency_num IN ({muni_agency_names$agency_num*})
-  ",
-           .con = ptaxsim_db_conn
-  ))
+
   
  
-joined <- full_join(cook_tax_codes, tax_codes_muni) %>%
-  mutate(agency_num = ifelse(is.na(agency_num), "010010000", as.character(agency_num)))
 
+# joined <- full_join(cook_tax_codes, tax_codes_muni) %>%
+#  mutate(agency_num = ifelse(is.na(agency_num), "010010000", as.character(agency_num)))
 
-tax_codes <- joined %>%
-  left_join(muni_agency_names) %>%
-  mutate(
- agency_name = ifelse(is.na(agency_name), "Unincorporated", agency_name)
-    #  agency_num %in% muni_agency_names$agency_num, muni_agency_names$agency_name,"Unincorporated")
-  )
+# 
+# tax_codes <- tax_codes_muni %>%
+#   left_join(muni_agency_names) %>%
+#   mutate(
+#  agency_name = ifelse(is.na(agency_name), "Unincorporated", agency_name)
+#   )
 
 nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")  %>%
   select(agency_number, clean_name, Triad, Township) %>%
@@ -121,25 +124,23 @@ nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")  %>%
   mutate(agency_number = str_pad(agency_number, width = 9, side = "left", pad = "0"))
 
 
-tax_codes <- tax_codes %>% 
+tax_codes_muni <- tax_codes_muni %>% 
   left_join(nicknames, by = c("agency_num" = "agency_number")) %>%
   mutate(clean_name = ifelse(is.na(clean_name), "Unincorporated", clean_name))
 
 
-# 119k distinct pins were a commercial or industrial property for at least 1 year
-distinct_pins <- cook_pins |>
+# 119k distinct pins in COOK were a commercial or industrial property for at least 1 year
+# 119,030 distinct PINs in Cook Municiaplities were comm or ind. property for at least 1 year
+distinct_pins <- muni_pins |>
   select(pin) |>
   distinct(pin)
-
-
-## But we want those PINs as obs. for all years, even if they weren't classified
-## as an industrial or commercial property every year.
 
 ## Use unique PIN list to get all obs. for all years they existed.
 ## ~1.8mil PINs
 ## Note: Alea_cat is a variable created by Alea in the class_dict file that indicates land use type.
 ## Land use type is based off of the description provided for property classes.
 
+##1,818,155 PINs within municipalities. Excludes unincorporated PINs
 
 ## Excluding the Exemption variables except for abatements.
 comm_ind_pins_ever <- DBI::dbGetQuery(
@@ -173,27 +174,25 @@ tif_distrib <- DBI::dbGetQuery(
 commercial_classes <- c(401:435, 490, 491, 492, 496:499,
                         500:535,590, 591, 592, 597:599, 
                         700:799,
-                        800:835, 891, 892, 897, 899)  
+                        800:835, 891, 892, 897, 899
+                        )  
 
 industrial_classes <- c(480:489,493, 
                         550:589, 593,
                         600:699,
                         850:890, 893
-)
+                        )
 
 
 
 comm_ind_pins_ever |>
   arrange(pin) %>%
-  left_join(tax_codes, by = c("year", "tax_code_num")) |> head()
+  left_join(tax_codes_muni, by = c("year", "tax_code_num")) |> head()
 
 
 comm_ind_pins_ever <- comm_ind_pins_ever %>%
   arrange(pin) %>%
   left_join(tax_codes, by = c("year", "tax_code_num")) %>%
- # mutate(agency_num = str_pad(agency_num, width = 9, side = "left", pad = "0")) %>%
-  
-#  left_join(nicknames, by = c("agency_num" = "agency_number")) %>%
   left_join(tif_distrib) %>%
   mutate(
     has_AB_exemp = as.character(ifelse(exe_abate > 0, 1, 0)),
