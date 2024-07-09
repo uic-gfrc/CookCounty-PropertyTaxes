@@ -20,17 +20,16 @@ knitr:
 ---
 
 ```{r setup}
-#| Message = FALSE
 
 library(tidyverse)
 
 df <- read_csv("./Output/comm_ind_PINs_2006-2022.csv") |>
-  as.data.frame()
+  as.data.frame() %>% filter(year == 2022) %>% mutate(tax_code_num = as.character(tax_code_num))
 
 source("scripts/helper_tc_muninames_2022.R")
 
 tc_muninames <- tc_muninames |>
-  mutate(tax_code_num = as.numeric(tax_code_num))
+  mutate(tax_code_num = as.character(tax_code_num)) %>% select(-year)
 
 df <- df |>
   left_join(tc_muninames, by = "tax_code_num")
@@ -38,7 +37,7 @@ df <- df |>
 ```
 
 ```{r abate_by_year}
-#| Warning = FALSE
+#| warning: false
 
 df |>
   filter(exe_abate > 0) |>
@@ -49,7 +48,13 @@ abate_list <- df |>
   filter(exe_abate > 0) |>
   filter(year == 2022) |>
   arrange(desc(av_clerk)) |>
-  reframe(pin, class, av_clerk, Alea_cat)
+  reframe(pin, class, av_clerk, Alea_cat, tax_code_num)
+
+abate_TC <- df  |>
+  filter(exe_abate > 0) |>
+  group_by(tax_code_num) |> 
+  summarize(abate_PC = n())
+
 
 ```
 
