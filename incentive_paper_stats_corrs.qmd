@@ -2,7 +2,7 @@
 title: "Incentive Classification Time-Series Dataset"
 subtitle: "Assessing Data Collinearity and Relationships Over Time"
 author: "Michael Van Hulle & Alea Wilbur-Mujtaba"
-date: "July 5, 2024"
+date: "July 8, 2024"
 format: 
   html:
     embed-resources: true
@@ -31,6 +31,7 @@ library(DT)
 library(flextable)
 library(kableExtra)
 library(crosstable)
+library(scales)
 
 # Set table formatting defaults
 
@@ -76,6 +77,7 @@ rm(helper_objects, keep)
 ## Missing Values
 
 We want to make sure that we aren't missing values for key variables and also want to know if the missing values change by year.
+
 These factors are especially salient to determining our ability to assemble a panel data and used fixed effects as opposed to some other form of time-series analysis or spatial analysis.
 
 
@@ -337,7 +339,7 @@ kable(corr_2012, format = "html", escape = FALSE, col.names = new_2022_col_names
 
 ```{r}
 #| label: fig-fmv_baseline_year_strat
-#| fig-cap: "Comparison of FMV in 2022 vs. 2026"
+#| fig-cap: "Comparison of FMV in 2006 vs. 2022"
 #| fig-cap-location: top
 
 comm_ind |>
@@ -347,14 +349,15 @@ comm_ind |>
   geom_point(aes(x = base_year_fmv_2006, y = fmv)) +
   theme_classic() +
   labs(x = "FMV (2006)", y = "FMV (2022)") +
-  scale_x_continuous(labels = dollar_format(scale = 1e-9, suffix = "B")) +
-  scale_y_continuous(labels = dollar_format(scale = 1e-9, suffix = "B"))
+  scale_x_continuous(labels = dollar_format(scale = 1e-6, suffix = "M")) +
+  scale_y_continuous(labels = dollar_format(scale = 1e-6, suffix = "M")) +
+  geom_abline(slope = 1, intercept = 0, color = "blue")
 
 ```
 
 ```{r}
 #| label: fig-fmv_baseline_year_2006_incent_strat
-#| fig-cap: "Comparison of FMV in 2022 vs. 2026<br>by Incentive Classification"
+#| fig-cap: "Comparison of FMV in 2022 and 2006<br>by Incentive Classification"
 #| fig-cap-location: top
 
 comm_ind |>
@@ -364,8 +367,27 @@ comm_ind |>
   geom_point(aes(x = base_year_fmv_2006, y = fmv)) +
   theme_classic() +
   labs(x = "FMV (2006)", y = "FMV (2022)") +
-  scale_x_continuous(labels = dollar_format(scale = 1e-9, suffix = "B")) +
-  scale_y_continuous(labels = dollar_format(scale = 1e-9, suffix = "B")) +
+  scale_x_continuous(labels = dollar_format(scale = 1e-6, suffix = "M")) +
+  scale_y_continuous(labels = dollar_format(scale = 1e-6, suffix = "M")) +
+  geom_abline(slope = 1, intercept = 0, color = "blue") +
+  facet_grid(cols = vars(incent_prop))
+
+```
+```{r}
+#| label: fig-fmv_baseline_year_2011_incent_strat
+#| fig-cap: "Comparison of FMV in 2011 vs. 2022<br>by Incentive Classification"
+#| fig-cap-location: top
+
+comm_ind |>
+  filter(base_year_fmv_2011 > 0) |>
+  filter(year == 2022) |>
+  ggplot() +
+  geom_point(aes(x = base_year_fmv_2011, y = fmv)) +
+  theme_classic() +
+  labs(x = "FMV (2011)", y = "FMV (2022)") +
+  scale_x_continuous(labels = dollar_format(scale = 1e-6, suffix = "M")) +
+  scale_y_continuous(labels = dollar_format(scale = 1e-6, suffix = "M")) +
+  geom_abline(slope = 1, intercept = 0, color = "blue") +
   facet_grid(cols = vars(incent_prop))
 
 ```
