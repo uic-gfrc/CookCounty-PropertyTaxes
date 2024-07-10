@@ -40,9 +40,11 @@ FitFlextableToPage <- function(ft, pgwidth = 6){
 
 ```{r message = FALSE}
 # all pins for 2022
-ptax_pins <- read_csv("Output/Dont_Upload/0_joined_PIN_data_2022.csv") %>% 
+ptax_pins <- read_csv("Output/Dont_Upload/0_joined_PIN_data_2022.csv") %>%
   mutate(class = as.numeric(class)) %>%         # Allows for joining later
-    select(-c(propclass_1dig:av.y))             
+    select(-c(propclass_1dig:av.y))
+
+
 
 # Workaround for identifying more project IDs. 
 # Used Appeal ID to create unique identifier to group PINs.
@@ -1015,7 +1017,163 @@ datatable(table4_adjusted,
 
 ```
 
+> CODE CHANGES July 10th 2024: No longer filter by commercial and incentive property types because it was dropping PINs that had changed property classes if they were not commercial or incentive. Not what was intended! - AWM
+
 # Yearly Trends
+
+## Change with Comm_Ind_PINs file
+
+The file `comm_ind_PINs_2006-2022.csv` contains all PINs that had an incentive property class for at least 1 year. It includes all observations for a property during the years that it existed, even if it is not an incentive class property in that year.
+
+```{r uses-comind-file}
+ptax_pins <- read_csv("Output/comm_ind_PINs_2006-2022.csv") %>% 
+  mutate(class = as.numeric(class)) 
+
+table(ptax_pins$Alea_cat)
+
+ptax_pins %>%
+  group_by(year#, Alea_cat
+) %>%
+  summarize(fmv = sum(fmv),
+av = sum(av_clerk)) %>% 
+ggplot() + 
+geom_line(aes(x=year, y=fmv#, color = Alea_cat
+))+
+geom_line(aes(x=year, y=av), color = "red") + 
+theme_classic() + 
+labs(title = "FMV Over Time",
+subtitle = "Includes all years of obsservations for PINs that had an Incentive Class for at least 1 year", caption = "Uses com_ind_PINS... file.  Red line is AV")
+
+ptax_pins %>%
+  group_by(year, Alea_cat
+) %>%
+  summarize(fmv = sum(fmv),
+av = sum(av_clerk)) %>% 
+ggplot() + 
+geom_line(aes(x=year, y=fmv, color = Alea_cat
+))+
+theme_classic() + 
+labs(title = "FMV Over Time by Land Use", subtitle = "Uses com_ind_PINS... file.  Dashed line is AV")
+
+ptax_pins %>% filter(is.na(incent_prop))
+# 16261070080000 was class 319 in 2007 and 2008 and is currently 592. 
+ # 13223190070000 was class 319 in 2008 and is 318 currently
+# 09244100010000 doesn't exist any more
+# 19271000680000 was class 180 and is now 190. 
+
+ptax_pins %>% filter(class == 919)
+
+ptax_pins %>% 
+group_by(year, incent_prop) %>%
+  summarize(fmv = sum(fmv),
+            av_clerk = sum(av_clerk)) %>%
+    ggplot() +
+  geom_line(aes(x=year, y = fmv, color = incent_prop)) + theme_classic()  + 
+labs(title = "FMV Over Time by Incentive Usage", subtitle = "Uses com_ind_PINS... file.")
+
+
+```
+
+## Yearly Change with comm_ind_PINs file
+
+```{r}
+#| label: tbl-growthcalculations5
+#| tbl-cap: "Growth from 2006 to 2022. Removes PINs if they did not exist during all years in the data. Uses com_ind_PINS... file. "
+
+df_1 <- ptax_pins %>%
+group_by(pin) %>%
+mutate(years_existed = n()) %>%
+ungroup() %>%
+filter(years_existed ==17 ) %>%
+  mutate(fmv = av_clerk/loa,
+ fmv = ifelse(is.na(fmv), 0 , fmv)) |>
+arrange(year) |>
+  group_by(Alea_cat, incent_prop, year) |>
+  summarize(pins = n(), 
+            group_year_fmv = sum(fmv),
+  ) |>
+
+  mutate(            
+        base_year_fmv = group_year_fmv[year == min(year)],
+            base_year_n = pins[year == min(year)],
+            fmv_growth = group_year_fmv/base_year_fmv,
+         n_growth = pins/base_year_n
+       ) 
+
+
+df_1 %>% select(year, Alea_cat,  incent_prop, pins, fmv_growth, n_growth) %>% filter(year == 2022) 
+
+
+```
+
+```{r}
+#| label: tbl-growthcalculations-commindfile
+#| tbl-cap: "Growth from 2011 to 2022."
+
+df_1 <- ptax_pins %>%
+filter(year > 2010) %>%
+group_by(pin) %>%
+mutate(years_existed = n()) %>%
+ungroup() %>%
+filter(years_existed ==12 ) %>%
+  mutate(fmv = av_clerk/loa,
+ fmv = ifelse(is.na(fmv), 0 , fmv)) |>
+  group_by(Alea_cat, incent_prop, year) |>
+  summarize(pins = n(), 
+            group_year_fmv = sum(fmv),
+  ) |>
+
+  mutate(            
+        base_year_fmv = group_year_fmv[year == min(year)],
+            base_year_n = pins[year == min(year)],
+            fmv_growth = group_year_fmv/base_year_fmv,
+         n_growth = pins/base_year_n
+       ) 
+
+
+df_1 %>% #select(year, Alea_cat,  incent_prop, pins, fmv_growth, n_growth) %>% 
+filter(year == 2022) 
+
+
+
+
+df_2011 <- ptax_pins %>%
+  filter(year >= 2011) %>%
+  mutate(fmv = av_clerk/loa,
+         fmv = ifelse(is.na(fmv), 0 , fmv)) |>
+  group_by(pin) %>%
+  mutate(
+         years_existed = n(),
+       #  base_year_fmv = fmv[year == min(year)],
+        # fmv_growth = fmv/base_year_fmv
+         ) |>
+  filter(years_existed >=11 ) %>%
+  
+  group_by(incent_prop, Alea_cat, year) |>
+  summarize(
+      group_pin_count = n(),
+      group_year_fmv = sum(fmv),
+#avg_group_baseyear_fmv = mean(base_year_fmv, na.rm=TRUE),
+#avg_group_fmv = mean(fmv, na.rm=TRUE),   # average FMV for PINs in the group for each year
+
+          ) |>
+mutate(
+      base_year_fmv = group_year_fmv[year == min(year)],
+
+      base_year_n = group_pin_count[year == min(year)],
+      n_group_growth = group_pin_count/base_year_n,
+      fmv_group_growth = group_year_fmv / base_year_fmv)
+
+
+df_2011 %>% select(year, Alea_cat, incent_prop, n_group_growth, fmv_group_growth, everything()) %>% 
+filter(year == 2022) %>% select(-year)
+
+```
+
+## Change - Uses Muni-Class Summary File
+
+> This is probably the wrong file to use! Does not account for when PINs were other classes before or after incentive classes! We accidently were dropping them some years if they were not commercial or industrial classes! 
+
 
 ```{r}
 df <- read_csv("./Output/ptaxsim_muni_class_summaries_2006-2022.csv") %>%
@@ -1026,20 +1184,45 @@ cde <- read_csv("./Necessary_Files/class_dict_expanded.csv") %>%
   rename(class = class_code)
 
 df_all <- left_join(df, cde, by = "class") %>%
-mutate(fmv = av/assess_ratio) 
+  mutate(fmv = av/assess_ratio) 
 
 
 # filter to industrial and commercial, all years
 
+### PROBLEMATIC LINE OF CODE BELOW!!! Was dropping the pins if they weren't between classes 500 and 899
 ind_comm_cc <- df_all %>%
   filter(between(class, 500, 899)) %>%
   rename(land_use = Alea_cat)
 
+# 
+# ind_comm_cc %>%
+#   filter(incent_prop == "Incentive") %>%
+#   group_by(year) %>%
+#   summarize(PINcount = sum(pins_in_muni)) %>% 
+#   ggplot() + 
+#   geom_line(aes(x=year, y=PINcount)) + theme_classic() + 
+#   labs(title = "Number of PINs with Incentive Classifications")
 
 ind_comm_cc %>%
-filter(incent_prop == "Incentive") %>%
-  group_by(year) %>%
-  summarize(PINcount = sum(pins_in_muni)) %>% ggplot() + geom_line(aes(x=year, y=PINcount)) + theme_classic() + labs(title = "Number of PINs with Incentive Classifications")
+  filter(land_use %in% c("Commercial", "Industrial")) %>%
+  group_by(year, land_use) %>%
+  summarize(fmv = sum(fmv),
+            av = sum(av)) %>% 
+  ggplot() + 
+  geom_line(aes(x=year, y=fmv, color = land_use)) +
+  #  geom_line(aes(x=year, y = av, color = land_use),  lty = 2)+
+  theme_classic() + labs(title = "FMV Over Time by Land Use", subtitle = "Uses ptaxsim_muni_class... file. DONT USE.")
+
+ind_comm_cc %>% 
+  filter(land_use %in% c("Industrial", "Commercial")) %>%
+  group_by(year, incent_prop) %>%
+  summarize(fmv = sum(fmv),
+            av = sum(av)) %>%
+  ggplot() +
+  geom_line(aes(x=year, y = fmv, color = incent_prop)) +
+#  geom_line(aes(x=year, y = av, color = incent_prop), lty=2)+
+theme_classic() +  labs(title = "FMV Over Time by Incentive Usage", subtitle = "Uses ptaxsim_muni_class... file. DONT USE.")
+
 
 ```
 
@@ -1083,7 +1266,7 @@ ind_comm_cc_trends <- ind_comm_cc_lags |>
 
 ```
 
-## County-Wide
+# County-Wide Tables
 
 ```{r}
 #| label: tbl-cooktotals-allyears
@@ -1091,15 +1274,17 @@ ind_comm_cc_trends <- ind_comm_cc_lags |>
 
 
 
-table <- ind_comm_cc %>%
+table <- ptax_pins %>%
+mutate(land_use = Alea_cat) %>% 
   group_by(year, land_use) %>%
   summarize(
-    proptype_pincount = sum(pins_in_muni),
-            n_incent = sum(ifelse(incent_prop == "Incentive", pins_in_muni, 0)),
-            n_nonincent = sum(ifelse(incent_prop == "Non-Incentive", pins_in_muni, 0))) %>%
+    proptype_pincount = n(),
+            n_incent = sum(ifelse(incent_prop == "Incentive", 1, 0)),
+            n_nonincent = sum(ifelse(incent_prop == "Non-Incentive", 1, 0))) %>%
   mutate(pct_incent = n_incent / proptype_pincount) %>%
   arrange(desc(year)) %>%
-  mutate(year = as.character(year))
+  mutate(year = as.character(year)) %>%
+filter(!land_use %in% c("Exempt", "Other Residential", "Owner Occupied", "Rental") )
 
 
 
@@ -1115,8 +1300,9 @@ flextable(table) %>%
 #| tbl-cap: "Commercial and Industrial FMV in Cook County (2006 - 2022)"
 
 
-table <- ind_comm_cc %>%
-  group_by(year) %>%
+table <- ptax_pins %>%
+mutate(land_use = Alea_cat) %>% 
+
   group_by(year, land_use) %>%
   summarize(
     proptype_fmv = sum(fmv),
@@ -1136,7 +1322,7 @@ flextable(table) %>%
 ```
 
 ```{r}
-#| label: fig-cooktotals-allyears
+#| label: fig-cooktotals-allyears2
 #| fig-cap: "Percent of PINs within each Property Type that had Incentive Property Classes"
 
 
@@ -1162,7 +1348,7 @@ table <- ind_comm_cc %>%
 ```
 
 ```{r}
-#| label: fig-cooktotals-allyears-fmv
+#| label: fig-cooktotals-allyears-fmv2
 #| fig-cap: "**Percent of Commercial and Industrial FMV in Cook County that had Incentive Property Classification (2006 - 2022).**  In 2006, around 20% of industrial FMV came from properties with incentive classes. In 2022, over 35% of Industrial FMV came from incentive class properties. Commercial properties have gone from making up nearly 0% Commercial FMV to close to 5% of Commercial FMV."
  
 table %>% ggplot() + 
@@ -1203,7 +1389,7 @@ levy_growth = total_final_levy / base_year_levy
 
 df_1 <- df_all %>%
   mutate(fmv = av/assess_ratio) |>
-  group_by(Alea_cat, incent_prop, year) |>
+  group_by(year, Alea_cat, incent_prop) |>
   summarize(n = sum(pins_in_muni), 
             class_year_fmv = sum(fmv, na.rm=TRUE),
   ) |>
