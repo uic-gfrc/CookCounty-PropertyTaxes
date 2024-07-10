@@ -1096,13 +1096,11 @@ ptax_pins %>%
        subtitle = "Includes all years of obsservations for PINs that had an Incentive Class for at least 1 year", caption = "Uses com_ind_PINS... file.  Red line is AV")
 
 ptax_pins %>%
-  group_by(year, Alea_cat
-  ) %>%
+  group_by(year, land_use) %>%
   summarize(fmv = sum(fmv),
             av = sum(av_clerk)) %>% 
   ggplot() + 
-  geom_line(aes(x=year, y=fmv, color = Alea_cat
-  ))+
+  geom_line(aes(x=year, y=fmv, color = land_use))+
   theme_classic() + 
   labs(title = "FMV Over Time by Land Use", subtitle = "Uses com_ind_PINS... file.")
 
@@ -1141,7 +1139,7 @@ df_1 <- ptax_pins %>%
   mutate(fmv = av_clerk/loa,
          fmv = ifelse(is.na(fmv), 0 , fmv)) |>
   arrange(year) |>
-  group_by(Alea_cat, incent_prop, year) |>
+  group_by(land_use, incent_prop, year) |>
   summarize(pins = n(), 
             group_year_fmv = sum(fmv),
   ) |>
@@ -1154,7 +1152,7 @@ df_1 <- ptax_pins %>%
   ) 
 
 
-df_1 %>% select(year, Alea_cat,  incent_prop, pins, fmv_growth, n_growth) %>% filter(year == 2022) 
+df_1 %>% select(year, land_use,  incent_prop, pins, fmv_growth, n_growth) %>% filter(year == 2022) 
 
 
 ```
@@ -1171,7 +1169,7 @@ df_1 <- ptax_pins %>%
   filter(years_existed ==12 ) %>%
   mutate(fmv = av_clerk/loa,
          fmv = ifelse(is.na(fmv), 0 , fmv)) |>
-  group_by(Alea_cat, incent_prop, year) |>
+  group_by(land_use, incent_prop, year) |>
   summarize(pins = n(), 
             group_year_fmv = sum(fmv),
   ) |>
@@ -1196,13 +1194,10 @@ df_2011 <- ptax_pins %>%
          fmv = ifelse(is.na(fmv), 0 , fmv)) |>
   group_by(pin) %>%
   mutate(
-    years_existed = n(),
-    #  base_year_fmv = fmv[year == min(year)],
-    # fmv_growth = fmv/base_year_fmv
-  ) |>
+    years_existed = n() ) |>
   filter(years_existed >=11 ) %>%
   
-  group_by(incent_prop, Alea_cat, year) |>
+  group_by(incent_prop, land_use, year) |>
   summarize(
     group_pin_count = n(),
     group_year_fmv = sum(fmv),
@@ -1218,7 +1213,7 @@ df_2011 <- ptax_pins %>%
     fmv_group_growth = group_year_fmv / base_year_fmv)
 
 
-df_2011 %>% select(year, Alea_cat, incent_prop, n_group_growth, fmv_group_growth, everything()) %>% 
+df_2011 %>% select(year, land_use, incent_prop, n_group_growth, fmv_group_growth, everything()) %>% 
 filter(year == 2022) %>% select(-year)
 
 ```
@@ -1325,9 +1320,7 @@ ind_comm_cc_trends <- ind_comm_cc_lags |>
 #| tbl-cap: "Commercial and Industrial PINs in Cook County (2006 - 2022)"
 
 
-
 table <- ptax_pins %>%
-mutate(land_use = Alea_cat) %>% 
   group_by(year, land_use) %>%
   summarize(
     proptype_pincount = n(),
@@ -1353,8 +1346,6 @@ flextable(table) %>%
 
 
 table <- ptax_pins %>%
-mutate(land_use = Alea_cat) %>% 
-
   group_by(year, land_use) %>%
   summarize(
     proptype_fmv = sum(fmv),
@@ -1364,9 +1355,6 @@ mutate(land_use = Alea_cat) %>%
   arrange(desc(year)) %>%
   mutate(year = as.character(year)) %>%
 filter(!land_use %in% c("Exempt", "Other Residential", "Owner Occupied", "Rental") )
-
-
-
 
 
 flextable(table) %>% 
@@ -1387,15 +1375,14 @@ table %>% ggplot() + geom_line(aes(x=year, y = pct_incent, group = land_use, col
 ```{r}
 
 table <- ptax_pins %>%
-  group_by(year, Alea_cat) %>%
+  group_by(year, land_use) %>%
   summarize(
     proptype_fmv = sum(fmv),
             n_incent = sum(ifelse(incent_prop == "Incentive", 1, 0)),
             n_nonincent = sum(ifelse(incent_prop == "Non-Incentive", 1, 0))) %>%
   mutate(pct_incent = n_incent / proptype_fmv) %>%
   arrange(desc(year)) %>%
-  mutate(year = as.character(year),
-land_use = Alea_cat)
+  mutate(year = as.character(year))
 ```
 
 ```{r}
@@ -1457,8 +1444,6 @@ df_2011 %>% select(year, Alea_cat, incent_prop, fmv_growth, n_growth) %>% filter
 ```{r}
 #| label: fig-growth-facetby-incentprop
 #| fig-cap: "Growth from 2006 to 2022. Faceted by binary indicator for if a property had incentive classification or not. Indexed to FMV of properties during 2006."
-
-#df_1 %>% filter(incent_prop == "Incentive") %>% ggplot() + geom_line(aes(x=year, y=fmv_growth, group = Alea_cat, color = Alea_cat))
 
 df_1 %>% filter(!is.na(incent_prop) ) %>% 
 ggplot() + geom_line(aes(x=year, y=fmv_growth, group = Alea_cat, color = Alea_cat)) + facet_wrap(~incent_prop) + labs(title= "Growth from 2006 to 2022")
