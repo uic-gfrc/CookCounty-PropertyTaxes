@@ -1027,49 +1027,102 @@ The file `comm_ind_PINs_2006-2022.csv` contains all PINs that had an incentive p
 
 ```{r uses-comind-file}
 ptax_pins <- read_csv("Output/comm_ind_PINs_2006-2022.csv") %>% 
-  mutate(class = as.numeric(class)) 
+  mutate(class = as.numeric(class)) %>%
+  rename(land_use = Alea_cat)
 
-table(ptax_pins$Alea_cat)
+ptax_pins <- ptax_pins %>% 
+  group_by(pin) %>%
+  mutate(incentive_years = sum(incent_prop == "Incentive"),
+         landuse_change = ifelse(
+           sum(land_use == "Commercial") == 17, "Always Commercial",
+           ifelse(sum(land_use == "Industrial") == 17, "Always Industrial",
+                  "Changes Land Use"
+                  ))) %>%
+  ungroup() %>%
+  mutate(incent_change = case_when(
+    incentive_years == 17 ~ "Always Incentive",
+    incentive_years == 0 ~ "Never Incentive",
+    TRUE ~ "Changes Sometime")
+  )
+
+```
+
+```{r}
+table(ptax_pins$incent_change)
+table(ptax_pins$incentive_years)
+table(ptax_pins$landuse_change)
+
+ptax_pins %>% filter(year == 2022) %>% reframe(count = n(), .by = landuse_change)
+ptax_pins %>% filter(year == 2022) %>% reframe(count = n(), .by = incent_change)
+
+table(ptax_pins$land_use)
+```
+
+```{r}
+#| label: fig-FMVgraphs
+#| fig-cap: ""
 
 ptax_pins %>%
-  group_by(year#, Alea_cat
-) %>%
+  group_by(year, incent_change) %>%
   summarize(fmv = sum(fmv),
-av = sum(av_clerk)) %>% 
-ggplot() + 
-geom_line(aes(x=year, y=fmv#, color = Alea_cat
-))+
-geom_line(aes(x=year, y=av), color = "red") + 
-theme_classic() + 
-labs(title = "FMV Over Time",
-subtitle = "Includes all years of obsservations for PINs that had an Incentive Class for at least 1 year", caption = "Uses com_ind_PINS... file.  Red line is AV")
+            av = sum(av_clerk)) %>% 
+  ggplot() + 
+  geom_line(aes(x=year, y=fmv, color = incent_change))+
+  theme_classic() + 
+  labs(title = "FMV Over Time",
+       subtitle = "Includes all years of observations for PINs that had an Incentive Class for at least 1 year", caption = "Uses com_ind_PINS... file.") + scale_y_continuous(labels = scales::dollar)
+
+
+ptax_pins %>%
+  group_by(year, landuse_change) %>%
+  summarize(fmv = sum(fmv),
+            av = sum(av_clerk)) %>% 
+  ggplot() + 
+  geom_line(aes(x=year, y=fmv, color = landuse_change))+
+  theme_classic() + 
+  labs(title = "FMV Over Time",
+       subtitle = "Includes all years of observations for PINs that had an Incentive Class for at least 1 year", caption = "Uses com_ind_PINS... file.") + scale_y_continuous(labels = scales::dollar)
+
+ptax_pins %>%
+  group_by(year) %>%
+  summarize(fmv = sum(fmv),
+            av = sum(av_clerk)) %>% 
+  ggplot() + 
+  geom_line(aes(x=year, y=fmv#, color = Alea_cat
+  ))+
+  geom_line(aes(x=year, y=av), color = "red") + 
+  theme_classic() + 
+  labs(title = "FMV Over Time",
+       subtitle = "Includes all years of obsservations for PINs that had an Incentive Class for at least 1 year", caption = "Uses com_ind_PINS... file.  Red line is AV")
 
 ptax_pins %>%
   group_by(year, Alea_cat
-) %>%
+  ) %>%
   summarize(fmv = sum(fmv),
-av = sum(av_clerk)) %>% 
-ggplot() + 
-geom_line(aes(x=year, y=fmv, color = Alea_cat
-))+
-theme_classic() + 
-labs(title = "FMV Over Time by Land Use", subtitle = "Uses com_ind_PINS... file.  Dashed line is AV")
+            av = sum(av_clerk)) %>% 
+  ggplot() + 
+  geom_line(aes(x=year, y=fmv, color = Alea_cat
+  ))+
+  theme_classic() + 
+  labs(title = "FMV Over Time by Land Use", subtitle = "Uses com_ind_PINS... file.")
 
-ptax_pins %>% filter(is.na(incent_prop))
+
+## Fixed NAs in incent_props
+# ptax_pins %>% filter(is.na(incent_prop))
 # 16261070080000 was class 319 in 2007 and 2008 and is currently 592. 
- # 13223190070000 was class 319 in 2008 and is 318 currently
+# 13223190070000 was class 319 in 2008 and is 318 currently
 # 09244100010000 doesn't exist any more
 # 19271000680000 was class 180 and is now 190. 
 
-ptax_pins %>% filter(class == 919)
-
 ptax_pins %>% 
-group_by(year, incent_prop) %>%
+  group_by(year, incent_prop) %>%
   summarize(fmv = sum(fmv),
             av_clerk = sum(av_clerk)) %>%
-    ggplot() +
+  ggplot() +
   geom_line(aes(x=year, y = fmv, color = incent_prop)) + theme_classic()  + 
-labs(title = "FMV Over Time by Incentive Usage", subtitle = "Uses com_ind_PINS... file.")
+  labs(title = "FMV from Incentive and non-Incentive Class Properties", subtitle = "Uses com_ind_PINS... file.")
+
+
 
 
 ```
@@ -1078,27 +1131,27 @@ labs(title = "FMV Over Time by Incentive Usage", subtitle = "Uses com_ind_PINS..
 
 ```{r}
 #| label: tbl-growthcalculations5
-#| tbl-cap: "Growth from 2006 to 2022. Removes PINs if they did not exist during all years in the data. Uses com_ind_PINS... file. "
+#| tbl-cap: "**Growth from 2006 to 2022.** Removes PINs if they did not exist during all years in the data. Uses com_ind_PINS... file. "
 
 df_1 <- ptax_pins %>%
-group_by(pin) %>%
-mutate(years_existed = n()) %>%
-ungroup() %>%
-filter(years_existed ==17 ) %>%
+  group_by(pin) %>%
+  mutate(years_existed = n()) %>%
+  ungroup() %>%
+  filter(years_existed ==17 ) %>%
   mutate(fmv = av_clerk/loa,
- fmv = ifelse(is.na(fmv), 0 , fmv)) |>
-arrange(year) |>
+         fmv = ifelse(is.na(fmv), 0 , fmv)) |>
+  arrange(year) |>
   group_by(Alea_cat, incent_prop, year) |>
   summarize(pins = n(), 
             group_year_fmv = sum(fmv),
   ) |>
-
+  
   mutate(            
-        base_year_fmv = group_year_fmv[year == min(year)],
-            base_year_n = pins[year == min(year)],
-            fmv_growth = group_year_fmv/base_year_fmv,
-         n_growth = pins/base_year_n
-       ) 
+    base_year_fmv = group_year_fmv[year == min(year)],
+    base_year_n = pins[year == min(year)],
+    fmv_growth = group_year_fmv/base_year_fmv,
+    n_growth = pins/base_year_n
+  ) 
 
 
 df_1 %>% select(year, Alea_cat,  incent_prop, pins, fmv_growth, n_growth) %>% filter(year == 2022) 
@@ -1111,28 +1164,28 @@ df_1 %>% select(year, Alea_cat,  incent_prop, pins, fmv_growth, n_growth) %>% fi
 #| tbl-cap: "Growth from 2011 to 2022."
 
 df_1 <- ptax_pins %>%
-filter(year > 2010) %>%
-group_by(pin) %>%
-mutate(years_existed = n()) %>%
-ungroup() %>%
-filter(years_existed ==12 ) %>%
+  filter(year > 2010) %>%
+  group_by(pin) %>%
+  mutate(years_existed = n()) %>%
+  ungroup() %>%
+  filter(years_existed ==12 ) %>%
   mutate(fmv = av_clerk/loa,
- fmv = ifelse(is.na(fmv), 0 , fmv)) |>
+         fmv = ifelse(is.na(fmv), 0 , fmv)) |>
   group_by(Alea_cat, incent_prop, year) |>
   summarize(pins = n(), 
             group_year_fmv = sum(fmv),
   ) |>
-
+  
   mutate(            
-        base_year_fmv = group_year_fmv[year == min(year)],
-            base_year_n = pins[year == min(year)],
-            fmv_growth = group_year_fmv/base_year_fmv,
-         n_growth = pins/base_year_n
-       ) 
+    base_year_fmv = group_year_fmv[year == min(year)],
+    base_year_n = pins[year == min(year)],
+    fmv_growth = group_year_fmv/base_year_fmv,
+    n_growth = pins/base_year_n
+  ) 
 
 
 df_1 %>% #select(year, Alea_cat,  incent_prop, pins, fmv_growth, n_growth) %>% 
-filter(year == 2022) 
+  filter(year == 2022) 
 
 
 
@@ -1143,26 +1196,26 @@ df_2011 <- ptax_pins %>%
          fmv = ifelse(is.na(fmv), 0 , fmv)) |>
   group_by(pin) %>%
   mutate(
-         years_existed = n(),
-       #  base_year_fmv = fmv[year == min(year)],
-        # fmv_growth = fmv/base_year_fmv
-         ) |>
+    years_existed = n(),
+    #  base_year_fmv = fmv[year == min(year)],
+    # fmv_growth = fmv/base_year_fmv
+  ) |>
   filter(years_existed >=11 ) %>%
   
   group_by(incent_prop, Alea_cat, year) |>
   summarize(
-      group_pin_count = n(),
-      group_year_fmv = sum(fmv),
-#avg_group_baseyear_fmv = mean(base_year_fmv, na.rm=TRUE),
-#avg_group_fmv = mean(fmv, na.rm=TRUE),   # average FMV for PINs in the group for each year
-
-          ) |>
-mutate(
-      base_year_fmv = group_year_fmv[year == min(year)],
-
-      base_year_n = group_pin_count[year == min(year)],
-      n_group_growth = group_pin_count/base_year_n,
-      fmv_group_growth = group_year_fmv / base_year_fmv)
+    group_pin_count = n(),
+    group_year_fmv = sum(fmv),
+    #avg_group_baseyear_fmv = mean(base_year_fmv, na.rm=TRUE),
+    #avg_group_fmv = mean(fmv, na.rm=TRUE),   # average FMV for PINs in the group for each year
+    
+  ) |>
+  mutate(
+    base_year_fmv = group_year_fmv[year == min(year)],
+    
+    base_year_n = group_pin_count[year == min(year)],
+    n_group_growth = group_pin_count/base_year_n,
+    fmv_group_growth = group_year_fmv / base_year_fmv)
 
 
 df_2011 %>% select(year, Alea_cat, incent_prop, n_group_growth, fmv_group_growth, everything()) %>% 
@@ -1172,8 +1225,7 @@ filter(year == 2022) %>% select(-year)
 
 ## Change - Uses Muni-Class Summary File
 
-> This is probably the wrong file to use! Does not account for when PINs were other classes before or after incentive classes! We accidently were dropping them some years if they were not commercial or industrial classes! 
-
+> This is probably the wrong file to use! Does not account for when PINs were other classes before or after incentive classes! We accidently were dropping them some years if they were not commercial or industrial classes!
 
 ```{r}
 df <- read_csv("./Output/ptaxsim_muni_class_summaries_2006-2022.csv") %>%
