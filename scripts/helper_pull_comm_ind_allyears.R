@@ -1,3 +1,7 @@
+### Helper File: Pull all Comm. and Ind. PINs in Cook County ###
+### Years 2006 - 2022 ###
+### Two csv outputs: one has all PINs all years, one only has PINs that existed each year.
+
 library(tidyverse)
 library(ptaxsim)
 library(DBI)
@@ -181,7 +185,7 @@ pins_existed_check <- comm_ind_pins_ever |>
 comm_ind_pins_ever <- comm_ind_pins_ever |>
   group_by(pin) |>
   mutate(
-    years_existed = n(),
+    years_existed = n(), #I don't think we need the max(year == 2022) arg in the next line. - MVH
     base_year_fmv_2006 = ifelse(min(year)==2006 & max(year == 2022), fmv[year == 2006], NA),
     base_year_fmv_2011 = ifelse(years_existed > 10 & max(year) == 2022, fmv[year == 2011], NA),
 
@@ -213,5 +217,5 @@ comm_ind_pins_ever %>%
 pins_exist_allyears <- comm_ind_pins_ever %>%
   filter(years_existed == 17)
 
-write_csv(pins_exist_allyears, "./Output/comm_ind_PINs_2006to2022_existallyears.csv")
+#write_csv(pins_exist_allyears, "./Output/comm_ind_PINs_2006to2022_existallyears.csv")
 
