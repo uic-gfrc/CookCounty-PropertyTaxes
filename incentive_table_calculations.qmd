@@ -1310,7 +1310,9 @@ mutate(land_use = Alea_cat) %>%
             fmv_nonincent = sum(ifelse(incent_prop == "Non-Incentive", fmv, 0))) %>%
   mutate(pct_incent = fmv_incent / proptype_fmv) %>%
   arrange(desc(year)) %>%
-  mutate(year = as.character(year))
+  mutate(year = as.character(year)) %>%
+filter(!land_use %in% c("Exempt", "Other Residential", "Owner Occupied", "Rental") )
+
 
 
 
@@ -1332,19 +1334,16 @@ table %>% ggplot() + geom_line(aes(x=year, y = pct_incent, group = land_use, col
 
 ```{r}
 
-year_pins <- ind_comm_cc %>%
-  group_by(year) %>%
-  summarize(n_year = sum(pins_in_muni))
-
-table <- ind_comm_cc %>%
-  group_by(year, land_use) %>%
+table <- ptax_pins %>%
+  group_by(year, Alea_cat) %>%
   summarize(
     proptype_fmv = sum(fmv),
-            n_incent = sum(ifelse(incent_prop == "Incentive", fmv, 0)),
-            n_nonincent = sum(ifelse(incent_prop == "Non-Incentive", fmv, 0))) %>%
+            n_incent = sum(ifelse(incent_prop == "Incentive", 1, 0)),
+            n_nonincent = sum(ifelse(incent_prop == "Non-Incentive", 1, 0))) %>%
   mutate(pct_incent = n_incent / proptype_fmv) %>%
   arrange(desc(year)) %>%
-  mutate(year = as.character(year))
+  mutate(year = as.character(year),
+land_use = Alea_cat)
 ```
 
 ```{r}
@@ -1357,31 +1356,6 @@ geom_line(aes(x=year, y = pct_incent, group = land_use, color = land_use)) + lab
 ```
 
 ## Yearly Change
-
-```{r}
-
-df_1 <- df_all %>%
-  mutate(fmv = av/assess_ratio) |>
-  group_by(class, year) |> 
-  summarize(n = sum(pins_in_muni), 
-            class_year_fmv = sum(fmv, na.rm=TRUE),
-   total_final_levy = sum(muni_c_final_tax_to_dist ) ) |>
-
-  mutate(      
-   base_year_levy = total_final_levy[year == min(year)],
-
-        base_year_fmv = class_year_fmv[year == min(year)],
-            base_year_n = n[year == min(year)],
-
-            fmv_growth = class_year_fmv/base_year_fmv,
-         n_growth = n/base_year_n,
-levy_growth = total_final_levy / base_year_levy
-       ) |>
-  filter(class != 0)
-
-# This table is summarized at the County-Class. 
-# df_1 
-```
 
 ```{r}
 #| label: tbl-growthcalculations
