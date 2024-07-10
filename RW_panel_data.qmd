@@ -1,5 +1,7 @@
 ---
 title: "Panel Data Generation Machine"
+date: "July 1, 2024"
+date-modified: "`r format(Sys.Date(), '%m-%d-%Y')`"
 format: pdf
 ---
 
@@ -7,27 +9,61 @@ format: pdf
 #| Output: FALSE
 
 library(tidyverse)
-library(tinytex)
+library(plm)
+library(glue)
+library(DT)
+library(flextable)
+library(kableExtra)
+
+set_flextable_defaults(theme_fun = theme_vanilla, 
+                       padding = 2,
+                       #line_spacing = 1,
+                       big.mark = ","
+                       )
+
+options(DT.options = list())
+
+FitFlextableToPage <- function(ft, pgwidth = 6){
+  ft_out <- ft %>% autofit()
+  ft_out <- width(ft_out, width = dim(ft_out)$widths*pgwidth /(flextable_dim(ft_out)$widths))
+  return(ft_out)
+}
 
 ```
 
-# Helper File: "helper_pull_comm_ind_allyears.R" (updated 7-4-24)
+# Helper File: "helper_pull_comm_ind_allyears.R" (updated 7-9-24)
 
-## Changes: 
+# Changes (updated 7-9-24) 
 
-Removed exemption variables
-Accounted for LOA changes over time
-TIF indicator
-Shrunk file size
+### Balance and filter panel data for 2011-2022.
+
+Limit time range to only 2011-2022
+Ensure only PIN observations that existed every year between 2011 and 2022 (inclusive)
+
+```{r balance_panel}
+
+df_2006_2022 <- read_csv("./Output/comm_ind_PINs_2006-2022.csv")
+
+df_2011_2022 <- df_2006_2022 |>
+  
+  # Filter years from 2011 - 2022
+  filter(between(year), 2011, 2022) |> #between() is inclusive!
+  
+  # Filter for PINs that existed EVERY year between 2011 and 2022
+  
+  filter(years_existed >= 11) |>
+
+
+```
+
+### Create new variables
 
 ## Notes
-
-LOAs over time: Taken from CCAO
 
 ```{r df_simplify}
 #| Output: FALSE
 
-df_2006_2022 <- read_csv("./Output/comm_ind_PINs_2006-2022.csv")
+
 
 df_2012_2022 <- df_2006_2022 |>
   filter(between(year, 2012, 2022))
@@ -44,13 +80,20 @@ write_csv(df_2012_2022, "./Output/panel_data_2012-2022_2024_07_04.csv")
 
 ```
 
-# Old Changes
 
-```{r changes}
+
+### Who trusts commit histories?
+
+2024_7_9:
+
+Removed exemption variables
+Accounted for LOA changes over time
+TIF indicator
+Shrunk file size
+
+```{r old_changes}
 #| eval: FALSE
 #| code-fold: true
-
-# No longer relevant after 7-4 helper file.
 
 df <- df |>
   mutate(assess_ratio = as.numeric(assess_ratio)) |>
