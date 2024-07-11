@@ -73,7 +73,7 @@ rm(helper_objects, keep)
 
 ```
 
-```{r}
+```{r alea_check}
 comm_ind |>
  # filter(year %in% c("2006", "2011", "2022")) |>
   filter(Alea_cat %in% c("Industrial", "Commercial")) |>
@@ -93,16 +93,34 @@ comm_ind |>
 
 ```{r}
 
+djia <- read_csv("G:/My Drive/PhD/Cook County Property Taxes/djia_timetrend.csv") |>
+  rename(year = Year, djia = djia_avg_close)
+
+early <- as.numeric(2006:2010)
+
+late <- as.numeric(2011:2022)
+
 dumb_table <- comm_ind |>
-  filter(year %in% c("2006", "2011", "2022")) |>
-  filter(Alea_cat %in% c("Industrial", "Commercial")) |>
-  select(year, pin, fmv, incent_prop, Alea_cat) |>
-  group_by(year, incent_prop, Alea_cat) |>
-  summarize(PINs = n(), year_fmv_billions = sum(fmv) / 1e9)
+  left_join(djia, by = "year") |>
+  filter(between(year, 2006, 2022)) |>
+  #filters down to 1.2mil obs.
+  filter(Alea_cat == "Commercial") |>
+  #filters to 8948 obs
+  filter(incent_prop == "Incentive") |>
+  select(year, pin, fmv, djia) |>
+  group_by(year) |>
+  summarize(PINs = n(), sum_fmv_mils = sum(fmv)/1e6, log_fmv = log(sum(fmv)), first(djia))
 
 kable(dumb_table, format = "html", escape = FALSE) |>
   kable_styling(full_width = FALSE) |>
   column_spec(1, width = "3cm")
+
+dumb_table |>
+  ggplot(aes(x = year)) +
+  geom_step(y = log_fmv, color = "purple") +
+  geom_line(y = djia, color = "orange") +
+  geom_vline(aes(xintercept = 2011), color = "blue") +
+  theme_minimal()
 
 ```
 
