@@ -2,11 +2,11 @@
 title: "Panel Data Generation Machine"
 date: "July 1, 2024"
 date-modified: "`r format(Sys.Date(), '%m-%d-%Y')`"
-format: pdf
+# format: pdf
 ---
 
 ```{r setup}
-#| Output: FALSE
+#| output: FALSE
 
 library(tidyverse)
 library(plm)
@@ -37,8 +37,8 @@ FitFlextableToPage <- function(ft, pgwidth = 6){
 
 ### Balance and filter panel data for 2011-2022.
 
-Limit time range to only 2011-2022
-Ensure only PIN observations that existed every year between 2011 and 2022 (inclusive)
+- Limit time range to only 2011-2022   
+- Ensure only PIN observations that existed every year between 2011 and 2022 (inclusive)     
 
 ```{r balance_panel}
 
@@ -48,7 +48,7 @@ df_2006_2022 <- read_csv("./Output/comm_ind_PINs_2006-2022.csv")
 # 1.8mil obs
 df_2011_2022 <- df_2006_2022 |>
   # Filter years from 2011 - 2022 1.28mil obs.
-  filter(2011 <= year & year <= 2022) |> #i don't know why between() isn't working.
+  filter(year >= 2011 ) |> 
   # Filter for PINs that existed EVERY year between 2011 and 2022
   group_by(pin) |>
   #new "age" variable for 2011 to 2022 so that only 2 of 17 years aren't in our sample or something.
@@ -91,13 +91,16 @@ df_all_years <- df_2011_2022 |>
 
 ## Notes
 
+> Why did you start with `df_2006_2022` dataframe in the chunk below? Should it be the `df_2011_2022` dataframe tat you had just filtered??
+
 ```{r df_simplify}
-#| Output: FALSE
+#| output: FALSE
 
 
 
 df_2012_2022 <- df_2006_2022 |>
-  filter(between(year, 2012, 2022))
+  filter(year >= 2012)
+ # filter(between(year, 2012, 2022))
 
 ```
 
