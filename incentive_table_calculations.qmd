@@ -1053,7 +1053,10 @@ table(ptax_pins$incentive_years)
 table(ptax_pins$landuse_change)
 
 ptax_pins %>% filter(year == 2022) %>% reframe(count = n(), .by = landuse_change)
-ptax_pins %>% filter(year == 2022) %>% reframe(count = n(), .by = incent_change)
+
+ptax_pins %>% filter(year == 2022) %>% reframe(count = n(), .by = incentive_years) %>% arrange(incentive_years) %>% filter(incentive_years > 0) %>% ggplot() + geom_col(aes(x=incentive_years, y = count)) + scale_x_continuous(limits = c(0,18) )
+
+ptax_pins %>% filter(year == 2022) %>% reframe(count = n(), .by = incent_change) 
 
 table(ptax_pins$land_use)
 ```
@@ -1125,7 +1128,7 @@ ptax_pins %>%
 
 ```
 
-## Yearly Change with comm_ind_PINs file
+### Yearly Change with comm_ind_PINs file
 
 ```{r}
 #| label: tbl-growthcalculations5
@@ -1270,11 +1273,6 @@ ind_comm_cc %>%
 #  geom_line(aes(x=year, y = av, color = incent_prop), lty=2)+
 theme_classic() +  labs(title = "FMV Over Time by Incentive Usage", subtitle = "Uses ptaxsim_muni_class... file. DONT USE.")
 
-
-```
-
-```{r data_setup}
-
 ind_comm_cc <- ind_comm_cc |>
   mutate(year = as.factor(year),
          land_use = as.factor(land_use),
@@ -1313,11 +1311,13 @@ ind_comm_cc_trends <- ind_comm_cc_lags |>
 
 ```
 
-# County-Wide Tables
+
+### County-Wide Tables
+
 
 ```{r}
 #| label: tbl-cooktotals-allyears
-#| tbl-cap: "Commercial and Industrial PINs in Cook County (2006 - 2022)"
+#| tbl-cap: "Commercial and Industrial PINs in Cook County (2006 - 2022). Uses comm_ind_PINs file."
 
 
 table <- ptax_pins %>%
@@ -1335,7 +1335,7 @@ filter(!land_use %in% c("Exempt", "Other Residential", "Owner Occupied", "Rental
 
 
 flextable(table) %>% 
-  set_header_labels(year = "Year", land_use = "Land Use", proptype_pincount = 'Total', n_incent = "Incent. Class", n_nonincent = "No Incent. Class",
+  set_header_labels(year = "Year", land_use = "Land Use", proptype_pincount = 'PIN Count', n_incent = "Incent. Class", n_nonincent = "No Incent. Class",
                     pct_incent = "% Incent. Class") %>%
   set_table_properties( layout = "autofit", width = .75)
 ```
@@ -1349,6 +1349,8 @@ table <- ptax_pins %>%
   group_by(year, land_use) %>%
   summarize(
     proptype_fmv = sum(fmv),
+            n_incent = sum(ifelse(incent_prop == "Incentive", 1, 0)),
+            n_nonincent = sum(ifelse(incent_prop == "Non-Incentive", 1, 0)),
             fmv_incent = sum(ifelse(incent_prop == "Incentive", fmv, 0)),
             fmv_nonincent = sum(ifelse(incent_prop == "Non-Incentive", fmv, 0))) %>%
   mutate(pct_incent = fmv_incent / proptype_fmv) %>%
@@ -1357,51 +1359,41 @@ table <- ptax_pins %>%
 filter(!land_use %in% c("Exempt", "Other Residential", "Owner Occupied", "Rental") )
 
 
-flextable(table) %>% 
-  set_header_labels(year = "Year", land_use = "Land Use", proptype_fmv = 'Total', fmv_incent = "Incent. Class", fmv_nonincent = "No Incent. Class",
-                    pct_incent = "% Incent. Class") %>%
+table %>% select(-c(n_incent, n_nonincent)) %>% flextable() %>% 
+  set_header_labels(year = "Year", land_use = "Land Use", proptype_fmv = "Group\'s FMV", fmv_incent = "Incent. Class FMV", fmv_nonincent = "No Incent. Class",
+                    pct_incent = "% FMV from Incent. Class") %>%
   set_table_properties( layout = "autofit", width = .75)
 ```
 
 ```{r}
 #| label: fig-cooktotals-allyears2
-#| fig-cap: "Percent of PINs within each Property Type that had Incentive Property Classes"
+#| fig-cap: "Percent of PINs within each Land Use that had Incentive Property Classes"
 
 
 table %>% ggplot() + geom_line(aes(x=year, y = pct_incent, group = land_use, color = land_use)) + labs(title = "Percent of PINs")
 
 ```
 
-```{r}
-
-table <- ptax_pins %>%
-  group_by(year, land_use) %>%
-  summarize(
-    proptype_fmv = sum(fmv),
-            n_incent = sum(ifelse(incent_prop == "Incentive", 1, 0)),
-            n_nonincent = sum(ifelse(incent_prop == "Non-Incentive", 1, 0))) %>%
-  mutate(pct_incent = n_incent / proptype_fmv) %>%
-  arrange(desc(year)) %>%
-  mutate(year = as.character(year))
-```
 
 ```{r}
 #| label: fig-cooktotals-allyears-fmv2
 #| fig-cap: "**Percent of Commercial and Industrial FMV in Cook County that had Incentive Property Classification (2006 - 2022).**  In 2006, around 20% of industrial FMV came from properties with incentive classes. In 2022, over 35% of Industrial FMV came from incentive class properties. Commercial properties have gone from making up nearly 0% Commercial FMV to close to 5% of Commercial FMV."
  
 table %>% ggplot() + 
-geom_line(aes(x=year, y = pct_incent, group = land_use, color = land_use)) + labs(title = "Percent of Commercial and Industrial FMV with Incent. Classes")
+geom_line(aes(x=year, y = pct_incent, group = land_use, color = land_use)) + labs(title = "Percent of Commercial and Industrial FMV with Incent. Classes", y = "Share of FMV", x="")
 
 ```
 
-## Yearly Change
+### Yearly Change
 
 ```{r}
 #| label: tbl-growthcalculations
-#| tbl-cap: "Growth from 2006 to 2022."
+#| tbl-cap: "Growth from 2006 to 2022. Uses muni_class summary file. DONT USE. Includes all commercial and industrial PINs even if they did not exist for all years."
 
 df_1 <- df_all %>%
-  mutate(fmv = av/assess_ratio) |>
+  mutate(fmv = av/assess_ratio,
+fmv = ifelse(is.na(fmv), 0, fmv)) |>
+
   group_by(year, Alea_cat, incent_prop) |>
   summarize(n = sum(pins_in_muni), 
             class_year_fmv = sum(fmv, na.rm=TRUE),
@@ -1420,7 +1412,7 @@ df_1 %>% select(year, Alea_cat, incent_prop, fmv_growth, n_growth) %>% filter(ye
 
 ```{r}
 #| label: tbl-growthcalculations2
-#| tbl-cap: "Growth from 2011 to 2022."
+#| tbl-cap: "Growth from 2011 to 2022. Uses muni_class summary file. DONT USE. Includes all commercial and industrial PINs even if they did not exist for all years."
 
 df_2011 <- df_all %>%
 filter(year >= 2011) %>%
@@ -1443,7 +1435,7 @@ df_2011 %>% select(year, Alea_cat, incent_prop, fmv_growth, n_growth) %>% filter
 
 ```{r}
 #| label: fig-growth-facetby-incentprop
-#| fig-cap: "Growth from 2006 to 2022. Faceted by binary indicator for if a property had incentive classification or not. Indexed to FMV of properties during 2006."
+#| fig-cap: "Growth from 2006 to 2022. Faceted by binary indicator for if a property had incentive classification or not. Indexed to FMV of properties during 2006. DONT USE."
 
 df_1 %>% filter(!is.na(incent_prop) ) %>% 
 ggplot() + geom_line(aes(x=year, y=fmv_growth, group = Alea_cat, color = Alea_cat)) + facet_wrap(~incent_prop) + labs(title= "Growth from 2006 to 2022")
@@ -1453,7 +1445,7 @@ ggplot() + geom_line(aes(x=year, y=fmv_growth, group = Alea_cat, color = Alea_ca
 
 ```{r}
 #| label: fig-growth-facetby-incentprop2
-#| fig-cap: "**Growth from 2011 to 2022.** Faceted by binary indicator for if a property had incentive classification or not. Indexed to fair market value during 2011."
+#| fig-cap: "**Growth from 2011 to 2022.** Faceted by binary indicator for if a property had incentive classification or not. Indexed to fair market value during 2011. DONT USE"
 
 
 df_2011 %>% filter(!is.na(incent_prop)) %>% 
@@ -1463,7 +1455,7 @@ ggplot() + geom_line(aes(x=year, y=fmv_growth, group = Alea_cat, color = Alea_ca
 
 ```{r}
 #| label: fig-growth-facetby-Aleacat
-#| fig-cap: "Growth from 2006 to 2022. Faceted by land use category."
+#| fig-cap: "Growth from 2006 to 2022. Faceted by land use category. DONT USE"
 
 df_1 %>% 
 ggplot() + geom_line(aes(x=year, y=fmv_growth, group = incent_prop, color = incent_prop)) + theme_classic() + facet_wrap(~Alea_cat)
@@ -1480,7 +1472,8 @@ ggplot() + geom_line(aes(x=year, y=fmv_growth, group = incent_prop, color = ince
 ```
 
 ```{r}
-df_1 %>% filter(Alea_cat == "Commercial" | Alea_cat == "Industrial") %>% ggplot() + geom_line(aes(x=year, y=n_growth, group = incent_prop, color = incent_prop)) + labs( title = "Commercial v Industrial Growth") + facet_wrap(~Alea_cat)
+df_1 %>% filter(Alea_cat == "Commercial" | Alea_cat == "Industrial") %>% ggplot() + geom_line(aes(x=year, y=n_growth, group = incent_prop, color = incent_prop)) + 
+labs( title = "Commercial v Industrial Growth") + facet_wrap(~Alea_cat)
 
 
 ```
