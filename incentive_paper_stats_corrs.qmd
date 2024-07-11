@@ -102,14 +102,14 @@ late <- as.numeric(2011:2022)
 
 dumb_table <- comm_ind |>
   left_join(djia, by = "year") |>
-  filter(between(year, 2006, 2022)) |>
+  filter(year >= 2006 & year <= 2022) |>
   #filters down to 1.2mil obs.
   filter(Alea_cat == "Commercial") |>
   #filters to 8948 obs
   filter(incent_prop == "Incentive") |>
   select(year, pin, fmv, djia) |>
   group_by(year) |>
-  summarize(PINs = n(), sum_fmv_mils = sum(fmv)/1e6, log_fmv = log(sum(fmv)), first(djia))
+  summarize(PINs = n(), sum_fmv_mils = sum(fmv)/1e6, ln_fmv = first(log(sum(fmv))), djia = first(djia)/1e3)
 
 kable(dumb_table, format = "html", escape = FALSE) |>
   kable_styling(full_width = FALSE) |>
@@ -117,8 +117,8 @@ kable(dumb_table, format = "html", escape = FALSE) |>
 
 dumb_table |>
   ggplot(aes(x = year)) +
-  geom_step(y = log_fmv, color = "purple") +
-  geom_line(y = djia, color = "orange") +
+  geom_line(aes(y = sum_fmv_mils), color = "purple") +
+  geom_line(aes(y = exp(djia)), color = "orange") +
   geom_vline(aes(xintercept = 2011), color = "blue") +
   theme_minimal()
 
