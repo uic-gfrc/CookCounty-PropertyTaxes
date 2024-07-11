@@ -1021,8 +1021,6 @@ datatable(table4_adjusted,
 
 # Yearly Trends
 
-## Change with Comm_Ind_PINs file
-
 The file `comm_ind_PINs_2006-2022.csv` contains all PINs that had an incentive property class for at least 1 year. It includes all observations for a property during the years that it existed, even if it is not an incentive class property in that year.
 
 ```{r uses-comind-file}
@@ -1128,7 +1126,7 @@ ptax_pins %>%
 
 ```
 
-### Yearly Change with comm_ind_PINs file
+## Tables
 
 ```{r}
 #| label: tbl-growthcalculations5
@@ -1221,96 +1219,6 @@ filter(year == 2022) %>% select(-year)
 
 ```
 
-## Change - Uses Muni-Class Summary File
-
-> This is probably the wrong file to use! Does not account for when PINs were other classes before or after incentive classes! We accidently were dropping them some years if they were not commercial or industrial classes!
-
-```{r}
-df <- read_csv("./Output/ptaxsim_muni_class_summaries_2006-2022.csv") %>%
-  rename(pins_in_muni = muni_c_pins_in_muni,
-         av = muni_c_av)
-
-cde <- read_csv("./Necessary_Files/class_dict_expanded.csv") %>%
-  rename(class = class_code)
-
-df_all <- left_join(df, cde, by = "class") %>%
-  mutate(fmv = av/assess_ratio) 
-
-
-# filter to industrial and commercial, all years
-
-### PROBLEMATIC LINE OF CODE BELOW!!! Was dropping the pins if they weren't between classes 500 and 899
-ind_comm_cc <- df_all %>%
-  filter(between(class, 500, 899)) %>%
-  rename(land_use = Alea_cat)
-
-# 
-# ind_comm_cc %>%
-#   filter(incent_prop == "Incentive") %>%
-#   group_by(year) %>%
-#   summarize(PINcount = sum(pins_in_muni)) %>% 
-#   ggplot() + 
-#   geom_line(aes(x=year, y=PINcount)) + theme_classic() + 
-#   labs(title = "Number of PINs with Incentive Classifications")
-
-ind_comm_cc %>%
-  filter(land_use %in% c("Commercial", "Industrial")) %>%
-  group_by(year, land_use) %>%
-  summarize(fmv = sum(fmv),
-            av = sum(av)) %>% 
-  ggplot() + 
-  geom_line(aes(x=year, y=fmv, color = land_use)) +
-  #  geom_line(aes(x=year, y = av, color = land_use),  lty = 2)+
-  theme_classic() + labs(title = "FMV Over Time by Land Use", subtitle = "Uses ptaxsim_muni_class... file. DONT USE.")
-
-ind_comm_cc %>% 
-  filter(land_use %in% c("Industrial", "Commercial")) %>%
-  group_by(year, incent_prop) %>%
-  summarize(fmv = sum(fmv),
-            av = sum(av)) %>%
-  ggplot() +
-  geom_line(aes(x=year, y = fmv, color = incent_prop)) +
-#  geom_line(aes(x=year, y = av, color = incent_prop), lty=2)+
-theme_classic() +  labs(title = "FMV Over Time by Incentive Usage", subtitle = "Uses ptaxsim_muni_class... file. DONT USE.")
-
-ind_comm_cc <- ind_comm_cc |>
-  mutate(year = as.factor(year),
-         land_use = as.factor(land_use),
-         incent_prop = as.factor(incent_prop),
-        # agency_num = as.factor(agency_num),
-         class_1dig = as.factor(class_1dig))
-
-ind_comm_cc_lags <- ind_comm_cc |>
-  ungroup() |>
-  arrange(year) |>
-
-  group_by(year, land_use, incent_prop) |>
-  summarize(
-    proptype_pincount = sum(pins_in_muni, na.rm=TRUE),
-    proptype_av = sum(av, na.rm=TRUE),
-            n_incent = sum(ifelse(incent_prop == "Incentive", pins_in_muni, 0), na.rm = TRUE),
-                           n_nonincent = sum(ifelse(incent_prop == "Non-Incentive", pins_in_muni, 0), na.rm=TRUE),
-            av_incent = sum(ifelse(incent_prop == "Incentive", av, 0), na.rm=TRUE),
-            av_nonincent = sum(ifelse(incent_prop == "Non-Incentive", av, 0), na.rm=TRUE)) |>
-    mutate(
-    pincount_lag = plm::lag(proptype_pincount, 1),
-    av_lag = plm::lag(proptype_av, 1),
-    n_incent_lag = plm::lag(n_incent, 1),
-    n_nonincent_lag = plm::lag(n_nonincent, 1),
-    av_incent_lag = plm::lag(av_incent, 1),
-    av_nonincent_lag = plm::lag(av_nonincent, 1)
-  )
-
-ind_comm_cc_trends <- ind_comm_cc_lags |>
-  group_by(year, land_use, incent_prop) |>
-  reframe(pin_perc = (proptype_pincount - pincount_lag)/pincount_lag,
-          av_perc = (proptype_av - av_lag)/av_lag) |>
-  filter(year != 2006) |>
-  distinct()
-  
-
-```
-
 
 ### County-Wide Tables
 
@@ -1386,39 +1294,16 @@ geom_line(aes(x=year, y = pct_incent, group = land_use, color = land_use)) + lab
 
 ### Yearly Change
 
-```{r}
-#| label: tbl-growthcalculations
-#| tbl-cap: "Growth from 2006 to 2022. Uses muni_class summary file. DONT USE. Includes all commercial and industrial PINs even if they did not exist for all years."
-
-df_1 <- df_all %>%
-  mutate(fmv = av/assess_ratio,
-fmv = ifelse(is.na(fmv), 0, fmv)) |>
-
-  group_by(year, Alea_cat, incent_prop) |>
-  summarize(n = sum(pins_in_muni), 
-            class_year_fmv = sum(fmv, na.rm=TRUE),
-  ) |>
-
-  mutate(            
-        base_year_fmv = class_year_fmv[year == min(year)],
-            base_year_n = n[year == min(year)],
-            fmv_growth = class_year_fmv/base_year_fmv,
-         n_growth = n/base_year_n
-       ) 
-
-df_1 %>% select(year, Alea_cat, incent_prop, fmv_growth, n_growth) %>% filter(year == 2022) 
-
-```
 
 ```{r}
 #| label: tbl-growthcalculations2
 #| tbl-cap: "Growth from 2011 to 2022. Uses muni_class summary file. DONT USE. Includes all commercial and industrial PINs even if they did not exist for all years."
 
-df_2011 <- df_all %>%
+df_2011 <- ptax_pins %>%
 filter(year >= 2011) %>%
-  mutate(fmv = av/assess_ratio) |>
-  group_by(Alea_cat, incent_prop, year) |>
-  summarize(n = sum(pins_in_muni), 
+  mutate(fmv = av_clerk/loa) |>
+  group_by(land_use, incent_prop, year) |>
+  summarize(n = n(), 
             class_year_fmv = sum(fmv, na.rm=TRUE),
   ) |>
 
@@ -1429,7 +1314,7 @@ filter(year >= 2011) %>%
          n_growth = n/base_year_n
        ) 
 
-df_2011 %>% select(year, Alea_cat, incent_prop, fmv_growth, n_growth) %>% filter(year == 2022) 
+df_2011 %>% select(year, land_use, incent_prop, fmv_growth, n_growth) %>% filter(year == 2022) 
 
 ```
 
@@ -1438,7 +1323,7 @@ df_2011 %>% select(year, Alea_cat, incent_prop, fmv_growth, n_growth) %>% filter
 #| fig-cap: "Growth from 2006 to 2022. Faceted by binary indicator for if a property had incentive classification or not. Indexed to FMV of properties during 2006. DONT USE."
 
 df_1 %>% filter(!is.na(incent_prop) ) %>% 
-ggplot() + geom_line(aes(x=year, y=fmv_growth, group = Alea_cat, color = Alea_cat)) + facet_wrap(~incent_prop) + labs(title= "Growth from 2006 to 2022")
+ggplot() + geom_line(aes(x=year, y=fmv_growth, group = land_use, color = land_use)) + facet_wrap(~incent_prop) + labs(title= "Growth from 2006 to 2022")
 
 
 ```
@@ -1458,7 +1343,7 @@ ggplot() + geom_line(aes(x=year, y=fmv_growth, group = Alea_cat, color = Alea_ca
 #| fig-cap: "Growth from 2006 to 2022. Faceted by land use category. DONT USE"
 
 df_1 %>% 
-ggplot() + geom_line(aes(x=year, y=fmv_growth, group = incent_prop, color = incent_prop)) + theme_classic() + facet_wrap(~Alea_cat)
+ggplot() + geom_line(aes(x=year, y=fmv_growth, group = incent_prop, color = incent_prop)) + theme_classic() + facet_wrap(~land_use)
 
 ```
 
@@ -1467,21 +1352,15 @@ ggplot() + geom_line(aes(x=year, y=fmv_growth, group = incent_prop, color = ince
 #| fig-cap: "Growth from 2011 to 2022. Faceted by land use category."
 
 df_2011 %>% 
-ggplot() + geom_line(aes(x=year, y=fmv_growth, group = incent_prop, color = incent_prop)) + theme_classic() + facet_wrap(~Alea_cat)
+ggplot() + geom_line(aes(x=year, y=fmv_growth, group = incent_prop, color = incent_prop)) + theme_classic() + facet_wrap(~land_use)
 
 ```
 
-```{r}
-df_1 %>% filter(Alea_cat == "Commercial" | Alea_cat == "Industrial") %>% ggplot() + geom_line(aes(x=year, y=n_growth, group = incent_prop, color = incent_prop)) + 
-labs( title = "Commercial v Industrial Growth") + facet_wrap(~Alea_cat)
-
-
-```
 
 ```{r}
 df_2011 %>% 
-filter(Alea_cat == "Commercial" | Alea_cat == "Industrial") %>% 
-ggplot() + geom_line(aes(x=year, y=n_growth, group = incent_prop, color = incent_prop)) + scale_y_continuous(limits = c(0.8,2.5)) + labs( title = "Commercial v Industrial Growth") + facet_wrap(~Alea_cat)
+filter(land_use == "Commercial" | land_use == "Industrial") %>% 
+ggplot() + geom_line(aes(x=year, y=n_growth, group = incent_prop, color = incent_prop)) + scale_y_continuous(limits = c(0.8,2.5)) + labs( title = "Commercial v Industrial Growth") + facet_wrap(~land_use)
 
 
 ```
