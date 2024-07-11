@@ -48,10 +48,78 @@ FitFlextableToPage <- function(ft, pgwidth = 6){
 Import data
 
 ```{r data_import}
+#| output: false
 
-df_2006_2022 <- read_csv("./Output/comm_ind_PINs_2006-2022.csv")
-
-df_2011_2022 <- df_2006_2022 |>
+comm_ind_pins_ever <- read_csv("./Output/comm_ind_PINs_2006-2022.csv") |>
   filter(dplyr::between(year, 2011, 2022))
+
+```
+
+# Pre-balancing
+
+Initially, we have 1,282,930 PIN-year obs. 
+
+## Cleanup
+
+```{r data_clean}
+
+comm_ind_pins_2011 <- comm_ind_pins_ever  %>% 
+  #filter(year >= 2011) %>%
+  group_by(pin) |>
+  mutate(incentive_years = sum(incent_prop == "Incentive"),
+         landuse_change = 
+           ifelse(
+             sum(land_use == "Commercial") == 12, "Always Commercial",
+             ifelse(sum(land_use == "Industrial") == 12, "Always Industrial",
+                    ifelse(sum(land_use == "Exempt") == 12, "Drop Me",
+                           "Changes Land Use" ))),
+         years_existed = n()  
+         )  %>%
+  ungroup() %>%
+  #filter(years_existed == 12) %>%
+  group_by(pin) %>%
+  mutate(
+    base_year_fmv_2011 = fmv[year == 2011],
+    fmv_growth_2011 = fmv/base_year_fmv_2011,
+    incent_change = case_when(
+      incentive_years == 12 ~ "Always Incentive",
+      incentive_years == 0 ~ "Never Incentive",
+      TRUE ~ "Changes Sometime")
+  ) |> 
+  filter(landuse_change!= "Drop Me")
+
+```
+
+## Descriptive Statistics
+
+```{r unbalanced_descrips}
+
+
+
+```
+
+# Balanced panel
+
+## Balancing panel
+
+```{r balance_panel}
+
+
+```
+
+
+### Tests of missingness
+
+```{r t_o_m}
+
+
+```
+
+
+## Descriptive Statistics
+
+```{r balanced_stats}
+
+
 
 ```
