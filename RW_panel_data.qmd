@@ -44,15 +44,46 @@ Ensure only PIN observations that existed every year between 2011 and 2022 (incl
 
 df_2006_2022 <- read_csv("./Output/comm_ind_PINs_2006-2022.csv")
 
-df_2011_2022 <- df_2006_2022 |>
-  
-  # Filter years from 2011 - 2022
-  filter(between(year), 2011, 2022) |> #between() is inclusive!
-  
-  # Filter for PINs that existed EVERY year between 2011 and 2022
-  
-  filter(years_existed >= 11) |>
 
+# 1.8mil obs
+df_2011_2022 <- df_2006_2022 |>
+  # Filter years from 2011 - 2022 1.28mil obs.
+  filter(2011 <= year & year <= 2022) |> #i don't know why between() isn't working.
+  # Filter for PINs that existed EVERY year between 2011 and 2022
+  group_by(pin) |>
+  #new "age" variable for 2011 to 2022 so that only 2 of 17 years aren't in our sample or something.
+  mutate(years_2011_2022 = n()) |>
+  ungroup()
+
+# Let's look at the distribution
+
+n_table <- df_2011_2022 |>
+  group_by(years_2011_2022) |>
+  rename(years_exists = years_2011_2022) |>
+  summarize(n = n())
+
+kable(n_table, format = "html", escape = FALSE) |>
+  kable_styling(full_width = FALSE) |>
+  column_spec(1, width = "3cm")
+
+n_table |>
+  filter(years_exists < 12) |>
+  ggplot(aes(x = years_exists, y = n)) +
+  geom_col() +
+  geom_text(aes(label = n), vjust = -0.5, color = "black") +
+  scale_x_continuous(breaks = seq(0, 12, 1)) +
+  labs(
+    title = "Distribution of PIN Appearances in DF",
+    subtitle = "Max years = 12, n = 1,215,480",
+    x = "Years Exists",
+    y = "Count"
+  ) +
+  theme_minimal()
+
+
+# Filter it down to only PINs that exist all years gets us to 1.21mil obs.
+df_all_years <- df_2011_2022 |>
+  filter(years_2011_2022 == 12)
 
 ```
 
