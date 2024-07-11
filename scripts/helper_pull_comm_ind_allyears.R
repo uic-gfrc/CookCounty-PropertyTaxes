@@ -48,8 +48,9 @@ muni_agency_names <- DBI::dbGetQuery(
     "
 )
 
+## PINS in UNINCORPORATED AREAS ARE NOT included in this data pull!!!
 
-## Pulls ALL distinct PINs that existed between 2006 and 2022.
+## Pulls ALL distinct PINs that existed between 2006 and 2022 in munis
 ## Syntax: "*" means "all the things" "pin" references the table w/in PTAXSIM DB
       ## OLD COMMENT: Takes a while to run. (~1 min w/ 64GB RAM or 28GB M2 Chip)
       ## OLD COMMENT: ~31.47 million obs. when including all PINs each year (PIN-YEAR combos)
@@ -172,38 +173,56 @@ comm_ind_pins_ever <- comm_ind_pins_ever %>%
       TRUE ~ as.character(class_group))
 )
 
-
-pins_existed_check <- comm_ind_pins_ever |>
-  group_by(pin) |>
-  summarize(
-    min_year = min(year),
-    max_year = max(year),
-    years_existed = n(),
-    mean_taxrate = mean(tax_code_rate)
-  )
-
 comm_ind_pins_ever <- comm_ind_pins_ever |>
   group_by(pin) |>
-  mutate(
-    years_existed = n(), #I don't think we need the max(year == 2022) arg in the next line. - MVH
-    base_year_fmv_2006 = ifelse(min(year)==2006 & max(year == 2022), fmv[year == 2006], NA),
-    base_year_fmv_2011 = ifelse(years_existed > 10 & max(year) == 2022, fmv[year == 2011], NA),
-
-    fmv_growth_2006 = fmv/base_year_fmv_2006,
-    fmv_growth_2011 = ifelse(year >=2011, fmv/base_year_fmv_2011, NA),
-
+  rename(land_use = Alea_cat) |>
+  mutate(incentive_years = sum(incent_prop == "Incentive"),
+         landuse_change = ifelse(
+           sum(land_use == "Commercial") == 17, "Always Commercial",
+           ifelse(sum(land_use == "Industrial") == 17, "Always Industrial",
+                  "Changes Land Use" )),
+         years_existed = n(), 
+         base_year_fmv_2006 = ifelse(min(year)==2006, fmv[year == 2006], NA),
+         fmv_growth_2006 = fmv/base_year_fmv_2006,
+  )  %>%
+  ungroup() %>%
+  mutate(incent_change = case_when(
+    incentive_years == 17 ~ "Always Incentive",
+    incentive_years == 0 ~ "Never Incentive",
+    TRUE ~ "Changes Sometime")
   )
 
 
-write_csv(comm_ind_pins_ever, "./Output/comm_ind_PINs_2006-2022.csv")
+## 96,193 PINs exist every year - old
+## 95,375 PINs as of July 11 2024
+comm_ind_pins_ever %>%
+  filter(years_existed == 17) %>%
+  select(year, land_use, incent_prop, fmv_growth_2006) %>%
+  filter(year == 2022)
+
+# write_csv(comm_ind_pins_ever, "./Output/comm_ind_PINs_2006-2022.csv")
 
 comm_ind_pins_ever %>% filter(is.na(tax_code_rate))
 
-## 96,193 PINs exist every year.
-comm_ind_pins_ever %>%
-  filter(years_existed == 17) %>%
-  select(year, Alea_cat, incent_prop, fmv_growth_2006) %>%
-  filter(year == 2022)
+
+
+dropped_pins <- comm_ind_2011to2022 <- comm_ind_pins_ever  %>% 
+  filter(year >= 2011) %>%
+  group_by(years_existed = n()) %>%
+  filter(years_existed < 12)
+
+
+
+comm_ind_2011to2022 <- comm_ind_pins_ever  %>% 
+  filter(year >= 2011) %>%
+  group_by(years_existed = n()) %>%
+  ungroup() %>%
+  filter(years_existed == 12) %>%
+  mutate(
+    base_year_fmv_2011 = fmv[year == 2011],
+    fmv_growth_2011 = fmv/base_year_fmv_2011 ) 
+
+
 
 ## 100,900 PINs existed since 2011 (and did not become tax exempt)
 ## 102,717 PINs if not filtering for NA fmv growth
@@ -217,5 +236,5 @@ comm_ind_pins_ever %>%
 pins_exist_allyears <- comm_ind_pins_ever %>%
   filter(years_existed == 17)
 
-#write_csv(pins_exist_allyears, "./Output/comm_ind_PINs_2006to2022_existallyears.csv")
+# write_csv(pins_exist_allyears, "./Output/comm_ind_PINs_2006to2022_existallyears.csv")
 
