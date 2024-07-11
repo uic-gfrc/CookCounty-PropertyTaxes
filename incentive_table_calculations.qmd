@@ -186,7 +186,16 @@ ptax_pins <- ptax_pins %>%
 
 > Total Value should equal Current Taxable Value + non-Taxable Value where non-Taxable Value = Value in TIF Increment + Reduced Value from Policy Choices where Reduced Value = Tax Exempt Value from Homeowners exemptions or abatements + Reduced Taxable Value from lower levels of assessments due to incentive classifications.
 
-$$\mbox{Total Value = Taxed Value + Untaxable Value}$$ *where* $$\mbox{Untaxable Value = TIF Increment + Exemptions + Abatements + Reduced Taxable Value from Lower Incentive Class Assessment Ratios}$$ *where* $$\mbox{Reduced Taxable Value from Incentive Classification Levels of Assessments}$$ $$ \mbox{= (25% * EAV - ~10% * EAV)} $$
+$$\mbox{Total Value = Taxed Value + Untaxable Value}$$ 
+*where* 
+$$\mbox{Untaxable Value = TIF Increment + Exemptions + Abatements    
++ Reduced Taxable Value from Lower Incentive Class Assessment Ratios}$$     
+
+*where* 
+
+$$\mbox{Reduced Taxable Value from Incentive Classification Levels of Assessments = 25% X EAV - ~10% X EAV}$$    
+
+
 
 ```{r include = FALSE, eval=FALSE}
 #ptax_pins %>% filter(equalized_av - (taxed_eav + untaxable_value_eav) > 100)
@@ -1130,9 +1139,9 @@ ptax_pins %>%
 
 ```{r}
 #| label: tbl-growthcalculations5
-#| tbl-cap: "**Growth from 2006 to 2022.** Removes PINs if they did not exist during all years in the data. Uses com_ind_PINS... file. "
+#| tbl-cap: "**Growth from 2006 to 2022.** Removes PINs if they did not exist during all years in the data. Uses com_ind_PINS... file. Grouped by land_use, incent_prop, year. "
 
-df_1 <- ptax_pins %>%
+df_2006 <- ptax_pins %>%
   group_by(pin) %>%
   mutate(years_existed = n()) %>%
   ungroup() %>%
@@ -1140,34 +1149,37 @@ df_1 <- ptax_pins %>%
   mutate(fmv = av_clerk/loa,
          fmv = ifelse(is.na(fmv), 0 , fmv)) |>
   arrange(year) |>
-  group_by(land_use, incent_prop, year) |>
+  group_by(year, land_use, incent_prop) |>
   summarize(pins = n(), 
             group_year_fmv = sum(fmv),
   ) |>
-  
+  ungroup()|>
+group_by(land_use, incent_prop) |>
   mutate(            
     base_year_fmv = group_year_fmv[year == min(year)],
     base_year_n = pins[year == min(year)],
     fmv_growth = group_year_fmv/base_year_fmv,
     n_growth = pins/base_year_n
-  ) 
+  )  |> ungroup()
 
 
-df_1 %>% select(year, land_use,  incent_prop, pins, fmv_growth, n_growth) %>% filter(year == 2022) 
+df_2006 %>% select(year, land_use,  incent_prop, pins, fmv_growth, n_growth) %>% filter(year == 2022)  %>% select(-year)
 
 
 ```
 
+
 ```{r}
 #| label: tbl-growthcalculations-commindfile
-#| tbl-cap: "Growth from 2011 to 2022."
+#| tbl-cap: "**Growth from 2011 to 2022.** Grouped by land_use, incent_prop, year."
 
-df_1 <- ptax_pins %>%
+# grouped by land_use, incent_prop, and then year
+df_2011 <- ptax_pins %>%
   filter(year > 2010) %>%
   group_by(pin) %>%
   mutate(years_existed = n()) %>%
   ungroup() %>%
-  filter(years_existed ==12 ) %>%
+  filter(years_existed == 12 ) %>%
   mutate(fmv = av_clerk/loa,
          fmv = ifelse(is.na(fmv), 0 , fmv)) |>
   group_by(land_use, incent_prop, year) |>
@@ -1178,16 +1190,22 @@ df_1 <- ptax_pins %>%
   mutate(            
     base_year_fmv = group_year_fmv[year == min(year)],
     base_year_n = pins[year == min(year)],
-    fmv_growth = group_year_fmv/base_year_fmv,
-    n_growth = pins/base_year_n
+    fmv_group_growth = group_year_fmv/base_year_fmv,
+    n_group_growth = pins/base_year_n
   ) 
 
 
-df_1 %>% #select(year, Alea_cat,  incent_prop, pins, fmv_growth, n_growth) %>% 
-  filter(year == 2022) 
+df_2011 %>% select(year, land_use, incent_prop, n_group_growth, fmv_group_growth, everything()) %>% 
+filter(year == 2022) %>% select(-year)
+```
 
 
+```{r}
+#| label: tbl-growthcalculations-commindfile2
+#| tbl-cap: "Growth from 2011 to 2022. Grouped by incent_prop, land_use, year. Changes variable order of grouping."
 
+
+# grouped byincent_prop, land_use, and then year
 
 df_2011 <- ptax_pins %>%
   filter(year >= 2011) %>%
@@ -1212,6 +1230,44 @@ df_2011 <- ptax_pins %>%
     base_year_n = group_pin_count[year == min(year)],
     n_group_growth = group_pin_count/base_year_n,
     fmv_group_growth = group_year_fmv / base_year_fmv)
+
+
+df_2011 %>% select(year, land_use, incent_prop, n_group_growth, fmv_group_growth, everything()) %>% 
+filter(year == 2022) %>% select(-year)
+
+```
+
+```{r}
+#| label: tbl-growthcalculations-commindfile3
+#| tbl-cap: "Growth from 2011 to 2022. Grouped in different order of same variables: year, land_use, incent_prop. The way I would think it should be done - AWM."
+
+
+# grouped byincent_prop, land_use, and then year
+
+df_2011 <- ptax_pins %>%
+  filter(year >= 2011) %>%
+  mutate(fmv = av_clerk/loa,
+         fmv = ifelse(is.na(fmv), 0 , fmv)) |>
+  group_by(pin) %>%
+  mutate(
+    years_existed = n() ) |>
+  filter(years_existed >=11 ) %>%
+ungroup() %>%
+  
+  group_by(year, land_use, incent_prop) |>
+  summarize(
+    group_pin_count = n(),
+    group_year_fmv = sum(fmv, na.rm=TRUE),
+    #avg_group_baseyear_fmv = mean(base_year_fmv, na.rm=TRUE),
+    #avg_group_fmv = mean(fmv, na.rm=TRUE),   # average FMV for PINs in the group for each year
+ ) |> ungroup() |>
+group_by(land_use,incent_prop) %>%
+  mutate(
+    base_year_fmv = group_year_fmv[year == min(year)],
+    
+    base_year_n = group_pin_count[year == min(year)],
+    n_group_growth = group_pin_count/base_year_n,
+    fmv_group_growth = group_year_fmv / base_year_fmv) 
 
 
 df_2011 %>% select(year, land_use, incent_prop, n_group_growth, fmv_group_growth, everything()) %>% 
@@ -1297,7 +1353,7 @@ geom_line(aes(x=year, y = pct_incent, group = land_use, color = land_use)) + lab
 
 ```{r}
 #| label: tbl-growthcalculations2
-#| tbl-cap: "Growth from 2011 to 2022. Uses muni_class summary file. DONT USE. Includes all commercial and industrial PINs even if they did not exist for all years."
+#| tbl-cap: "Growth from 2011 to 2022. Includes all commercial and industrial PINs even if they did not exist for all years."
 
 df_2011 <- ptax_pins %>%
 filter(year >= 2011) %>%
@@ -1314,15 +1370,16 @@ filter(year >= 2011) %>%
          n_growth = n/base_year_n
        ) 
 
-df_2011 %>% select(year, land_use, incent_prop, fmv_growth, n_growth) %>% filter(year == 2022) 
+df_2011 %>% select(year, land_use, incent_prop, fmv_growth, n_growth) %>% 
+filter(year == 2022) 
 
 ```
 
 ```{r}
 #| label: fig-growth-facetby-incentprop
-#| fig-cap: "Growth from 2006 to 2022. Faceted by binary indicator for if a property had incentive classification or not. Indexed to FMV of properties during 2006. DONT USE."
+#| fig-cap: "Growth from 2006 to 2022. Faceted by binary indicator for if a property had incentive classification or not. Indexed to FMV of properties during 2011"
 
-df_1 %>% filter(!is.na(incent_prop) ) %>% 
+df_2006 %>% filter(!is.na(incent_prop) ) %>% 
 ggplot() + geom_line(aes(x=year, y=fmv_growth, group = land_use, color = land_use)) + facet_wrap(~incent_prop) + labs(title= "Growth from 2006 to 2022")
 
 
@@ -1334,7 +1391,7 @@ ggplot() + geom_line(aes(x=year, y=fmv_growth, group = land_use, color = land_us
 
 
 df_2011 %>% filter(!is.na(incent_prop)) %>% 
-ggplot() + geom_line(aes(x=year, y=fmv_growth, group = Alea_cat, color = Alea_cat)) + facet_wrap(~incent_prop) + labs(title= "Growth from 2011 to 2022")
+ggplot() + geom_line(aes(x=year, y=fmv_growth, group = land_use, color = land_use)) + facet_wrap(~incent_prop) + labs(title= "Growth from 2011 to 2022")
 
 ```
 
@@ -1342,8 +1399,8 @@ ggplot() + geom_line(aes(x=year, y=fmv_growth, group = Alea_cat, color = Alea_ca
 #| label: fig-growth-facetby-Aleacat
 #| fig-cap: "Growth from 2006 to 2022. Faceted by land use category. DONT USE"
 
-df_1 %>% 
-ggplot() + geom_line(aes(x=year, y=fmv_growth, group = incent_prop, color = incent_prop)) + theme_classic() + facet_wrap(~land_use)
+df_2006 %>% 
+ggplot() + geom_line(aes(x=year, y=fmv_growth, group = incent_prop, color = incent_prop))  + theme_classic() + facet_wrap(~land_use)
 
 ```
 
@@ -1360,7 +1417,7 @@ ggplot() + geom_line(aes(x=year, y=fmv_growth, group = incent_prop, color = ince
 ```{r}
 df_2011 %>% 
 filter(land_use == "Commercial" | land_use == "Industrial") %>% 
-ggplot() + geom_line(aes(x=year, y=n_growth, group = incent_prop, color = incent_prop)) + scale_y_continuous(limits = c(0.8,2.5)) + labs( title = "Commercial v Industrial Growth") + facet_wrap(~land_use)
+ggplot() + geom_line(aes(x=year, y=n_growth, group = incent_prop, color = incent_prop)) + scale_y_continuous(limits = c(0.8,2.5)) + labs( title = "Commercial v Industrial PIN Count Growth") + facet_wrap(~land_use)
 
 
 ```
