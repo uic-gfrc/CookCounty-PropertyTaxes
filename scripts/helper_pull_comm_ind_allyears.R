@@ -192,18 +192,40 @@ comm_ind_pins_ever <- comm_ind_pins_ever |>
     TRUE ~ "Changes Sometime")
   )
 
+unincorp_pins <- comm_ind_pins_ever %>% filter(is.na(clean_name)) 
+# 3,919 observations are dropped because they are from unincorporated areas in Cook County.
+
+comm_ind_pins_ever <- comm_ind_pins_ever %>% filter(!is.na(clean_name))
+
+pin_classes<- comm_ind_pins_ever %>% 
+  group_by(pin, class) %>% 
+  summarize(count = n(),
+            first_year = first(year),
+            last_year = last(year)) %>% 
+  ungroup() %>%
+  arrange(pin, first_year)
+
+
+unique_ptax_w_class <- pin_classes %>% group_by(pin) %>%
+  mutate(var2 = cumsum(row_number() == 1 | (class != dplyr::lag(class))))
+
+
+unique_ptax_wide <- unique_ptax_w_class %>%
+  pivot_wider(id_cols = "pin",
+              names_from = var2,
+              values_from = c(class, count, first_year, last_year))
+
+write_csv(unique_ptax_wide, "./Output/pin_class_changes.csv")
+
 
 ## 96,193 PINs exist every year - old
-## 95,375 PINs as of July 11 2024
+## 95,355 PINs as of July 11 2024
 comm_ind_pins_ever %>%
   filter(years_existed == 17) %>%
   select(year, land_use, incent_prop, fmv_growth_2006) %>%
   filter(year == 2022)
 
-# write_csv(comm_ind_pins_ever, "./Output/comm_ind_PINs_2006-2022.csv")
-
-comm_ind_pins_ever %>% filter(is.na(tax_code_rate))
-
+write_csv(comm_ind_pins_ever, "./Output/comm_ind_PINs_2006-2022.csv")
 
 
 dropped_pins <- comm_ind_2011to2022 <- comm_ind_pins_ever  %>% 
@@ -215,26 +237,37 @@ dropped_pins <- comm_ind_2011to2022 <- comm_ind_pins_ever  %>%
 
 comm_ind_2011to2022 <- comm_ind_pins_ever  %>% 
   filter(year >= 2011) %>%
-  group_by(years_existed = n()) %>%
+  group_by(pin) |>
+  mutate(incentive_years = sum(incent_prop == "Incentive"),
+         landuse_change = 
+           ifelse(
+             sum(land_use == "Commercial") == 12, "Always Commercial",
+             ifelse(sum(land_use == "Industrial") == 12, "Always Industrial",
+                    ifelse(sum(land_use == "Exempt") == 12, "Drop Me",
+                           "Changes Land Use" ))),
+         years_existed = n()  )  %>%
   ungroup() %>%
   filter(years_existed == 12) %>%
+  group_by(pin) %>%
   mutate(
     base_year_fmv_2011 = fmv[year == 2011],
-    fmv_growth_2011 = fmv/base_year_fmv_2011 ) 
+    fmv_growth_2011 = fmv/base_year_fmv_2011,
+    incent_change = case_when(
+      incentive_years == 12 ~ "Always Incentive",
+      incentive_years == 0 ~ "Never Incentive",
+      TRUE ~ "Changes Sometime")
+  ) 
 
-
+comm_ind_2011to2022 <- comm_ind_2011to2022 |> filter(landuse_change!= "Drop Me")
 
 ## 100,900 PINs existed since 2011 (and did not become tax exempt)
 ## 102,717 PINs if not filtering for NA fmv growth
-comm_ind_pins_ever %>%
-  filter(max(year) == 2022 & years_existed > 10) %>%
-  select(year, Alea_cat, incent_prop, fmv_growth_2011) %>%
-  filter(year == 2022)# %>%
-#  filter(!is.na(fmv_growth_2011)  ## removes properties where growth was zero because the property became tax exempt
-        # )
-## Write CSV to Output Folder
-pins_exist_allyears <- comm_ind_pins_ever %>%
-  filter(years_existed == 17)
+## 99,984 PINs as of July 11 - AWM
+comm_ind_2011to2022 %>%
+  select(year, land_use, incent_prop, fmv_growth_2011) %>%
+  filter(year == 2022)
 
-# write_csv(pins_exist_allyears, "./Output/comm_ind_PINs_2006to2022_existallyears.csv")
+
+## Write CSV to Output Folder
+write_csv(comm_ind_2011to2022, "./Output/comm_ind_PINs_2011to2022_existallyears.csv")
 
