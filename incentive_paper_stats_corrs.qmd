@@ -49,11 +49,11 @@ FitFlextableToPage <- function(ft, pgwidth = 6){
   return(ft_out)
 }
 
-#comm_ind <- read_csv("./Output/comm_ind_PINs_2006-2022.csv")
+comm_ind <- read_csv("./Output/comm_ind_PINs_2006-2022.csv")
 ```
 
 
-```{r runscript}
+```{r runscript eval = FALSE}
 
 # Run helper file
 
@@ -91,7 +91,9 @@ comm_ind |>
   geom_line(aes(x=year, y=av_clerk, color = Alea_cat))
 ```
 
-```{r}
+
+Ignore me!
+```{r eval = false}
 
 djia <- read_csv("G:/My Drive/PhD/Cook County Property Taxes/djia_timetrend.csv") |>
   rename(year = Year, djia = djia_avg_close)
@@ -100,16 +102,35 @@ early <- as.numeric(2006:2010)
 
 late <- as.numeric(2011:2022)
 
+comm_ind <- df_2006_2022
+
 dumb_table <- comm_ind |>
-  left_join(djia, by = "year") |>
-  filter(year >= 2006 & year <= 2022) |>
+  filter(year %in% c("2006", "2011", "2022")) |>
+  group_by(year) |>
+  mutate(fmv_2006_sum = sum(base_year_fmv_2006, na.rm = TRUE),
+         fmv_2011_sum = sum(base_year_fmv_2011, na.rm = TRUE)
+         ) |>
+  ungroup() |>
+  filter(Alea_cat == "Commercial" & incent_prop == "Incentive") |>
+  group_by(year) |>
+  summarize(year_fmv = sum(fmv), year_fmv/fmv_2006_sum, year_fmv/fmv_2011_sum)
+  
+
+summarize(fmv_2006 = sum(base_year_fmv_2006, na.rm = TRUE))
+  
+  mutate(year_county_fmv = sum(fmv),
+         base_2006 = sum(base_year_fmv_2006),
+         base_2011 = sum(base_year_fmv_2011)
+         )|>
+  ungroup() |>
   #filters down to 1.2mil obs.
   filter(Alea_cat == "Commercial") |>
   #filters to 8948 obs
   filter(incent_prop == "Incentive") |>
-  select(year, pin, fmv, djia) |>
+  select(year, pin, year_county_fmv, fmv, base_2006, base_2011) |>
   group_by(year) |>
-  summarize(PINs = n(), sum_fmv_mils = sum(fmv)/1e6, ln_fmv = first(log(sum(fmv))), djia = first(djia)/1e3)
+  summarize(PINs = n(), "Total Industrial/Commercial FMV" = first(year_county_fmv), 
+            "Incentive Class Commercial FMV" = sum(fmv))
 
 kable(dumb_table, format = "html", escape = FALSE) |>
   kable_styling(full_width = FALSE) |>
