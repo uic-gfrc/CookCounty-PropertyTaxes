@@ -28,12 +28,17 @@ library(glue)
 library(DT)
 library(flextable)
 library(kableExtra)
+library(ptaxsim)
+library(DBI)
+library(glue)
 
 set_flextable_defaults(theme_fun = theme_vanilla, 
                        padding = 2,
                        #line_spacing = 1,
                        big.mark = ","
                        )
+
+(scipen = 999)
 
 options(DT.options = list())
 
@@ -43,6 +48,14 @@ FitFlextableToPage <- function(ft, pgwidth = 6){
   return(ft_out)
 }
 
+is.integer64 <- function(x){
+  class(x)=="integer64"
+}
+
+# Instantiate DB connection.
+
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2022.0.0.db")
+
 ```
 
 Import data
@@ -50,8 +63,240 @@ Import data
 ```{r data_import}
 #| output: false
 
-comm_ind_pins_ever <- read_csv("./Output/comm_ind_PINs_2006-2022.csv") |>
-  filter(dplyr::between(year, 2011, 2022))
+# Read in class dictionary
+cde <- read_csv("./Necessary_Files/class_dict_expanded.csv") |>
+  mutate(class = as.character(class_code)) |>  # rename to match other data frames
+  select(-c(loa_2022, Option2, class_desc, land, vacant_ind, last2dig,
+            Res_nonRes, assessment_level, used_in2021, class_code)) %>%
+  mutate_at(.vars = c("improvement_ind", "incent_prop", "class_1dig", "major_class_code"), .funs = as.character
+  )
+
+nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")  %>%
+  select(agency_number, clean_name, Triad, Township) %>%
+  mutate(agency_number = as.character(agency_number)) %>%
+  mutate(agency_number = str_pad(agency_number, width = 9, side = "left", pad = "0"))
+
+
+# Bring in the Level of Assessments for each year. They have changed over time!!
+ccao_loa <- read_csv("./inputs/ccao_loa.csv") %>%
+  mutate(class = as.character(class_code)) %>%
+  filter(year > 2012) %>%
+  select(-class_code) %>%
+  mutate(loa = as.numeric(loa)) %>%
+  mutate(loa = ifelse(loa == 0, NA, loa) # avoid dividing by zero errora
+         )
+
+commercial_classes <- c(401:435, 490, 491, 492, 496:499,
+                        500:535,590, 591, 592, 597:599,
+                        700:799,
+                        800:835, 891, 892, 897, 899
+                        )
+
+industrial_classes <- c(480:489,493,
+                        550:589, 593,
+                        600:699,
+                        850:890, 893
+                        )
+
+## Pull Muni Taxing Agency Names from agency_info table
+muni_agency_names <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT DISTINCT agency_num, agency_name, minor_type
+    FROM agency_info
+    WHERE minor_type = 'MUNI'
+    OR agency_num = '020060000'
+    "
+)
+
+tax_codes_muni <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT DISTINCT year, agency_num, tax_code_num, tax_code_rate
+  FROM tax_code
+  WHERE agency_num IN ({muni_agency_names$agency_num*})
+  AND YEAR >= 2012 AND YEAR <= 2022
+  ",
+           .con = ptaxsim_db_conn
+  ))
+
+muni_pins <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql(
+    "SELECT year, pin, class, tax_code_num
+  FROM pin
+  WHERE tax_code_num IN ({tax_codes_muni$tax_code_num*})
+  AND YEAR >= 2012 AND YEAR <= 2022
+  ",
+    .con = ptaxsim_db_conn
+  ))
+
+tax_codes_muni <- tax_codes_muni %>%
+  left_join(nicknames, by = c("agency_num" = "agency_number")) %>%
+  mutate(clean_name = ifelse(is.na(clean_name), "Unincorporated", clean_name))
+
+distinct_pins <- muni_pins |>
+  select(pin) |>
+  distinct(pin)
+
+pins_all_years <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql(
+  "SELECT DISTINCT year, pin, class, tax_code_num, tax_bill_total, av_mailed, av_certified, av_board, av_clerk, exe_abate
+   FROM pin
+   WHERE pin IN ({distinct_pins$pin*})
+   AND YEAR >= 2012 AND YEAR <= 2022
+  ",
+  .con = ptaxsim_db_conn
+  )
+  ) |>
+  mutate_if(is.integer64, as.double) |>
+  mutate(class = as.character(class)) |>
+  left_join(cde, by = "class") |>
+  left_join(ccao_loa, by = c("year", "class")) |>
+  mutate(comparable_props = as.character(comparable_props),
+         )
+
+## List of tax codes that are in TIFs and the proportion of value in the tax_code that goes to the TIF
+tif_distrib <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql(
+  "SELECT DISTINCT year, tax_code_num, tax_code_distribution_pct
+  FROM tif_distribution
+  WHERE YEAR >= 2012 AND YEAR <= 2022
+  ",
+    .con = ptaxsim_db_conn)
+  )
+
+## Combine the whole shebang
+
+pins_ever <- pins_all_years %>%
+  arrange(pin) %>%
+  left_join(tax_codes_muni, by = c("year", "tax_code_num")) %>%
+  left_join(tif_distrib) |>
+  rename(land_use = Alea_cat) |>
+  mutate(
+    has_AB_exemp = as.character(ifelse(exe_abate > 0, 1, 0)),
+    fmv = av_clerk / loa,
+    fmv = ifelse(is.na(fmv), 0, fmv),
+    in_tif = as.character(ifelse(tax_code_num %in% tif_distrib$tax_code_num, 1, 0)),
+    class_group_temp = str_sub(class, 1,1),
+    class_group = ifelse(class_group_temp == 5 & class %in% commercial_classes, "5A", (
+                         ifelse(class_group_temp == 5 & class %in% industrial_classes, "5B",
+                         class_group_temp
+                         ))),
+    chi = ifelse(clean_name == "Chicago", 1, 0)
+    )|>
+  select(-class_group_temp)
+
+## Convert to taxcode as unit of analysis
+
+taxcodes_grouped <- pins_ever |>
+  group_by(year, tax_code_num, class_group) |>
+  summarize(taxcode_classgroup_fmv = sum(fmv, na.rm = TRUE),
+          taxcode_incents_n = sum(incent_prop == "Incentive", na.rm = TRUE)
+  )
+          
+  
+
+```
+
+```{r to_do}
+#| Eval: FALSE
+
+comm_ind_pins_ever <- comm_ind_pins_ever |>
+  group_by(pin) |>
+  rename(land_use = Alea_cat) |>
+  mutate(incentive_years = sum(incent_prop == "Incentive"),
+         landuse_change = ifelse(
+           sum(land_use == "Commercial") == 17, "Always Commercial",
+           ifelse(sum(land_use == "Industrial") == 17, "Always Industrial",
+                  "Changes Land Use" )),
+         years_existed = n(),
+         base_year_fmv_2006 = ifelse(min(year)==2006, fmv[year == 2006], NA),
+         fmv_growth_2006 = fmv/base_year_fmv_2006,
+  )  %>%
+  ungroup() %>%
+  mutate(incent_change = case_when(
+    incentive_years == 17 ~ "Always Incentive",
+    incentive_years == 0 ~ "Never Incentive",
+    TRUE ~ "Changes Sometime")
+  )
+
+unincorp_pins <- comm_ind_pins_ever %>% filter(is.na(clean_name))
+# 3,919 observations are dropped because they are from unincorporated areas in Cook County.
+
+comm_ind_pins_ever <- comm_ind_pins_ever %>% filter(!is.na(clean_name))
+
+pin_classes<- comm_ind_pins_ever %>%
+  group_by(pin, class) %>%
+  summarize(count = n(),
+            first_year = first(year),
+            last_year = last(year)) %>%
+  ungroup() %>%
+  arrange(pin, first_year)
+
+
+unique_ptax_w_class <- pin_classes %>% group_by(pin) %>%
+  mutate(var2 = cumsum(row_number() == 1 | (class != dplyr::lag(class))))
+
+
+unique_ptax_wide <- unique_ptax_w_class %>%
+  pivot_wider(id_cols = "pin",
+              names_from = var2,
+              values_from = c(class, count, first_year, last_year))
+
+#write_csv(unique_ptax_wide, "./Output/pin_class_changes.csv")
+
+
+## 96,193 PINs exist every year - old
+## 95,355 PINs as of July 11 2024
+comm_ind_pins_ever %>%
+  filter(years_existed == 17) %>%
+  select(year, land_use, incent_prop, fmv_growth_2006) %>%
+  filter(year == 2022)
+
+#write_csv(comm_ind_pins_ever, "./Output/comm_ind_PINs_2006-2022.csv")
+
+
+dropped_pins <- comm_ind_2011to2022 <- comm_ind_pins_ever  %>%
+  filter(year >= 2011) %>%
+  group_by(years_existed = n()) %>%
+  filter(years_existed < 12)
+
+
+# 1.21 obs.
+comm_ind_2011to2022 <- comm_ind_pins_ever  %>%
+  filter(year >= 2011) %>%
+  group_by(pin) |>
+  mutate(incentive_years = sum(incent_prop == "Incentive"),
+         landuse_change =
+           ifelse(
+             sum(land_use == "Commercial") == 12, "Always Commercial",
+             ifelse(sum(land_use == "Industrial") == 12, "Always Industrial",
+                    ifelse(sum(land_use == "Exempt") == 12, "Drop Me",
+                           "Changes Land Use" ))),
+         years_existed = n()  )  %>%
+  ungroup() %>%
+  filter(years_existed == 12) %>%
+  group_by(pin) %>%
+  mutate(
+    base_year_fmv_2011 = fmv[year == 2011],
+    fmv_growth_2011 = fmv/base_year_fmv_2011,
+    incent_change = case_when(
+      incentive_years == 12 ~ "Always Incentive",
+      incentive_years == 0 ~ "Never Incentive",
+      TRUE ~ "Changes Sometime")
+  )
+
+cross_county_lines <- c("030440000", "030585000", "030890000", "030320000", "031280000",
+                        "030080000", "030560000", "031120000", "030280000", "030340000",
+                        "030150000","030050000", "030180000","030500000","031210000")
+
+comm_ind_2011to2022 <- comm_ind_2011to2022 |>
+  # 1.19mil obs.
+  filter(landuse_change!= "Drop Me") |>
+  # 1.18 mil obs.
+  filter(!(agency_num %in% cross_county_lines))
 
 ```
 
