@@ -327,12 +327,6 @@ comm_ind_2011to2022 %>%
   select(year, land_use, incent_prop, fmv_growth_2011) %>%
   filter(year == 2022)
 
-library(plm)
-
-is.pbalanced(comm_ind_2011to2022)
-## was false?
-
-comm_ind_2011to2022 %>% filter(years_existed < 12)
 
 ## Write CSV to Output Folder
 write_csv(comm_ind_2011to2022, "./Output/comm_ind_2011-2022_balanced.csv")
