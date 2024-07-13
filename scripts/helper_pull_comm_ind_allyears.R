@@ -196,32 +196,38 @@ comm_ind_pins_2006 <- comm_ind_pins_ever |>
     TRUE ~ "Changes Sometime")
   )
 
+## Examine dropped PINs from 2006 to 2022 panel data -----------------------
+
+
 ## View the PINs that will be dropped in future step
 ## 219,187 PINs are will be dropped from the 2006-2022 panel data
 dropped_pins1 <- comm_ind_pins_2006 %>% 
   filter(
     years_existed < 17  |      ## 196,780 PINs do not exist all 17 years
-       is.na(clean_name)  |       ## 6,837 PINs do not have municipality names
-   agency_num %in% cross_county_lines   ## 19,554 PINs located in Municipalities that have a majority of their EAV in other counties
-       )
+      is.na(clean_name)  |       ## 6,837 PINs do not have municipality names
+      agency_num %in% cross_county_lines   ## 19,554 PINs located in Municipalities that have a majority of their EAV in other counties
+  )
 
+
+
+### Drop PINs and export File -----------------------------------------------
 
 
 ## This step "balances the panel" - all PINs left in the sample exist during every year.
 ## Also drops PINs in unincorporated areas of Cook County
 comm_ind_pins_2006 <- comm_ind_pins_2006 %>% 
-  filter(years_existed == 17 & 
-           !is.na(clean_name)  # 6,837 PIN obs are dropped for being unincorporated areas
-
-         )
-  
+  filter(
+    years_existed == 17  &      
+      !is.na(clean_name)  &       
+      !agency_num %in% cross_county_lines   
+  )
+## 1,598,968 obs remain July 12 2024 - AWM
 
 
 ## 96,193 PINs exist every year - old
 ## 95,355 PINs as of July 11 2024
-## 95,243 PINs as of July 12 
+## 94,243 PINs as of July 12 
 comm_ind_pins_2006 %>%
-  filter(years_existed == 17 & !is.na(clean_name) ) %>%
   select(year, land_use, incent_prop, fmv_growth_2006) %>%
   filter(year == 2022)
 
@@ -249,46 +255,57 @@ unique_ptax_wide <- unique_ptax_w_class %>%
               names_from = var2,
               values_from = c(class, count, first_year, last_year))
 
+## 119,993 Unique PINs and any class change they experienced:
 # write_csv(unique_ptax_wide, "./Output/pin_class_changes.csv")
 
 
 # Create 2011-2022 PIN level Panel Data -----------------------------------
 
-dropped_pins2 <- 
-  
-comm_ind_2011to2022 <- comm_ind_pins_ever  %>%
-  filter(year >= 2011) %>%
-  group_by(pin) |> 
-  mutate(years_existed = n()) %>%
-  filter(years_existed < 12 | is.na(clean_name))
-
-
 comm_ind_2011to2022 <- comm_ind_pins_ever  %>%
   filter(year >= 2011 ) %>%
   group_by(pin) |>
-  mutate(incentive_years = sum(incent_prop == "Incentive"),
-         landuse_change =
-           ifelse(
-             sum(land_use == "Commercial") == 12, "Always Commercial",
-             ifelse(sum(land_use == "Industrial") == 12, "Always Industrial",
-                    ifelse(sum(land_use == "Exempt") == 12, "Drop Me",
-                           "Changes Land Use" ))),
-         years_existed = n()  )  %>%
-  ungroup() %>%
-  
-  # only keep PINs that existed all years and if they are from a municipality
-  # assumes that clean_name and agency_number correctly merged to tax codes from municipalities and their agency number
-  filter(years_existed == 12 & !is.na(clean_name)) %>%
-  
-  group_by(pin) %>%
   mutate(
-    base_year_fmv_2011 = fmv[year == 2011],
-    fmv_growth_2011 = fmv/base_year_fmv_2011,
+    years_existed = n(), 
+    incentive_years = sum(incent_prop == "Incentive"),
+    landuse_change =
+      ifelse(
+        sum(land_use == "Commercial") == 12, "Always Commercial",
+        ifelse(sum(land_use == "Industrial") == 12, "Always Industrial",
+               # some properties had an incentive class before 2011 and then were tax exempt. Dropped from panel.
+               ifelse(sum(land_use == "Exempt") == 12, "Drop Me",   
+                      "Changes Land Use" ))),
     incent_change = case_when(
       incentive_years == 12 ~ "Always Incentive",
       incentive_years == 0 ~ "Never Incentive",
       TRUE ~ "Changes Sometime")
   )
+
+base_year_fmv_2011 = fmv[year == 2011],
+fmv_growth_2011 = fmv/base_year_fmv_2011,
+
+## Examine PINs dropped from 2011-2022 panel data --------------------------
+
+
+# only keep PINs that existed all years and if they are from a municipality
+# assumes that clean_name and agency_number correctly merged to tax codes from municipalities and their agency number
+# 97,521 PINs will be dropped from the 2011-2022 panel data
+dropped_pins2 <-  comm_ind_2011to2022 %>% 
+  filter(
+    years_existed < 12  |      ##  69,491 PINs do not exist all 12 years
+      is.na(clean_name)  |       ## 4,370 PINs do not have municipality names
+      agency_num %in% cross_county_lines |  ## 13,915 PINs located in Municipalities that have a majority of their EAV in other counties
+      landuse_change == "Drop Me"     ## 12,048 PINs were tax exempt for all 12 years
+  )
+
+
+### Drop PINs and Export File -----------------------------------------------
+
+comm_ind_2011to2022 <- comm_ind_2011to2022 |> 
+  filter(
+    years_existed == 12 & 
+      !is.na(clean_name) & 
+      !agency_num %in% cross_county_lines
+    ) 
 
 
 comm_ind_2011to2022 <- comm_ind_2011to2022 |>
