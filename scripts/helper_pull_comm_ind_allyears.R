@@ -88,12 +88,11 @@ nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")  %>%
 
 
 tax_codes_muni <- tax_codes_muni %>%
-  left_join(nicknames, by = c("agency_num" = "agency_number")) %>%
-  mutate(clean_name = ifelse(is.na(clean_name), "Unincorporated", clean_name))
+  left_join(nicknames, by = c("agency_num" = "agency_number"))
 
 
 # 119k distinct pins in COOK were a commercial or industrial property for at least 1 year
-# 119,030 distinct PINs in Cook Municiaplities were comm or ind. property for at least 1 year
+# 119,030 distinct PINs in Cook Municipalities were comm or ind. property for at least 1 year
 distinct_pins <- muni_pins |>
   select(pin) |>
   distinct(pin)
@@ -147,19 +146,15 @@ industrial_classes <- c(480:489,493,
                         )
 
 
-
-comm_ind_pins_ever |>
-  arrange(pin) %>%
-  left_join(tax_codes_muni, by = c("year", "tax_code_num")) |> head()
-
-
 comm_ind_pins_ever <- comm_ind_pins_ever %>%
+  rename(land_use = Alea_cat) |>
   arrange(pin) %>%
   left_join(tax_codes_muni, by = c("year", "tax_code_num")) %>%
   left_join(tif_distrib) %>%
   mutate(
     has_AB_exemp = as.character(ifelse(exe_abate > 0, 1, 0)),
     fmv = av_clerk / loa,
+    fmv_NA_indicator = ifelse(is.na(fmv),1,0),
     fmv = ifelse(is.na(fmv), 0, fmv),
     in_tif = as.character(ifelse(tax_code_num %in% tif_distrib$tax_code_num, 1, 0)),
     class_group = str_sub(class, 1,1),
@@ -173,17 +168,16 @@ comm_ind_pins_ever <- comm_ind_pins_ever %>%
       TRUE ~ as.character(class_group))
 )
 
-comm_ind_pins_ever <- comm_ind_pins_ever |>
+comm_ind_pins_2006 <- comm_ind_pins_ever |>
   group_by(pin) |>
-  rename(land_use = Alea_cat) |>
-  mutate(incentive_years = sum(incent_prop == "Incentive"),
-         landuse_change = ifelse(
-           sum(land_use == "Commercial") == 17, "Always Commercial",
-           ifelse(sum(land_use == "Industrial") == 17, "Always Industrial",
-                  "Changes Land Use" )),
-         years_existed = n(),
-         base_year_fmv_2006 = ifelse(min(year)==2006, fmv[year == 2006], NA),
-         fmv_growth_2006 = fmv/base_year_fmv_2006,
+  mutate(
+    years_existed = n(),incentive_years = sum(incent_prop == "Incentive"),
+    landuse_change = 
+      ifelse(sum(land_use == "Commercial") == 17, "Always Commercial",
+             ifelse(sum(land_use == "Industrial") == 17, "Always Industrial",
+                    "Changes Land Use" )),
+    base_year_fmv_2006 = ifelse(min(year)==2006, fmv[year == 2006], NA),
+    fmv_growth_2006 = fmv/base_year_fmv_2006,
   )  %>%
   ungroup() %>%
   mutate(incent_change = case_when(
@@ -192,13 +186,9 @@ comm_ind_pins_ever <- comm_ind_pins_ever |>
     TRUE ~ "Changes Sometime")
   )
 
-unincorp_pins <- comm_ind_pins_ever %>% filter(is.na(clean_name))
-# 3,919 observations are dropped because they are from unincorporated areas in Cook County.
 
-comm_ind_pins_ever <- comm_ind_pins_ever %>% filter(!is.na(clean_name))
-
-pin_classes<- comm_ind_pins_ever %>%
-  group_by(pin, class) %>%
+pin_classes <- comm_ind_pins_2006 %>%
+  group_by(clean_name, pin, class) %>%
   summarize(count = n(),
             first_year = first(year),
             last_year = last(year)) %>%
@@ -211,32 +201,44 @@ unique_ptax_w_class <- pin_classes %>% group_by(pin) %>%
 
 
 unique_ptax_wide <- unique_ptax_w_class %>%
-  pivot_wider(id_cols = "pin",
+  pivot_wider(id_cols = c("pin", "clean_name"),
               names_from = var2,
               values_from = c(class, count, first_year, last_year))
 
-#write_csv(unique_ptax_wide, "./Output/pin_class_changes.csv")
+# write_csv(unique_ptax_wide, "./Output/pin_class_changes.csv")
+
+unincorp_pins <- comm_ind_pins_2006 %>% filter(is.na(clean_name))
+# 6,837 PIN obs are dropped for being unincorporated areas
+
+comm_ind_pins_2006 <- comm_ind_pins_2006 %>% 
+  filter(years_existed == 17 & !is.na(clean_name) )
+  
+
+
 
 
 ## 96,193 PINs exist every year - old
 ## 95,355 PINs as of July 11 2024
-comm_ind_pins_ever %>%
-  filter(years_existed == 17) %>%
+## 95,243 July 12 
+comm_ind_pins_2006 %>%
+  filter(years_existed == 17 & !is.na(clean_name) ) %>%
   select(year, land_use, incent_prop, fmv_growth_2006) %>%
   filter(year == 2022)
 
-#write_csv(comm_ind_pins_ever, "./Output/comm_ind_PINs_2006-2022.csv")
+# write_csv(comm_ind_pins_2006, "./Output/comm_ind_PINs_2006-2022.csv")
 
 
-dropped_pins <- comm_ind_2011to2022 <- comm_ind_pins_ever  %>%
+dropped_pins2 <- comm_ind_2011to2022 <- comm_ind_pins_ever  %>%
   filter(year >= 2011) %>%
-  group_by(years_existed = n()) %>%
-  filter(years_existed < 12)
+  group_by(pin) |> 
+  mutate(years_existed = n()) %>%
+  filter(years_existed < 12 | is.na(clean_name))
 
 
 # 1.21 obs.
+
 comm_ind_2011to2022 <- comm_ind_pins_ever  %>%
-  filter(year >= 2011) %>%
+  filter(year >= 2011 ) %>%
   group_by(pin) |>
   mutate(incentive_years = sum(incent_prop == "Incentive"),
          landuse_change =
@@ -247,7 +249,11 @@ comm_ind_2011to2022 <- comm_ind_pins_ever  %>%
                            "Changes Land Use" ))),
          years_existed = n()  )  %>%
   ungroup() %>%
-  filter(years_existed == 12) %>%
+  
+  # only keep PINs that existed all years and if they are from a municipality
+  # assumes that clean_name and agency_number correctly merged to tax codes from municipalities and their agency number
+  filter(years_existed == 12 & !is.na(clean_name)) %>%
+  
   group_by(pin) %>%
   mutate(
     base_year_fmv_2011 = fmv[year == 2011],
@@ -260,7 +266,7 @@ comm_ind_2011to2022 <- comm_ind_pins_ever  %>%
 
 cross_county_lines <- c("030440000", "030585000", "030890000", "030320000", "031280000",
                         "030080000", "030560000", "031120000", "030280000", "030340000",
-                        "030150000","030050000", "030180000","030500000","031210000")
+                        "030150000","030050000", "030180000","030500000", "031210000")
 
 comm_ind_2011to2022 <- comm_ind_2011to2022 |>
   # 1.19mil obs.
