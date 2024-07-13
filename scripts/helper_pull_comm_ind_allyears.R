@@ -8,11 +8,11 @@ library(DBI)
 library(glue)
 
 
+# Pull and Prep Data ------------------------------------------------------
+
 is.integer64 <- function(x){
   class(x)=="integer64"
 }
-
-
 
 # Instantiate DB connection.
 
@@ -102,7 +102,7 @@ distinct_pins <- muni_pins |>
 ## Note: Alea_cat is a variable created by Alea in the class_dict file that indicates land use type.
 ## Land use type is based off of the description provided for property classes.
 
-##1,818,155 PINs within municipalities. Excludes unincorporated PINs
+## 1,818,155 PINs within municipalities. Excludes unincorporated PINs
 
 ## Excluding the Exemption variables except for abatements.
 comm_ind_pins_ever <- DBI::dbGetQuery(
@@ -131,6 +131,13 @@ tif_distrib <- DBI::dbGetQuery(
   ",
     .con = ptaxsim_db_conn)
   )
+
+
+# Create additional variables ---------------------------------------------
+
+cross_county_lines <- c("030440000", "030585000", "030890000", "030320000", "031280000",
+                        "030080000", "030560000", "031120000", "030280000", "030340000",
+                        "030150000","030050000", "030180000","030500000", "031210000")
 
 
 commercial_classes <- c(401:435, 490, 491, 492, 496:499,
@@ -168,6 +175,9 @@ comm_ind_pins_ever <- comm_ind_pins_ever %>%
       TRUE ~ as.character(class_group))
 )
 
+
+# Create 2006 PIN level Panel Data ----------------------------------------
+
 comm_ind_pins_2006 <- comm_ind_pins_ever |>
   group_by(pin) |>
   mutate(
@@ -186,8 +196,42 @@ comm_ind_pins_2006 <- comm_ind_pins_ever |>
     TRUE ~ "Changes Sometime")
   )
 
+## View the PINs that will be dropped in future step
+## 219,187 PINs are will be dropped from the 2006-2022 panel data
+dropped_pins1 <- comm_ind_pins_2006 %>% 
+  filter(
+    years_existed < 17  |      ## 196,780 PINs do not exist all 17 years
+       is.na(clean_name)  |       ## 6,837 PINs do not have municipality names
+   agency_num %in% cross_county_lines   ## 19,554 PINs located in Municipalities that have a majority of their EAV in other counties
+       )
 
-pin_classes <- comm_ind_pins_2006 %>%
+
+
+## This step "balances the panel" - all PINs left in the sample exist during every year.
+## Also drops PINs in unincorporated areas of Cook County
+comm_ind_pins_2006 <- comm_ind_pins_2006 %>% 
+  filter(years_existed == 17 & 
+           !is.na(clean_name)  # 6,837 PIN obs are dropped for being unincorporated areas
+
+         )
+  
+
+
+## 96,193 PINs exist every year - old
+## 95,355 PINs as of July 11 2024
+## 95,243 PINs as of July 12 
+comm_ind_pins_2006 %>%
+  filter(years_existed == 17 & !is.na(clean_name) ) %>%
+  select(year, land_use, incent_prop, fmv_growth_2006) %>%
+  filter(year == 2022)
+
+# write_csv(comm_ind_pins_2006, "./Output/comm_ind_PINs_2006-2022.csv")
+
+
+
+## Unique PINs and their property classes over time ------------------------------------
+
+pin_classes <- comm_ind_pins_ever %>%
   group_by(clean_name, pin, class) %>%
   summarize(count = n(),
             first_year = first(year),
@@ -207,35 +251,17 @@ unique_ptax_wide <- unique_ptax_w_class %>%
 
 # write_csv(unique_ptax_wide, "./Output/pin_class_changes.csv")
 
-unincorp_pins <- comm_ind_pins_2006 %>% filter(is.na(clean_name))
-# 6,837 PIN obs are dropped for being unincorporated areas
 
-comm_ind_pins_2006 <- comm_ind_pins_2006 %>% 
-  filter(years_existed == 17 & !is.na(clean_name) )
+# Create 2011-2022 PIN level Panel Data -----------------------------------
+
+dropped_pins2 <- 
   
-
-
-
-
-## 96,193 PINs exist every year - old
-## 95,355 PINs as of July 11 2024
-## 95,243 July 12 
-comm_ind_pins_2006 %>%
-  filter(years_existed == 17 & !is.na(clean_name) ) %>%
-  select(year, land_use, incent_prop, fmv_growth_2006) %>%
-  filter(year == 2022)
-
-# write_csv(comm_ind_pins_2006, "./Output/comm_ind_PINs_2006-2022.csv")
-
-
-dropped_pins2 <- comm_ind_2011to2022 <- comm_ind_pins_ever  %>%
+comm_ind_2011to2022 <- comm_ind_pins_ever  %>%
   filter(year >= 2011) %>%
   group_by(pin) |> 
   mutate(years_existed = n()) %>%
   filter(years_existed < 12 | is.na(clean_name))
 
-
-# 1.21 obs.
 
 comm_ind_2011to2022 <- comm_ind_pins_ever  %>%
   filter(year >= 2011 ) %>%
@@ -264,9 +290,6 @@ comm_ind_2011to2022 <- comm_ind_pins_ever  %>%
       TRUE ~ "Changes Sometime")
   )
 
-cross_county_lines <- c("030440000", "030585000", "030890000", "030320000", "031280000",
-                        "030080000", "030560000", "031120000", "030280000", "030340000",
-                        "030150000","030050000", "030180000","030500000", "031210000")
 
 comm_ind_2011to2022 <- comm_ind_2011to2022 |>
   # 1.19mil obs.
