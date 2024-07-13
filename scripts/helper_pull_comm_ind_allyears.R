@@ -278,10 +278,9 @@ comm_ind_2011to2022 <- comm_ind_pins_ever  %>%
       incentive_years == 12 ~ "Always Incentive",
       incentive_years == 0 ~ "Never Incentive",
       TRUE ~ "Changes Sometime")
-  )
-
-base_year_fmv_2011 = fmv[year == 2011],
-fmv_growth_2011 = fmv/base_year_fmv_2011,
+  ) |> 
+  ungroup()
+# 1,284,971 obs before dropping PINs
 
 ## Examine PINs dropped from 2011-2022 panel data --------------------------
 
@@ -304,21 +303,24 @@ comm_ind_2011to2022 <- comm_ind_2011to2022 |>
   filter(
     years_existed == 12 & 
       !is.na(clean_name) & 
-      !agency_num %in% cross_county_lines
+      !agency_num %in% cross_county_lines &
+      landuse_change != "Drop Me"
     ) 
-
+## 1,187,450 obs remain
 
 comm_ind_2011to2022 <- comm_ind_2011to2022 |>
-  # 1.19mil obs.
-  filter(landuse_change!= "Drop Me") |>
-  # 1.18 mil obs.
-  filter(!(agency_num %in% cross_county_lines))
+  mutate(exempt_indicator = ifelse(land_use == "Exempt", 1, 0)) |>
+ group_by(pin) |>
+  mutate(
+    base_year_fmv_2011 = ifelse( sum(exempt_indicator) > 0, NA, fmv[year == 2011]),
+    fmv_growth_2011 = fmv/base_year_fmv_2011) |>
+  ungroup()
 
 ## 100,900 PINs existed since 2011 (and did not become tax exempt)
 ## 102,717 PINs if not filtering for NA fmv growth
-## 99,984 PINs as of July 11 - AWM (1.12 obs. - MVH)
-##
-##
+## 99,088 PINs as of July 11 - AWM (1.12 obs. - MVH)
+## BUT some are exempt and will have 0 or errors for the fmv growth!!
+
 
 
 comm_ind_2011to2022 %>%
@@ -328,6 +330,9 @@ comm_ind_2011to2022 %>%
 library(plm)
 
 is.pbalanced(comm_ind_2011to2022)
+## was false?
+
+comm_ind_2011to2022 %>% filter(years_existed < 12)
 
 ## Write CSV to Output Folder
 write_csv(comm_ind_2011to2022, "./Output/comm_ind_2011-2022_balanced.csv")
