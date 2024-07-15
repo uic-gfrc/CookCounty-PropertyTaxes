@@ -1,0 +1,266 @@
+---
+format: 
+  html:
+    embed-resources: true
+    theme: lumen
+    code-fold: true
+    code-line-numbers: true
+    code-overflow: wrap
+    toc: true
+    toc-location: left
+    df-print: paged
+knitr: 
+  opts_chunk:
+    warning: true
+    message: false
+---
+
+# 2011-2022 Panel Data Cross Tables
+
+```{r setup}
+#| output: FALSE
+
+# Load packages
+
+library(tidyverse)
+library(corrr)
+library(glue)
+library(DT)
+library(flextable)
+library(kableExtra)
+library(crosstable)
+library(scales)
+
+# Set table formatting defaults
+
+set_flextable_defaults(theme_fun = theme_vanilla, 
+                       padding = 2,
+                       #line_spacing = 1,
+                       big.mark = ","
+                       )
+
+options(DT.options = list())
+
+FitFlextableToPage <- function(ft, pgwidth = 6){
+  ft_out <- ft %>% autofit()
+  ft_out <- width(ft_out, width = dim(ft_out)$widths*pgwidth /(flextable_dim(ft_out)$widths))
+  return(ft_out)
+}
+
+comm_ind <- read_csv("./Output/comm_ind_2011-2022_balanced.csv") 
+
+## set variable types 
+comm_ind <- comm_ind %>%
+  mutate(across(c(class, improvement_ind, has_AB_exemp,fmv_NA_indicator, in_tif, exempt_indicator), as.character) ) 
+
+```
+
+
+## Descriptive Stats for All Years Together
+
+```{r}
+library(modelsummary)
+datasummary_skim(comm_ind)
+datasummary_skim(comm_ind, type  = "categorical")
+```
+
+## Descriptive Stats for 2011 Strata of data
+
+```{r}
+commind2011 <- comm_ind %>% filter(year == 2011)
+
+datasummary_skim(commind2011)
+```
+
+## Descriptive Stats for 2022 Strata of data
+
+```{r}
+
+commind2022 <- comm_ind %>% filter(year == 2022)
+
+datasummary_skim(commind2022)
+datasummary_skim(commind2022, type = "categorical")
+```
+
+```{r}
+datasummary_balance(~incent_change, data = commind2022, title = "PINs from 2022", output = "flextable")
+```
+
+
+# Correlations
+
+```{r}
+datasummary_correlation(commind2022, output = "flextable")
+```
+
+## Correlations from MVH file
+
+These did work but then I changed variables and now they don't all work. here for refernce for other way to do correlation tables. 
+
+
+```{r}
+#| label: tbl-all_year_corrs
+#| tbl-cap: "**Correlations of Main Variables**<br>ALL Industrial & Commercial PINs: 2006-2022, AFTER Balancing: kept PINs that existed all 17 years in the database."
+#| tbl-cap-location: top
+#| warning: false
+
+comm_ind <- read_csv("./Output/comm_ind_PINs_2006to2022_existallyears.csv")
+#comm_ind <- read_csv("./Output/comm_ind_PINs_2006-2022.csv")
+
+
+row_name_map <- c(
+  av_clerk = "AV",
+  fmv = "FMV",
+  years_existed = "PIN<br>Age",
+  base_year_fmv_2006 = "FMV<br>(2006)",
+  base_year_fmv_2011 = "FMV<br>(2011)"
+)
+
+col_name_map <- c(
+  #term = "",
+  av_clerk = "AV",
+  years_existed = "PIN<br>Age",
+  fmv = "FMV",
+  base_year_fmv_2006 = "FMV<br>(2006)",
+  base_year_fmv_2011 = "FMV<br>(2011)"
+)
+
+vars_4fn <- c(
+  #"n_pins", "min_fmv_all", "quant25_all_fmv", "quant50_all_fmv", "quant75_all_fmv", "max_fmv_all", "fmv_mean", "fmv", "cty_pins", 
+            #  "term", 
+              "av_clerk", "years_existed","fmv", "base_year_fmv_2006"#,
+            #  "base_year_fmv_2011" 
+              )
+
+labels_4fn <- c(
+  #"PIN Count", "Min. FMV", "25th Quantile", "50th Quantile", "75th Quantile", "Max. FMV", "Avg. FMV", "Total FMV", "PIN Count",
+              #  "Variables", 
+                "AV",  "PIN<br>Age", "FMV", "FMV<br>2006"#, 
+               # "FMV<br>2011"
+                )
+
+df_labels <- data.frame(vars_4fn, labels_4fn)
+
+
+comm_ind$year <- as.factor(comm_ind$year)
+
+corr_matrix <- comm_ind |>
+  select(av_clerk, fmv, years_existed, incentive_years,
+         base_year_fmv_2006, 
+        # base_year_fmv_2011, 
+         incent_prop, land_use,  year) |>
+  correlate()
+
+corr_matrix <- corr_matrix %>% 
+#  rename(#`Variables` = term,
+ #        `Final AV` = av_clerk, FMV = fmv, `Years PIN Existed` = years_existed) %>%
+     mutate(Variables = ifelse(term %in% df_labels$vars_4fn, df_labels$labels_4fn, "Need Name")) %>%
+  select(Variables, everything(), -term)
+
+corr_df_temp_1 <- corr_matrix |>
+  shave() |>
+  fashion(decimals = 3)
+
+corr_df <- as.data.frame(corr_df_temp_1)
+    
+new_col_names <- c("Variables", 
+               #    col_name_map[colnames(corr_df)[-1]]
+                                      col_name_map
+
+                   )
+
+kable(corr_df, format = "html", escape = FALSE#, col.names = new_col_names
+      ) |>
+  kable_styling(full_width = FALSE) |>
+  column_spec(1, width = "3cm")
+
+```
+
+```{r}
+#| label: tbl-corr_2006
+#| tbl-cap: "**Correlations of Main Variables**<br>ALL Industrial & Commercial PINs: 2006"
+#| tbl-cap-location: top
+
+corr_matrix_2006 <- comm_ind |>
+  filter(year == 2006) |>
+  select(av_clerk, fmv, years_existed, 
+         base_year_fmv_2006,# base_year_fmv_2011
+         ) |>
+  correlate()
+
+corr_temp_2006 <- corr_matrix_2006 |>
+  shave() |>
+  fashion(decimals = 3) 
+
+corr_2006 <- as.data.frame(corr_temp_2006)
+
+new_2006_col_names <- c("Variable", col_name_map[colnames(corr_2006)[-1]])
+
+kable(corr_2006, format = "html", escape = FALSE, col.names = new_2006_col_names) |>
+  kable_styling(full_width = FALSE) |>
+  column_spec(1, width = "3cm")
+
+```
+
+```{r}
+#| label: tbl-corr_2012
+#| tbl-cap: "**Correlations of Main Variables**<br>ALL Industrial & Commercial PINs: 2012"
+#| tbl-cap-location: top
+
+corr_matrix_2012 <- comm_ind |>
+  filter(year == 2012) |>
+  select(av_clerk, fmv, years_existed, base_year_fmv_2006
+    #     , base_year_fmv_2011
+         ) |>
+  correlate()
+
+corr_temp_2012 <- corr_matrix_2012 |>
+  shave() |>
+  fashion(decimals = 3) 
+
+corr_2012 <- as.data.frame(corr_temp_2012)
+
+new_2012_col_names <- c("Variable", col_name_map[colnames(corr_2012)[-1]])
+
+kable(corr_2012, format = "html", escape = FALSE, col.names = new_2012_col_names) |>
+  kable_styling(full_width = FALSE) |>
+  column_spec(1, width = "3cm")
+
+```
+
+```{r}
+#| label: tbl-corr_2022
+#| tbl-cap: "**Correlations of Main Variables**<br>ALL Industrial & Commercial PINs: 2022"
+#| tbl-cap-location: top
+
+corr_matrix_2022 <- comm_ind |>
+  filter(year == 2022) |>
+  select(av_clerk, fmv, years_existed, 
+         base_year_fmv_2006, 
+         #base_year_fmv_2011
+         ) |>
+  correlate()
+
+corr_temp_2022 <- corr_matrix_2022 |>
+  shave() |>
+  fashion(decimals = 2) 
+
+corr_2022 <- as.data.frame(corr_temp_2022)
+
+new_2022_col_names <- c("Variable", col_name_map[colnames(corr_2022)[-1]])
+
+kable(corr_2012, format = "html", escape = FALSE, col.names = new_2022_col_names) |>
+  kable_styling(full_width = FALSE) |>
+  column_spec(1, width = "2cm")
+
+```
+
+
+# Muni Check
+
+Where is Park Forest?
+
+```{r}
+comm_ind |> filter(year==2022) |> reframe(pincount= n(), .by = clean_name) |> arrange(clean_name)
+```
+
