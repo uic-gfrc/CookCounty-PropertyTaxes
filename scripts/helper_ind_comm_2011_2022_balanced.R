@@ -1,24 +1,34 @@
-### Generate balanced panel for commercial and industrial properties. ###
-### Tax Years 2011 - 2022 ###
-### Last updated: 7/13/2024 ###
+### Helper File: Generate Balanced Panel ###
+### Commercial and Industrial PINs in Cook County
+### Years 2011 - 2022 ###
 
-# Load packages
+# Goals-----------------------------------------------------
+
+# 1. Identify ALL PINs that were EVER an industrial or commercial property between 2011-2022
+# 2. Remove border-crossers
+# 3. Ensure PINs in unincorporated areas are omitted from analysis
+# 4. Convert remaining observations into a balanced panel
+
+# Pre-prep ------------------------------------------------------
+
+##  Load packages -----------------------------------------------
 
 library(tidyverse)
 library(ptaxsim)
 library(DBI)
 library(glue)
 
-## Function to identify variables in integer64 format...and change them.
+# No one likes scientific notation
+
+options(scipen = 999)
+
+## Create function to modify ptaxsim.db output -------------------
 
 is.integer64 <- function(x){
   class(x)=="integer64"
 }
 
-cross_county_lines <- c("030440000", "030585000", "030890000", "030320000", "031280000",
-                        "030080000", "030560000", "031120000", "030280000", "030340000",
-                        "030150000","030050000", "030180000","030500000", "031210000")
-
+## Define industrial and commercial properties-------------------
 
 commercial_classes <- c(401:435, 490, 491, 492, 496:499,
                         500:535,590, 591, 592, 597:599,
@@ -32,19 +42,30 @@ industrial_classes <- c(480:489,493,
                         850:890, 893
 )
 
-## Instantiate DB connection.
+## Define county border-crossers
+
+cross_county_lines <- c("030440000", "030585000", "030890000", "030320000", "031280000",
+                        "030080000", "030560000", "031120000", "030280000", "030340000",
+                        "030150000","030050000", "030180000","030500000", "031210000")
+
+## Instantiate DB connection. ------------------------------------------------------
 
 ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2022.0.0.db")
 
-## Read in supplemental files
+# Pull and Prep Data -----------------------------------------------------
 
-### Class dictionary (levels of assessments; code definitions; land use definitions, etc.)
+## Import necessary files-----------------------------------------------------
+
+### Expanded class dictionary-----------------------------------------------------
+
 cde <- read_csv("./Necessary_Files/class_dict_expanded.csv") |>
   mutate(class = as.character(class_code)) |>  # rename to match other data frames
   select(-c(loa_2022, Option2, class_desc, land, vacant_ind, last2dig,
             Res_nonRes, assessment_level, used_in2021, class_code)) %>%
   mutate_at(.vars = c("improvement_ind", "incent_prop", "class_1dig", "major_class_code"), .funs = as.character
   )
+
+### Levels of assessment (which change over time) -----------------------------------------------------
 
 ccao_loa <- read_csv("./inputs/ccao_loa.csv") %>%
   mutate(class = as.character(class_code)) %>%
@@ -54,14 +75,17 @@ ccao_loa <- read_csv("./inputs/ccao_loa.csv") %>%
   mutate(loa = ifelse(loa == 0, NA, loa) # avoid dividing by zero error
   )
 
+### Nicknames-----------------------------------------------------
+
 nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")  %>%
   select(agency_number, clean_name, Triad, Township) %>%
-  mutate(agency_number = as.character(agency_number)) %>%
-  mutate(agency_number = str_pad(agency_number, width = 9, side = "left", pad = "0"))
+  mutate(agency_number = str_pad(agency_number, width = 9, side = "left", pad = "0")) %>%
+  mutate(agency_number = as.character(agency_number))
 
-# Cook County agency number is 010010000
+## Access PTAXSIM.DB-----------------------------------------------------
 
-## Pull Muni Taxing Agency Names from agency_info table
+## Identify all municipalities AND DON'T FORGET CICERO
+
 muni_agency_names <- DBI::dbGetQuery(
   ptaxsim_db_conn,
   "SELECT DISTINCT agency_num, agency_name, minor_type
@@ -71,16 +95,19 @@ muni_agency_names <- DBI::dbGetQuery(
     "
 )
 
+## Identify all taxcodes that go with those municipalities
+
 tax_codes_muni <- DBI::dbGetQuery(
   ptaxsim_db_conn,
   glue_sql("
   SELECT DISTINCT year, agency_num, tax_code_num, tax_code_rate
   FROM tax_code
   WHERE agency_num IN ({muni_agency_names$agency_num*})
-  AND YEAR >= 2011 AND YEAR <= 2022
   ",
            .con = ptaxsim_db_conn
   ))
+
+## Use those tax code numbers to pull all ind/comm PINs in time frame.
 
 muni_pins <- DBI::dbGetQuery(
   ptaxsim_db_conn,
@@ -93,41 +120,52 @@ muni_pins <- DBI::dbGetQuery(
     .con = ptaxsim_db_conn
   ))
 
+## Pull in clean names
+
 tax_codes_muni <- tax_codes_muni %>%
   left_join(nicknames, by = c("agency_num" = "agency_number"))
 
-distinct_pins <- muni_pins |>
+### Identify all distinct comm-ind PINs between 2011-2022--------------------
+
+distinct_pins_2011_2022 <- muni_pins |>
   select(pin) |>
   distinct(pin)
 
-comm_ind_pins <- DBI::dbGetQuery(
+## Pull all observations for those PINs between 2011-2022
+
+comm_ind_pins_2011_2022_raw <- DBI::dbGetQuery(
   ptaxsim_db_conn,
   glue_sql(
     "SELECT DISTINCT year, pin, class, tax_code_num, tax_bill_total, av_mailed, av_certified, av_board, av_clerk, exe_abate
    FROM pin
-   WHERE pin IN ({distinct_pins$pin*})
-   AND YEAR >= 2011 AND YEAR <= 2022
+   WHERE pin IN ({distinct_pins_2011_2022$pin*}) AND
+   YEAR >= 2011 AND YEAR <= 2022
   ",
     .con = ptaxsim_db_conn
   )) |>
-  mutate_if(is.integer64, as.double ) %>%
+  mutate_if(is.integer64, as.double) %>%
   mutate(class = as.character(class)) |>
   left_join(cde, by = "class") |>
   left_join(ccao_loa, by = c("year", "class")) |>
-  mutate(comparable_props = as.character(comparable_props),
+  mutate(comparable_props = as.character(comparable_props)
   )
+
+## List of tax codes that are in TIFs and the proportion of value in the tax_code that goes to the TIF
 
 tif_distrib <- DBI::dbGetQuery(
   ptaxsim_db_conn,
   glue_sql(
     "SELECT DISTINCT year, tax_code_num, tax_code_distribution_pct
   FROM tif_distribution
-  WHERE YEAR >= 2011 AND YEAR <= 2022
   ",
     .con = ptaxsim_db_conn)
 )
 
-comm_ind_pins_modified <- comm_ind_pins %>%
+# At this point, we have 1.8 mil PIN-Year obs.
+
+# Manipulate Extracted Data ---------------------------------------------
+
+comm_ind_pins_2011_2022 <- comm_ind_pins_2011_2022_raw %>%
   rename(land_use = Alea_cat) |>
   arrange(pin) %>%
   left_join(tax_codes_muni, by = c("year", "tax_code_num")) %>%
@@ -149,7 +187,95 @@ comm_ind_pins_modified <- comm_ind_pins %>%
       TRUE ~ as.character(class_group))
   )
 
-comm_ind_pins_modified_2 <- comm_ind_pins_modified  %>%
+#write_csv(comm_ind_pins_ever, "./Output/comm_ind_inmunis_timeseries_2006to2022.csv")
+
+# # Create 2006 PIN level Panel Data ----------------------------------------
+#
+# comm_ind_pins_2006 <- comm_ind_pins_ever |>
+#   group_by(pin) |>
+#   mutate(
+#     years_existed = n(),
+#     incentive_years = sum(incent_prop == "Incentive"),
+#     landuse_change =
+#       ifelse(sum(land_use == "Commercial") == 17, "Always Commercial",
+#              ifelse(sum(land_use == "Industrial") == 17, "Always Industrial",
+#                     "Changes Land Use" )),
+#     base_year_fmv_2006 = ifelse(min(year)==2006, fmv[year == 2006], NA),
+#     fmv_growth_2006 = fmv/base_year_fmv_2006,
+#   )  %>%
+#   ungroup() %>%
+#   mutate(incent_change = case_when(
+#     incentive_years == 17 ~ "Always Incentive",
+#     incentive_years == 0 ~ "Never Incentive",
+#     TRUE ~ "Changes Sometime")
+#   )
+#
+# ## Examine dropped PINs from 2006 to 2022 panel data -----------------------
+#
+#
+# ## View the PINs that will be dropped in future step
+# ## 219,187 PINs are will be dropped from the 2006-2022 panel data
+# dropped_pins1 <- comm_ind_pins_2006 %>%
+#   filter(
+#     years_existed < 17  |      ## 196,780 PINs do not exist all 17 years
+#       is.na(clean_name)  |       ## 6,837 PINs do not have municipality names
+#       agency_num %in% cross_county_lines   ## 19,554 PINs located in Municipalities that have a majority of their EAV in other counties
+#   )
+#
+# write_csv(dropped_pins1, "dropped_frompanel_2006to2022.csv")
+#
+# ### Drop PINs and export File -----------------------------------------------
+#
+#
+# ## This step "balances the panel" - all PINs left in the sample exist during every year.
+# ## Also drops PINs in unincorporated areas of Cook County
+# comm_ind_pins_2006 <- comm_ind_pins_2006 %>%
+#   filter(
+#     years_existed == 17  &
+#       !is.na(clean_name)  &
+#       !agency_num %in% cross_county_lines
+#   )
+# ## 1,598,968 obs remain July 12 2024 - AWM
+#
+#
+# ## 96,193 PINs exist every year - old
+# ## 95,355 PINs as of July 11 2024
+# ## 94,243 PINs as of July 12
+# comm_ind_pins_2006 %>%
+#   select(year, land_use, incent_prop, fmv_growth_2006) %>%
+#   filter(year == 2022)
+#
+# write_csv(comm_ind_pins_2006, "./Output/comm_ind_PINs_2006to2022_balanced.csv")
+#
+#
+#
+# ## Unique PINs and their property classes over time ------------------------------------
+#
+# pin_classes <- comm_ind_pins_ever %>%
+#   group_by(clean_name, pin, class) %>%
+#   summarize(count = n(),
+#             first_year = first(year),
+#             last_year = last(year)) %>%
+#   ungroup() %>%
+#   arrange(pin, first_year)
+#
+#
+# unique_ptax_w_class <- pin_classes %>% group_by(pin) %>%
+#   mutate(var2 = cumsum(row_number() == 1 | (class != dplyr::lag(class))))
+#
+#
+# unique_ptax_wide <- unique_ptax_w_class %>%
+#   pivot_wider(id_cols = c("pin", "clean_name"),
+#               names_from = var2,
+#               values_from = c(class, count, first_year, last_year))
+#
+# ## 119,993 Unique PINs and any class change they experienced:
+# write_csv(unique_ptax_wide, "./Output/pin_class_changes.csv")
+
+
+# Create 2011-2022 PIN level Panel Data -----------------------------------
+
+df <- comm_ind_pins_2011_2022 %>%
   group_by(pin) |>
   mutate(
     years_existed = n(),
@@ -159,64 +285,55 @@ comm_ind_pins_modified_2 <- comm_ind_pins_modified  %>%
         sum(land_use == "Commercial") == 12, "Always Commercial",
         ifelse(sum(land_use == "Industrial") == 12, "Always Industrial",
                # some properties had an incentive class before 2011 and then were tax exempt. Dropped from panel.
-               ifelse(sum(land_use == "Exempt") == 12, "Drop Me",
+               ifelse(sum(land_use == "Exempt") == 12, "Drop Me",   # created to remove PINs if they were tax exempt every year between 2011 and 2022.
                       "Changes Land Use" ))),
     incent_change = case_when(
       incentive_years == 12 ~ "Always Incentive",
       incentive_years == 0 ~ "Never Incentive",
       TRUE ~ "Changes Sometime")
   ) |>
-  ungroup()
+  ungroup() |>
+  filter(!(agency_num %in% cross_county_lines))
 
-comm_ind_2011to2022 <- comm_ind_pins_modified_2
+# Balance Panel --------------------------
 
-# 1,284,971 obs before dropping PINs
+df |>
+  group_by(years_existed) |>
+  summarize(n = n())
 
-## Examine PINs dropped from 2011-2022 panel data --------------------------
+### We now have 1.27 mil PIN-Year obs. in our sample after RD decisions
+### We expect to drop all but 1.2
 
+## Drop PINs that don't exist all years --> 68678 PIN-year obs. are dropped
 
-# only keep PINs that existed all years and if they are from a municipality
-# assumes that clean_name and agency_number correctly merged to tax codes from municipalities and their agency number
-# 97,521 PINs will be dropped from the 2011-2022 panel data
-dropped_pins2 <-  comm_ind_2011to2022 %>%
-  filter(
-    years_existed < 12  |      ##  69,491 PINs do not exist all 12 years
-      is.na(clean_name)  |       ## 4,370 PINs do not have municipality names
-      agency_num %in% cross_county_lines |  ## 13,915 PINs located in Municipalities that have a majority of their EAV in other counties
-      landuse_change == "Drop Me"     ## 12,048 PINs were tax exempt for all 12 years
-  )
+dropped_pins <-  df |>
+  filter(years_existed < 12)
 
+write.csv(dropped_pins, "dropped_pins_balance_2011_2022.csv")
 
-### Drop PINs and Export File -----------------------------------------------
+## We retain 1.2 obs.
 
-comm_ind_2011to2022 <- comm_ind_2011to2022 |>
-  filter(
-    years_existed == 12 &
-      !is.na(clean_name) &
-      !agency_num %in% cross_county_lines &
-      landuse_change != "Drop Me"
-  )
-## 1,187,450 obs remain
+df_balanced <- df |>
+  filter(years_existed == 12)
 
-comm_ind_2011to2022 <- comm_ind_2011to2022 |>
-  mutate(exempt_indicator = ifelse(land_use == "Exempt", 1, 0)) |>
-  group_by(pin) |>
-  mutate(
-    base_year_fmv_2011 = ifelse( sum(exempt_indicator) > 0, NA, fmv[year == 2011]),
-    fmv_growth_2011 = fmv/base_year_fmv_2011) |>
-  ungroup()
+# Write Balanced File -----------------------------------------------
 
-## 100,900 PINs existed since 2011 (and did not become tax exempt)
-## 102,717 PINs if not filtering for NA fmv growth
-## 99,088 PINs as of July 11 - AWM (1.12 obs. - MVH)
-## BUT some are exempt and will have 0 or errors for the fmv growth!!
+write.csv(df_balanced, "balanced_panel_2011_2022.csv")
 
+# Test missingness
 
+install.packages("finalfit")
+library(finalfit)
 
-comm_ind_2011to2022 %>%
-  select(year, land_use, incent_prop, fmv_growth_2011) %>%
-  filter(year == 2022)
+dropped_pins |>
+  group_by(year) |>
+  summarize(fmv = sum(fmv))
 
+df_balanced |>
+  group_by(year) |>
+  summarize(sum(fmv))
 
-## Write CSV to Output Folder
-write_csv(comm_ind_2011to2022, "./Output/comm_ind_2011-2022_balanced.csv")
+## Are things coded right?
+
+ff_glimpse(df_balanced)
+
