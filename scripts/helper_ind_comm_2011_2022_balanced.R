@@ -320,6 +320,11 @@ df_balanced <- df |>
 
 write.csv(df_balanced, "balanced_panel_2011_2022.csv")
 
+df_balanced <- df_balanced |>
+  filter(is.na(clean_name))
+
+is.pbalanced(panel)
+
 # Test missingness
 
 install.packages("finalfit")
@@ -337,3 +342,23 @@ df_balanced |>
 
 ff_glimpse(df_balanced)
 
+## Turn to panel data
+
+library(plm)
+library(prediction)
+
+panel <- pdata.frame(df_balanced, index = c("clean_name", "year"))
+
+is.pbalanced(panel)
+
+df_balanced |>
+  summarize(is.na(clean_name)) |>
+  group_by(year) |>
+  summarize(n = n())
+
+fe_naive <- plm(fmv ~ incent_prop,
+                model = "within",
+                effect = "twoways",
+                data = panel)
+
+lm1 <-
