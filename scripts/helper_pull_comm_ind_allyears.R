@@ -185,7 +185,8 @@ write_csv(comm_ind_pins_ever, "./Output/comm_ind_inmunis_timeseries_2006to2022.c
 comm_ind_pins_2006 <- comm_ind_pins_ever |>
   group_by(pin) |>
   mutate(
-    years_existed = n(),incentive_years = sum(incent_prop == "Incentive"),
+    years_existed = n(), 
+    incentive_years = sum(incent_prop == "Incentive"),
     landuse_change = 
       ifelse(sum(land_use == "Commercial") == 17, "Always Commercial",
              ifelse(sum(land_use == "Industrial") == 17, "Always Industrial",
@@ -269,14 +270,14 @@ comm_ind_2011to2022 <- comm_ind_pins_ever  %>%
   filter(year >= 2011 ) %>%
   group_by(pin) |>
   mutate(
-    years_existed = n(), 
+    years_existed = n(),  
     incentive_years = sum(incent_prop == "Incentive"),
     landuse_change =
       ifelse(
         sum(land_use == "Commercial") == 12, "Always Commercial",
         ifelse(sum(land_use == "Industrial") == 12, "Always Industrial",
                # some properties had an incentive class before 2011 and then were tax exempt. Dropped from panel.
-               ifelse(sum(land_use == "Exempt") == 12, "Drop Me",   
+               ifelse(sum(land_use == "Exempt") == 12, "Drop Me",   # created to remove PINs if they were tax exempt every year between 2011 and 2022. 
                       "Changes Land Use" ))),
     incent_change = case_when(
       incentive_years == 12 ~ "Always Incentive",
@@ -303,13 +304,44 @@ dropped_pins2 <-  comm_ind_2011to2022 %>%
 
 ### Drop PINs and Export File -----------------------------------------------
 
-comm_ind_2011to2022 <- comm_ind_2011to2022 |> 
+# what pins are dropped and no longer exist every year in the dataset??
+comm_ind_2011to2022 |> 
   filter(
-    years_existed == 12 & 
+    years_existed ==12 &
+    !is.na(clean_name) & 
+    #  !agency_num %in% cross_county_lines &
+      landuse_change != "Drop Me"
+  )  %>%
+  group_by(pin) |>
+  mutate(years_existed2 = n()) |>
+  ungroup() |>
+  filter(years_existed2 !=12)  |> 
+  distinct(pin) 
+# 288 additional PINs no longer exist all 12 years????
+
+weird288 <- comm_ind_2011to2022 |> 
+  filter(
+    years_existed == 12 &
       !is.na(clean_name) & 
       !agency_num %in% cross_county_lines &
       landuse_change != "Drop Me"
-    ) 
+  )  %>%
+  group_by(pin) |>
+  mutate(years_existed2 = n()) |>
+  ungroup() |>
+  filter(years_existed2 !=12)
+
+comm_ind_2011to2022 <- comm_ind_2011to2022 |> 
+  filter(
+    years_existed == 12 &
+      !is.na(clean_name) & 
+      !agency_num %in% cross_county_lines &
+      landuse_change != "Drop Me"
+    )  %>%
+  group_by(pin) |>
+  mutate(years_existed = n()) |>
+  ungroup() |>
+  filter(years_existed ==12) 
 ## 1,187,450 obs remain
 
 comm_ind_2011to2022 <- comm_ind_2011to2022 |>
