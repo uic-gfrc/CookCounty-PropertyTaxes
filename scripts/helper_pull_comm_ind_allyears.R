@@ -292,34 +292,24 @@ comm_ind_2011to2022 <- comm_ind_pins_ever  %>%
 
 # only keep PINs that existed all years and if they are from a municipality
 # assumes that clean_name and agency_number correctly merged to tax codes from municipalities and their agency number
-# 97,521 PINs will be dropped from the 2011-2022 panel data
+# 97,521 PINs will be dropped from the 2011-2022 panel data if including years_existed in filter.
+
+# drops 27,644 PINs when using clean_name, cross_county_lines, and landuse_change
 dropped_pins2 <-  comm_ind_2011to2022 %>% 
   filter(
-    years_existed < 12  |      ##  69,491 PINs do not exist all 12 years
       is.na(clean_name)  |       ## 4,370 PINs do not have municipality names
       agency_num %in% cross_county_lines |  ## 13,915 PINs located in Municipalities that have a majority of their EAV in other counties
       landuse_change == "Drop Me"     ## 12,048 PINs were tax exempt for all 12 years
-  )
+  ) 
+#  years_existed < 12  |      ##  69,491 PINs do not exist all 12 years
 
 
 ### Drop PINs and Export File -----------------------------------------------
 
-# what pins are dropped and no longer exist every year in the dataset??
-comm_ind_2011to2022 |> 
-  filter(
-    years_existed ==12 &
-    !is.na(clean_name) & 
-    #  !agency_num %in% cross_county_lines &
-      landuse_change != "Drop Me"
-  )  %>%
-  group_by(pin) |>
-  mutate(years_existed2 = n()) |>
-  ungroup() |>
-  filter(years_existed2 !=12)  |> 
-  distinct(pin) 
-# 288 additional PINs no longer exist all 12 years????
 
-weird288 <- comm_ind_2011to2022 |> 
+
+
+weirdpins <- comm_ind_2011to2022 |> 
   filter(
     years_existed == 12 &
       !is.na(clean_name) & 
@@ -331,18 +321,31 @@ weird288 <- comm_ind_2011to2022 |>
   ungroup() |>
   filter(years_existed2 !=12)
 
+# drop the 27,644 PINs from not having a muni name, being 50% in cook, and being taxable
 comm_ind_2011to2022 <- comm_ind_2011to2022 |> 
   filter(
-    years_existed == 12 &
+ #   years_existed == 12 &
       !is.na(clean_name) & 
       !agency_num %in% cross_county_lines &
       landuse_change != "Drop Me"
-    )  %>%
-  group_by(pin) |>
-  mutate(years_existed = n()) |>
-  ungroup() |>
-  filter(years_existed ==12) 
+    )   
+## 1,257,327 remain - July 16 AWM
 ## 1,187,450 obs remain
+
+
+# another 70,203 observations do not exist every year. 
+dropped_pins3 <- comm_ind_2011to2022 %>% 
+  group_by(pin) %>% 
+  mutate(years_existed2 = n()) %>%
+  filter(years_existed2 < 12)
+
+
+# Drop those PINs that didn't exist every year
+comm_ind_2011to2022 <- comm_ind_2011to2022 %>% 
+  group_by(pin) %>% 
+  mutate(years_existed2 = n()) %>%
+  filter(years_existed2 == 12)
+# 1,187,124 obs remain
 
 comm_ind_2011to2022 <- comm_ind_2011to2022 |>
   mutate(exempt_indicator = ifelse(land_use == "Exempt", 1, 0)) |>
@@ -358,6 +361,9 @@ comm_ind_2011to2022 <- comm_ind_2011to2022 |>
 ## BUT some are exempt and will have 0 or errors for the fmv growth!!
 
 
+
+comm_ind_2011to2022 %>%
+ reframe(pincount = n(), .by = year) 
 
 comm_ind_2011to2022 %>%
   #select(year, land_use, incent_prop, fmv_growth_2011) %>%
