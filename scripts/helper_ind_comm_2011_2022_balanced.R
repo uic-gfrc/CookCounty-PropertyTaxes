@@ -107,7 +107,8 @@ tax_codes_muni <- DBI::dbGetQuery(
            .con = ptaxsim_db_conn
   ))
 
-## Use those tax code numbers to pull all ind/comm PINs in time frame.
+## Use those tax code numbers to pull all ind/comm PINs in time frame 
+## within municipality tax codes
 
 muni_pins <- DBI::dbGetQuery(
   ptaxsim_db_conn,
@@ -120,10 +121,10 @@ muni_pins <- DBI::dbGetQuery(
     .con = ptaxsim_db_conn
   ))
 
-## Pull in clean names
-
-tax_codes_muni <- tax_codes_muni %>%
-  left_join(nicknames, by = c("agency_num" = "agency_number"))
+## Pull in clean names for munis
+# 
+# tax_codes_muni <- tax_codes_muni %>%
+#   left_join(nicknames, by = c("agency_num" = "agency_number"))
 
 ### Identify all distinct comm-ind PINs between 2011-2022--------------------
 
@@ -139,7 +140,7 @@ comm_ind_pins_2011_2022_raw <- DBI::dbGetQuery(
     "SELECT DISTINCT year, pin, class, tax_code_num, tax_bill_total, av_mailed, av_certified, av_board, av_clerk, exe_abate
    FROM pin
    WHERE pin IN ({distinct_pins_2011_2022$pin*}) AND
-   YEAR >= 2011 AND YEAR <= 2022
+   year >= 2011 
   ",
     .con = ptaxsim_db_conn
   )) |>
@@ -161,7 +162,8 @@ tif_distrib <- DBI::dbGetQuery(
     .con = ptaxsim_db_conn)
 )
 
-# At this point, we have 1.8 mil PIN-Year obs.
+# At this point, we have 1,284,971 mil PIN-Year obs.
+# 
 
 # Manipulate Extracted Data ---------------------------------------------
 
@@ -187,7 +189,9 @@ comm_ind_pins_2011_2022 <- comm_ind_pins_2011_2022_raw %>%
       TRUE ~ as.character(class_group))
   )
 
-#write_csv(comm_ind_pins_ever, "./Output/comm_ind_inmunis_timeseries_2006to2022.csv")
+# write_csv(comm_ind_pins_ever, "./Output/comm_ind_inmunis_timeseries_2011to2022.csv")
+
+
 
 # # Create 2006 PIN level Panel Data ----------------------------------------
 #
@@ -280,6 +284,7 @@ df <- comm_ind_pins_2011_2022 %>%
   mutate(
     years_existed = n(),
     incentive_years = sum(incent_prop == "Incentive"),
+    tif_years = sum(in_tif==1),
     landuse_change =
       ifelse(
         sum(land_use == "Commercial") == 12, "Always Commercial",
@@ -290,7 +295,11 @@ df <- comm_ind_pins_2011_2022 %>%
     incent_change = case_when(
       incentive_years == 12 ~ "Always Incentive",
       incentive_years == 0 ~ "Never Incentive",
-      TRUE ~ "Changes Sometime")
+      TRUE ~ "Changes Sometime"),
+    tif_change = case_when(
+      tif_years == 12 ~ "Always TIF",
+      tif_years == 0 ~ "Never TIF",
+      TRUE ~ "Changes")
   ) |>
   ungroup() |>
   filter(!(agency_num %in% cross_county_lines))
@@ -301,8 +310,8 @@ df |>
   group_by(years_existed) |>
   summarize(n = n())
 
-### We now have 1.27 mil PIN-Year obs. in our sample after RD decisions
-### We expect to drop all but 1.2
+### We now have 1,271,065 mil PIN-Year obs. in our sample after RD decisions
+### We expect to drop all but 1,202,378
 
 ## Drop PINs that don't exist all years --> 68678 PIN-year obs. are dropped
 
@@ -320,8 +329,15 @@ df_balanced <- df |>
 
 write.csv(df_balanced, "balanced_panel_2011_2022.csv")
 
-df_balanced <- df_balanced |>
+missingnames <- df_balanced |>
   filter(is.na(clean_name))
+
+df_balanced <- df_balanced |>
+  filter(!is.na(clean_name))
+
+df_balanced <- df_balanced %>% select(pin, year, av_clerk, fmv)
+
+panel <- pdata.frame(df_balanced, index = c("pin", "year"))
 
 is.pbalanced(panel)
 
