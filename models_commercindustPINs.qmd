@@ -1,0 +1,129 @@
+---
+title: "Models for Commercial & Industrial Properties in Cook County"
+author: "AWM  & MVH"
+format: html
+editor: visual
+---
+## 2011-2022 Panel Data Cross Tables
+
+```{r setup}
+#| output: FALSE
+
+# Load packages
+
+library(tidyverse)
+library(corrr)
+library(glue)
+library(DT)
+library(flextable)
+library(kableExtra)
+library(crosstable)
+library(scales)
+
+# Set table formatting defaults
+
+set_flextable_defaults(theme_fun = theme_vanilla, 
+                       padding = 2,
+                       #line_spacing = 1,
+                       big.mark = ","
+                       )
+
+options(DT.options = list())
+
+FitFlextableToPage <- function(ft, pgwidth = 6){
+  ft_out <- ft %>% autofit()
+  ft_out <- width(ft_out, width = dim(ft_out)$widths*pgwidth /(flextable_dim(ft_out)$widths))
+  return(ft_out)
+}
+
+comm_ind <- read_csv("./Output/comm_ind_PINs_2011-2022_balanced.csv") 
+
+## set variable types 
+comm_ind <- comm_ind %>%
+  mutate(across(c(class, improvement_ind, has_AB_exemp,fmv_NA_indicator, in_tif), as.character) ) 
+
+```
+
+
+## Muni Check
+
+Park Forest is there again! 118 Munis have commercial or industrial PINs during tax year 2022.
+
+```{r}
+comm_ind |> filter(year==2022) |> reframe(pincount= n(), fmv = sum(fmv), .by = clean_name) |> arrange(clean_name)
+```
+
+## Model Things
+
+- Drop unnecessary variables from dataframe. Helps with speed of `pdata.frame()` command.    
+- Set index of panel data forthe PIN and year (unit of observation and time) 
+- Fixed effects will drop anything that doesn't change: Municipalty, Triad, distance to Indiana, etc.   
+   
+- DV: FMV Growth since 2011? 
+
+- 5760 PINs were exempt at least 1 year in the dataframe...
+
+```{r}
+
+# # 5760 PINs were exempt at least 1 year in the dataframe...
+# comm_ind %>% 
+#   group_by(pin) %>% 
+#   mutate(exempt_sum = sum(exempt_indicator)) %>%  # was a PIN tax exempt ever?
+#   ungroup() %>%
+#   filter(exempt_sum > 0) %>% distinct(pin)
+
+data <- comm_ind %>% 
+  group_by(pin) %>% 
+  mutate(exempt_sum = sum(exempt_indicator),
+         years_existed2 = n()) %>%  # was a PIN tax exempt ever?
+  ungroup() %>%
+  filter(exempt_sum == 0 & years_existed2 == 12) %>%
+  filter(year >= 2012) %>%        ## Drop first year of panel data
+
+  select(pin, year, fmv_growth_2011, av_clerk, has_AB_exemp, land_use, incent_prop) 
+# %>% mutate_at(c(pin, year, has_AB_exemp), as.character)
+
+library(plm)
+
+df_panel <- pdata.frame(data, index = c("pin", "year"))   
+is.pbalanced(df_panel)
+plm::pdim(df_panel)
+
+```
+
+
+```{r}
+summary(df_panel)
+
+```
+
+# Two-Way Fixed Effects Models
+
+## Naive Model
+
+```{r twfe_naive}
+#| code-fold: FALSE
+
+naive_mod <- plm(fmv_growth_2011 ~ land_use,
+                 model = "within",
+                 effect = "twoways",
+                 data = df_panel)
+
+summary(naive_mod)
+
+
+naive_mod <- plm(fmv_growth_2011 ~ incent_prop,
+                 model = "within",
+                 effect = "twoways",
+                 data = df_panel)
+
+summary(naive_mod)
+
+naive_mod <- plm(fmv_growth_2011 ~ land_use*incent_prop,
+                 model = "within",
+                 effect = "twoways",
+                 data = df_panel)
+
+summary(naive_mod)
+```
+
