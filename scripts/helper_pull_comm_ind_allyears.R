@@ -178,6 +178,7 @@ comm_ind_pins_ever <- comm_ind_pins_ever %>%
       TRUE ~ as.character(class_group))
 )
 
+write_csv(comm_ind_pins_ever, "./Output/comm_ind_inmunis_timeseries_2006to2022.csv")
 
 # Create 2006 PIN level Panel Data ----------------------------------------
 
