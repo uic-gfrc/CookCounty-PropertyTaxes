@@ -1,6 +1,7 @@
 ### Helper File: Pull all Comm. and Ind. PINs in Cook County ###
 ### Years 2006 - 2022 ###
-### Two csv outputs: one has all PINs all years, one only has PINs that existed each year.
+### Two multiple CSVs: 
+####   one has all PINs all years, one only has PINs that existed each year.
 
 library(tidyverse)
 library(ptaxsim)
@@ -80,11 +81,13 @@ muni_pins <- DBI::dbGetQuery(
     .con = ptaxsim_db_conn
   ))
 
+options(scipen = 999)
 
 nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")  %>%
   select(agency_number, clean_name, Triad, Township) %>%
-  mutate(agency_number = as.character(agency_number)) %>%
-  mutate(agency_number = str_pad(agency_number, width = 9, side = "left", pad = "0"))
+  mutate(agency_number = str_pad(agency_number, width = 9, side = "left", pad = "0")) %>%
+
+  mutate(agency_number = as.character(agency_number))
 
 
 tax_codes_muni <- tax_codes_muni %>%
@@ -208,7 +211,7 @@ dropped_pins1 <- comm_ind_pins_2006 %>%
       agency_num %in% cross_county_lines   ## 19,554 PINs located in Municipalities that have a majority of their EAV in other counties
   )
 
-
+write_csv(dropped_pins1, "dropped_frompanel_2006to2022.csv")
 
 ### Drop PINs and export File -----------------------------------------------
 
@@ -231,7 +234,7 @@ comm_ind_pins_2006 %>%
   select(year, land_use, incent_prop, fmv_growth_2006) %>%
   filter(year == 2022)
 
-# write_csv(comm_ind_pins_2006, "./Output/comm_ind_PINs_2006-2022.csv")
+write_csv(comm_ind_pins_2006, "./Output/comm_ind_PINs_2006to2022_balanced.csv")
 
 
 
@@ -256,7 +259,7 @@ unique_ptax_wide <- unique_ptax_w_class %>%
               values_from = c(class, count, first_year, last_year))
 
 ## 119,993 Unique PINs and any class change they experienced:
-# write_csv(unique_ptax_wide, "./Output/pin_class_changes.csv")
+write_csv(unique_ptax_wide, "./Output/pin_class_changes.csv")
 
 
 # Create 2011-2022 PIN level Panel Data -----------------------------------
@@ -324,8 +327,8 @@ comm_ind_2011to2022 <- comm_ind_2011to2022 |>
 
 
 comm_ind_2011to2022 %>%
-  select(year, land_use, incent_prop, fmv_growth_2011) %>%
-  filter(year == 2022)
+  #select(year, land_use, incent_prop, fmv_growth_2011) %>%
+  filter(year == 2022) %>% reframe(pincount = n(), .by = clean_name) %>% arrange()
 
 
 ## Write CSV to Output Folder
