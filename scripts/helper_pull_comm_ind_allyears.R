@@ -371,5 +371,5 @@ comm_ind_2011to2022 %>%
 
 
 ## Write CSV to Output Folder
-write_csv(comm_ind_2011to2022, "./Output/comm_ind_2011-2022_balanced.csv")
+write_csv(comm_ind_2011to2022, "./Output/comm_ind_PINs_2011-2022_balanced.csv")
 
