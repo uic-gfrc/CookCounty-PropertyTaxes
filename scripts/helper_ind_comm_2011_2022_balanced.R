@@ -102,7 +102,8 @@ tax_codes_muni <- DBI::dbGetQuery(
   glue_sql("
   SELECT DISTINCT year, agency_num, tax_code_num, tax_code_rate
   FROM tax_code
-  WHERE agency_num IN ({muni_agency_names$agency_num*})
+  WHERE agency_num IN ({muni_agency_names$agency_num*}
+  )
   ",
            .con = ptaxsim_db_conn
   ))
@@ -282,11 +283,16 @@ comm_ind_pins_2011_2022 <- comm_ind_pins_2011_2022_raw %>%
 df <- comm_ind_pins_2011_2022 %>%
   group_by(pin) |> # 113,255 pin-muni combos
   arrange(desc(year)) |>
+  mutate(multi_muni = n_distinct(clean_name),
+         multimuni_ind = ifelse(sum(multi_muni) > 1, 1, 0)) |>  
+  
   
   ## fill in muni names for the 700+ PINs that had multiple muni names or did not have a muni name for all years
-  mutate(clean_name = first(clean_name)) %>% 
+  ## 471 were the Harvey/Markham Amazon PINs.
+  mutate(clean_name = first(clean_name, na_rm = TRUE)) %>% 
  
    mutate(
+     multi_muni = sum(n_distinct(clean_name)),
     years_existed = n(),
     incentive_years = sum(incent_prop == "Incentive"),
     tif_years = sum(in_tif==1),
@@ -310,47 +316,53 @@ df <- comm_ind_pins_2011_2022 %>%
   # keep pins from Munis that have > 50% of their taxed EAV within Cook County
   filter(!(agency_num %in% cross_county_lines))   
 
+
+
+# Deal with PINs that had multiple muni names -----------------------------
+
+# df |>
+#   group_by(years_existed) |>
+#   summarize(n = n())
+# 
+# df |> distinct(pin) # 112,459 unique pins
+# 
+# df |> distinct(pin, clean_name) # 113,255 pin-muni combos before using first(clean_name)
+# 
+# df |> 
+#   group_by(pin) |> # 113,255 pin-muni combos
+#   mutate(multi_muni = n_distinct(clean_name) ) |>  
+#   arrange(desc(multi_muni)) |> 
+#   filter(multi_muni > 1)|> 
+#   distinct(pin, clean_name
+#            )
+# 
+# muni_swappers <- df |> 
+#   group_by(pin) |> # 113,255 pin-muni combos
+#   mutate(multi_muni = n_distinct(clean_name) ) |>  
+#   arrange(desc(multi_muni)) |> 
+#   filter(multi_muni > 1)|> 
+#   select(pin, year, clean_name
+#   ) |> 
+#   pivot_wider(id_cols = "pin", names_from = "year", values_from = "clean_name")
+# # 793 PINs have more than 1 muni?
+# 
+# df |> 
+#   group_by(pin) |> # 113,255 pin-muni combos
+#   mutate(multi_muni = n_distinct(clean_name) ) |>  
+#   arrange(desc(multi_muni)) |> 
+#   filter(multi_muni > 1)|> 
+#   ungroup() |>
+#   distinct(clean_name)
+# 
+# df |> 
+#   group_by(pin) |> # 113,255 pin-muni combos
+#   arrange(desc(year)) |>
+#   mutate(clean_name = first(clean_name)) %>%
+#   distinct(pin,clean_name)
+
 # Balance Panel --------------------------
 
-df |>
-  group_by(years_existed) |>
-  summarize(n = n())
 
-df |> distinct(pin) # 112,459 unique pins
-
-df |> distinct(pin, clean_name) # 113,255 pin-muni combos
-
-df |> 
-  group_by(pin) |> # 113,255 pin-muni combos
-  mutate(multi_muni = n_distinct(clean_name) ) |>  
-  arrange(desc(multi_muni)) |> 
-  filter(multi_muni > 1)|> 
-  distinct(pin, clean_name
-           )
-
-muni_swappers <- df |> 
-  group_by(pin) |> # 113,255 pin-muni combos
-  mutate(multi_muni = n_distinct(clean_name) ) |>  
-  arrange(desc(multi_muni)) |> 
-  filter(multi_muni > 1)|> 
-  select(pin, year, clean_name
-  ) |> 
-  pivot_wider(id_cols = "pin", names_from = "year", values_from = "clean_name")
-# 793 PINs have more than 1 muni?
-
-df |> 
-  group_by(pin) |> # 113,255 pin-muni combos
-  mutate(multi_muni = n_distinct(clean_name) ) |>  
-  arrange(desc(multi_muni)) |> 
-  filter(multi_muni > 1)|> 
-  ungroup() |>
-  distinct(clean_name)
-
-df |> 
-  group_by(pin) |> # 113,255 pin-muni combos
-  arrange(desc(year)) |>
-  mutate(clean_name = first(clean_name)) %>%
-  distinct(pin,clean_name)
 
 
 ### We now have 1,271,065 mil PIN-Year obs. in our sample after RD decisions
@@ -365,25 +377,25 @@ write.csv(dropped_pins, "dropped_pins_balance_2011_2022.csv")
 
 ## We retain 1.2 obs.
 
-df_balanced <- df |>
-  filter(years_existed == 12)
-## want to fill in missing muni names when grouped ny pin 
-
-# Write Balanced File -----------------------------------------------
-
-write.csv(df_balanced, "balanced_panel_2011_2022.csv")
- 
 missingnames <- df_balanced |>
   filter(is.na(clean_name))
 
 df_balanced <- df_balanced |>
-  filter(!is.na(clean_name))
+  filter(!is.na(clean_name)) |>    # drops 252 MORE obs.
+  group_by(pin)  |> 
+  mutate(years_existed2 = n()) |>  # check again to see if they still exist every year
+  filter(years_existed2 == 12)     # 1,202,040 observations now that exist every year
+
+# Write Balanced File -----------------------------------------------
 
 df_balanced <- df_balanced %>% select(pin, year, av_clerk, fmv)
 
 panel <- pdata.frame(df_balanced, index = c("pin", "year"))
 
 is.pbalanced(panel)
+
+write.csv(df_balanced, "balanced_panel_2011_2022.csv")
+
 
 # Test missingness
 
