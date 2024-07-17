@@ -280,8 +280,13 @@ comm_ind_pins_2011_2022 <- comm_ind_pins_2011_2022_raw %>%
 # Create 2011-2022 PIN level Panel Data -----------------------------------
 
 df <- comm_ind_pins_2011_2022 %>%
-  group_by(pin) |>
-  mutate(
+  group_by(pin) |> # 113,255 pin-muni combos
+  arrange(desc(year)) |>
+  
+  ## fill in muni names for the 700+ PINs that had multiple muni names or did not have a muni name for all years
+  mutate(clean_name = first(clean_name)) %>% 
+ 
+   mutate(
     years_existed = n(),
     incentive_years = sum(incent_prop == "Incentive"),
     tif_years = sum(in_tif==1),
@@ -302,13 +307,51 @@ df <- comm_ind_pins_2011_2022 %>%
       TRUE ~ "Changes")
   ) |>
   ungroup() |>
-  filter(!(agency_num %in% cross_county_lines))
+  # keep pins from Munis that have > 50% of their taxed EAV within Cook County
+  filter(!(agency_num %in% cross_county_lines))   
 
 # Balance Panel --------------------------
 
 df |>
   group_by(years_existed) |>
   summarize(n = n())
+
+df |> distinct(pin) # 112,459 unique pins
+
+df |> distinct(pin, clean_name) # 113,255 pin-muni combos
+
+df |> 
+  group_by(pin) |> # 113,255 pin-muni combos
+  mutate(multi_muni = n_distinct(clean_name) ) |>  
+  arrange(desc(multi_muni)) |> 
+  filter(multi_muni > 1)|> 
+  distinct(pin, clean_name
+           )
+
+muni_swappers <- df |> 
+  group_by(pin) |> # 113,255 pin-muni combos
+  mutate(multi_muni = n_distinct(clean_name) ) |>  
+  arrange(desc(multi_muni)) |> 
+  filter(multi_muni > 1)|> 
+  select(pin, year, clean_name
+  ) |> 
+  pivot_wider(id_cols = "pin", names_from = "year", values_from = "clean_name")
+# 793 PINs have more than 1 muni?
+
+df |> 
+  group_by(pin) |> # 113,255 pin-muni combos
+  mutate(multi_muni = n_distinct(clean_name) ) |>  
+  arrange(desc(multi_muni)) |> 
+  filter(multi_muni > 1)|> 
+  ungroup() |>
+  distinct(clean_name)
+
+df |> 
+  group_by(pin) |> # 113,255 pin-muni combos
+  arrange(desc(year)) |>
+  mutate(clean_name = first(clean_name)) %>%
+  distinct(pin,clean_name)
+
 
 ### We now have 1,271,065 mil PIN-Year obs. in our sample after RD decisions
 ### We expect to drop all but 1,202,378
@@ -324,11 +367,12 @@ write.csv(dropped_pins, "dropped_pins_balance_2011_2022.csv")
 
 df_balanced <- df |>
   filter(years_existed == 12)
+## want to fill in missing muni names when grouped ny pin 
 
 # Write Balanced File -----------------------------------------------
 
 write.csv(df_balanced, "balanced_panel_2011_2022.csv")
-
+ 
 missingnames <- df_balanced |>
   filter(is.na(clean_name))
 
