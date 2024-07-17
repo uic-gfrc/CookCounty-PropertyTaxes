@@ -384,7 +384,8 @@ df_balanced <- df_balanced |>
   filter(!is.na(clean_name)) |>    # drops 252 MORE obs.
   group_by(pin)  |> 
   mutate(years_existed2 = n()) |>  # check again to see if they still exist every year
-  filter(years_existed2 == 12)     # 1,202,040 observations now that exist every year
+  filter(years_existed2 == 12)     # drops more observations now!! order of filtering matters! 
+# 1,202,040 observations now that exist every year
 
 # Write Balanced File -----------------------------------------------
 
