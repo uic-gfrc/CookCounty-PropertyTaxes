@@ -395,7 +395,7 @@ panel <- pdata.frame(df_balanced, index = c("pin", "year"))
 
 is.pbalanced(panel)
 
-write.csv(df_balanced, "balanced_panel_2011_2022.csv")
+write_csv(df_balanced, "balanced_panel_2011_2022.csv")
 
 
 # Test missingness
@@ -434,4 +434,3 @@ fe_naive <- plm(fmv ~ incent_prop,
                 effect = "twoways",
                 data = panel)
 
-lm1 <-
