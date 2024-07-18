@@ -189,8 +189,7 @@ for(i in years){
              exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 ,
            abatements = exe_abate, #abatements get their own variable
            fmv = av / loa,
-           fmv = ifelse(is.nan(fmv), 0, fmv)
-           ) %>%
+           fmv = ifelse(is.na(fmv), 0, fmv)) %>%
 
     # Create binary variables for exemptions
 
@@ -268,8 +267,8 @@ joined_pin_data <- joined_pin_data %>%
       #taxed_fmv = ifelse(is.nan(taxed_fmv), 0, taxed_fmv),
 
       fmv = av / loa,
-      #fmv = ifelse(is.nan(fmv), 0, fmv),
-
+      fmv = ifelse(is.na(fmv), 0, fmv),
+      
       ## untaxable value = exempt EAV from abatements and exemptions
       untaxable_value_eav = all_exemptions + abatements +
 
@@ -314,7 +313,8 @@ joined_pin_data <- joined_pin_data %>%
            untaxable_value_fmv, fmv_inTIF, fmv_tif_increment, fmv_incents_tif_increment, fmv, total_billed, final_tax_to_dist, final_tax_to_tif, tax_code_rate, eav, equalized_av, av, everything())
 
   ## County Level -----------------------------------------------------------
-  joined_pin_data <- joined_pin_data %>% mutate(loa = ifelse(loa==0, NA, loa))
+  joined_pin_data <- joined_pin_data %>% 
+    mutate(loa = ifelse(loa==0, NA, loa))
 
   county_sums2 <- joined_pin_data %>%
     ungroup() %>%
@@ -602,7 +602,7 @@ rm(muni_level_summary2)
   mutate(across(starts_with("fmv_"), round, digits = 0)) %>%
   
   mutate(across(contains(c("rate", "pct","bill")), round, digits = 3) ) %>%
-  select(year, clean_name, major_class_code, cur_comp_muni_rate, current_taxable_eav, everything()) %>%
+  select(year, clean_name, major_class_code, everything()) %>%
   setNames(paste0('muni_mc_', names(.)))
 
     # summarize(
@@ -674,7 +674,7 @@ write_csv(county_sums, "./Output/ptaxsim_cook_level_2006-2022.csv")
 
 write_csv(muni_level_summary, "./Output/ptaxsim_muni_level_2006-2022.csv")
 write_csv(muni_MC_summary, "./Output/ptaxsim_muni_MC_2006-2022.csv")
-
+ 
 
 # write_csv(tc_mc_summaries, "./Output/ptaxsim_TC_MC_summaries_2006-2022.csv")
 # write_csv(tc_class_summaries, "./Output/ptaxsim_TC_Class_summaries_2006-2022.csv")
