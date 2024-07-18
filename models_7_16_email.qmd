@@ -1,0 +1,157 @@
+---
+title: "Models for Commercial & Industrial Properties in Cook County"
+author: "AWM  & MVH"
+format: 
+  html:
+    code-fold: true
+    toc: true
+    toc-location: left
+    tbl-cap-location: margin
+    fig-cap-location: margin
+    df-print: paged
+---
+
+# Preliminary Code
+
+```{r setup}
+#| output: FALSE
+
+options(scipen = 999) #no scientific notation
+
+# Load packages
+
+library(tidyverse)
+library(glue)
+library(DT)
+library(flextable)
+library(kableExtra)
+library(plm)
+library(modelsummary)
+library(stars)
+library(huxtable)
+library(jtools)
+library(sandwich)
+
+# Set table formatting defaults
+
+set_flextable_defaults(theme_fun = theme_vanilla, 
+                       padding = 2,
+                       #line_spacing = 1,
+                       big.mark = ","
+                       )
+
+options(DT.options = list())
+
+FitFlextableToPage <- function(ft, pgwidth = 6){
+  ft_out <- ft %>% autofit()
+  ft_out <- width(ft_out, width = dim(ft_out)$widths*pgwidth /(flextable_dim(ft_out)$widths))
+  return(ft_out)
+}
+
+comm_ind <- read_csv("./Output/comm_ind_PINs_2011-2022_balanced.csv") 
+
+comm_ind <- comm_ind |>
+  ## set variable types 
+  mutate(across(c(class, improvement_ind, has_AB_exemp, fmv_NA_indicator, in_tif), as.character))
+
+comm_ind <- comm_ind |>
+  # Change to factors; set reference levels
+  mutate(incent_change = as.factor(incent_change),
+         landuse_change = as.factor(landuse_change)) |>
+  mutate(incent_change = relevel(incent_change, ref = "Never Incentive"),
+         landuse_change = relevel(landuse_change, ref = "Always Commercial")) |>
+  # Create bin variables
+  mutate(change_incent_bin = ifelse(incent_change == "Changes Sometime", 1, 0),
+         change_prop_use_bin = ifelse(landuse_change == "Changes Land Use", 1, 0)) |>
+  # Rename for my sanity
+  rename(fmv_2011 = base_year_fmv_2011)
+
+vcovHC1 <- function(model) vcovHC(model, type = "HC1")
+
+# coef_names <- c("change_incent_bin" = "Changed Incentive",
+#                 "fmv_2011" = "2011 FMV",
+#                 "Triad" = "Triad",
+#                 "change_prop_use_bin" = "Changed Land Use",
+#                 "land_use" = "2022 Land Use",
+#                 "in_tif" = "In TIF (2022)",
+#                 "agency_num" = NA)
+
+```
+
+```{r data_check}
+
+```
+
+# OLS
+
+## Variable of Interest: Incentive Classification Change
+
+```{r time_filter}
+#| Output: FALSE
+
+df_2022 <- comm_ind |>
+  filter(year == 2022)
+
+```
+
+### "Naive" Model
+
+```{r naive_model}
+
+naive_ols <- lm(fmv_growth_2011 ~ change_incent_bin + change_prop_use_bin,
+                data = df_2022)
+
+naive_ols_table <- 
+  export_summs(naive_ols,
+               model.names = c("Naive OLS Model"),
+                                robust = "HC3",
+                                statistics = c(N = "nobs", R2 = "r.squared", adj.R2 = "adj.r.squared"))
+
+naive_ols_table <- set_caption(naive_ols_table, "Naive Model, Dependant Variable: FMV Growth, 2011-2022")
+
+naive_ols_table
+
+```
+
+### With Municipality Dummies
+
+```{r muni_dummy}
+
+muni_dummy_1 <- lm(fmv_growth_2011 ~ change_incent_bin + as.factor(agency_num),
+                data = df_2022)
+
+muni_dummy_2 <- lm(fmv_growth_2011 ~ change_incent_bin + fmv_2011 + as.factor(agency_num),
+                data = df_2022)
+
+muni_dummy_3 <- lm(fmv_growth_2011 ~ change_incent_bin + fmv_2011 + as.factor(Triad) 
+                   + as.factor(agency_num),
+                data = df_2022)
+
+muni_dummy_4 <- lm(fmv_growth_2011 ~ change_incent_bin + fmv_2011 + as.factor(Triad) 
+                   + change_prop_use_bin + as.factor(agency_num),
+                data = df_2022)
+
+muni_dummy_5 <- lm(fmv_growth_2011 ~ change_incent_bin + fmv_2011 + as.factor(Triad) 
+                   + change_prop_use_bin + as.factor(land_use) + as.factor(in_tif) 
+                   + as.factor(agency_num),
+                data = df_2022)
+
+#muni_dummy_models <- (muni_dummy_1, muni_dummy_2, muni_dummy_3, muni_dummy_4, muni_dummy_5)
+
+muni_dummies_table <- 
+  export_summs(muni_dummy_1, muni_dummy_2, muni_dummy_3, muni_dummy_4, muni_dummy_5,
+               model.names = c("Base",
+                               "1",
+                               "2",
+                               "3",
+                               "4"),
+                                robust = "HC3",
+                                statistics = c(N = "nobs", R2 = "r.squared", adj.R2 = "adj.r.squared"))
+
+summary(muni_dummy_5)
+
+muni_dummies_table <- set_caption(muni_dummies_table, "OLS with Municipality-Level Controls (2022)<br>Dependant Variable: FMV Growth, 2011-2022")
+
+muni_dummies_table
+
+```
