@@ -90,7 +90,8 @@ vcovHC1 <- function(model) vcovHC(model, type = "HC1")
 #| Output: FALSE
 
 df_2022 <- comm_ind |>
-  filter(year == 2022)
+  filter(year == 2022) |>
+  filter(!is.na(fmv_2011))
 
 ```
 
@@ -104,7 +105,7 @@ naive_ols <- lm(fmv_growth_2011 ~ change_incent_bin + change_prop_use_bin,
 naive_ols_table <- 
   export_summs(naive_ols,
                model.names = c("Naive OLS Model"),
-                                robust = "HC3",
+                                robust = "HC1",
                                 statistics = c(N = "nobs", R2 = "r.squared", adj.R2 = "adj.r.squared"))
 
 naive_ols_table <- set_caption(naive_ols_table, "Naive Model, Dependant Variable: FMV Growth, 2011-2022")
@@ -119,6 +120,8 @@ naive_ols_table
 
 muni_dummy_1 <- lm(fmv_growth_2011 ~ change_incent_bin + as.factor(agency_num),
                 data = df_2022)
+
+summary(muni_dummy_1)
 
 muni_dummy_2 <- lm(fmv_growth_2011 ~ change_incent_bin + fmv_2011 + as.factor(agency_num),
                 data = df_2022)
@@ -145,7 +148,7 @@ muni_dummies_table <-
                                "2",
                                "3",
                                "4"),
-                                robust = "HC3",
+                                #robust = "HC1",
                                 statistics = c(N = "nobs", R2 = "r.squared", adj.R2 = "adj.r.squared"))
 
 summary(muni_dummy_5)
@@ -153,5 +156,12 @@ summary(muni_dummy_5)
 muni_dummies_table <- set_caption(muni_dummies_table, "OLS with Municipality-Level Controls (2022)<br>Dependant Variable: FMV Growth, 2011-2022")
 
 muni_dummies_table
+
+```
+
+
+```{r}
+
+
 
 ```
