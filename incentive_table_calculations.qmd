@@ -1409,7 +1409,9 @@ Uses `comm_ind_PINs_2011to2022_existallyears.csv` made from the `helper_pull_com
 #| label: tbl-growthcalculations-commindfile-balanced2011
 #| tbl-cap: "Growth from 2011 to 2022. Uses pins that exist all years between 2011 and 2022."
 
-ptax_pins <- read_csv("./Output/comm_ind_PINs_2011to2022_existallyears.csv")
+#ptax_pins <- read_csv("./Output/comm_ind_PINs_2011to2022_existallyears.csv")
+
+ptax_pins <- read_csv("./Output/comm_ind_2011-2022_balanced.csv")
 
 df_2011 <- ptax_pins |>
   
@@ -1429,7 +1431,7 @@ group_by(land_use,incent_prop) %>%
     fmv_group_growth = group_year_fmv / base_year_fmv) 
 
 
-df_2011 %>% select(year, land_use, incent_prop, n_group_growth, fmv_group_growth, everything()) %>% 
+df_2011 %>% select(year, land_use, incent_prop, fmv_group_growth, everything()) %>% 
 filter(year == 2022) %>% select(-year)
 
 ```
@@ -1464,7 +1466,7 @@ filter(year == 2022) %>% select(-year)
 #| tbl-cap: "Growth from 2011 to 2022. Uses pins that exist all years between 2011 and 2022."
 
 
-df_2011_incentchange <- ptax_pins |>
+df_2011_landusechange <- ptax_pins |>
   
   group_by(year, landuse_change) |>
   summarize(
@@ -1480,7 +1482,7 @@ group_by( landuse_change) %>%
     fmv_group_growth = group_year_fmv / base_year_fmv) 
 
 
-df_2011_incentchange %>% select(year, landuse_change, fmv_group_growth, base_year_fmv, group_year_fmv, everything()) %>% 
+df_2011_landusechange %>% select(year, landuse_change, fmv_group_growth, base_year_fmv, group_year_fmv, everything()) %>% 
 filter(year == 2022) %>% select(-year)
 
 ```
@@ -1512,9 +1514,46 @@ filter(year == 2022) %>% select(-year)
 
 ```
 
+```{r}
+#| label: fig-growth-facetby-incentprop-balanced
+#| fig-cap: "**Growth from 2011 to 2022.** Faceted by if a PIN changed landuse during the sample period. Indexed to fair market value during 2011."
+
+
+#df_2011_v2 %>%  
+df_2011_incentchange %>%  
+ggplot() + geom_line(aes(x=year, y=fmv_group_growth, group = landuse_change, color = landuse_change)) + facet_wrap(~incent_change) +
+scale_x_continuous(#limits = c(2011, 2022), 
+breaks = c(2011, 2018, 2022)) + 
+labs(title= "Growth from 2011 to 2022", subtitle = "Change in Incentive Use by Land Use Change", caption = "Indexed to 2011 FMV", x = "", y = "FMV Growth from 2011") 
+
+```
+
+```{r}
+#| label: fig-growth-facetby-incentprop-balanced2
+#| fig-cap: "**Growth from 2011 to 2022.** Faceted by binary indicator for if a property had incentive classification or not. Indexed to fair market value during 2011."
+
+
+df_2011 %>% filter(!is.na(incent_prop)) %>% 
+ggplot() + geom_line(aes(x=year, y=fmv_group_growth, group = land_use, color = land_use)) + facet_wrap(~incent_prop) + labs(title= "Growth from 2011 to 2022")
+
+```
+
+
+```{r}
+#| label: fig-growth-facetby-landusebalanced-2011
+#| fig-cap: "**Growth from 2011 to 2022.** Faceted by land use category."
+
+df_2011 %>% 
+ggplot() + geom_line(aes(x=year, y=fmv_group_growth, group = incent_prop, color = incent_prop)) + theme_classic() + facet_wrap(~land_use)
+
+```
+
+
+
+
 # Balanced 2006-2022 Panel Descriptive Tables - FMV Growth
 
-comm_ind_PINs_2011to2022_existallyears
+Uses `comm_ind_PINs_2006to2022_existallyears.csv`
 
 ```{r}
 #| label: tbl-growthcalculations-commindfile-balanced2006
@@ -1539,7 +1578,7 @@ group_by(land_use,incent_prop) %>%
     fmv_group_growth = group_year_fmv / base_year_fmv) 
 
 
-df_2006 %>% select(year, land_use, incent_prop, n_group_growth, fmv_group_growth, everything()) %>% 
+df_2006 %>% select(year, land_use, incent_prop, fmv_group_growth, everything()) %>% 
 filter(year == 2022) %>% select(-year)
 
 ```
@@ -1620,6 +1659,19 @@ group_by( landuse_change, incent_change) %>%
 df_2006_incentchange %>% select(year, landuse_change, incent_change, fmv_group_growth, base_year_fmv, group_year_fmv, everything()) %>% 
 filter(year == 2022) %>% select(-year)
 
+```
+
+```{r}
+#| label: fig-growth-facetby-incentprop-balanced-2006
+#| fig-cap: "**Growth from 2006 to 2022.** Faceted by if a PIN changed landuse during the sample period. Indexed to fair market value during 2006."
+
+
+#df_2011_v2 %>%  
+df_2006_incentchange %>%  
+ggplot() + geom_line(aes(x=year, y=fmv_group_growth, group = landuse_change, color = landuse_change)) + facet_wrap(~incent_change) +
+scale_x_continuous(#limits = c(2011, 2022), 
+breaks = c(2006, 2016, 2022)) + 
+labs(title= "Growth from 2006 to 2022", subtitle = "Change in Incentive Use by Land Use Change", caption = "Indexed to 2006 FMV", x = "", y = "FMV Growth from 2006") 
 ```
 
 
