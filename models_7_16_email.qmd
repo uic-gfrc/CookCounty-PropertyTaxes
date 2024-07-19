@@ -14,7 +14,7 @@ format:
 # Preliminary Code
 
 ```{r setup}
-#| output: FALSE
+#| output: false
 
 options(scipen = 999) #no scientific notation
 
@@ -34,19 +34,19 @@ library(sandwich)
 
 # Set table formatting defaults
 
-set_flextable_defaults(theme_fun = theme_vanilla, 
+set_flextable_defaults(theme_fun = theme_vanilla,
                        padding = 2,
                        #line_spacing = 1,
                        big.mark = ","
                        )
 
 options(DT.options = list())
-
-FitFlextableToPage <- function(ft, pgwidth = 6){
-  ft_out <- ft %>% autofit()
-  ft_out <- width(ft_out, width = dim(ft_out)$widths*pgwidth /(flextable_dim(ft_out)$widths))
-  return(ft_out)
-}
+# 
+# FitFlextableToPage <- function(ft, pgwidth = 6){
+#   ft_out <- ft %>% autofit()
+#   ft_out <- width(ft_out, width = dim(ft_out)$widths*pgwidth /(flextable_dim(ft_out)$widths))
+#   return(ft_out)
+# }
 
 comm_ind <- read_csv("./Output/comm_ind_PINs_2011-2022_balanced.csv") 
 
@@ -60,7 +60,7 @@ comm_ind <- comm_ind |>
          landuse_change = as.factor(landuse_change)) |>
   mutate(incent_change = relevel(incent_change, ref = "Never Incentive"),
          landuse_change = relevel(landuse_change, ref = "Always Commercial")) |>
-  # Create bin variables
+  # Create binary variables
   mutate(change_incent_bin = ifelse(incent_change == "Changes Sometime", 1, 0),
          change_prop_use_bin = ifelse(landuse_change == "Changes Land Use", 1, 0)) |>
   # Rename for my sanity
@@ -78,37 +78,49 @@ vcovHC1 <- function(model) vcovHC(model, type = "HC1")
 
 ```
 
-```{r data_check}
-
-```
 
 # OLS
 
 ## Variable of Interest: Incentive Classification Change
 
 ```{r time_filter}
-#| Output: FALSE
+#| include: false
+
+# comm_ind |>
+#   filter(year == 2022) |>
+#   filter(is.na(fmv_2011)) ## 5,741 obs have FMV = $0. 
+# # Most are Class = 0 and Tax Exempt so no assessed value
+# 
+# comm_ind |>
+#   filter(year == 2022) |>
+#   filter(is.na(fmv_growth_2011)) ## 5,741 obs have FMV = $0. 
+# # Most are Class = 0 and Tax Exempt so no assessed value
 
 df_2022 <- comm_ind |>
   filter(year == 2022) |>
-  filter(!is.na(fmv_2011))
+  filter(!is.na(fmv_growth_2011))
 
 ```
+
+> Changed `filter(!is.na(fmv_2011))` to `filter(!is.na(fmv_growth_2011))` since that is the DV that is used below.
 
 ### "Naive" Model
 
 ```{r naive_model}
+#| tbl-cap: "Naive Model, Dependant Variable: FMV Growth, 2011-2022"
 
 naive_ols <- lm(fmv_growth_2011 ~ change_incent_bin + change_prop_use_bin,
                 data = df_2022)
 
-naive_ols_table <- 
+naive_ols |> summary()
+
+naive_ols_table <-
   export_summs(naive_ols,
                model.names = c("Naive OLS Model"),
                                 robust = "HC1",
                                 statistics = c(N = "nobs", R2 = "r.squared", adj.R2 = "adj.r.squared"))
 
-naive_ols_table <- set_caption(naive_ols_table, "Naive Model, Dependant Variable: FMV Growth, 2011-2022")
+#naive_ols_table <- set_caption(naive_ols_table, "Naive Model, Dependant Variable: FMV Growth, 2011-2022")
 
 naive_ols_table
 
@@ -116,52 +128,64 @@ naive_ols_table
 
 ### With Municipality Dummies
 
-```{r muni_dummy}
+```{r}
+#| label: muni_dummy
+#| column: page
 
-muni_dummy_1 <- lm(fmv_growth_2011 ~ change_incent_bin + as.factor(agency_num),
+
+muni_dummy_1 <- lm(fmv_growth_2011 ~ change_incent_bin + clean_name,
                 data = df_2022)
 
 summary(muni_dummy_1)
 
-muni_dummy_2 <- lm(fmv_growth_2011 ~ change_incent_bin + fmv_2011 + as.factor(agency_num),
+muni_dummy_2 <- lm(fmv_growth_2011 ~ change_incent_bin + fmv_2011 + clean_name,
                 data = df_2022)
+summary(muni_dummy_2)
 
-muni_dummy_3 <- lm(fmv_growth_2011 ~ change_incent_bin + fmv_2011 + as.factor(Triad) 
-                   + as.factor(agency_num),
+muni_dummy_3 <- lm(fmv_growth_2011 ~ change_incent_bin + fmv_2011 + (Triad) 
+                   + clean_name,
                 data = df_2022)
+summary(muni_dummy_3)
 
-muni_dummy_4 <- lm(fmv_growth_2011 ~ change_incent_bin + fmv_2011 + as.factor(Triad) 
-                   + change_prop_use_bin + as.factor(agency_num),
+muni_dummy_4 <- lm(fmv_growth_2011 ~ change_incent_bin + fmv_2011 + (Triad) 
+                   + change_prop_use_bin + clean_name,
                 data = df_2022)
+summary(muni_dummy_4)
 
-muni_dummy_5 <- lm(fmv_growth_2011 ~ change_incent_bin + fmv_2011 + as.factor(Triad) 
-                   + change_prop_use_bin + as.factor(land_use) + as.factor(in_tif) 
-                   + as.factor(agency_num),
+muni_dummy_5 <- lm(fmv_growth_2011 ~ change_incent_bin + fmv_2011 + (Triad) 
+                   + change_prop_use_bin + (land_use) + (in_tif) 
+                   + clean_name,
                 data = df_2022)
-
-#muni_dummy_models <- (muni_dummy_1, muni_dummy_2, muni_dummy_3, muni_dummy_4, muni_dummy_5)
-
-muni_dummies_table <- 
-  export_summs(muni_dummy_1, muni_dummy_2, muni_dummy_3, muni_dummy_4, muni_dummy_5,
-               model.names = c("Base",
-                               "1",
-                               "2",
-                               "3",
-                               "4"),
-                                #robust = "HC1",
-                                statistics = c(N = "nobs", R2 = "r.squared", adj.R2 = "adj.r.squared"))
-
 summary(muni_dummy_5)
+```
 
-muni_dummies_table <- set_caption(muni_dummies_table, "OLS with Municipality-Level Controls (2022)<br>Dependant Variable: FMV Growth, 2011-2022")
+#### Comparison with Muni dummy out of curiosity 
 
-muni_dummies_table
-
+```{r plm-munidummy-comparison}
+#| 
+plm(fmv_growth_2011 ~ change_incent_bin + fmv_2011 + Triad 
+                   + change_prop_use_bin + land_use + in_tif,
+    model = "within",
+    effect = "individual",
+                    data = df_2022)
 ```
 
 
-```{r}
+```{r include=FALSE}
+# breaks code, still don't know why.
 
-
+# muni_dummy_models <- c(muni_dummy_1, muni_dummy_2, muni_dummy_3, muni_dummy_4, muni_dummy_5)
+# modelnames <- c("Base", "1", "2", "3",  "4")
+# 
+# muni_dummies_table <-
+#   export_summs(muni_dummy_models,
+#                model.names = modelnames),
+#                                 #robust = "HC1",
+#                                 statistics = c(N = "nobs", R2 = "r.squared", adj.R2 = "adj.r.squared"))
+# 
+# 
+# muni_dummies_table <- set_caption(muni_dummies_table, "OLS with Municipality-Level Controls (2022)<br>Dependant Variable: FMV Growth, 2011-2022")
+# 
+# muni_dummies_table
 
 ```
