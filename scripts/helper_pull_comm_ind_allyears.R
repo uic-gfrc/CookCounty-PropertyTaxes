@@ -202,7 +202,7 @@ write_csv(comm_ind_pins_ever, "./Output/comm_ind_inmunis_timeseries_2006to2022.c
 #     TRUE ~ "Changes Sometime")
 #   )
 # 
-# ## Examine dropped PINs from 2006 to 2022 panel data -----------------------
+## Examine dropped PINs from 2006 to 2022 panel data -----------------------
 # 
 # 
 # ## View the PINs that will be dropped in future step
@@ -279,7 +279,6 @@ comm_ind_2011to2022 <- comm_ind_pins_ever  %>%
   mutate(clean_name = first(clean_name, na_rm = TRUE)) %>% 
   
   mutate(
-    multi_muni = sum(n_distinct(clean_name)),
     tif_years = sum(in_tif==1),
     years_existed = n(),  
     incentive_years = sum(incent_prop == "Incentive"),
