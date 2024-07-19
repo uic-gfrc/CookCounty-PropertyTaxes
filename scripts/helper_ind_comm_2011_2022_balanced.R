@@ -283,6 +283,7 @@ comm_ind_pins_2011_2022 <- comm_ind_pins_2011_2022_raw %>%
 df <- comm_ind_pins_2011_2022 %>%
   group_by(pin) |> # 113,255 pin-muni combos
   arrange(desc(year)) |>
+  left_join(nicknames, by = c("agency_num" = "agency_number")) |>
   mutate(multi_muni = n_distinct(clean_name),
          multimuni_ind = ifelse(sum(multi_muni) > 1, 1, 0)) |>  
   
@@ -292,7 +293,7 @@ df <- comm_ind_pins_2011_2022 %>%
   mutate(clean_name = first(clean_name, na_rm = TRUE)) %>% 
  
    mutate(
-     multi_muni = sum(n_distinct(clean_name)),
+    # multi_muni = sum(n_distinct(clean_name)),
     years_existed = n(),
     incentive_years = sum(incent_prop == "Incentive"),
     tif_years = sum(in_tif==1),
@@ -377,11 +378,11 @@ write.csv(dropped_pins, "dropped_pins_balance_2011_2022.csv")
 
 ## We retain 1.2 obs.
 
-missingnames <- df_balanced |>
+missingnames <- df |>
   filter(is.na(clean_name))
 
-df_balanced <- df_balanced |>
-  filter(!is.na(clean_name)) |>    # drops 252 MORE obs.
+df_balanced <- df |>
+  filter(is.na(clean_name)) |>    # drops 24 MORE obs.
   group_by(pin)  |> 
   mutate(years_existed2 = n()) |>  # check again to see if they still exist every year
   filter(years_existed2 == 12)     # drops more observations now!! order of filtering matters! 
@@ -389,8 +390,7 @@ df_balanced <- df_balanced |>
 
 # Write Balanced File -----------------------------------------------
 
-df_balanced <- df_balanced %>% select(pin, year, av_clerk, fmv)
-
+library(plm)
 panel <- pdata.frame(df_balanced, index = c("pin", "year"))
 
 is.pbalanced(panel)
