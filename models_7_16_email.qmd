@@ -1,6 +1,6 @@
 ---
 title: "Models for Commercial & Industrial Properties in Cook County"
-author: "AWM  & MVH"
+author: "MVH & AWM"
 format: 
   html:
     code-fold: true
@@ -85,8 +85,6 @@ vcovHC1 <- function(model) vcovHC(model, type = "HC1")
 
 ## Variable of Interest: Incentive Classification Change
 
-> Observations where `fmv_growth_2011` were NAs or NaNs were dropped. This means the dataset is not longer a square panel data dataset. 
-
 ```{r time_filter}
 #| include: false
 
@@ -106,8 +104,6 @@ df_2022 <- comm_ind |>
 
 ```
 
-> Changed `filter(!is.na(fmv_2011))` to `filter(!is.na(fmv_growth_2011))` since that is the DV that is used below.
-
 ### "Naive" Model
 
 ```{r naive_model}
@@ -118,16 +114,6 @@ naive_ols <- lm(fmv_growth_2011 ~ change_incent_bin + change_prop_use_bin,
 
 naive_ols |> summary()
 
-naive_ols_table <-
-  export_summs(naive_ols,
-               model.names = c("Naive OLS Model"),
-                                #robust = "HC1",
-                                statistics = c(N = "nobs", R2 = "r.squared", adj.R2 = "adj.r.squared"))
-
-#naive_ols_table <- set_caption(naive_ols_table, "Naive Model, Dependant Variable: FMV Growth, 2011-2022")
-
-naive_ols_table
-summ(naive_ols_table)
 ```
 
 ### With Municipality Dummies
@@ -167,36 +153,4 @@ muni_dummy_6 <- lm(fmv_growth_2011 ~ change_incent_bin + fmv_2011 + Triad
                    + is_chicago,
                 data = df_2022)
 summary(muni_dummy_6, digits=3)
-```
-
-#### Comparison with Muni dummy out of curiosity 
-
-```{r}
-#| label: plm-munidummy-comparison
-
-
-model_plm <- plm(fmv_growth_2011 ~ change_incent_bin + fmv_2011 + Triad 
-                   + change_prop_use_bin + land_use + in_tif,
-    model = "within",
-    effect = "individual",
-                    data = df_2022) 
-model_plm
-```
-
-
-```{r include=FALSE}
-# breaks code, still don't know why.
-
-# modelnames <- c("Base", "1", "2", "3",  "4")
-# 
-# muni_dummies_table <-
-#   export_summs(muni_dummy_1, muni_dummy_2, muni_dummy_3, muni_dummy_4, muni_dummy_5,
-#                model.names = c("Base", "1", "2", "3",  "4"),
-#                                 statistics = c(N = "nobs", R2 = "r.squared", adj.R2 = "adj.r.squared"))
-# 
-# 
-# muni_dummies_table <- set_caption(muni_dummies_table, "OLS with Municipality-Level Controls (2022)<br>Dependant Variable: FMV Growth, 2011-2022")
-# 
-# muni_dummies_table
-
 ```
