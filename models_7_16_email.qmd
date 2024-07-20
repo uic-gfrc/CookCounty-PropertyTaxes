@@ -58,25 +58,21 @@ comm_ind <- comm_ind |>
 comm_ind <- comm_ind |>
   # Change to factors; set reference levels
   mutate(incent_change = as.factor(incent_change),
-         landuse_change = as.factor(landuse_change)) |>
+         landuse_change = as.factor(landuse_change),
+         triad = as.factor(Triad),
+         in_tif = as.factor(in_tif)) |>
   mutate(incent_change = relevel(incent_change, ref = "Never Incentive"),
-         landuse_change = relevel(landuse_change, ref = "Always Commercial")) |>
+         landuse_change = relevel(landuse_change, ref = "Always Commercial"),
+         triad = relevel(triad, ref = "North")) |>
   # Create binary variables
-  mutate(change_incent_bin = ifelse(incent_change == "Changes Sometime", 1, 0),
-         change_prop_use_bin = ifelse(landuse_change == "Changes Land Use", 1, 0),
-         is_chicago = ifelse(clean_name == "Chicago", 1, 0)) |>
+  mutate(change_incent_bin = as.factor(ifelse(incent_change == 
+                                                "Changes Sometime", 1, 0)),
+         change_prop_use_bin = as.factor(ifelse(landuse_change == 
+                                                  "Changes Land Use", 1, 0)),
+         is_chicago = as.factor(ifelse(clean_name == "Chicago", 1, 0))
+         ) |>
   # Rename for my sanity
   rename(fmv_2011 = base_year_fmv_2011)
-
-vcovHC1 <- function(model) vcovHC(model, type = "HC1")
-
-# coef_names <- c("change_incent_bin" = "Changed Incentive",
-#                 "fmv_2011" = "2011 FMV",
-#                 "Triad" = "Triad",
-#                 "change_prop_use_bin" = "Changed Land Use",
-#                 "land_use" = "2022 Land Use",
-#                 "in_tif" = "In TIF (2022)",
-#                 "agency_num" = NA)
 
 ```
 
@@ -87,16 +83,6 @@ vcovHC1 <- function(model) vcovHC(model, type = "HC1")
 
 ```{r time_filter}
 #| include: false
-
-# comm_ind |>
-#   filter(year == 2022) |>
-#   filter(is.na(fmv_2011)) ## 5,741 obs have FMV = $0. 
-# # Most are Class = 0 and Tax Exempt so no assessed value
-# 
-# comm_ind |>
-#   filter(year == 2022) |>
-#   filter(is.na(fmv_growth_2011)) ## 5,741 obs have FMV = $0. 
-# # Most are Class = 0 and Tax Exempt so no assessed value
 
 df_2022 <- comm_ind |>
   filter(year == 2022) |>
@@ -109,7 +95,7 @@ df_2022 <- comm_ind |>
 ```{r naive_model}
 #| tbl-cap: "Naive Model, Dependant Variable: FMV Growth, 2011-2022"
 
-naive_ols <- lm(fmv_growth_2011 ~ change_incent_bin + change_prop_use_bin,
+naive_ols <- lm(fmv_growth_2011 ~ incent_change + change_prop_use_bin,
                 data = df_2022)
 
 naive_ols |> summary()
@@ -132,25 +118,82 @@ muni_dummy_2 <- lm(fmv_growth_2011 ~ change_incent_bin + fmv_2011 + clean_name,
                 data = df_2022)
 summary(muni_dummy_2)
 
-muni_dummy_3 <- lm(fmv_growth_2011 ~ change_incent_bin + fmv_2011 + (Triad) 
+muni_dummy_3 <- lm(fmv_growth_2011 ~ change_incent_bin + fmv_2011 + triad 
                    + clean_name,
                 data = df_2022)
 summary(muni_dummy_3)
 
-muni_dummy_4 <- lm(fmv_growth_2011 ~ change_incent_bin + fmv_2011 + (Triad) 
+muni_dummy_4 <- lm(fmv_growth_2011 ~ change_incent_bin + fmv_2011 + triad 
                    + change_prop_use_bin + clean_name,
                 data = df_2022)
+
 summary(muni_dummy_4)
 
-muni_dummy_5 <- lm(fmv_growth_2011 ~ change_incent_bin + fmv_2011 + (Triad) 
-                   + change_prop_use_bin + (land_use) + (in_tif) 
+muni_dummy_5 <- lm(fmv_growth_2011 ~ change_incent_bin + fmv_2011 + triad 
+                   + change_prop_use_bin + land_use + in_tif 
                    + clean_name,
                 data = df_2022)
-summary5 <- summary(muni_dummy_5)
-summary5$coef[1:16,]
-muni_dummy_6 <- lm(fmv_growth_2011 ~ change_incent_bin + fmv_2011 + Triad 
-                   + change_prop_use_bin + (land_use) + (in_tif) 
-                   + is_chicago,
+
+summary(muni_dummy_5)
+
+muni_dummy_6 <- lm(fmv_growth_2011 ~ change_incent_bin + fmv_2011 + triad 
+                   + change_prop_use_bin + land_use + in_tif 
+                   + clean_name,
                 data = df_2022)
+
 summary(muni_dummy_6, digits=3)
 ```
+### Commercial Subset
+
+Prepare data.
+
+```{r comm_data}
+
+df_2022_comm <- df_2022 |>
+  filter(land_use == "Commercial")
+
+```
+
+```{r comm_models}
+
+comm_1 <- lm(fmv_growth_2011 ~ incent_change + clean_name,
+                data = df_2022_comm)
+
+summary(comm_1)
+
+comm_2 <- lm(fmv_growth_2011 ~ incent_change + fmv_2011 + clean_name,
+                data = df_2022_comm)
+
+summary(comm_2)
+
+comm_3 <- lm(fmv_growth_2011 ~ incent_change + fmv_2011 + triad 
+                   + clean_name,
+                data = df_2022_comm)
+
+summary(comm_3)
+
+comm_4 <- lm(fmv_growth_2011 ~ incent_change + fmv_2011 + triad 
+                   + change_prop_use_bin + clean_name,
+                data = df_2022_comm)
+
+summary(comm_4)
+
+comm_5 <- lm(fmv_growth_2011 ~ incent_change + fmv_2011 + triad 
+                   + change_prop_use_bin + in_tif 
+                   + clean_name,
+                data = df_2022_comm)
+
+summary(comm_5)
+
+comm_6 <- lm(fmv_growth_2011 ~ incent_change + fmv_2011 + Triad 
+                   + change_prop_use_bin + in_tif 
+                   + clean_name,
+                data = df_2022_comm)
+
+summary(comm_6)
+
+```
+
+
+
+### Industrial Subset
