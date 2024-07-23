@@ -18,6 +18,8 @@ format:
 
 options(scipen = 999, digits = 4) #no scientific notation
 
+#format(digits = 3)
+
 
 # Load packages
 
@@ -201,50 +203,85 @@ summary(comm_6)
 df_2022_ind <- df_2022 |>
   filter(land_use == "Industrial")
 
+is.pbalanced(df_2022_ind)
+
 ```
 
 ```{r ind_models}
 
-ind_1 <- lm(fmv_growth_2011 ~ incent_change + clean_name,
-                data = df_2022_ind)
+ind_models <- list(
+  
+  "(1)" = lm(fmv_growth_2011 ~ incent_change + clean_name,
+                data = df_2022_ind),
 
-summary(ind_1)
+  "(2)" = lm(fmv_growth_2011 ~ incent_change + fmv_2011 + clean_name,
+                data = df_2022_ind),
 
-ind_2 <- lm(fmv_growth_2011 ~ incent_change + fmv_2011 + clean_name,
-                data = df_2022_ind)
-
-summary(ind_2)
-
-ind_3 <- lm(fmv_growth_2011 ~ incent_change + fmv_2011 + triad 
+  "(3)" = lm(fmv_growth_2011 ~ incent_change + fmv_2011 + triad 
                    + clean_name,
-                data = df_2022_ind)
+                data = df_2022_ind),
 
-summary(ind_3)
-
-ind_4 <- lm(fmv_growth_2011 ~ incent_change + fmv_2011 + triad 
+  "(4)" = lm(fmv_growth_2011 ~ incent_change + fmv_2011 + triad 
                    + change_prop_use_bin + clean_name,
-                data = df_2022_ind)
+                data = df_2022_ind),
 
-summary(ind_4)
-
-ind_5 <- lm(fmv_growth_2011 ~ incent_change + fmv_2011 + triad 
+  "(5)" = lm(fmv_growth_2011 ~ incent_change + fmv_2011 + triad 
                    + change_prop_use_bin + in_tif 
                    + clean_name,
                 data = df_2022_ind)
+                    
+  )
 
-summary(ind_5)
+ind_coef_map <- c(#'(Intercept)' = 'Constant',
+                  #'incent_changeAlways Incentive' = 'Incentive (Always)',
+                  'incent_changeChanges Sometime' = 'Changed Incentive',
+                  'change_prop_use_bin1' = 'Changed Prop. Use',
+                  'fmv_2011' = 'Base FMV (2011)',
+                  'in_tif1' = 'TIF',
+                  'triadCity' = 'City Triad',
+                  'triadSouth' = "South Triad",
+                  'triadNorth' = 'North Triad'
+                  )
 
-ind_6 <- lm(fmv_growth_2011 ~ incent_change + fmv_2011 + Triad 
-                   + change_prop_use_bin + in_tif 
-                   + clean_name,
-                data = df_2022_ind)
+fit_format <- function(x) format(round(x, 3), big.mark=",")
 
-summary(ind_6)
+fit <- list(
+  list("raw" = "nobs", "clean" = "N", "fmt" = fit_format),
+  list("raw" = "df", "clean" = "DF", "fmt" = fit_format),
+  list("raw" = "adj.r.squared", "clean" = "R2 Adj.", "fmt" = fit_format),
+  list("raw" = "F", "clean" = "F-stat.", "fmt" = fit_format),
+  list("raw" = "p.value", "clean" = "p-value", "fmt" = fit_format)
+)
+
+ind_summ <- modelsummary(ind_models,
+                         title = '<i><b>I am one hell of a thirsty table.<b><i>',
+             fmt = function(x) round(x, 2),
+             stars = TRUE,
+             coef_omit = 'clean_name',
+             coef_map = ind_coef_map,
+             gof_map = fit,
+             notes = 'All models include municipality-level control variables.'
+             )
+
+ind_summ
 
 ```
 
 ```{r ind_comm_dummy_reg}
 
+test <- lm(fmv_growth_2011 ~ incent_change + fmv_2011 + Triad 
+                   + change_prop_use_bin + in_tif 
+                   + clean_name,
+                data = df_2022_ind)
 
+test2 <- lm(fmv_growth_2011 ~ incent_change + fmv_2011 + Triad 
+                   + change_prop_use_bin + clean_name,
+                data = df_2022_ind)
+
+summary(test)
+
+test_stats <- modelsummary::gof_map
+
+glance(test2)
 
 ```
