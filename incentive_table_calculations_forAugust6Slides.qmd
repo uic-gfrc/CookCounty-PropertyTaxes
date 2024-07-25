@@ -1,5 +1,5 @@
 ---
-title: "Summary Table Calculations - All stats"
+title: "Supporting Materials for August 6th Presentation"
 format: 
   html:
     code-fold: true
@@ -1045,7 +1045,40 @@ datatable(table4_adjusted,
 
 ```
 
-> CODE CHANGES July 10th 2024: No longer filter by commercial and incentive property types because it was dropping PINs that had changed property classes if they were not commercial or incentive. Not what was intended! - AWM
+```{r}
+# as a dot graph ## 
+# create order of dots
+order <- alt_rates %>%  
+  as_tibble() %>% 
+    filter(change_noInc > 0.5) %>%
+  arrange(cur_munilevel_rate) %>%
+  select(clean_name, cur_munilevel_rate)
+
+# make dot graph
+alt_rates %>% 
+  select(clean_name, cur_munilevel_rate, muni_rate_noInc) %>% 
+  distinct() %>%
+  arrange(cur_munilevel_rate) %>%
+  pivot_longer(c("cur_munilevel_rate", "muni_rate_noInc"), 
+               names_to = "type", values_to = "tax_rate") %>% 
+  inner_join(order) %>%
+  ggplot(aes(x = tax_rate, y= reorder(clean_name, cur_munilevel_rate)))+
+  geom_line(aes(group = clean_name))+ 
+  geom_point(aes(color=type), size=3 )+
+  theme_minimal() + 
+  theme( 
+    legend.title = element_blank(),
+    plot.title.position = "plot",
+    plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
+  )+
+  scale_color_manual(#palette="Blues", 
+                     labels = c("Current Rate", "No Incentives"),  
+                     values = c("#A6CEE3", "#1F78B4" ))+
+  
+  labs(title = "Difference in Composite Tax Rate if Assessed at 25%",
+       subtitle = "Ordered by Current Composite Tax Rate", x = "Composite Tax Rate (%)", y = "")
+```
+
 
 # Yearly Trends
 
