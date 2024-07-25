@@ -38,7 +38,7 @@ FitFlextableToPage <- function(ft, pgwidth = 6){
 }
 ```
 
-```{r message = FALSE}
+```{r}
 # all pins for 2022
 ptax_pins <- read_csv("Output/Dont_Upload/0_joined_PIN_data_2022.csv") %>%
   mutate(class = as.numeric(class)) %>%         # Allows for joining later
@@ -50,6 +50,30 @@ ptax_pins <- read_csv("Output/Dont_Upload/0_joined_PIN_data_2022.csv") %>%
 # Used Appeal ID to create unique identifier to group PINs.
 bor <- read_csv("Output/borappeals.csv") %>%
   mutate(project_appellant = paste(project_id, sep = "-", appellant))
+modelsummary::datasummary_skim(bor)
+```
+
+
+```{r}
+bor_pins <- bor %>% 
+  group_by(pin) %>% 
+  arrange(desc(tax_year)) %>%
+  summarize(pin = first(pin),              # grabs first occurrence of unique PIN
+            class_bor = list(unique(class)),
+            appellant = first(appellant),
+            project_id = first(project_id), 
+            major_class = list(unique(majorclass)),
+            timesappealed = n(),
+            years_appealed = list(unique(tax_year))) %>%
+  mutate(proj_appellant = paste(project_id, "-", appellant))
+
+# write_csv(bor_pins, "./Output/projects_and_PINs_fromBORappeals.csv")
+
+bor_projects <- bor_pins %>% 
+  group_by(proj_appellant) %>%
+  arrange(pin) %>%
+  mutate()
+  
 
 # Cleaned PIN-Project list after cleaning the commercial valuatoin dataset found online. 
 # Another temporary work-around until we (maybe) have full keypin list:
@@ -95,7 +119,6 @@ bor_pins <- bor %>%
 ptax_pins <- ptax_pins %>% left_join(bor_pins, by = "pin")
 
 # now do it the other way and compare
-# MVH: I THINK THIS NEEDS SOME ELABORATION
 
 ptax_pins <- ptax_pins %>% 
   mutate( both_ids = project_id,
@@ -709,22 +732,45 @@ table3 %>%
 
 ## Municipality Percentages
 
+```{r}
+table_muni_percentages <- munilevel %>%   
+filter(!clean_name  %in% c("Frankfort", "Homer Glen",  "Oak Brook", "East Dundee", "University Park",  "Bensenville", "Hinsdale", "Roselle", "Deer Park", "Deerfield"))
+```
+
+
 ### Slide 6
 
 > TO DO: Calculate the percents out of each group's FMV instead of the municipalities FMV? 
 
 ```{r}
 #| label: tbl-muni-percentages
-#| tbl-cap: "Municipality Percentages Statistics"
+#| tbl-cap: "Municipalities with the largest share of FMV property with incentive classification. Uses 2022 data."
+#| layout-ncol: 2
 
 
-table_muni_percentages <- munilevel %>%   
-filter(!clean_name  %in% c("Frankfort", "Homer Glen",  "Oak Brook", "East Dundee", "University Park",  "Bensenville", "Hinsdale", "Roselle", "Deer Park", "Deerfield"))  %>%
-  select(clean_name, starts_with("pct"))
+table_muni_percentages %>%
+  select(clean_name, pct_fmv_w_incentclass) |> arrange(desc(pct_fmv_w_incentclass)) %>%
+slice(c(1:10, 67:76, 116:125)) %>%
+#head(10) |>
+flextable() %>% 
+border_remove() %>%
+hline_top() %>%
+hline(i = c(10,20)) %>%
+  set_header_labels(clean_name = "Municipality", pct_fmv_w_incentclass = "% FMV with\nIncent. Class.") %>%
+  set_table_properties( layout = "autofit")
 
-table_muni_percentages%>% 
-  datatable(rownames = FALSE) %>%
-  formatPercentage(columns = 2:7, digits = 2)
+
+
+table_muni_percentages %>%
+  select(clean_name, pct_fmv_w_incentclass) |> arrange(desc(pct_fmv_w_incentclass)) %>%
+slice(c(1:5, 69:73, 121:125)) %>%
+#head(10) |>
+flextable() %>% 
+border_remove() %>%
+hline_top() %>%
+hline(i = c(5,10)) %>%
+  set_header_labels(clean_name = "Municipality", pct_fmv_w_incentclass = "% FMV with\nIncent. Class.") %>%
+  set_table_properties( layout = "autofit")
 ```
 
 # Municipality by Major Class Type
