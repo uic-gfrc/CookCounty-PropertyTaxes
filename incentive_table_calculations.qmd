@@ -186,12 +186,18 @@ ptax_pins <- ptax_pins %>%
 
 > Total Value should equal Current Taxable Value + non-Taxable Value where non-Taxable Value = Value in TIF Increment + Reduced Value from Policy Choices where Reduced Value = Tax Exempt Value from Homeowners exemptions or abatements + Reduced Taxable Value from lower levels of assessments due to incentive classifications.
 
-$$\mbox{Total Value = Taxed Value + Untaxable Value}$$ *where* $$\mbox{Untaxable Value = TIF Increment + Exemptions + Abatements    
+$$\mbox{Total Value = Taxed Value + Untaxable Value}$$
+
+*where*
+
+$$\mbox{Untaxable Value = TIF Increment + Exemptions + Abatements    
 + Reduced Taxable Value from Lower Incentive Class Assessment Ratios}$$
 
 *where*
 
-$$\mbox{Reduced Taxable Value from Incentive Classification Levels of Assessments = 25% X EAV - ~10% X EAV}$$
+$$\mbox{Reduced Taxable Value from Incentive Classification Levels of Assessments}$$
+$$\mbox{which then equals }  {0.25 \ast EAV - \approx0.10 \ast EAV}$$
+
 
 ```{r include = FALSE, eval=FALSE}
 #ptax_pins %>% filter(equalized_av - (taxed_eav + untaxable_value_eav) > 100)
@@ -1026,12 +1032,12 @@ datatable(table4_adjusted,
 
 # Yearly Trends
 
-The file `comm_ind_PINs_2006-2022.csv` contains all PINs that had an incentive property class for at least 1 year. It includes all observations for a property during the years that it existed, even if it is not an incentive class property in that year.
+The file `comm_ind_inmunis_timeseries_2006to2022.csv` contains all PINs that had an incentive property class for at least 1 year. It includes all observations for a property during the years that it existed, even if it is not an incentive class property in that year.
 
 ## 2006 to 2022 Growth
 
 ```{r uses-comind-file}
-ptax_pins <- read_csv("Output/comm_ind_PINs_2006-2022.csv") %>% 
+ptax_pins <- read_csv("./Output/comm_ind_inmunis_timeseries_2006to2022.csv") %>% 
   mutate(class = as.numeric(class))
 
 ptax_pins <- ptax_pins %>% 
@@ -1266,7 +1272,6 @@ ggplot() + geom_line(aes(x=year, y=fmv_growth, group = land_use, color = land_us
 
 ## 2011 to 2022
 
-
 ```{r}
 #| label: tbl-growthcalculations-commindfile3
 #| tbl-cap: "Growth from 2011 to 2022. Grouped in different order of same variables: year, land_use, incent_prop. The way I would think it should be done - AWM."
@@ -1400,7 +1405,6 @@ ggplot() + geom_line(aes(x=year, y=n_growth, group = incent_prop, color = incent
 
 ```
 
-
 # Balanced 2011-2022 Panel Descriptive Tables - FMV Growth
 
 Uses `comm_ind_PINs_2011to2022_existallyears.csv` made from the `helper_pull_comm_ind_allyears.R` script.
@@ -1411,7 +1415,7 @@ Uses `comm_ind_PINs_2011to2022_existallyears.csv` made from the `helper_pull_com
 
 #ptax_pins <- read_csv("./Output/comm_ind_PINs_2011to2022_existallyears.csv")
 
-ptax_pins <- read_csv("./Output/comm_ind_2011-2022_balanced.csv")
+ptax_pins <- read_csv("./Output/comm_ind_PINs_2011-2022_balanced.csv")
 
 df_2011 <- ptax_pins |>
   
@@ -1435,6 +1439,7 @@ df_2011 %>% select(year, land_use, incent_prop, fmv_group_growth, everything()) 
 filter(year == 2022) %>% select(-year)
 
 ```
+
 ```{r}
 #| label: tbl-growth-incentchange-balanced2011
 #| tbl-cap: "Growth from 2011 to 2022. Uses pins that exist all years between 2011 and 2022."
@@ -1487,7 +1492,6 @@ filter(year == 2022) %>% select(-year)
 
 ```
 
-
 ```{r}
 #| label: tbl-growth-landuseandincentchange-balanced2011
 #| tbl-cap: "Growth from 2011 to 2022. Uses pins that exist all years between 2011 and 2022."
@@ -1538,7 +1542,6 @@ ggplot() + geom_line(aes(x=year, y=fmv_group_growth, group = land_use, color = l
 
 ```
 
-
 ```{r}
 #| label: fig-growth-facetby-landusebalanced-2011
 #| fig-cap: "**Growth from 2011 to 2022.** Faceted by land use category."
@@ -1548,9 +1551,6 @@ ggplot() + geom_line(aes(x=year, y=fmv_group_growth, group = incent_prop, color 
 
 ```
 
-
-
-
 # Balanced 2006-2022 Panel Descriptive Tables - FMV Growth
 
 Uses `comm_ind_PINs_2006to2022_existallyears.csv`
@@ -1559,7 +1559,7 @@ Uses `comm_ind_PINs_2006to2022_existallyears.csv`
 #| label: tbl-growthcalculations-commindfile-balanced2006
 #| tbl-cap: "Growth from 2006 to 2022. Uses pins that exist all years between 2011 and 2022."
 
-ptax_pins <- read_csv("./Output/comm_ind_PINs_2006to2022_existallyears.csv")
+ptax_pins <- read_csv("./Output/comm_ind_PINs_2006to2022_balanced.csv")
 
 df_2006 <- ptax_pins |>
   
@@ -1582,6 +1582,7 @@ df_2006 %>% select(year, land_use, incent_prop, fmv_group_growth, everything()) 
 filter(year == 2022) %>% select(-year)
 
 ```
+
 ```{r}
 #| label: tbl-growth-incentchange-balanced2006
 #| tbl-cap: "Growth from 2006 to 2022. Uses pins that exist all years between 2006 and 2022."
@@ -1634,7 +1635,6 @@ filter(year == 2022) %>% select(-year)
 
 ```
 
-
 ```{r}
 #| label: tbl-growth-landuseandincentchange-balanced2006
 #| tbl-cap: "Growth from 2006 to 2022. Uses pins that exist all years between 2006 and 2022."
@@ -1671,9 +1671,11 @@ df_2006_incentchange %>%
 ggplot() + geom_line(aes(x=year, y=fmv_group_growth, group = landuse_change, color = landuse_change)) + facet_wrap(~incent_change) +
 scale_x_continuous(#limits = c(2011, 2022), 
 breaks = c(2006, 2016, 2022)) + 
-labs(title= "Growth from 2006 to 2022", subtitle = "Change in Incentive Use by Land Use Change", caption = "Indexed to 2006 FMV", x = "", y = "FMV Growth from 2006") 
+labs(title= "Growth from 2006 to 2022", 
+subtitle = "Change in Incentive Use by Land Use Change", 
+caption = "Indexed to 2006 FMV", 
+x = "", y = "FMV Growth from 2006") 
 ```
-
 
 # Export Tables
 
@@ -1685,6 +1687,7 @@ tablelist <- list(
   "Muni Class Summaries" = muni_mc_table, 
   "Muni Class Percentages" = table_muni_mc_percentages, 
   "Muni Tax Rate Hypotheticals" = alt_rates,
+  "Muni Adjusted Tax Rates" = table4_adjusted,
   "Cook Sums" = table_cook,
   "Cook Class Sums" = cty_MC_table
 )
