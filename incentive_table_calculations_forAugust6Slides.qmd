@@ -803,7 +803,8 @@ no_incentives <-  ptax_pins %>%
   distinct(clean_name)
 
 
-no_incentives <- no_incentives %>% left_join(muni_shp, by = c("clean_name" = "MUNICIPALITY")) 
+no_incentives <- no_incentives %>% 
+left_join(muni_shp, by = c("clean_name" = "MUNICIPALITY")) 
 
 
 table_muni_percentages %>%
@@ -1137,6 +1138,56 @@ hline(i = c(5,10)) %>%
   set_table_properties( layout = "autofit")
 ```
 
+```{r}
+#| label: fig-comptaxratechange-incents
+#| fig-cap: "Hypothetical change in composite tax rate if all value that currently receives incentive classification became assessed at 25%."
+
+
+alt_rates %>% 
+  select(clean_name, change_noInc) %>% 
+  filter(clean_name != "Unincorporated") %>%
+  left_join(nicknames) %>%
+  full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
+
+  ggplot(aes(fill = change_noInc)) +
+  geom_sf(aes(geometry = geometry), color = "black") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+  scale_fill_steps2(
+    high = "lightblue", low = "darkblue",
+    show.limits=TRUE,
+    nice.breaks=FALSE,
+na.value = "gray50",
+    n =4,
+    name = "Tax Rate Change\nin Percentage Pts") +
+   geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray40')
+```
+
+```{r}
+#| label: fig-comptaxratechange-ghe&incent
+#| fig-cap: "Hypothetical change in composite tax rate if all value that currently receives incentive classification became assessed at 25% and exempt EAV from GHE became taxable."
+
+
+alt_rates %>% 
+  select(clean_name, change_neither) %>% 
+  filter(clean_name != "Unincorporated") %>%
+  left_join(nicknames) %>%
+  full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
+
+  ggplot(aes(fill = change_neither)) +
+  geom_sf(aes(geometry = geometry), color = "black") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+  scale_fill_steps2(
+    high = "black", low = "brown",
+    show.limits=TRUE,
+    nice.breaks=FALSE,
+na.value = "gray50",
+    n =4,
+    name = "Tax Rate Change\nin Percentage Pts") +
+   geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray40')
+```
+
 
 #### Slide 8B - With TIFs!
 
@@ -1157,6 +1208,31 @@ hline(i = c(5,10)) %>%
 
 ```
 
+```{r}
+#| label: fig-comptaxratechange-fromtif
+#| fig-cap: "Hypothetical change in composite tax rate if municipalities could tax value in TIF increment."
+
+
+alt_rates %>% 
+  select(clean_name, change_noTIFs) %>% 
+  filter(clean_name != "Unincorporated") %>%
+  left_join(nicknames) %>%
+  full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
+
+  ggplot(aes(fill = change_noTIFs)) +
+  geom_sf(aes(geometry = geometry), color = "black") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+  scale_fill_steps2(
+    high = "lightblue", low = "darkblue",
+    show.limits=TRUE,
+    nice.breaks=FALSE,
+na.value = "gray50",
+    n =4,
+    name = "Tax Rate Change\nin Percentage Pts") +
+   geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray40')
+```
+v
 
 ```{r}
 tbl1 <- alt_rates %>% 
@@ -1209,6 +1285,10 @@ datatable(
 ```
 
 ```{r}
+#| label: fig-dotplot-bycurrentrate
+#| fig-cap: "Change in tax rate if incentive properties were assessed at 25% of their FMV instead of their reduced level of assessment."
+
+
 # as a dot graph ## 
 # create order of dots
 order <- alt_rates %>%  
@@ -1245,6 +1325,10 @@ alt_rates %>%
 ```
 
 ```{r}
+#| label: fig-dotplot-byratechange
+#| fig-cap: "Change in tax rate if incentive properties were assessed at 25% of their FMV instead of their reduced level of assessment. Ordered by amount of change in composite tax rate."
+
+
 # as a dot graph ## 
 # create order of dots
 order <- alt_rates %>%  
@@ -1277,7 +1361,7 @@ alt_rates %>%
                      values = c("#A6CEE3", "#1F78B4" ))+
   
   labs(title = "Difference in Composite Tax Rate if Assessed at 25%",
-       subtitle = "Ordered by Current Composite Tax Rate", x = "Composite Tax Rate (%)", y = "")
+       subtitle = "Ordered by Amount of Change", x = "Composite Tax Rate (%)", y = "")
 ```
 
 # Yearly Trends
