@@ -44,13 +44,24 @@ ptax_pins <- read_csv("Output/Dont_Upload/0_joined_PIN_data_2022.csv") %>%
   mutate(class = as.numeric(class)) %>%         # Allows for joining later
     select(-c(propclass_1dig:av.y))
 
+parcuniverse_keypins <- readxl::read_xlsx("./Inputs/parceluniverse_keypins_20240725.xlsx", sheet = "keypins_20240725") %>%
+  mutate(pin14 = str_pad(as.character(pin), width = 14, side = "left", pad = "0"), 
+         keypin = str_pad(as.character(proration_key_pin), width = 14, side = "left", pad = "0"),
+         pin10 = str_sub(pin14,1,10),
+         pin7 = str_sub(pin14,1,7), .before = "pin",) %>%
+  select(-c(pin_7dig, pin, Column1)) %>%
+  filter(class != "EX")
 
+parcuniverse_keypins %>% group_by(keypin) %>% summarize(pincount = n()) %>%
+  filter(pincount > 1) %>% arrange(desc(pincount))
+
+# parcuniverse_keypins %>% distinct(keypin)  # 21,612 keypins
 
 # Workaround for identifying more project IDs. 
 # Used Appeal ID to create unique identifier to group PINs.
 bor <- read_csv("Output/borappeals.csv") %>%
   mutate(project_appellant = paste(project_id, sep = "-", appellant))
-modelsummary::datasummary_skim(bor)
+#modelsummary::datasummary_skim(bor)
 ```
 
 
@@ -990,6 +1001,43 @@ alt_rates <- alt_rates %>%
   filter(!clean_name  %in% c("Frankfort", "Homer Glen",  "Oak Brook", "East Dundee", "University Park",  "Bensenville", "Hinsdale", "Roselle", "Deer Park", "Deerfield")) 
 
 ```
+
+### Slide 6
+
+```{r}
+alt_rates %>% select(clean_name, muni_current_rate, muni_rate_noInc, change_noInc) %>% 
+arrange(change_noInc) %>%
+mutate(change_noInc = round(change_noInc, digits = 3)) %>% 
+
+slice(c(1:5, 69:73, 121:125)) %>%
+#head(10) |>
+flextable() %>% 
+border_remove() %>%
+hline_top() %>%
+hline(i = c(5,10)) %>%
+  set_header_labels(clean_name = "Municipality") %>%
+  set_table_properties( layout = "autofit")
+```
+
+
+#### Slide 6B - With TIFs!
+
+```{r}
+alt_rates %>% 
+select(clean_name, muni_current_rate, muni_rate_noTIFs, change_noTIFs) %>%
+mutate(change_noTIFs = round(change_noTIFs, digits = 3)) %>% 
+
+slice(c(1:5, 69:73, 121:125)) %>%
+#head(10) |>
+flextable() %>% 
+border_remove() %>%
+hline_top() %>%
+hline(i = c(5,10)) %>%
+  set_header_labels(clean_name = "Municipality") %>%
+  set_table_properties( layout = "autofit")
+
+```
+
 
 ```{r}
 tbl1 <- alt_rates %>% 
