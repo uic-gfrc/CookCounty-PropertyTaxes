@@ -64,27 +64,7 @@ bor <- read_csv("Output/borappeals.csv") %>%
 #modelsummary::datasummary_skim(bor)
 ```
 
-
 ```{r}
-bor_pins <- bor %>% 
-  group_by(pin) %>% 
-  arrange(desc(tax_year)) %>%
-  summarize(pin = first(pin),              # grabs first occurrence of unique PIN
-            class_bor = list(unique(class)),
-            appellant = first(appellant),
-            project_id = first(project_id), 
-            major_class = list(unique(majorclass)),
-            timesappealed = n(),
-            years_appealed = list(unique(tax_year))) %>%
-  mutate(proj_appellant = paste(project_id, "-", appellant))
-
-# write_csv(bor_pins, "./Output/projects_and_PINs_fromBORappeals.csv")
-
-bor_projects <- bor_pins %>% 
-  group_by(proj_appellant) %>%
-  arrange(pin) %>%
-  mutate()
-  
 
 # Cleaned PIN-Project list after cleaning the commercial valuatoin dataset found online. 
 # Another temporary work-around until we (maybe) have full keypin list:
@@ -229,25 +209,9 @@ $$\mbox{Untaxable Value = TIF Increment + Exemptions + Abatements
 
 *where*
 
-$$\mbox{Reduced Taxable Value from Incentive Classification Levels of Assessments}$$
-$$\mbox{which then equals }  {0.25 \ast EAV - \approx0.10 \ast EAV}$$
-
+$$\mbox{Reduced Taxable Value from Incentive Classification Levels of Assessments}$$ $$\mbox{which then equals }  {0.25 \ast EAV - \approx0.10 \ast EAV}$$
 
 ```{r include = FALSE, eval=FALSE}
-#ptax_pins %>% filter(equalized_av - (taxed_eav + untaxable_value_eav) > 100)
-
-#ptax_pins %>% filter(equalized_av - eav > 10) 
-
-
-
-
-
-## What is class 239? That is the class that is consistently not equaling 0 in the test above.
-
-### 239 is some form of subsidized farm land. Using the assessment ratio to back out the value does not work. Could add something like: `untaxable_value = ifelse(class == 239, equalized_av-taxed_value, untaxable_value)` - COMPLETED AWM
-
-## "The Farmland Assessment Law establishes capitalized net income as the basis for the EAV of farmland. Each year, thenet income is determined for each PI of cropland. The net income is then capitalized by the five-year Federal Land Bank rate to determine an agricultural economic value (AEV) for each PI. The AEV for each PI is then multiplied by 33 1/3 percent (.3333), the product of which is the EAV. A listing of the 2024 EAVs of cropland by PI is given in Table 1. By law, the EAV of permanent pasture should be at one-third and the EAV of other farmland should be at one-sixth of these values."
-
 ptax_pins %>% filter(class == 239) %>% mutate(difference = round(equalized_av - (taxed_eav + untaxable_value_eav)), .before = taxed_fmv ) %>% arrange(desc(difference)) %>% head()
 
 ```
@@ -265,7 +229,6 @@ stopifnot(
 ```
 
 # Cook County Total Value
-
 
 $$
 \mbox{AV = Fair Market Value * Level of Assessment}
@@ -299,7 +262,7 @@ ptax_pins <- ptax_pins  %>%
 codebook_data <- ptax_pins %>% 
   select(tax_code, class, fmv, taxed_fmv, has_HO_exemp, has_SF_exemp, has_AB_exemp, has_FR_exemp, has_LTHO_exemp, in_tif, year.y, zero_bill, Triad, Township, needs_keypin, incent_prop, Alea_cat) 
 
- codebook_data %>% 
+codebook_data %>% 
   makeDataReport(replace=TRUE )
 ```
 
@@ -554,10 +517,7 @@ The Taxed Value, when converted to the Fair Market Value (FMV) represents the am
 The Fair Market Value (FMV) is also called the "Market Value for Assessment Purposes" and can be calculated from the `av` / `loa`, or the Assessed Value divided by the Level of Assessment. However, the values used for the level of assessment are an approximation for incentive properties since we do not have the PIN level assessment ratios.
 :::
 
-
 Untaxable EAV includes homeowner exemptions for 200 level properties, abatements for other property class types, EAV in the TIF increment, and EAV that has been reduced due to incentive classifications.
- 
- 
 
 ```{r}
 
@@ -745,15 +705,14 @@ fmv_incentive = "FMV from Incentive\nClass Properties"
   set_table_properties( layout = "autofit", width = .75)
 ```
 
-###  Share of Muni Industrial and Commercial FMV with incentive class
+### Share of Muni Industrial and Commercial FMV with incentive class
 
 ```{r}
 table_muni_percentages <- munilevel %>%   
 filter(!clean_name  %in% c("Frankfort", "Homer Glen",  "Oak Brook", "East Dundee", "University Park",  "Bensenville", "Hinsdale", "Roselle", "Deer Park", "Deerfield"))
 ```
 
-
-#### Tables 
+#### Tables
 
 ```{r}
 #| label: tbl-muni-percentages
@@ -843,18 +802,16 @@ datatable(table2,
   formatCurrency(c('Taxable AV', 'av_adjusted'), digits = 0)
 ```
 
-
 # Slide 6 for real
 
-#### Share of Commercial & Industrial FMV with Incentive Classification
-
+## Share of Commercial & Industrial FMV with Incentive Classification
 
 ```{r}
 cross_county_lines <- c("030440000", "030585000", "030890000", "030320000", "031280000",
                         "030080000", "030560000", "031120000", "030280000", "030340000",
                         "030150000","030050000", "030180000","030500000", "031210000")
 table2 <- ptax_pins %>% 
-filter(agency_num !%in% cross_county_lines)
+#filter(agency_num !%in% cross_county_lines) %>%
   filter(Alea_cat == "Industrial" | Alea_cat == "Commercial") %>%
   group_by(clean_name) %>% 
   summarize(pin_count = n(),
@@ -869,9 +826,12 @@ pins_inTIF = sum(in_tif, na.rm=TRUE)
 
 
 table2 %>%
-  mutate(pct_fmv_w_incentclass = scales::percent(round(fmv_w_incent/comind_fmv, digits = 4) )) %>%
+  mutate(pct_fmv_w_incentclass = fmv_w_incent/comind_fmv) %>%
+
   select(clean_name, pct_fmv_w_incentclass) |> 
 arrange(desc(pct_fmv_w_incentclass)) %>%
+  mutate(pct_fmv_w_incentclass = scales::percent(round(pct_fmv_w_incentclass, digits = 4) )) %>%
+
 slice(c(1:10, 67:76, 116:125)) %>%
 flextable() %>% 
 border_remove() %>%
@@ -882,10 +842,11 @@ hline(i = c(10,20)) %>%
 
 
 table2  %>%
-  mutate(pct_fmv_w_incentclass = scales::percent(round(fmv_w_incent/comind_fmv, digits = 4) )) %>%
+  mutate(pct_fmv_w_incentclass = fmv_w_incent/comind_fmv) %>%
   select(clean_name, pct_fmv_w_incentclass) |> 
-#  select(clean_name, pct_fmv_w_incentclass) |> 
 arrange(desc(pct_fmv_w_incentclass)) %>%
+  mutate(pct_fmv_w_incentclass = scales::percent(round(pct_fmv_w_incentclass, digits = 4) )) %>%
+
 slice(c(1:5, 69:73, 121:125)) %>%
 flextable() %>% 
 border_remove() %>%
@@ -896,6 +857,7 @@ hline(i = c(5,10)) %>%
 ```
 
 Other Table
+
 ```{r eval=FALSE}
 datatable(table2,
           rownames= FALSE,
@@ -914,7 +876,6 @@ datatable(table2,
 ```{r}
 
 table2 %>%
-filter(clean_name !%in% border)
   select(clean_name, pct_fmv_w_incent) %>%
   left_join(nicknames) %>%
   full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
@@ -1072,6 +1033,29 @@ table_muni_mc_percentages %>%
   formatPercentage(columns = 3:14, digits = 2)
 ```
 
+# Slide 7 -
+
+## Not Taxed FMV
+
+```{r}
+munilevel %>% select(clean_name, muni_PC_withincents, muni_projects, pct_fmv_w_incentclass, pct_fmv_in_tif_increment)
+
+
+muni_mc_table %>% 
+  filter(class_group %in% incentive_majorclasses) %>%
+  mutate(eav_nottaxed = round(new_TEAV_noIncents - eav_taxed),
+        # fmv_nottaxed = round(fmv - fmv_taxed),# .after = clean_name,
+       #  taxes_reduced = round(fmv_nottaxed * current_rate_avg)/100
+       ) %>%
+  group_by(clean_name) %>%
+  summarize(#fmv_nottaxed = sum(fmv_nottaxed),
+            #eav_nottaxed = sum(),
+          #  taxes_reduced = sum(taxes_reduced),
+            taxes_paid_forlevy = sum(final_tax_to_dist),
+            potential_taxes = sum(new_TEAV_noIncents * current_rate_avg/100),
+           taxes_reduced = sum((new_TEAV_noIncents-eav_taxed) * current_rate_avg/100) ) %>% arrange(desc(taxes_reduced))
+```
+
 # Tax Rates
 
 ```{r}
@@ -1216,7 +1200,6 @@ na.value = "gray50",
    geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray40')
 ```
 
-
 #### Slide 8B - With TIFs!
 
 ```{r}
@@ -1260,6 +1243,7 @@ na.value = "gray50",
     name = "Tax Rate Change\nin Percentage Pts") +
    geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray40')
 ```
+
 v
 
 ```{r}
@@ -1284,7 +1268,6 @@ datatable(tbl1,
                       'Lowest Rate Possible' = 'muni_rate_lowest'
                       ))
 ```
-
 
 ```{r}
 #| label: tbl-adjustedratechange
@@ -1607,7 +1590,6 @@ table %>% select(-c(n_incent, n_nonincent)) %>% flextable() %>%
                     pct_incent = "% FMV from Incent. Class") %>%
   set_table_properties( layout = "autofit", width = .75)
 ```
-
 
 # Export Tables
 
