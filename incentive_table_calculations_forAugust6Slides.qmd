@@ -44,16 +44,16 @@ ptax_pins <- read_csv("Output/Dont_Upload/0_joined_PIN_data_2022.csv") %>%
   mutate(class = as.numeric(class)) %>%         # Allows for joining later
     select(-c(propclass_1dig:av.y))
 
-parcuniverse_keypins <- readxl::read_xlsx("./Inputs/parceluniverse_keypins_20240725.xlsx", sheet = "keypins_20240725") %>%
-  mutate(pin14 = str_pad(as.character(pin), width = 14, side = "left", pad = "0"), 
-         keypin = str_pad(as.character(proration_key_pin), width = 14, side = "left", pad = "0"),
-         pin10 = str_sub(pin14,1,10),
-         pin7 = str_sub(pin14,1,7), .before = "pin",) %>%
-  select(-c(pin_7dig, pin, Column1)) %>%
-  filter(class != "EX")
-
-parcuniverse_keypins %>% group_by(keypin) %>% summarize(pincount = n()) %>%
-  filter(pincount > 1) %>% arrange(desc(pincount))
+# parcuniverse_keypins <- readxl::read_xlsx("./Inputs/parceluniverse_keypins_20240725.xlsx", sheet = "keypins_20240725") %>%
+#   mutate(pin14 = str_pad(as.character(pin), width = 14, side = "left", pad = "0"), 
+#          keypin = str_pad(as.character(proration_key_pin), width = 14, side = "left", pad = "0"),
+#          pin10 = str_sub(pin14,1,10),
+#          pin7 = str_sub(pin14,1,7), .before = "pin",) %>%
+#   select(-c(pin_7dig, pin, Column1)) %>%
+#   filter(class != "EX")
+# 
+# parcuniverse_keypins %>% group_by(keypin) %>% summarize(pincount = n()) %>%
+#   filter(pincount > 1) %>% arrange(desc(pincount))
 
 # parcuniverse_keypins %>% distinct(keypin)  # 21,612 keypins
 
@@ -679,35 +679,37 @@ pct_fmv_incents_inTIFs = muni_fmv_incents_inTIF / muni_fmv ) %>%
 
 ```
 
-### Slide 5
+### Slide 5 - Main users of Incentive Classes
 
 ```{r}
 #| label: tbl-top10industrialincentive-munis
 #| tbl-cap: "Top 10 Municipalities using Industrial Incentives"
 
-table3<-ptax_pins %>% 
+table3 <- ptax_pins %>% 
   filter(Alea_cat != "Land") %>%
   group_by(clean_name, Alea_cat) %>% 
   summarize(pin_count = n(),
-            project_count = n_distinct(keypin), 
-            av_incent = sum(ifelse(between(class, 600, 899), av*2.5, 0)),
-            av_adjusted = sum(ifelse(between(class, 600, 899), av*2.5, av)),
-           fmv = sum(av/loa, na.rm=TRUE),
-             av=sum(av)) %>%
+            fmv_incentive = sum(ifelse(class >=600 & class <=900, fmv, 0), na.rm = TRUE),
+            project_count = n_distinct(keypin),
+            fmv_group = sum(fmv, na.rm=TRUE),
+          #   av=sum(av)
+) %>%
   mutate(
-         av_incent = ifelse(av_incent == 0, NA, av_incent),
-    pct_incent = av_incent / av_adjusted,
-    pct_incent = ifelse(pct_incent == 0, NA, pct_incent)) %>%
-  select(-av_incent) %>% 
-  select(clean_name, Alea_cat, av, fmv, pct_incent, pin_count, project_count, av_adjusted, ) %>% 
-  filter(Alea_cat == "Industrial") %>%
-  arrange(desc(av)) %>%
-  head(10) %>% 
-  select(-Alea_cat) 
+        # av_incent = ifelse(av_incent == 0, NA, av_incent),
+    pct_incent = scales::percent(round(fmv_incentive / fmv_group, digits = 4)),
+    #pct_incent = ifelse(pct_incent == 0, NA, pct_incent)
+)  
 
 table3 %>%
+  select(clean_name, Alea_cat, fmv_incentive, pin_count) %>% 
+  filter(Alea_cat == "Industrial") %>%
+  arrange(desc(fmv_incentive)) %>%
+  head(10) %>% 
+  select(-Alea_cat) %>%
   flextable() %>% 
-  set_header_labels(clean_name = "Municipality", proptype_pincount = 'PINs', projects = "Project IDs", av = ' Taxable AV') %>%
+  set_header_labels(clean_name = "Municipality", pin_count = '# of PIN',
+fmv_incentive = "FMV from Incentive\nClass Properties"
+) %>%
   set_table_properties( layout = "autofit", width = .75)
 ```
 
@@ -715,33 +717,35 @@ table3 %>%
 #| label: tbl-top10commercialincentive-munis
 #| tbl-cap: "Top 10 Municipalities using Commercial Incentives"
 
-table3 <- ptax_pins %>% 
-  filter(Alea_cat != "Land") %>%
-  group_by(clean_name, Alea_cat) %>% 
-  summarize(pin_count = n(),
-            project_count = n_distinct(keypin), 
-            av_incent = sum(ifelse(between(class, 600, 899), av*2.5, 0)),
-            av_adjusted = sum(ifelse(between(class, 600, 899), av*2.5, av)),
-           fmv = sum(av/loa, na.rm=TRUE),
-             av=sum(av)) %>%
-  mutate(
-         av_incent = ifelse(av_incent == 0, NA, av_incent),
-    pct_incent = av_incent / av_adjusted,
-    pct_incent = ifelse(pct_incent == 0, NA, pct_incent)) %>%
-  select(-av_incent) %>% 
-  select(clean_name, Alea_cat, av, fmv, pct_incent, pin_count, project_count, av_adjusted, ) %>% 
-  filter(Alea_cat == "Commercial") %>%
-  arrange(desc(av)) %>%
-  head(10) %>% 
-  select(-Alea_cat)
+# table3 <- ptax_pins %>% 
+#   filter(Alea_cat != "Land") %>%
+#   group_by(clean_name, Alea_cat) %>% 
+#   summarize(pin_count = n(),
+#             project_count = n_distinct(keypin), 
+#             av_incent = sum(ifelse(between(class, 600, 899), av*2.5, 0)),
+#             av_adjusted = sum(ifelse(between(class, 600, 899), av*2.5, av)),
+#            fmv_group = sum(av/loa, na.rm=TRUE),
+# fmv_incent =  sum(ifelse(between(class, 600, 899), av*2.5, 0)),
+#              av=sum(av)) %>%
+#   select(clean_name, Alea_cat, fmv_group, pin_count 
+# ) 
 
 table3 %>%
+  select(clean_name, Alea_cat, fmv_incentive, pin_count) %>% 
+
+  filter(Alea_cat == "Commercial") %>%
+  arrange(desc(fmv_incentive)) %>%
+  head(10) %>% 
+  select(-Alea_cat)%>%
   flextable() %>% 
-  set_header_labels(clean_name = "Municipality", proptype_pincount = 'PINs', projects = "Project IDs", av = ' Taxable AV') %>%
+#align(align = "right", j = 2:4) %>%
+  set_header_labels(clean_name = "Municipality", pin_count = '# of PIN', 
+fmv_incentive = "FMV from Incentive\nClass Properties"
+) %>%
   set_table_properties( layout = "autofit", width = .75)
 ```
 
-## Municipality Percentages
+###  Share of Muni Industrial and Commercial FMV with incentive class
 
 ```{r}
 table_muni_percentages <- munilevel %>%   
@@ -749,13 +753,7 @@ filter(!clean_name  %in% c("Frankfort", "Homer Glen",  "Oak Brook", "East Dundee
 ```
 
 
-### Slide 6 - Share of Muni Industrial and Commercial FMV with incentive class
-
-> TO DO: Calculate the percents out of each group's FMV instead of the municipalities FMV?
-
-> Take from Incentives in TIFs file
-
-### Share of Municipality Total FMV with incentive classifications 
+#### Tables 
 
 ```{r}
 #| label: tbl-muni-percentages
@@ -846,30 +844,59 @@ datatable(table2,
 ```
 
 
-### Share of Commercial & Industrial FMV with Incentive Classification
+# Slide 6 for real
+
+#### Share of Commercial & Industrial FMV with Incentive Classification
 
 
-If the property class is not 
 ```{r}
+cross_county_lines <- c("030440000", "030585000", "030890000", "030320000", "031280000",
+                        "030080000", "030560000", "031120000", "030280000", "030340000",
+                        "030150000","030050000", "030180000","030500000", "031210000")
 table2 <- ptax_pins %>% 
+filter(agency_num !%in% cross_county_lines)
   filter(Alea_cat == "Industrial" | Alea_cat == "Commercial") %>%
-  group_by(clean_name, Alea_cat) %>% 
+  group_by(clean_name) %>% 
   summarize(pin_count = n(),
             project_count = n_distinct(keypin), 
-
-           # av_incent = sum(ifelse(between(class, 600, 899), av*2.5, 0)),
-          #  av_adjusted = sum(ifelse(between(class, 600, 899), av*2.5, av)),
             fmv_w_incent = sum(ifelse(between(class, 600, 899), fmv, 0)),
           #  av=sum(av), 
 comind_fmv =sum(fmv, na.rm=TRUE),
 pins_inTIF = sum(in_tif, na.rm=TRUE)
-) %>%
-  mutate(#av_incent = ifelse(av_incent == 0, NA, av_incent),
-  #  pct_incent = ifelse(pct_incent == 0, NA, pct_incent),
-pct_fmv_w_incent = fmv_w_incent/comind_fmv)  %>%
- # select(-av_incent) %>% 
-  select(clean_name, comind_fmv, pct_fmv_w_incent, pin_count, project_count, pins_inTIF)
+)  %>%
+  mutate(pct_fmv_w_incent = fmv_w_incent/comind_fmv )
 
+
+
+table2 %>%
+  mutate(pct_fmv_w_incentclass = scales::percent(round(fmv_w_incent/comind_fmv, digits = 4) )) %>%
+  select(clean_name, pct_fmv_w_incentclass) |> 
+arrange(desc(pct_fmv_w_incentclass)) %>%
+slice(c(1:10, 67:76, 116:125)) %>%
+flextable() %>% 
+border_remove() %>%
+hline_top() %>%
+hline(i = c(10,20)) %>%
+  set_header_labels(clean_name = "Municipality", pct_fmv_w_incentclass = "% FMV with\nIncent. Class.") %>%
+  set_table_properties( layout = "autofit")
+
+
+table2  %>%
+  mutate(pct_fmv_w_incentclass = scales::percent(round(fmv_w_incent/comind_fmv, digits = 4) )) %>%
+  select(clean_name, pct_fmv_w_incentclass) |> 
+#  select(clean_name, pct_fmv_w_incentclass) |> 
+arrange(desc(pct_fmv_w_incentclass)) %>%
+slice(c(1:5, 69:73, 121:125)) %>%
+flextable() %>% 
+border_remove() %>%
+hline_top() %>%
+hline(i = c(5,10)) %>%
+  set_header_labels(clean_name = "Municipality", pct_fmv_w_incentclass = "% FMV with\nIncent. Class.") %>%
+  set_table_properties( layout = "autofit")
+```
+
+Other Table
+```{r eval=FALSE}
 datatable(table2,
           rownames= FALSE,
           colnames = c('Municipality' = 'clean_name', #  'Incentivized?' = 'incent_prop', 
@@ -887,6 +914,7 @@ datatable(table2,
 ```{r}
 
 table2 %>%
+filter(clean_name !%in% border)
   select(clean_name, pct_fmv_w_incent) %>%
   left_join(nicknames) %>%
   full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
