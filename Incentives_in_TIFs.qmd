@@ -206,7 +206,7 @@ loa <- read_csv("inputs/ccao_loa.csv") %>% filter(year == 2022)
 ptax_pins <- read_csv("Output/Dont_Upload/0_joined_PIN_data_2022.csv") %>% 
   mutate(class = as.numeric(class)) %>%
   #        # keep 500-899 class PINs
-  filter((class >= 500 & class < 900)  
+  filter((class >= 400 & class < 900)  
   #          # and keep land PINs if we want land property owned by them too.
   #        (class >= 100 & class < 200)  
           )  %>%
@@ -368,7 +368,7 @@ incentive_pins2022 <- ptax_pins %>%
   arrange(both_ids, class) %>%
   mutate(min_class = first(class),
          max_class = last(class)) %>% 
-  filter(max_class > 599) %>%
+  filter(max_class > 599 & max_class < 900) %>%
   ungroup()
 
 table <- incentive_pins2022 %>% 
@@ -479,7 +479,7 @@ Individual properties are summed together within the municipality.
 
 ```{r}
 #| label: tbl-allprops-eavinandoutTIF
-#| tbl-cap: "All properties in and out of TIFs in Cook County. Sums EAV."
+#| tbl-cap: "All non-residential properties in and out of TIFs in Cook County. Sums EAV."
 
 
 EAV_inandout_TIF <- ptax_pins %>% 
@@ -500,7 +500,7 @@ EAV_inandout_TIF %>% datatable(rownames = FALSE)
 
 ```{r}
 #| label: tbl-incentiveprops-eavinandoutTIF
-#| tbl-cap: "Incentive properties in and out of TIFs in Cook County. Sums EAV."
+#| tbl-cap: "Incentive non-residential properties in and out of TIFs in Cook County. Sums EAV."
 
 
 EAV_inandout_TIF <- incentive_pins2022 %>% 
@@ -521,7 +521,7 @@ EAV_inandout_TIF %>% datatable(rownames = FALSE)
 
 ```{r}
 #| label: tbl-allprops-FMVinandoutTIF
-#| tbl-cap: "All properties in and out of TIFs in Cook County. Sums FMV."
+#| tbl-cap: "All non-residential properties in and out of TIFs in Cook County. Sums FMV."
 
 FMV_inandout_TIF <- ptax_pins %>% 
   group_by(clean_name,
@@ -542,7 +542,7 @@ formatCurrency(c('Taxable FMV (Before Exemptions)', 'TIF Increment', 'Total FMV 
 
 ```{r}
 #| label: tbl-incentiveprops-FMVinandoutTIF
-#| tbl-cap: "All properties in and out of TIFs in Cook County. Sums FMV. FMV is the AV / level of assessment."
+#| tbl-cap: "All incentive non-residential properties in and out of TIFs in Cook County. Sums FMV. FMV is the AV / level of assessment."
 
 FMV_inandout_TIF <- incentive_pins2022 %>% 
   group_by(clean_name,
@@ -564,7 +564,7 @@ formatCurrency(c('Taxable FMV (Before Exemptions)', 'TIF Increment', 'Total FMV 
 
 ```{r}
 #| label: tbl-cooklevel-eavinandoutTIF
-#| tbl-cap: "Cook County EAV totals in and out of TIF"
+#| tbl-cap: "Cook County non-residential EAV totals in and out of TIF"
 
 ptax_pins %>% 
   group_by( 
@@ -630,7 +630,7 @@ table3 %>%  filter(in_tif == 1) %>%
 
 ```
 
-# Slides 1-2
+# Incentive Users - Muni level
 
 34 Municipalities do not use Incentive Classifications.
 
@@ -757,23 +757,23 @@ if (all(nicknames$shpfile_name |>
 
 ```{r}
 #| label: fig-pctincentivevalue-bothtypes
-#| fig-cap: "Number of Commercial and Industrial Projects per Municipality. A Project is based off of distinct KeyPINs" 
+#| fig-cap: "Number of Commercial and Industrial Projects per Municipality. A Project is based off of distinct KeyPINs. Includes all incentive and non-incentive property classes." 
 
 
 
 table2 %>% 
   left_join(nicknames) %>%
-  filter(clean_name != "Chicago") %>%
+  filter(clean_name != "Chicago"& !is.na(clean_name)) %>%
   full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
-  
   ggplot() +
   geom_sf(aes(geometry = geometry, fill = project_count), color = "black", alpha = 0.3) +
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
   scale_fill_steps2(
       high = "brown", low = "black",
+show.limits = TRUE,
     nice.breaks=FALSE,
-    na.value = "gray",
+    na.value = "gray40",
     name = "Number of Projects",
    ) +
    geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray70')+
@@ -784,7 +784,7 @@ table2 %>%
 
 ```{r}
 #| label: fig-pinsInTIF
-#| fig-cap: "Number of PINs within a TIF, per Municipality" 
+#| fig-cap: "Number of PINs (all class types) within a TIF, per Municipality. Excludes Chicago (which has nearly 29K PINs located in TIFs)" 
 
 
 
@@ -798,19 +798,11 @@ table2 %>%
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
   scale_fill_steps2(
-   # high = "#420420", low = "black",
         high = "brown", low = "black",
-
-    # midpoint = median(transfered_taxes),
-      #  limits = c(0,.93),
-
-    show.limits=TRUE,
-    #breaks = c(0,  50, 100, 200, 500, 1000,1500),
+show.limits=TRUE,
     nice.breaks=FALSE,
-    #n =4,
-    na.value = "gray",
+    na.value = "gray40",
     name = "Number of PINs in TIF",
-   # labels = scales::percent
    ) +
    geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray70')+
     geom_sf(data = bound_tif, aes(geometry = geometry#, fill = project_count
@@ -821,7 +813,7 @@ table2 %>%
 
 ```{r}
 #| label: fig-pinspertif-onlychicago
-#| fig-cap: Only Chicago.
+#| fig-cap: Number of PINs with incentive property class that are also in a TIF. Chicago only, summarized by assessor neighborhoods.
 
 NBHs <- read_sf("https://datacatalog.cookcountyil.gov/resource/pcdw-pxtg.geojson")
 
@@ -845,7 +837,7 @@ left_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
         high = "brown", low = "black",
     show.limits=TRUE,
     nice.breaks=FALSE,
-    na.value = "gray",
+    na.value = "gray50",
     name = "Number of PINs in TIF",
    # labels = scales::percent
    ) +
@@ -856,26 +848,25 @@ left_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
 
 ```{r}
 #| label: fig-nbhfmv-onlychicago
-#| fig-cap: Only Chicago. All non-residential FMV on left and incentive PIN FMV on right. 
+#| fig-cap: Only Chicago. All non-residential FMV on left and incentive PIN FMV located in TIFs on right. 
 #| layout-ncol: 2
 
 nbh_sum %>% 
 filter(triad_name == "City") %>%
 left_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
-
   ggplot() +
-  geom_sf(aes(geometry = geometry, fill = (fmv_residential+fmv_commercial)), color = "black")  +
+  geom_sf(aes(geometry = geometry, fill = (fmv_industrial+fmv_commercial)), color = "black")  +
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
   scale_fill_steps2(
         high = "brown", low = "black",
     show.limits=TRUE,
     nice.breaks=FALSE,
-    na.value = "gray",
+    na.value = "gray50",
     name = "FMV",
     labels = scales::dollar
    ) +
-    geom_sf(data = bound_tif, aes(geometry = geometry#, fill = project_count
+    geom_sf(data = bound_tif, aes(geometry = geometry
               ), color = "black", alpha = 0.5, fill ="orange")
 
 nbh_sum %>% 
@@ -890,7 +881,7 @@ left_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
         high = "brown", low = "black",
     show.limits=TRUE,
     nice.breaks=FALSE,
-    na.value = "gray",
+    na.value = "gray50",
     name = "FMV",
     labels = scales::dollar
    ) +
@@ -929,10 +920,9 @@ nonres_pins2022 %>%
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
   scale_fill_steps2(
     high = "brown", low = "black",
-    # midpoint = median(transfered_taxes),
     show.limits=TRUE,
     nice.breaks=FALSE,
-    na.value="gray",
+    na.value="gray50",
     n =4,
     name = "Pct of Industrial FMV that \nhas Incentive Classification",
     labels = scales::percent
@@ -994,7 +984,7 @@ nonres_pins2022 %>%
     limits = c(0,.93),
     show.limits=TRUE,
     nice.breaks=FALSE,
-    na.value="gray",
+    na.value="gray50",
     n =4,
     name = "Pct of Commercial FMV that \nhas Incentive Classification",
     labels = scales::percent
@@ -1038,28 +1028,6 @@ flextable(table) %>%
 
 ```
 
-```{r}
-#| label: tbl-projectsinMunis
-#| tbl-cap: "Grouped by Property Type within Municipality. Adjusted AV is calculated from 2.5*AV from incentive class properties + the AV of non-incentive class properties. "
-
-
-table1 <- nonres_pins2022 %>% 
-  filter(Alea_cat != "Land") %>%
-  group_by(clean_name, Alea_cat) %>% 
-  summarize(pin_count = n(),
-         project_count = n_distinct(keypin), 
-                     av_adjusted=sum(ifelse(between(class, 600, 899), av*2.5, av)),
-
-         av = sum(av))
-
-datatable(table1,
-          rownames= FALSE,
-          colnames = c('Municipality' = 'clean_name',   'Property Type' = 'Alea_cat', 'PIN Count' = 'pin_count', 'Project Count' = 'project_count', 'Current Taxable AV' = 'av'),
-          #extensions = 'RowGroup',
-         # options = list(rowGroup = list(dataSrc = 0))
-          ) %>%
-  formatCurrency(c('Current Taxable AV', 'av_adjusted'), digits = 0)
-```
 
 ```{r}
 #| label: tbl-incentivizedornot
@@ -1081,34 +1049,26 @@ datatable(table2,
 
 ```{r}
 #| label: fig-projectcountmaps-incentive
-#| fig-cap: "Number of projects with Incentive Classification" 
+#| fig-cap: "Number of projects with Incentive Classification. Areas with hatch marks are municipalities that do not use incentive property classes. A project indicates grouped PINs that belong together (based on sharing an appeal ID from the BOR, prjoect IDs from the commercial valuation data, or determined by some other way to belong together.). Excludes Chicago, which has 240 projects." 
 
 
 
 table2 %>% 
   left_join(nicknames) %>%
-  filter(clean_name != "Chicago") %>%
-  filter(incent_prop  == "Incentive") %>%
-  full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
+  filter(clean_name != "Chicago" & !is.na(clean_name)) %>%
+  filter(incent_prop  == "Incentive" &!is.na(clean_name)) %>%
+  left_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
   
   ggplot() +
   geom_sf(aes(geometry = geometry, fill = project_count), color = "black") +
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
   scale_fill_steps2(
-   # high = "#420420", low = "black",
         high = "brown", low = "black",
-
-    # midpoint = median(transfered_taxes),
-      #  limits = c(0,.93),
-
-    show.limits=TRUE,
+show.limits=TRUE,
     breaks = c(0, 10, 50, 100, 150, 200),
-   # nice.breaks=FALSE,
-   # n =6,
-    na.value = "gray",
+    na.value = "gray40",
     name = "Number of Projects",
-   # labels = scales::percent
    ) +
    geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray70')
 
