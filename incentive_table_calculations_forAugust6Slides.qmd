@@ -44,18 +44,7 @@ ptax_pins <- read_csv("Output/Dont_Upload/0_joined_PIN_data_2022.csv") %>%
   mutate(class = as.numeric(class)) %>%         # Allows for joining later
     select(-c(propclass_1dig:av.y))
 
-# parcuniverse_keypins <- readxl::read_xlsx("./Inputs/parceluniverse_keypins_20240725.xlsx", sheet = "keypins_20240725") %>%
-#   mutate(pin14 = str_pad(as.character(pin), width = 14, side = "left", pad = "0"), 
-#          keypin = str_pad(as.character(proration_key_pin), width = 14, side = "left", pad = "0"),
-#          pin10 = str_sub(pin14,1,10),
-#          pin7 = str_sub(pin14,1,7), .before = "pin",) %>%
-#   select(-c(pin_7dig, pin, Column1)) %>%
-#   filter(class != "EX")
-# 
-# parcuniverse_keypins %>% group_by(keypin) %>% summarize(pincount = n()) %>%
-#   filter(pincount > 1) %>% arrange(desc(pincount))
 
-# parcuniverse_keypins %>% distinct(keypin)  # 21,612 keypins
 
 # Workaround for identifying more project IDs. 
 # Used Appeal ID to create unique identifier to group PINs.
@@ -649,6 +638,7 @@ table3 <- ptax_pins %>%
   filter(Alea_cat != "Land") %>%
   group_by(clean_name, Alea_cat) %>% 
   summarize(pin_count = n(),
+            incent_PC = sum(ifelse(class >=600 & class <=900, 1, 0)),
             fmv_incentive = sum(ifelse(class >=600 & class <=900, fmv, 0), na.rm = TRUE),
             project_count = n_distinct(keypin),
             fmv_group = sum(fmv, na.rm=TRUE),
@@ -661,13 +651,13 @@ table3 <- ptax_pins %>%
 )  
 
 table3 %>%
-  select(clean_name, Alea_cat, fmv_incentive, pin_count) %>% 
+  select(clean_name, Alea_cat, fmv_incentive, incent_PC) %>% 
   filter(Alea_cat == "Industrial") %>%
   arrange(desc(fmv_incentive)) %>%
   head(10) %>% 
   select(-Alea_cat) %>%
   flextable() %>% 
-  set_header_labels(clean_name = "Municipality", pin_count = '# of PIN',
+  set_header_labels(clean_name = "Municipality", incent_PC = '# of Incent. PINs',
 fmv_incentive = "FMV from Incentive\nClass Properties"
 ) %>%
   set_table_properties( layout = "autofit", width = .75)
@@ -677,21 +667,8 @@ fmv_incentive = "FMV from Incentive\nClass Properties"
 #| label: tbl-top10commercialincentive-munis
 #| tbl-cap: "Top 10 Municipalities using Commercial Incentives"
 
-# table3 <- ptax_pins %>% 
-#   filter(Alea_cat != "Land") %>%
-#   group_by(clean_name, Alea_cat) %>% 
-#   summarize(pin_count = n(),
-#             project_count = n_distinct(keypin), 
-#             av_incent = sum(ifelse(between(class, 600, 899), av*2.5, 0)),
-#             av_adjusted = sum(ifelse(between(class, 600, 899), av*2.5, av)),
-#            fmv_group = sum(av/loa, na.rm=TRUE),
-# fmv_incent =  sum(ifelse(between(class, 600, 899), av*2.5, 0)),
-#              av=sum(av)) %>%
-#   select(clean_name, Alea_cat, fmv_group, pin_count 
-# ) 
-
 table3 %>%
-  select(clean_name, Alea_cat, fmv_incentive, pin_count) %>% 
+  select(clean_name, Alea_cat, fmv_incentive, incent_PC) %>% 
 
   filter(Alea_cat == "Commercial") %>%
   arrange(desc(fmv_incentive)) %>%
@@ -699,7 +676,7 @@ table3 %>%
   select(-Alea_cat)%>%
   flextable() %>% 
 #align(align = "right", j = 2:4) %>%
-  set_header_labels(clean_name = "Municipality", pin_count = '# of PIN', 
+  set_header_labels(clean_name = "Municipality", incent_PC = '# of Incent. PINs', 
 fmv_incentive = "FMV from Incentive\nClass Properties"
 ) %>%
   set_table_properties( layout = "autofit", width = .75)
@@ -721,26 +698,32 @@ filter(!clean_name  %in% c("Frankfort", "Homer Glen",  "Oak Brook", "East Dundee
 
 
 table_muni_percentages %>%
-  select(clean_name, pct_fmv_w_incentclass) |> arrange(desc(pct_fmv_w_incentclass)) %>%
-slice(c(1:10, 67:76, 116:125)) %>%
-#head(10) |>
-flextable() %>% 
-border_remove() %>%
-hline_top() %>%
-hline(i = c(10,20)) %>%
+  select(clean_name, pct_fmv_w_incentclass) |> 
+  arrange(desc(pct_fmv_w_incentclass)) %>%
+  slice(c(1:10, 67:76, 116:125)) %>%
+  mutate(pct_fmv_w_incentclass = scales::percent(pct_fmv_w_incentclass)) %>%
+  
+  flextable() %>% 
+  border_remove() %>%
+  hline_top() %>%
+  hline(i = c(10,20)) %>%
+  align(j = 2, align = "right") %>%
+  
   set_header_labels(clean_name = "Municipality", pct_fmv_w_incentclass = "% FMV with\nIncent. Class.") %>%
   set_table_properties( layout = "autofit")
 
 
 
 table_muni_percentages %>%
-  select(clean_name, pct_fmv_w_incentclass) |> arrange(desc(pct_fmv_w_incentclass)) %>%
-slice(c(1:5, 69:73, 121:125)) %>%
-#head(10) |>
-flextable() %>% 
-border_remove() %>%
-hline_top() %>%
-hline(i = c(5,10)) %>%
+  select(clean_name, pct_fmv_w_incentclass) |> 
+  arrange(desc(pct_fmv_w_incentclass)) %>%
+  slice(c(1:5, 69:73, 121:125)) %>%
+  mutate(pct_fmv_w_incentclass = scales::percent(pct_fmv_w_incentclass)) %>%
+  flextable() %>% 
+  border_remove() %>%
+  hline_top() %>%
+  hline(i = c(5,10)) %>%
+  align(j = 2, align = "right") %>%
   set_header_labels(clean_name = "Municipality", pct_fmv_w_incentclass = "% FMV with\nIncent. Class.") %>%
   set_table_properties( layout = "autofit")
 ```
@@ -802,16 +785,18 @@ datatable(table2,
   formatCurrency(c('Taxable AV', 'av_adjusted'), digits = 0)
 ```
 
-# Slide 6 for real
+# Slide 6
 
 ## Share of Commercial & Industrial FMV with Incentive Classification
 
 ```{r}
+#| layout-ncol: 2
+
 cross_county_lines <- c("030440000", "030585000", "030890000", "030320000", "031280000",
                         "030080000", "030560000", "031120000", "030280000", "030340000",
                         "030150000","030050000", "030180000","030500000", "031210000")
+
 table2 <- ptax_pins %>% 
-#filter(agency_num !%in% cross_county_lines) %>%
   filter(Alea_cat == "Industrial" | Alea_cat == "Commercial") %>%
   group_by(clean_name) %>% 
   summarize(pin_count = n(),
@@ -827,16 +812,17 @@ pins_inTIF = sum(in_tif, na.rm=TRUE)
 
 table2 %>%
   mutate(pct_fmv_w_incentclass = fmv_w_incent/comind_fmv) %>%
-
   select(clean_name, pct_fmv_w_incentclass) |> 
-arrange(desc(pct_fmv_w_incentclass)) %>%
+  arrange(desc(pct_fmv_w_incentclass)) %>%
   mutate(pct_fmv_w_incentclass = scales::percent(round(pct_fmv_w_incentclass, digits = 4) )) %>%
+  
+  slice(c(1:10, 67:76, 116:125)) %>%
+  flextable() %>% 
+  border_remove() %>%
+  hline_top() %>%
+  hline(i = c(10,20)) %>%
+    align(j = 2, align = "right") %>%
 
-slice(c(1:10, 67:76, 116:125)) %>%
-flextable() %>% 
-border_remove() %>%
-hline_top() %>%
-hline(i = c(10,20)) %>%
   set_header_labels(clean_name = "Municipality", pct_fmv_w_incentclass = "% FMV with\nIncent. Class.") %>%
   set_table_properties( layout = "autofit")
 
@@ -844,21 +830,20 @@ hline(i = c(10,20)) %>%
 table2  %>%
   mutate(pct_fmv_w_incentclass = fmv_w_incent/comind_fmv) %>%
   select(clean_name, pct_fmv_w_incentclass) |> 
-arrange(desc(pct_fmv_w_incentclass)) %>%
+  arrange(desc(pct_fmv_w_incentclass)) %>%
   mutate(pct_fmv_w_incentclass = scales::percent(round(pct_fmv_w_incentclass, digits = 4) )) %>%
-
-slice(c(1:5, 69:73, 121:125)) %>%
-flextable() %>% 
-border_remove() %>%
-hline_top() %>%
-hline(i = c(5,10)) %>%
+  
+  slice(c(1:5, 69:73, 121:125)) %>%
+  flextable() %>% 
+  border_remove() %>%
+  align(j = 2, align = "right") %>%
+  hline_top() %>%
+  hline(i = c(5,10)) %>%
   set_header_labels(clean_name = "Municipality", pct_fmv_w_incentclass = "% FMV with\nIncent. Class.") %>%
   set_table_properties( layout = "autofit")
 ```
 
-Other Table
-
-```{r eval=FALSE}
+```{r eval=FALSE, include = FALSE}
 datatable(table2,
           rownames= FALSE,
           colnames = c('Municipality' = 'clean_name', #  'Incentivized?' = 'incent_prop', 
@@ -1033,7 +1018,7 @@ table_muni_mc_percentages %>%
   formatPercentage(columns = 3:14, digits = 2)
 ```
 
-# Slide 7 -
+# Slide 7 - Tax Revenue and Burden Shift
 
 ## Not Taxed FMV
 
@@ -1146,7 +1131,8 @@ flextable() %>%
 border_remove() %>%
 hline_top() %>%
 hline(i = c(5,10)) %>%
-  set_header_labels(clean_name = "Municipality") %>%
+  set_header_labels(clean_name = "Municipality", muni_current_rate = "Current Comp.\nTax Rate", muni_rate_noInc = "Hyp. Tax Rate if\nNo Incent. Class.",
+                    change_noInc = "Tax Rate Difference") %>%
   set_table_properties( layout = "autofit")
 ```
 
@@ -1176,7 +1162,7 @@ na.value = "gray50",
 ```
 
 ```{r}
-#| label: fig-comptaxratechange-ghe&incent
+#| label: fig-comptaxratechange-gheplusincent
 #| fig-cap: "Hypothetical change in composite tax rate if all value that currently receives incentive classification became assessed at 25% and exempt EAV from GHE became taxable."
 
 
@@ -1209,13 +1195,12 @@ select(clean_name, muni_current_rate, muni_rate_noTIFs, change_noTIFs) %>%
 mutate(change_noTIFs = round(change_noTIFs, digits = 3)) %>% 
 
 slice(c(1:5, 69:73, 121:125)) %>%
-#head(10) |>
 flextable() %>% 
 border_remove() %>%
 hline_top() %>%
 hline(i = c(5,10)) %>%
-  set_header_labels(clean_name = "Municipality") %>%
-  set_table_properties( layout = "autofit")
+  set_header_labels(clean_name = "Municipality", muni_current_rate = "Current Comp.\nTax Rate", muni_rate_noTIFs = "Hyp. Tax Rate\nIf No TIFs",
+                    change_noTIFs = "Tax Rate Difference") %>%  set_table_properties( layout = "autofit")
 
 ```
 
@@ -1244,9 +1229,10 @@ na.value = "gray50",
    geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray40')
 ```
 
-v
-
 ```{r}
+#| column: page
+
+
 tbl1 <- alt_rates %>% 
   select(clean_name, muni_PC, muni_current_rate, muni_rate_noExe, muni_rate_noInc, muni_rate_neither,  muni_rate_noTIFs, muni_rate_noAbate,
                              muni_rate_lowest, muni_rate_vacant) %>% 
@@ -1271,6 +1257,8 @@ datatable(tbl1,
 
 ```{r}
 #| label: tbl-adjustedratechange
+#| column: page
+
 
 alt_rates %>%
 
@@ -1412,6 +1400,7 @@ ptax_pins %>% filter(year == 2022) %>% reframe(count = n(), .by = incent_change)
 ```{r}
 #| label: fig-FMVgraphs
 #| fig-cap: ""
+#| layout-ncol: 2
 
 ptax_pins %>%
   group_by(year, incent_change) %>%
@@ -1542,31 +1531,6 @@ filter(year == 2022) %>% select(-year)
 ## Share of Commercial and Industrial Over Time
 
 ```{r}
-#| label: tbl-cooktotals-allyears
-#| tbl-cap: "Commercial and Industrial PINs in Cook County (2006 - 2022). Uses comm_ind_PINs file."
-
-
-table <- ptax_pins %>%
-  group_by(year, land_use) %>%
-  summarize(
-    proptype_pincount = n(),
-            n_incent = sum(ifelse(incent_prop == "Incentive", 1, 0)),
-            n_nonincent = sum(ifelse(incent_prop == "Non-Incentive", 1, 0))) %>%
-  mutate(pct_incent = n_incent / proptype_pincount) %>%
-  arrange(desc(year)) %>%
-  mutate(year = as.character(year)) %>%
-filter(!land_use %in% c("Exempt", "Other Residential", "Owner Occupied", "Rental") )
-
-
-
-
-flextable(table) %>% 
-  set_header_labels(year = "Year", land_use = "Land Use", proptype_pincount = 'PIN Count', n_incent = "Incent. Class", n_nonincent = "No Incent. Class",
-                    pct_incent = "% Incent. Class") %>%
-  set_table_properties( layout = "autofit", width = .75)
-```
-
-```{r}
 #| label: tbl-cooktotals-allyears-fmv
 #| tbl-cap: "Commercial and Industrial FMV in Cook County (2006 - 2022)"
 
@@ -1591,9 +1555,7 @@ table %>% select(-c(n_incent, n_nonincent)) %>% flextable() %>%
   set_table_properties( layout = "autofit", width = .75)
 ```
 
-# Export Tables
-
-```{r eval=FALSE}
+```{r export-tables, eval=FALSE}
 library(readxl)
 
 tablelist <- list(
