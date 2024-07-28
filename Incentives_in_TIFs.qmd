@@ -109,6 +109,7 @@ Have not checked uniqueness of appeal ID. ( Seems to at least be unique for "pro
 bor <- read_csv("Output/borappeals.csv") %>%
   mutate(project_appellant = paste(project_id, sep = "-", appellant))
 
+
 bor %>% 
   group_by(tax_year, project_id, appellant) %>% 
   summarize(pincount = n(),
@@ -127,6 +128,21 @@ bor %>%
   arrange(desc(tax_year))  %>% 
   head() %>%
   datatable(rownames = FALSE)
+```
+
+```{r}
+# parcuniverse_keypins <- readxl::read_xlsx("./Inputs/parceluniverse_keypins_20240725.xlsx", sheet = "keypins_20240725") %>%
+#   mutate(pin14 = str_pad(as.character(pin), width = 14, side = "left", pad = "0"), 
+#          keypin = str_pad(as.character(proration_key_pin), width = 14, side = "left", pad = "0"),
+#          pin10 = str_sub(pin14,1,10),
+#          pin7 = str_sub(pin14,1,7), .before = "pin",) %>%
+#   select(-c(pin_7dig, pin, Column1)) %>%
+#   filter(class != "EX")
+# 
+# parcuniverse_keypins %>% group_by(keypin) %>% summarize(pincount = n()) %>%
+#   filter(pincount > 1) %>% arrange(desc(pincount))
+
+# parcuniverse_keypins %>% distinct(keypin)  # 21,612 keypins
 ```
 
 ```{r}
@@ -199,13 +215,11 @@ mutate(fmv = ifelse(is.na(fmv), 0, fmv))
 
 ```
 
-
 ### Methodology Worksheet Project IDs (from Data Portal: commercial valuation dataset)
 
 82,957 distinct keypins from `all_keypins` file. (Made from commercial valuation dataset on the Data Portal.)
 
 46,213 distinct project ids using the Board of Review appeal ids
-
 
 ```{r}
 #| echo: true
@@ -344,7 +358,6 @@ flextable(table) %>%
   set_table_properties( layout = "autofit", width = .75)
 ```
 
-
 ```{r}
 #| label: tbl-summarytable-commercialandindustrial-incentivePINs
 #| tbl-cap: "Commercial and Industrial Incentive PINs only (600 and higher, excludes nonprofit properties). Count of PINs in project ID (using `both_ids`). both_ids is created from using the BoR appeal ids as the default group ID. Then if a PIN in ptaxsim doesn't match to a Board of Review appeal PIN, project IDs from the commercial valuation data set are used."
@@ -438,11 +451,11 @@ bound_tif <- st_read(paste0(
 
 
   
-bound_tif %>%
-  ggplot() +
-  geom_sf(data = bound_tif, aes(geometry = geometry#, fill = project_count
-              ), color = "black") +
-  theme_void() 
+# bound_tif %>%
+#   ggplot() +
+#   geom_sf(data = bound_tif, aes(geometry = geometry#, fill = project_count
+#               ), color = "black") +
+#   theme_void() 
 ```
 
 ### TIF pins and Lookup_pin() command.
@@ -485,7 +498,6 @@ EAV_inandout_TIF <- ptax_pins %>%
 EAV_inandout_TIF %>% datatable(rownames = FALSE)
 ```
 
-
 ```{r}
 #| label: tbl-incentiveprops-eavinandoutTIF
 #| tbl-cap: "Incentive properties in and out of TIFs in Cook County. Sums EAV."
@@ -507,7 +519,6 @@ EAV_inandout_TIF <- incentive_pins2022 %>%
 EAV_inandout_TIF %>% datatable(rownames = FALSE)
 ```
 
-
 ```{r}
 #| label: tbl-allprops-FMVinandoutTIF
 #| tbl-cap: "All properties in and out of TIFs in Cook County. Sums FMV."
@@ -528,7 +539,6 @@ FMV_inandout_TIF <- ptax_pins %>%
 FMV_inandout_TIF %>% datatable(rownames = FALSE)  %>%
 formatCurrency(c('Taxable FMV (Before Exemptions)', 'TIF Increment', 'Total FMV before exemptions'), digits = 0)
 ```
-
 
 ```{r}
 #| label: tbl-incentiveprops-FMVinandoutTIF
@@ -739,12 +749,11 @@ datatable(table2,
 
 if (all(nicknames$shpfile_name |>
   unique() %in% muni_shp$MUNICIPALITY)) {
-  "The cleaned counties match the expected countries"
+  "The cleaned municipality names match the expected municipality names"
 } else {
-  "Not all of the counties have been cleaned completely"
+  "Not all of the municipalities have been cleaned completely"
 }
 ```
-
 
 ```{r}
 #| label: fig-pctincentivevalue-bothtypes
@@ -772,7 +781,6 @@ table2 %>%
               ), color = "black", alpha = 0.5, fill ="orange")
 
 ```
-
 
 ```{r}
 #| label: fig-pinsInTIF
@@ -810,12 +818,14 @@ table2 %>%
 
 ```
 
+
 ```{r}
 #| label: fig-pinspertif-onlychicago
 #| fig-cap: Only Chicago.
+
 NBHs <- read_sf("https://datacatalog.cookcountyil.gov/resource/pcdw-pxtg.geojson")
 
-nbh_sum <- read_csv("./Output/ptaxsim_nbh_summary_2022.csv") %>%     
+nbh_sum <- read_csv("./Output/ptaxsim_nbh_summary_2022_20240727.csv") %>%     
 mutate(nbhd_code = as.character(nbhd_code)) %>%
 mutate(township = str_sub(nbhd_code, 1, 2),
 ) 
@@ -828,7 +838,7 @@ filter(triad_name == "City") %>%
 left_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
 
   ggplot() +
-  geom_sf(aes(geometry = geometry, fill = nbh_TIF_PC), color = "black") +
+  geom_sf(aes(geometry = geometry, fill = PC_incents_inTIFs), color = "black") +
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
   scale_fill_steps2(
@@ -841,13 +851,20 @@ left_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
    ) +
     geom_sf(data = bound_tif, aes(geometry = geometry#, fill = project_count
               ), color = "black", alpha = 0.5, fill ="orange")
+```
+
+
+```{r}
+#| label: fig-nbhfmv-onlychicago
+#| fig-cap: Only Chicago. All non-residential FMV on left and incentive PIN FMV on right. 
+#| layout-ncol: 2
 
 nbh_sum %>% 
 filter(triad_name == "City") %>%
 left_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
 
   ggplot() +
-  geom_sf(aes(geometry = geometry, fill = nbh_FMV), color = "black") +
+  geom_sf(aes(geometry = geometry, fill = (fmv_residential+fmv_commercial)), color = "black")  +
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
   scale_fill_steps2(
@@ -855,14 +872,31 @@ left_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
     show.limits=TRUE,
     nice.breaks=FALSE,
     na.value = "gray",
-    name = "FMV in TIF",
+    name = "FMV",
+    labels = scales::dollar
+   ) +
+    geom_sf(data = bound_tif, aes(geometry = geometry#, fill = project_count
+              ), color = "black", alpha = 0.5, fill ="orange")
+
+nbh_sum %>% 
+filter(triad_name == "City") %>%
+left_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
+
+  ggplot() +
+  geom_sf(aes(geometry = geometry, fill = fmv_incents_inTIF), color = "black") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+  scale_fill_steps2(
+        high = "brown", low = "black",
+    show.limits=TRUE,
+    nice.breaks=FALSE,
+    na.value = "gray",
+    name = "FMV",
     labels = scales::dollar
    ) +
     geom_sf(data = bound_tif, aes(geometry = geometry#, fill = project_count
               ), color = "black", alpha = 0.5, fill ="orange")
 ```
-
-> WHY are there some neighobrhoods that are gray??  Implies they didn't match during the join. CHECK.
 
 
 ```{r}
