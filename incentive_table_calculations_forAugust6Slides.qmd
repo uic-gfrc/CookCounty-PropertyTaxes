@@ -701,7 +701,7 @@ table_muni_percentages %>%
   select(clean_name, pct_fmv_w_incentclass) |> 
   arrange(desc(pct_fmv_w_incentclass)) %>%
   slice(c(1:10, 67:76, 116:125)) %>%
-  mutate(pct_fmv_w_incentclass = scales::percent(pct_fmv_w_incentclass)) %>%
+  mutate(pct_fmv_w_incentclass = scales::percent(pct_fmv_w_incentclass, digits =1)) %>%
   
   flextable() %>% 
   border_remove() %>%
@@ -718,7 +718,7 @@ table_muni_percentages %>%
   select(clean_name, pct_fmv_w_incentclass) |> 
   arrange(desc(pct_fmv_w_incentclass)) %>%
   slice(c(1:5, 69:73, 121:125)) %>%
-  mutate(pct_fmv_w_incentclass = scales::percent(pct_fmv_w_incentclass)) %>%
+  mutate(pct_fmv_w_incentclass = scales::percent(pct_fmv_w_incentclass, digits = 2)) %>%
   flextable() %>% 
   border_remove() %>%
   hline_top() %>%
@@ -750,6 +750,7 @@ left_join(muni_shp, by = c("clean_name" = "MUNICIPALITY"))
 table_muni_percentages %>%
   select(clean_name, pct_fmv_w_incentclass) %>%
   left_join(nicknames) %>%
+ filter(!is.na(clean_name) & clean_name != "Unincorporated" ) %>%
   full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
   
   ggplot(aes(fill = pct_fmv_w_incentclass)) +
@@ -762,7 +763,7 @@ table_muni_percentages %>%
     nice.breaks=FALSE,
     na.value="gray",
     n =4,
-    name = "Pct of Municipality FMV that \nhas Incentive Classification",
+    name = "Percent of Municipality FMV\nwith Incentive Classification",
     labels = scales::percent
 ) +
    geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray40')
@@ -814,7 +815,7 @@ table2 %>%
   mutate(pct_fmv_w_incentclass = fmv_w_incent/comind_fmv) %>%
   select(clean_name, pct_fmv_w_incentclass) |> 
   arrange(desc(pct_fmv_w_incentclass)) %>%
-  mutate(pct_fmv_w_incentclass = scales::percent(round(pct_fmv_w_incentclass, digits = 4) )) %>%
+  mutate(pct_fmv_w_incentclass = scales::percent(round(pct_fmv_w_incentclass, digits = 3) )) %>%
   
   slice(c(1:10, 67:76, 116:125)) %>%
   flextable() %>% 
@@ -831,7 +832,7 @@ table2  %>%
   mutate(pct_fmv_w_incentclass = fmv_w_incent/comind_fmv) %>%
   select(clean_name, pct_fmv_w_incentclass) |> 
   arrange(desc(pct_fmv_w_incentclass)) %>%
-  mutate(pct_fmv_w_incentclass = scales::percent(round(pct_fmv_w_incentclass, digits = 4) )) %>%
+  mutate(pct_fmv_w_incentclass = scales::percent(round(pct_fmv_w_incentclass, digits = 3 ) ) ) %>%
   
   slice(c(1:5, 69:73, 121:125)) %>%
   flextable() %>% 
@@ -875,7 +876,7 @@ table2 %>%
     nice.breaks=FALSE,
     na.value="gray",
     n =4,
-    name = "Pct of Commercial & Industrial FMV\nthat has Incentive Classification",
+    name = "Percentt of Commercial & Industrial FMV\nwith Incentive Classification",
     labels = scales::percent
 ) +
    geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray40')
@@ -1123,7 +1124,7 @@ alt_rates <- alt_rates %>%
 ```{r}
 alt_rates %>% select(clean_name, muni_current_rate, muni_rate_noInc, change_noInc) %>% 
 arrange(change_noInc) %>%
-mutate(change_noInc = round(change_noInc, digits = 3)) %>% 
+mutate(change_noInc = abs(round(change_noInc, digits = 2)) ) %>% 
 
 slice(c(1:5, 69:73, 121:125)) %>%
 #head(10) |>
@@ -1192,7 +1193,7 @@ na.value = "gray50",
 alt_rates %>% 
 arrange(change_noTIFs) %>%
 select(clean_name, muni_current_rate, muni_rate_noTIFs, change_noTIFs) %>%
-mutate(change_noTIFs = round(change_noTIFs, digits = 3)) %>% 
+mutate(change_noTIFs = abs(round(change_noTIFs, digits = 3))) %>% 
 
 slice(c(1:5, 69:73, 121:125)) %>%
 flextable() %>% 
