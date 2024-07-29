@@ -572,6 +572,7 @@ cty_MC_table %>%
 munilevel <- ptax_pins %>% 
   group_by(clean_name) %>%
   summarize(
+    muni_exempt_PC = sum(ifelse(class == 0 | class == "EX" | class == "RR", 1, 0), na.rm=TRUE),
     muni_PC_total = n(),
     muni_PC_residential = sum(ifelse(class %in% c(200:399), 1, 0), na.rm = TRUE),
     muni_PC_industrial  = sum(ifelse(class %in% industrial_classes, 1, 0), na.rm = TRUE),
@@ -611,7 +612,7 @@ muni_eav = sum(eav)) %>%
   mutate(
     muni_range_TC_rate = muni_max_TC_rate - muni_min_TC_rate,
     muni_effective_rate =  muni_levy / muni_fmv * 100, 
-muni_pct_eav_taxed = muni_levy / muni_eav_taxed,
+    muni_pct_eav_taxed = muni_levy / muni_eav_taxed,
 
          pct_fmv_taxed = muni_fmv_taxed / muni_fmv,
          pct_fmv_w_incentclass = muni_fmv_incentive / muni_fmv,
@@ -628,7 +629,7 @@ pct_fmv_incents_inTIFs = muni_fmv_incents_inTIF / muni_fmv ) %>%
 
 ```
 
-# Slide 5 - Main users of Incentive Classes
+# Slide 5 - Main users of Incentive Classes, Muni Level
 
 ```{r}
 #| label: tbl-top10industrialincentive-munis
@@ -638,16 +639,17 @@ table3 <- ptax_pins %>%
   filter(Alea_cat != "Land") %>%
   group_by(clean_name, Alea_cat) %>% 
   summarize(pin_count = n(),
-            incent_PC = sum(ifelse(class >=600 & class <=900, 1, 0)),
+            incent_PC = sum(ifelse(class >=600 & class <=900, 1, 0), na.rm=TRUE),
             fmv_incentive = sum(ifelse(class >=600 & class <=900, fmv, 0), na.rm = TRUE),
             project_count = n_distinct(keypin),
             fmv_group = sum(fmv, na.rm=TRUE),
           #   av=sum(av)
 ) %>%
   mutate(
-        # av_incent = ifelse(av_incent == 0, NA, av_incent),
-    pct_incent = scales::percent(round(fmv_incentive / fmv_group, digits = 4)),
-    #pct_incent = ifelse(pct_incent == 0, NA, pct_incent)
+    fmv_incentive = ifelse(fmv_incentive == 0, NA, fmv_incentive),
+    pct_incent = fmv_incentive / fmv_group,
+    pct_incent = ifelse(is.na(pct_incent), 0, pct_incent),
+pct_incent = scales::percent(pct_incent)
 )  
 
 table3 %>%
@@ -743,10 +745,18 @@ no_incentives <-  ptax_pins %>%
   distinct(clean_name)
 
 
-no_incentives <- no_incentives %>% 
+no_incentives <- no_incentives %>%
 left_join(muni_shp, by = c("clean_name" = "MUNICIPALITY")) 
 
+munilevel <- munilevel %>% left_join(nicknames, by = c("clean_name" = "shpfile_name"))
+unincorp_areas <- muni_shp %>% filter(!MUNICIPALITY %in% munilevel$clean_name)
+#anti_join(munilevel, muni_shp, by = c("clean_name" = "MUNICIPALITY"))
 
+unincorp_areas2 <- muni_shp %>% filter(!MUNICIPALITY %in% munilevel$shpfile_name)
+```
+
+
+```{r}
 table_muni_percentages %>%
   select(clean_name, pct_fmv_w_incentclass) %>%
   left_join(nicknames) %>%
@@ -790,6 +800,8 @@ datatable(table2,
 
 ## Share of Commercial & Industrial FMV with Incentive Classification
 
+### Tables
+
 ```{r}
 #| layout-ncol: 2
 
@@ -801,18 +813,24 @@ table2 <- ptax_pins %>%
   filter(Alea_cat == "Industrial" | Alea_cat == "Commercial") %>%
   group_by(clean_name) %>% 
   summarize(pin_count = n(),
-            project_count = n_distinct(keypin), 
-            fmv_w_incent = sum(ifelse(between(class, 600, 899), fmv, 0)),
-          #  av=sum(av), 
-comind_fmv =sum(fmv, na.rm=TRUE),
-pins_inTIF = sum(in_tif, na.rm=TRUE)
-)  %>%
-  mutate(pct_fmv_w_incent = fmv_w_incent/comind_fmv )
+            incent_PC = sum(ifelse(class >=600 & class <=900, 1, 0), na.rm=TRUE),
+            fmv_w_incent = sum(ifelse(class >=600 & class <=900, fmv, 0), na.rm = TRUE),
+            project_count = n_distinct(keypin),
+            fmv_group = sum(fmv, na.rm=TRUE),
+            comind_fmv =sum(fmv, na.rm=TRUE),
+            pins_inTIF = sum(in_tif, na.rm=TRUE)) %>%
+  mutate(
+    fmv_w_incent = ifelse(fmv_w_incent == 0, NA, fmv_w_incent),
+    pct_fmv_w_incent = fmv_w_incent/comind_fmv,
+    pct_fmv_w_incent = ifelse(is.na(pct_fmv_w_incent), 0, pct_fmv_w_incent)
 
 
+) 
 
 table2 %>%
-  mutate(pct_fmv_w_incentclass = fmv_w_incent/comind_fmv) %>%
+  mutate(pct_fmv_w_incentclass = fmv_w_incent/comind_fmv,
+    pct_fmv_w_incentclass = ifelse(is.na(pct_fmv_w_incentclass), 0, pct_fmv_w_incentclass)
+) %>%
   select(clean_name, pct_fmv_w_incentclass) |> 
   arrange(desc(pct_fmv_w_incentclass)) %>%
   mutate(pct_fmv_w_incentclass = scales::percent(round(pct_fmv_w_incentclass, digits = 3) )) %>%
@@ -829,7 +847,10 @@ table2 %>%
 
 
 table2  %>%
-  mutate(pct_fmv_w_incentclass = fmv_w_incent/comind_fmv) %>%
+filter(!clean_name %in% cross_county_lines) %>%
+  mutate(pct_fmv_w_incentclass = fmv_w_incent/comind_fmv,
+    pct_fmv_w_incentclass = ifelse(is.na(pct_fmv_w_incentclass), 0, pct_fmv_w_incentclass)
+) %>%
   select(clean_name, pct_fmv_w_incentclass) |> 
   arrange(desc(pct_fmv_w_incentclass)) %>%
   mutate(pct_fmv_w_incentclass = scales::percent(round(pct_fmv_w_incentclass, digits = 3 ) ) ) %>%
@@ -844,26 +865,15 @@ table2  %>%
   set_table_properties( layout = "autofit")
 ```
 
-```{r eval=FALSE, include = FALSE}
-datatable(table2,
-          rownames= FALSE,
-          colnames = c('Municipality' = 'clean_name', #  'Incentivized?' = 'incent_prop', 
-                       'PIN Count' = 'pin_count', 'Project Count' = 'project_count', 
-                      # 'Taxable AV' = 'av',
-'FMV' = 'comind_fmv', 'Pct FMV with Incentives' = 'pct_fmv_w_incent'
-                     #  'Assessed Market Value' = 'av_adjusted', 
-                      # 'Pct AV Incentivized' = 'pct_incent'
-)
-          ) %>%
-  #formatCurrency(c( 'FMV'), digits = 0) %>%
-  formatPercentage(c('Pct FMV with Incentives'), digits = 2)
-```
+
+### Map
 
 ```{r}
 
 table2 %>%
   select(clean_name, pct_fmv_w_incent) %>%
   left_join(nicknames) %>%
+filter(clean_name != "Unincorporated") %>%
   full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
   
   ggplot(aes(fill = pct_fmv_w_incent)) +
@@ -876,7 +886,32 @@ table2 %>%
     nice.breaks=FALSE,
     na.value="gray",
     n =4,
-    name = "Percentt of Commercial & Industrial FMV\nwith Incentive Classification",
+    name = "Percent of Commercial & Industrial\nFMV with Incentive Classification",
+    labels = scales::percent
+) +
+   geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray40')
+
+
+table2 %>%
+  mutate(pct_fmv_w_incentclass = fmv_w_incent/comind_fmv,
+    pct_fmv_w_incentclass = ifelse(is.na(pct_fmv_w_incentclass), 0, pct_fmv_w_incentclass)) %>%
+
+  select(clean_name, pct_fmv_w_incentclass) %>%
+  left_join(nicknames) %>%
+filter(clean_name != "Unincorporated") %>%
+  full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
+  
+  ggplot(aes(fill = pct_fmv_w_incentclass)) +
+  geom_sf(aes(geometry = geometry), color = "black") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+  scale_fill_steps2(
+    high = "brown", low = "black",
+    show.limits=TRUE,
+    nice.breaks=FALSE,
+    na.value="gray",
+    n =4,
+    name = "Percent of Commercial & Industrial\nFMV with Incentive Classification",
     labels = scales::percent
 ) +
    geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray40')
@@ -1044,7 +1079,7 @@ muni_mc_table %>%
 
 # Tax Rates
 
-```{r}
+```{r calculate-munialtrates}
 alt_rates <- muni_mc_table %>% 
 ungroup() %>%
   left_join(muni_rate) %>%
@@ -1108,7 +1143,9 @@ alt_rates <- alt_rates %>%
          change_noAbate = muni_rate_noAbate- muni_current_rate,
          change_vacants = muni_rate_vacant - muni_current_rate)  %>%
 mutate(across(change_noExe:change_vacants, ~ . - change_error_dif))  %>%
-mutate(across(starts_with("change"), round, digits = 2)) 
+mutate(across(starts_with("change"), round, digits = 2),
+across(c(muni_current_rate, starts_with("muni_rate")), round, digits = 2)) %>%
+mutate(across(starts_with("change"), abs))
 
 
   ## drop munis with only a few PINs in them. They get weird results from rounding issues (I think)
@@ -1119,11 +1156,169 @@ alt_rates <- alt_rates %>%
 
 ```
 
+
+```{r calculate-cookaltrates}
+
+cook_ratechange <- ptax_pins %>%
+  left_join(muni_rate) %>%
+  summarize(
+class_group_PC = n(),
+    projects = n_distinct(both_ids), # mostly for industrial and commercial properties
+    pins_withincents = sum(ifelse(class_group %in% incentive_majorclasses, 1,0)),
+    fmv_incentive = sum(ifelse(class >=600 & class <=900, fmv, 0), na.rm = TRUE),
+    fmv_taxed =  sum(taxed_fmv, na.rm=TRUE),
+    fmv_incents_inTIFs = sum(ifelse(class >=600 & class <=900 & final_tax_to_tif > 0, fmv, 0), na.rm = TRUE),
+    fmv_inTIF = sum(fmv_inTIF, na.rm=TRUE),
+    fmv_tif_increment = sum(fmv_tif_increment, na.rm=TRUE),
+    fmv_untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
+    fmv_exemptions = sum(all_exemptions/eq2022/loa, na.rm=TRUE),
+    fmv_abatements = sum(exe_abate/eq2022/loa, na.rm=TRUE),
+    zero_bill = sum(zero_bill, na.rm=TRUE),
+    fmv_residential = sum(ifelse(class %in% c(200:399), fmv, 0), na.rm = TRUE),
+    fmv_C2 = sum(ifelse(class %in% c(200:299), fmv, 0), na.rm = TRUE),
+    
+    fmv_industrial = sum(ifelse(class %in% industrial_classes, fmv, 0), na.rm = TRUE),
+    fmv_commercial = sum(ifelse(class %in% commercial_classes, fmv, 0), na.rm = TRUE),
+    
+    current_rate_avg = mean(tax_code_rate),
+    avg_C2_bill_noexe = mean(ifelse(between(class,200,299) & all_exemptions == 0, (final_tax_to_dist + final_tax_to_tif), NA), na.rm=TRUE),
+    avg_C2_bill_withexe = mean(ifelse(between(class,200,299) & all_exemptions > 0, (final_tax_to_dist + final_tax_to_tif), NA), na.rm=TRUE),
+    av_taxed = sum(taxed_av, na.rm = TRUE),
+    untaxable_value_av = sum(untaxable_value_av, na.rm=TRUE),
+    av = sum(av),
+    eav_taxed = sum(taxed_av*eq2022), 
+    eav_untaxable = sum(untaxable_value_eav),
+    eav_max = sum(fmv*loa*eq2022),
+    fmv = sum(fmv, na.rm=TRUE),
+    pins_in_class = n(),
+    all_exemptions = sum(all_exemptions),   # in EAV
+    abatements = sum(exe_abate),            # in EAV
+    eav_incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, eav, 0), na.rm = TRUE),
+    loa = mean((loa*classgroup_PC ) / sum(classgroup_PC), na.rm=TRUE),
+    final_tax_to_dist = sum(final_tax_to_dist),
+    final_tax_to_tif = sum(final_tax_to_tif),
+    eav = sum(eav)) %>%
+  mutate(
+    new_TEAV_noIncents = ifelse(
+      class_group %in% incentive_majorclasses,
+      (eav_taxed/loa)*0.25, eav_taxed),
+    new_TEAV_noC6 = ifelse(class_group == "6", (eav_taxed/loa)*0.25 , eav_taxed),
+    new_TEAV_noC7 = ifelse(class_group %in% c("7B", "7A"), (eav_taxed/loa)*0.25, eav_taxed),
+    new_TEAV_noC8 = ifelse(class_group %in% c("8A", "8B"), (eav_taxed/loa)*0.25, eav_taxed),
+    
+    new_TEAV_vacant_noIncents = ifelse(class_group %in% incentive_majorclasses,
+                                       0, eav_taxed),
+    
+    new_TEAV_noExemps = eav_taxed + all_exemptions, # does not include abatements
+    new_TEAV_noAbates = eav_taxed + abatements, # include only abatements, not other exemption types
+    
+    # amount of EAV from taxing an additional 15% of the AV if incentive properties didn't exist
+    forgone_EAV_incent = ifelse(class_group %in% incentive_majorclasses,
+                                #incent_prop == "Incentive", 
+                                new_TEAV_noIncents - eav_taxed, 0),
+    
+    # TIF increment above the frozen EAV
+    forgone_TIF_EAV = fmv_tif_increment * loa * eq2022,
+    
+    forgone_EAV_overlap = ifelse(fmv_incents_inTIFs > 0, 
+                                 fmv_incents_inTIFs * loa * eq2022, 0) ) %>%
+  
+  left_join(munilevel) %>%
+  
+  mutate(pct_PC_proptype = classgroup_PC/muni_PC_total,
+         pct_projects = class_group_projects / muni_projects,
+         pct_fmv_incentive = fmv_incentive / muni_fmv_incentive,
+         pct_fmv_taxed = fmv_taxed / muni_fmv_taxed,
+         pct_fmv_inTIF = fmv_inTIF / muni_fmv_inTIF,
+         pct_fmv_tif_increment = fmv_tif_increment / muni_fmv_tif_increment,
+         pct_fmv_untaxable = fmv_untaxable_value / muni_fmv_untaxable_value,
+         pct_fmv = fmv / muni_fmv,
+         pct_zero_bill = zero_bill / muni_zero_bill,
+         pct_PC_withincents = pins_withincents / muni_PC_withincents,
+         pct_fmv_incents_inTIF = fmv_incents_inTIFs / sum(fmv_incents_inTIFs),
+         pct_eav_incents_inTIF = eav_incents_inTIFs / sum(eav),
+pct_eav_taxed = eav_taxed / muni_eav_taxed
+  )
+
+cook_rates <- muni_mc_table %>% 
+  filter(!clean_name  %in% c("Frankfort", "Homer Glen",  "Oak Brook", "East Dundee", "University Park",  "Bensenville", "Hinsdale", "Roselle", "Deer Park", "Deerfield"))  %>%
+ungroup() %>%
+  left_join(muni_rate) %>%
+  summarise(
+    PC = sum(classgroup_PC),
+    levy = sum(final_tax_to_dist),
+    eav_taxed = sum(eav_taxed),
+
+    exemptions = sum(all_exemptions), # all exe_ variables except exe_abate
+    abatements = sum(abatements),
+    forgoneTIF = sum(forgone_TIF_EAV),
+    forgone_EAV_incent = sum(forgone_EAV_incent),
+    TEAV_noC6 = sum(new_TEAV_noC6),
+    TEAV_noC7 = sum(new_TEAV_noC7),
+    TEAV_noC8 = sum(new_TEAV_noC8),
+    current_TEAV = sum(eav_taxed),
+    TEAV_noExe = sum(new_TEAV_noExemps),
+    TEAV_noAbate= sum(new_TEAV_noAbates),
+    TEAV_noInc = sum(new_TEAV_noIncents),
+    TEAV_vacant_noInc = sum(new_TEAV_vacant_noIncents),
+    forgone_eav_overlap_incents_inTIFs = sum(forgone_EAV_overlap),
+    cur_munilevel_rate = mean(current_rate_avg), # Was same value for each municpality. Took mean to keep variable in dataframe. (Could have included it in group() command) 
+    eav_max = sum(eav_max)  
+    ) %>%
+  mutate(current_rate = cur_munilevel_rate) %>%
+  mutate(
+    # Absolute maximum TEAV: No Exemptions, no abatements, no TIFS, no Incentive properties
+    # Commercial and industrial assessed at 25%
+    TEAV_max = current_TEAV + exemptions + abatements + forgoneTIF + forgone_EAV_incent,
+
+    # no exemptions or incentive classifications:
+    TEAV_neither = current_TEAV + exemptions + forgone_EAV_incent,
+    
+    rate_noExe = levy / TEAV_noExe * 100,
+    rate_noAbate = levy / TEAV_noAbate * 100,
+    rate_noInc = levy / TEAV_noInc * 100,
+    rate_neither = levy / TEAV_neither * 100, 
+    rate_noTIFs = levy / (current_TEAV + forgoneTIF) * 100,
+    rate_vacant = levy / TEAV_vacant_noInc* 100,
+    rate_lowest = levy / TEAV_max * 100,
+    rate_noC6 = levy / TEAV_noC6 * 100,
+    rate_noC7 = levy / TEAV_noC7 * 100,
+    rate_noC8 = levy / TEAV_noC8 * 100,
+    rate_avgerror = levy / eav_taxed * 100
+  ) 
+
+
+
+cook_rates <- cook_rates %>% 
+  mutate(change_error_dif = rate_avgerror - current_rate,
+    change_noExe =  rate_noExe - current_rate,
+         change_noInc = rate_noInc - current_rate,
+         change_noC6 = rate_noC6 - current_rate,
+         change_noC7 = rate_noC7 - current_rate,
+         change_noC8 = rate_noC8 - current_rate,
+         
+         change_noTIFs = rate_noTIFs - current_rate,
+         change_neither =  rate_neither - current_rate,
+         change_max = rate_lowest - current_rate,
+         change_noAbate = rate_noAbate- current_rate,
+         change_vacants = rate_vacant - current_rate)  %>%
+#mutate(across(change_noExe:change_vacants, ~ . - change_error_dif))  %>%
+mutate(across(starts_with("change"), round, digits = 2),
+across(c(current_rate, starts_with("rate")), round, digits = 2)) %>%
+mutate(across(starts_with("change"), abs))
+
+
+  ## drop munis with only a few PINs in them. They get weird results from rounding issues (I think)
+  # Frankfort, Homer Glenn, Oak Brook are below 1% in Cook County
+  # East Dundee, University Park, Bensenville, Hinsdale, Roeselle, Deerfield are below 15% in Cook County
+
+```
+
 # Slide 8 - Difference in Composite Tax Rates
 
 ```{r}
 alt_rates %>% select(clean_name, muni_current_rate, muni_rate_noInc, change_noInc) %>% 
-arrange(change_noInc) %>%
+arrange(desc(change_noInc) ) %>%
 mutate(change_noInc = abs(round(change_noInc, digits = 2)) ) %>% 
 
 slice(c(1:5, 69:73, 121:125)) %>%
@@ -1153,7 +1348,7 @@ alt_rates %>%
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
   scale_fill_steps2(
-    high = "lightblue", low = "darkblue",
+    low = "lightblue", high = "darkblue",
     show.limits=TRUE,
     nice.breaks=FALSE,
 na.value = "gray50",
@@ -1178,7 +1373,7 @@ alt_rates %>%
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
   scale_fill_steps2(
-    high = "black", low = "brown",
+    low = "black", high = "brown",
     show.limits=TRUE,
     nice.breaks=FALSE,
 na.value = "gray50",
@@ -1191,7 +1386,7 @@ na.value = "gray50",
 
 ```{r}
 alt_rates %>% 
-arrange(change_noTIFs) %>%
+arrange(desc(change_noTIFs) ) %>%
 select(clean_name, muni_current_rate, muni_rate_noTIFs, change_noTIFs) %>%
 mutate(change_noTIFs = abs(round(change_noTIFs, digits = 3))) %>% 
 
@@ -1221,7 +1416,7 @@ alt_rates %>%
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
   scale_fill_steps2(
-    high = "lightblue", low = "darkblue",
+    low = "lightblue", high = "darkblue",
     show.limits=TRUE,
     nice.breaks=FALSE,
 na.value = "gray50",
@@ -1293,13 +1488,13 @@ datatable(
 # create order of dots
 order <- alt_rates %>%  
   as_tibble() %>% 
- filter(change_noInc <0) %>%
+ filter(change_noInc >0) %>%
   arrange(muni_current_rate) %>%
   select(clean_name, muni_current_rate)
 
 # make dot graph
 alt_rates %>% 
- filter(change_noInc < -.7) %>%
+ filter(change_noInc > .7) %>%
 
   select(clean_name, muni_current_rate, muni_rate_noInc) %>% 
   distinct() %>%
@@ -1333,13 +1528,13 @@ alt_rates %>%
 # create order of dots
 order <- alt_rates %>%  
   as_tibble() %>% 
- filter(change_noInc <0) %>%
-  arrange(change_noInc) %>%
+ filter(change_noInc >0) %>%
+  arrange(desc(change_noInc)) %>%
   select(clean_name, change_noInc)
 
 # make dot graph
 alt_rates %>% 
- filter(change_noInc < -.7) %>%
+ filter(change_noInc > .7) %>%
 
   select(clean_name, muni_current_rate, muni_rate_noInc) %>% 
   distinct() %>%
