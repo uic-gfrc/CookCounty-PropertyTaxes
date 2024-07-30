@@ -881,7 +881,7 @@ ungroup() %>%
   hline(i = c(10,20)) %>%
 
   set_header_labels(clean_name = "Municipality", pct_fmv_w_incentclass = "% FMV with\nIncent. Class.") %>%
-add_header_row(values = c("County Wide", "3.22%"), top = FALSE) %>%
+add_header_row(values = c("County Wide", "3.25%"), top = FALSE) %>%
     align(j = 2, align = "right", part = "all") %>%
 
 add_footer("There are 26 municipalities that do not use incentives and have a majority of their taxable EAV within Cook County.", top = FALSE) %>%
@@ -904,7 +904,7 @@ filter(!agency_num %in% cross_county_lines) %>%
   hline_top() %>%
   hline(i = c(5,10)) %>%
   set_header_labels(clean_name = "Municipality", pct_fmv_w_incentclass = "% FMV with\nIncent. Class.") %>%
-add_header_row(values = c("County Wide", "3.22%"), top = FALSE) %>%
+add_header_row(values = c("County Wide", "3.25%"), top = FALSE) %>%
     align(j = 2, align = "right" ) %>%
 add_footer("There are 26 municipalities that do not use incentives and have a majority of their taxable EAV within Cook County.", top = FALSE) %>%
   set_table_properties( layout = "autofit")
@@ -941,7 +941,11 @@ filter(clean_name != "Unincorporated") %>%
 
 ```
 
-# Municipality by Major Class Type
+
+
+
+
+# Slide 7 - Tax Revenue and Burden Shift
 
 ```{r}
 ccao_loa <- read_csv("./inputs/ccao_loa.csv") %>% 
@@ -958,102 +962,6 @@ muni_rate <- read_csv("./Output/ptaxsim_muni_level_2006-2022.csv") %>%
 
 
 
-```{r create-muni-mc-table}
-#| eval: false
-
-
-muni_mc_table <- ptax_pins %>%
-  left_join(muni_rate) %>%
-  group_by(clean_name, 
-           class_group) %>%
-  summarize(
-    classgroup_PC = n(),
-    class_group_projects = n_distinct(both_ids), # mostly for industrial and commercial properties
-    pins_withincents = sum(ifelse(class_group %in% incentive_majorclasses, 1,0)),
-    fmv_incentive = sum(ifelse(class >=600 & class < 900, fmv, 0), na.rm = TRUE),
-  #  fmv_taxed =  sum(taxed_fmv, na.rm=TRUE),
-    fmv_incents_inTIFs = sum(ifelse(
-class >= 600 & class < 900 & final_tax_to_tif > 0, fmv, 0), na.rm = TRUE),
-    fmv_inTIF = sum(fmv_inTIF, na.rm=TRUE),
-    fmv_tif_increment = sum(fmv_tif_increment, na.rm=TRUE),
-    fmv_untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
-    fmv_exemptions = sum(all_exemptions/eq2022/loa, na.rm=TRUE),
-    fmv_abatements = sum(exe_abate/eq2022/loa, na.rm=TRUE),
-    zero_bill = sum(zero_bill, na.rm=TRUE),
-    fmv_residential = sum(ifelse(class %in% c(200:399), fmv, 0), na.rm = TRUE),
-    fmv_C2 = sum(ifelse(class %in% c(200:299), fmv, 0), na.rm = TRUE),
-    
-    fmv_industrial = sum(ifelse(class %in% industrial_classes, fmv, 0), na.rm = TRUE),
-    fmv_commercial = sum(ifelse(class %in% commercial_classes, fmv, 0), na.rm = TRUE),
-    
-    current_rate_avg = mean(tax_code_rate),
-    avg_C2_bill_noexe = mean(ifelse(between(class, 200, 299) & all_exemptions == 0, (final_tax_to_dist + final_tax_to_tif), NA), na.rm=TRUE),
-    avg_C2_bill_withexe = mean(ifelse(between(class, 200, 299) & all_exemptions > 0, (final_tax_to_dist + final_tax_to_tif), NA), na.rm=TRUE),
-    av_taxed = sum(taxed_av, na.rm = TRUE),
-    untaxable_value_av = sum(untaxable_value_av, na.rm=TRUE),  ## untaxable for all potential policy choices
-    av = sum(av),
-
-    eav_taxed = sum(taxed_av*eq2022), 
-    untaxable_value_eav = sum(untaxable_value_eav, na.rm=TRUE),      ## untaxable for all potential policy choices
-    eav_max = sum(fmv*loa*eq2022),
-    fmv = sum(fmv, na.rm=TRUE),
-    pins_in_class = n(),
-    all_exemptions = sum(all_exemptions),   # in EAV
-    abatements = sum(exe_abate),            # in EAV
-    eav_incents = sum(ifelse(class >= 600 & class < 900, eav, 0), na.rm = TRUE),
-eav_incents_inTIFs = sum(ifelse(class >= 600 & class < 900 & in_tif == 1, eav, 0), na.rm = TRUE),
-    loa = mean((loa*classgroup_PC ) / sum(classgroup_PC), na.rm=TRUE),
-    final_tax_to_dist = sum(final_tax_to_dist),
-    final_tax_to_tif = sum(final_tax_to_tif),
-    eav = sum(eav),
-naive_rev_forgone = round(sum(naive_rev_forgone, na.rm=TRUE)),
-#untaxed_eav_incents = round(sum(untaxable_, na.rm=TRUE)) 
-) %>%
-  mutate(
-    new_TEAV_noIncents = ifelse(
-      class_group %in% incentive_majorclasses,
-      (eav_taxed/loa)*0.25, eav_taxed),
-    new_TEAV_noC6 = ifelse(class_group == "6", (eav_taxed/loa)*0.25 , eav_taxed),
-    new_TEAV_noC7 = ifelse(class_group %in% c("7B", "7A"), (eav_taxed/loa)*0.25, eav_taxed),
-    new_TEAV_noC8 = ifelse(class_group %in% c("8A", "8B"), (eav_taxed/loa)*0.25, eav_taxed),
-    
-    new_TEAV_vacant_noIncents = ifelse(class_group %in% incentive_majorclasses,
-                                       0, eav_taxed),
-    
-    new_TEAV_noExemps = eav_taxed + all_exemptions, # does not include abatements
-    new_TEAV_noAbates = eav_taxed + abatements, # include only abatements, not other exemption types
-    
-    # amount of EAV from taxing an additional 15% of the AV if incentive properties didn't exist
-    forgone_EAV_incent = ifelse(class_group %in% incentive_majorclasses,
-                                #incent_prop == "Incentive", 
-                                new_TEAV_noIncents - eav_taxed, 0),
-    
-    # TIF increment above the frozen EAV
-    forgone_TIF_EAV = fmv_tif_increment * loa * eq2022,
-    
-    forgone_EAV_overlap = ifelse(fmv_incents_inTIFs > 0, 
-                                 fmv_incents_inTIFs * loa * eq2022, 0) ) %>%
-  
-  left_join(munilevel) %>%
-  
-  mutate(pct_PC_proptype = classgroup_PC/muni_PC_total,
-         pct_projects = class_group_projects / muni_projects,
-         pct_fmv_incentive = fmv_incentive / muni_fmv_incentive,
-       #  pct_fmv_taxed = fmv_taxed / muni_fmv_taxed,
-         pct_fmv_inTIF = fmv_inTIF / muni_fmv_inTIF,
-         pct_fmv_tif_increment = fmv_tif_increment / muni_fmv_tif_increment,
-         pct_fmv_untaxable = fmv_untaxable_value / muni_fmv_untaxable_value,
-         pct_fmv = fmv / muni_fmv,
-         pct_zero_bill = zero_bill / muni_zero_bill,
-         pct_PC_withincents = pins_withincents / muni_PC_withincents,
-         pct_fmv_incents_inTIF = fmv_incents_inTIFs / sum(fmv_incents_inTIFs),
-         pct_eav_incents_inTIF = eav_incents_inTIFs / sum(eav),
-pct_eav_taxed = eav_taxed / muni_eav_taxed
-  )
-```
-
-
-# Slide 7 - Tax Revenue and Burden Shift
 
 ## Not Taxed FMV - PIN aggregated to County Level
 
@@ -1098,17 +1006,34 @@ classgroup_PC = n(),
     all_exemptions = sum(all_exemptions),   # in EAV
     abatements = sum(exe_abate),            # in EAV
     eav_incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, eav, 0), na.rm = TRUE),
-    loa = mean((loa*classgroup_PC ) / sum(classgroup_PC), na.rm=TRUE),
+   # loa = mean((loa*classgroup_PC ) / sum(classgroup_PC), na.rm=TRUE),
     final_tax_to_dist = sum(final_tax_to_dist),
     final_tax_to_tif = sum(final_tax_to_tif),
     eav = sum(eav),
     new_TEAV_noIncents = sum(ifelse(class >=600 & class <900,
       (taxed_av*eq2022/loa)*0.25, taxed_av*eq2022), na.rm=TRUE),
 
+forgonerev_fromincents  = sum(ifelse(class >= 600 & class < 900,
+      (taxed_av*eq2022/loa)*0.25 * tax_code_rate/100, 0), na.rm=TRUE),
+
+forgonerev_commerc_incents  = sum(ifelse(class >= 600 & class < 900 & class %in% commercial_classes,
+      (taxed_av*eq2022/loa)*0.25 * tax_code_rate/100, 0), na.rm=TRUE),
+
+forgone_rev_indust_incents  = sum(ifelse(class >= 600 & class < 900 & class %in% industrial_classes,
+      (taxed_av*eq2022/loa)*0.25 * tax_code_rate/100, 0), na.rm=TRUE),
+
+reducedEAV_commerc_incents  = sum(ifelse(class >= 600 & class < 900 & class %in% commercial_classes,
+      (taxed_av*eq2022/loa)*0.25, 0), na.rm=TRUE),
+
+reducedEAV_indust_incents  = sum(ifelse(class >= 600 & class < 900 & class %in% industrial_classes,
+      (taxed_av*eq2022/loa)*0.25, 0), na.rm=TRUE),
+
     new_TEAV_noC6 = sum(ifelse( class >=600 & class <700, 
 (taxed_av*eq2022/loa)*0.25 , taxed_av*eq2022)),
+
     new_TEAV_noC7 = sum(ifelse(class >=700 & class <800,
 (taxed_av*eq2022/loa)*0.25, taxed_av*eq2022)),
+
     new_TEAV_noC8 = sum(ifelse(class >=800 & class <900, (taxed_av*eq2022/loa)*0.25, taxed_av*eq2022)),
     
     new_TEAV_vacant_noIncents = sum(ifelse(class >=600 & class <900,
@@ -1121,7 +1046,7 @@ classgroup_PC = n(),
     
     # TIF increment above the frozen EAV
     forgone_TIF_EAV = sum(fmv_tif_increment * loa * eq2022, na.rm=TRUE),
-#naive_rev_forgone_fromincents = sum(forgone_EAV_incent * tax_code_rate, na.rm=TRUe),  
+ 
 ) %>%
   #cbind(table_cook) %>%
   mutate(
@@ -1148,7 +1073,7 @@ classgroup_PC = n(),
 change_noInc = rate_current - rate_noInc) 
 
 cook_ratechange %>% 
-select(rate_current, rate_noInc, change_noInc)
+select(rate_current, rate_noInc, change_noInc, forgonerev_fromincents, forgonerev_commerc_incents, forgonerev_indust_incents)
 
 cook_ratechange %>% select(forgone_EAV_incent, forgone_EAV_incent, rate_current, rate_noInc, change_noInc) %>%
 mutate()
