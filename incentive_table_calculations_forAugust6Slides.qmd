@@ -1013,20 +1013,23 @@ classgroup_PC = n(),
     new_TEAV_noIncents = sum(ifelse(class >=600 & class <900,
       (taxed_av*eq2022/loa)*0.25, taxed_av*eq2022), na.rm=TRUE),
 
-forgonerev_fromincents  = sum(ifelse(class >= 600 & class < 900,
-      (taxed_av*eq2022/loa)*0.25 * tax_code_rate/100, 0), na.rm=TRUE),
+forgonerev_from_comind_incents  = sum(ifelse(class >= 600 & class < 900,
+      (((taxed_av*eq2022/loa)*0.25 - (taxed_av*eq2022/loa))) * tax_code_rate/100, 0), na.rm=TRUE),
 
 forgonerev_commerc_incents  = sum(ifelse(class >= 600 & class < 900 & class %in% commercial_classes,
-      (taxed_av*eq2022/loa)*0.25 * tax_code_rate/100, 0), na.rm=TRUE),
+      (((taxed_av*eq2022/loa)*0.25 - (taxed_av*eq2022/loa))) * tax_code_rate/100, 0), na.rm=TRUE),
 
-forgone_rev_indust_incents  = sum(ifelse(class >= 600 & class < 900 & class %in% industrial_classes,
-      (taxed_av*eq2022/loa)*0.25 * tax_code_rate/100, 0), na.rm=TRUE),
+forgonerev_indust_incents  = sum(ifelse(class >= 600 & class < 900 & class %in% industrial_classes,
+     (((taxed_av*eq2022/loa)*0.25 - (taxed_av*eq2022/loa))) * tax_code_rate/100, 0), na.rm=TRUE),
 
 reducedEAV_commerc_incents  = sum(ifelse(class >= 600 & class < 900 & class %in% commercial_classes,
-      (taxed_av*eq2022/loa)*0.25, 0), na.rm=TRUE),
+      ((taxed_av*eq2022/loa)*0.25 - (taxed_av*eq2022/loa)), 0), na.rm=TRUE),
 
 reducedEAV_indust_incents  = sum(ifelse(class >= 600 & class < 900 & class %in% industrial_classes,
-      (taxed_av*eq2022/loa)*0.25, 0), na.rm=TRUE),
+      (taxed_av*eq2022/loa)*0.25 - (taxed_av*eq2022/loa), 0), na.rm=TRUE),
+
+reducedEAV_comind_incents  = sum(ifelse(class >= 600 & class < 900,
+      (taxed_av*eq2022/loa)*0.25 - (taxed_av*eq2022/loa), 0), na.rm=TRUE),
 
     new_TEAV_noC6 = sum(ifelse( class >=600 & class <700, 
 (taxed_av*eq2022/loa)*0.25 , taxed_av*eq2022)),
@@ -1073,7 +1076,7 @@ reducedEAV_indust_incents  = sum(ifelse(class >= 600 & class < 900 & class %in% 
 change_noInc = rate_current - rate_noInc) 
 
 cook_ratechange %>% 
-select(rate_current, rate_noInc, change_noInc, forgonerev_fromincents, forgonerev_commerc_incents, forgonerev_indust_incents)
+select(rate_current, rate_noInc, change_noInc, forgonerev_from_comind_incents, forgonerev_commerc_incents, forgonerev_indust_incents, reducedEAV_commerc_incents, reducedEAV_indust_incents, reducedEAV_comind_incents)
 
 cook_ratechange %>% select(forgone_EAV_incent, forgone_EAV_incent, rate_current, rate_noInc, change_noInc) %>%
 mutate()
