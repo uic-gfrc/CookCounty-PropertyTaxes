@@ -596,6 +596,7 @@ set_header_labels(
 ```{r}
 munilevel <- ptax_pins %>% 
   group_by(clean_name) %>%
+filter(clean_name != "Unincorporated") %>%
   summarize(
     muni_exempt_PC = sum(ifelse(class == 0 | class == "EX" | class == "RR", 1, 0), na.rm=TRUE),
     muni_PC_total = n(),
@@ -884,7 +885,7 @@ ungroup() %>%
 add_header_row(values = c("County Wide", "3.25%"), top = FALSE) %>%
     align(j = 2, align = "right", part = "all") %>%
 
-add_footer("There are 26 municipalities that do not use incentives and have a majority of their taxable EAV within Cook County.", top = FALSE) %>%
+add_footer("There are 27 municipalities that do not use incentives and have a majority of their taxable EAV within Cook County.", top = FALSE) %>%
 
   set_table_properties( layout = "autofit")
 
@@ -904,9 +905,9 @@ filter(!agency_num %in% cross_county_lines) %>%
   hline_top() %>%
   hline(i = c(5,10)) %>%
   set_header_labels(clean_name = "Municipality", pct_fmv_w_incentclass = "% FMV with\nIncent. Class.") %>%
-add_header_row(values = c("County Wide", "3.25%"), top = FALSE) %>%
-    align(j = 2, align = "right" ) %>%
-add_footer("There are 26 municipalities that do not use incentives and have a majority of their taxable EAV within Cook County.", top = FALSE) %>%
+#add_header_row(values = c("County Wide", "3.25%"), top = FALSE) %>%   align(j = 2, align = "right" ) %>%
+bold(i = 8) %>%
+add_footer("There are 27 municipalities that do not use incentives and have a majority of their taxable EAV within Cook County.", top = FALSE) %>%
   set_table_properties( layout = "autofit")
 ```
 
@@ -971,12 +972,68 @@ muni_rate <- read_csv("./Output/ptaxsim_muni_level_2006-2022.csv") %>%
 cook_ratechange <- ptax_pins %>%
   # left_join(muni_rate) %>%
   filter(!clean_name  %in% c("Frankfort", "Homer Glen",  "Oak Brook", "East Dundee", "University Park",  "Bensenville", "Hinsdale", "Roselle", "Deer Park", "Deerfield")) %>% 
-
+filter(!agency_num %in% cross_county_lines) %>%
 #group_by(class_group) %>%
   summarize(
-classgroup_PC = n(),
+
+
+# forgonerev_from_exemptions  = sum(ifelse(class >= 200 & class < 300,
+#       (((av*eq2022) - (taxed_av*eq2022))) * tax_code_rate/100, 0), na.rm=TRUE),
+
+# amount of EAV from taxing an additional 15% of the AV if incentive properties didn't exist
+
+forgonerev_from_comind_incents  = sum(ifelse(class >= 600 & class < 900,
+      (((taxed_av*eq2022)*0.25 - (taxed_av*eq2022))) * tax_code_rate/100, 0), na.rm=TRUE),
+
+forgonerev_commerc_incents  = sum(ifelse(class >= 600 & class < 900 & class %in% commercial_classes,
+      (((taxed_av*eq2022)*0.25 - (taxed_av*eq2022))) * tax_code_rate/100, 0), na.rm=TRUE),
+
+forgonerev_indust_incents  = sum(ifelse(class >= 600 & class < 900 & class %in% industrial_classes,
+     (((taxed_av*eq2022)*0.25 - (taxed_av*eq2022))) * tax_code_rate/100, 0), na.rm=TRUE),
+
+# reducedEAV_commerc_incents  = sum(ifelse(class >= 600 & class < 900 & class %in% commercial_classes,
+#       (fmv*0.25 - fmv*0.1), 0), na.rm=TRUE),
+# 
+# reducedEAV_indust_incents  = sum(ifelse(class >= 600 & class < 900 & class %in% industrial_classes,
+#       (taxed_av*eq2022/loa)*0.25 - (taxed_av*eq2022/loa), 0), na.rm=TRUE),
+# 
+# reducedEAV_comind_incents  = sum(ifelse(class >= 600 & class < 900,
+#       (taxed_av*eq2022/loa)*0.25 - (taxed_av*eq2022/loa), 0), na.rm=TRUE),
+
+## NewTax Base Calculations
+   new_TEAV_noIncents = sum(ifelse(class >= 600 & class < 900,
+      (taxed_av*eq2022/loa)*0.25, taxed_av*eq2022), na.rm=TRUE),
+
+## NewTax Base Calculations
+   new_TEAV_noCommercIncents = sum(ifelse(class >= 600 & class < 900 & class %in% commercial_classes,
+      (taxed_av*eq2022/loa)*0.25, taxed_av*eq2022), na.rm=TRUE),
+
+   new_TEAV_noIndustIncents = sum(ifelse(class >= 600 & class < 900 & class %in% industrial_classes,
+      (taxed_av*eq2022/loa)*0.25, taxed_av*eq2022), na.rm=TRUE),
+
+
+    new_TEAV_noC6 = sum(ifelse( class >=600 & class < 700, 
+(taxed_av*eq2022/loa)*0.25 , taxed_av*eq2022), na.rm=TRUE),
+
+    new_TEAV_noC7 = sum(ifelse(class >=700 & class < 800,
+(taxed_av*eq2022/loa)*0.25, taxed_av*eq2022), na.rm=TRUE),
+
+    new_TEAV_noC8 = sum(ifelse(class >=800 & class < 900, (taxed_av*eq2022/loa)*0.25, taxed_av*eq2022), na.rm=TRUE),
+    
+    new_TEAV_vacant_props = sum(ifelse(class >=600 & class <900,  # if incentive classes were assessed at 0% (aka not taxedat all) or if the building lost its value completely without the incentive classification.
+                                       0, taxed_av*eq2022)),
+    
+    new_TEAV_noExemps = sum(taxed_av*eq2022 + all_exemptions), # does not include abatements
+    new_TEAV_noAbates = sum(taxed_av*eq2022 + abatements), # include only abatements, not other exemption types
+  
+    
+    # TIF increment above the frozen EAV
+    forgone_TIF_EAV = sum(fmv_tif_increment * loa * eq2022, na.rm=TRUE),
+ 
+
+    cty_PC = n(),
     # projects = n_distinct(both_ids), # mostly for industrial and commercial properties
-    pins_withincents = sum(ifelse(class >= 600 & class < 900, 1,0)),
+    pins_withincents = sum(ifelse(class >= 600 & class < 900, 1, 0)),
     fmv_incentive = sum(ifelse(class >=600 & class <900, fmv, 0), na.rm = TRUE),
     #fmv_taxed =  sum(taxed_fmv, na.rm=TRUE),
     fmv_incents_inTIFs = sum(ifelse(class >=600 & class <900 & final_tax_to_tif > 0, fmv, 0), na.rm = TRUE),
@@ -1010,64 +1067,38 @@ classgroup_PC = n(),
     final_tax_to_dist = sum(final_tax_to_dist),
     final_tax_to_tif = sum(final_tax_to_tif),
     eav = sum(eav),
-    new_TEAV_noIncents = sum(ifelse(class >=600 & class <900,
-      (taxed_av*eq2022/loa)*0.25, taxed_av*eq2022), na.rm=TRUE),
-
-forgonerev_from_comind_incents  = sum(ifelse(class >= 600 & class < 900,
-      (((taxed_av*eq2022/loa)*0.25 - (taxed_av*eq2022/loa))) * tax_code_rate/100, 0), na.rm=TRUE),
-
-forgonerev_commerc_incents  = sum(ifelse(class >= 600 & class < 900 & class %in% commercial_classes,
-      (((taxed_av*eq2022/loa)*0.25 - (taxed_av*eq2022/loa))) * tax_code_rate/100, 0), na.rm=TRUE),
-
-forgonerev_indust_incents  = sum(ifelse(class >= 600 & class < 900 & class %in% industrial_classes,
-     (((taxed_av*eq2022/loa)*0.25 - (taxed_av*eq2022/loa))) * tax_code_rate/100, 0), na.rm=TRUE),
-
-reducedEAV_commerc_incents  = sum(ifelse(class >= 600 & class < 900 & class %in% commercial_classes,
-      ((taxed_av*eq2022/loa)*0.25 - (taxed_av*eq2022/loa)), 0), na.rm=TRUE),
-
-reducedEAV_indust_incents  = sum(ifelse(class >= 600 & class < 900 & class %in% industrial_classes,
-      (taxed_av*eq2022/loa)*0.25 - (taxed_av*eq2022/loa), 0), na.rm=TRUE),
-
-reducedEAV_comind_incents  = sum(ifelse(class >= 600 & class < 900,
-      (taxed_av*eq2022/loa)*0.25 - (taxed_av*eq2022/loa), 0), na.rm=TRUE),
-
-    new_TEAV_noC6 = sum(ifelse( class >=600 & class <700, 
-(taxed_av*eq2022/loa)*0.25 , taxed_av*eq2022)),
-
-    new_TEAV_noC7 = sum(ifelse(class >=700 & class <800,
-(taxed_av*eq2022/loa)*0.25, taxed_av*eq2022)),
-
-    new_TEAV_noC8 = sum(ifelse(class >=800 & class <900, (taxed_av*eq2022/loa)*0.25, taxed_av*eq2022)),
-    
-    new_TEAV_vacant_noIncents = sum(ifelse(class >=600 & class <900,
-                                       0, taxed_av*eq2022)),
-    
-    new_TEAV_noExemps = sum(taxed_av*eq2022 + all_exemptions), # does not include abatements
-    new_TEAV_noAbates = sum(taxed_av*eq2022 + abatements), # include only abatements, not other exemption types
-  
-    # amount of EAV from taxing an additional 15% of the AV if incentive properties didn't exist
-    
-    # TIF increment above the frozen EAV
-    forgone_TIF_EAV = sum(fmv_tif_increment * loa * eq2022, na.rm=TRUE),
  
 ) %>%
   #cbind(table_cook) %>%
   mutate(
-   forgone_EAV_incent =  new_TEAV_noIncents - eav_taxed,
+   reducedEAV_comind_incents =  new_TEAV_noIncents - eav_taxed,
+
+
+reducedEAV_commerc_incents  = new_TEAV_noCommercIncents - eav_taxed,
+
+reducedEAV_indust_incents  = new_TEAV_noIndustIncents - eav_taxed,
+
 
     # Absolute maximum TEAV: No Exemptions, no abatements, no TIFS, no Incentive properties
     # Commercial and industrial assessed at 25%
-    TEAV_max = eav_taxed + all_exemptions + abatements + forgone_TIF_EAV + forgone_EAV_incent,
+    TEAV_max = eav_taxed + all_exemptions + abatements + forgone_TIF_EAV + reducedEAV_comind_incents,
 
     # no exemptions or incentive classifications:
-    TEAV_neither = eav_taxed + all_exemptions + forgone_EAV_incent,
+    TEAV_neither = eav_taxed + all_exemptions + reducedEAV_comind_incents,
     
+# 
+# forgonerev_from_comind_incents  = 
+# 
+# forgonerev_commerc_incents  = 
+# 
+# forgonerev_indust_incents  = 
+
     rate_noExe = final_tax_to_dist / new_TEAV_noExemps * 100,
     rate_noAbate = final_tax_to_dist / new_TEAV_noAbates * 100,
     rate_noInc = final_tax_to_dist / new_TEAV_noIncents * 100,
     rate_neither = final_tax_to_dist / TEAV_neither * 100, 
     rate_noTIFs = final_tax_to_dist / (eav_taxed + forgone_TIF_EAV) * 100,
-    rate_vacant = final_tax_to_dist / new_TEAV_vacant_noIncents* 100,
+    rate_vacant = final_tax_to_dist / new_TEAV_vacant_props* 100,
     rate_lowest = final_tax_to_dist / TEAV_max * 100,
     # rate_noC6 = levy / new_TEAV_noC6 * 100,
     # rate_noC7 = levy / TEAV_noC7 * 100,
@@ -1076,10 +1107,14 @@ reducedEAV_comind_incents  = sum(ifelse(class >= 600 & class < 900,
 change_noInc = rate_current - rate_noInc) 
 
 cook_ratechange %>% 
-select(rate_current, rate_noInc, change_noInc, forgonerev_from_comind_incents, forgonerev_commerc_incents, forgonerev_indust_incents, reducedEAV_commerc_incents, reducedEAV_indust_incents, reducedEAV_comind_incents)
+select(rate_current, rate_noInc, change_noInc)
 
-cook_ratechange %>% select(forgone_EAV_incent, forgone_EAV_incent, rate_current, rate_noInc, change_noInc) %>%
-mutate()
+cook_ratechange %>% 
+select(reducedEAV_commerc_incents, reducedEAV_indust_incents, reducedEAV_comind_incents, all_exemptions)
+
+cook_ratechange %>% 
+select(forgonerev_from_comind_incents, forgonerev_commerc_incents, forgonerev_indust_incents, )
+
 
 ```
 
@@ -1196,7 +1231,8 @@ hline_top() %>%
 hline(i = c(5,10)) %>%
 set_header_labels(clean_name = "Municipality", rate_current = "Current Comp.\nTax Rate", rate_noInc = "Tax Rate if No\nIncent. Class.",
 change_noInc = "Rate Change") %>%
-add_header_row(values = c("County Wide", "8.64", "8.49", "0.18"), top = FALSE) %>%
+#add_header_row(values = c("County Wide", "8.64", "8.49", "0.18"), top = FALSE) %>%
+bold(i = 8) %>%
 add_footer("There are 26 municipalities that do not use incentives and have a majority of their taxable EAV within Cook County.", top = FALSE) %>%
   set_table_properties( layout = "autofit")
 ```
