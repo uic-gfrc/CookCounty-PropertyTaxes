@@ -41,7 +41,8 @@ comm_ind <- comm_ind |>
          landuse_change = as.factor(landuse_change),
          triad = as.factor(Triad),
          in_tif = as.factor(in_tif),
-         land_use = as.factor(land_use)) |>
+         land_use = as.factor(land_use),
+         incent_prop = as.factor(incent_prop)) |>
   mutate(incent_change = relevel(incent_change, ref = "Never Incentive"),
          landuse_change = relevel(landuse_change, ref = "Always Commercial"),
          triad = relevel(triad, ref = "North"),
@@ -52,9 +53,7 @@ comm_ind <- comm_ind |>
          change_prop_use_bin = as.factor(ifelse(landuse_change == 
                                                   "Changes Land Use", 1, 0)),
          is_chicago = as.factor(ifelse(clean_name == "Chicago", 1, 0))
-         ) |>
-  # Rename for my sanity
-  rename(fmv_2011 = base_year_fmv_2011)
+         ) 
 
 ```
 
@@ -63,26 +62,18 @@ comm_ind <- comm_ind |>
 ```{r panel_data_setup}
 #| output: false
 
-comm_ind |>
-  select(year, pin, clean_name) |>
-  group_by(pin) |>
-  summarize(n = n()) |>
-  # 12 years in the data
-  filter(n != 12) |>
-  arrange(desc(n)) |>
-  # 0 PINs have fewer than 12 observations.
-  head(10)
-
-# 1187124 obs.
+# 1,187,124 obs.
 comm_ind_temp <- comm_ind |>
-  # 1187124 obs. (i.e., lost no obs.)
+  # 1,187,124 obs. (i.e., lost no obs.)
   filter(!is.na(fmv)) |>
-  # 11118232 obs. (lose 68892 obs.)
+  # 1,118,232 obs. (lose 68892 obs.)
   filter(!is.na(fmv_growth_2011))
+
+comm_ind_temp <- comm_ind_temp %>% select(pin, year, clean_name,  fmv_growth_2011, incent_prop, land_use, landuse_change, incent_change, triad)
 
 comm_ind_panel_pin <- pdata.frame(comm_ind_temp, index = c("pin", "year"))
 
-comm_ind_panel_muni <- pdata.frame(comm_ind_temp, index = c("agency_num", "year"))
+comm_ind_panel_muni <- pdata.frame(comm_ind_temp, index = c("pin", "year", "clean_name"))
 
 ```
 
@@ -91,12 +82,12 @@ comm_ind_panel_muni <- pdata.frame(comm_ind_temp, index = c("agency_num", "year"
 
 fe_pin_model_list <- list(
   
-  "PIN (1)" = plm(fmv_growth_2011 ~ lag(incent_prop),
+  "PIN (1)" = plm(fmv_growth_2011 ~ land_use,
                   model = "within",
                   effect = "twoways",
                   data = comm_ind_panel_pin),
   
-  "PIN (2)" = plm(fmv_growth_2011 ~ lag(incent_prop) + land_use + land_use*lag(incent_prop),
+  "PIN (2)" = plm(fmv_growth_2011 ~ incent_prop,
                   model = "within",
                   effect = "twoways",
                   data = comm_ind_panel_pin)
@@ -104,7 +95,7 @@ fe_pin_model_list <- list(
 )
 
 
-modelsummary(fe_model_list)
+modelsummary(fe_pin_model_list)
 
 ```
 
