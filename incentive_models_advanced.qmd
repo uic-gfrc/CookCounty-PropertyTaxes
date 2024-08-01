@@ -69,7 +69,7 @@ comm_ind_temp <- comm_ind |>
   # 1,118,232 obs. (lose 68892 obs.)
   filter(!is.na(fmv_growth_2011))
 
-comm_ind_temp <- comm_ind_temp %>% select(pin, year, clean_name,  fmv_growth_2011, incent_prop, land_use, landuse_change, incent_change, triad)
+comm_ind_temp <- comm_ind_temp %>% select(pin, year, clean_name,  fmv_growth_2011, base_year_fmv_2011, incent_prop, land_use, landuse_change, incent_change, triad)
 
 comm_ind_panel_pin <- pdata.frame(comm_ind_temp, index = c("pin", "year"))
 
@@ -80,29 +80,40 @@ comm_ind_panel_muni <- pdata.frame(comm_ind_temp, index = c("pin", "year", "clea
 ```{r}
 #| tbl-cap: "<b>2011-2022 PIN FMV Growth Rate</b><br><i>Industrial and Commercial PINs, 2011-2022</i>"
 
-fe_pin_model_list <- list(
-  
-  "PIN (1)" = plm(fmv_growth_2011 ~ land_use,
+# fe_pin_model_list <- list(
+#   
+#   "PIN (1)" = plm(fmv_growth_2011 ~ land_use,
+#                   model = "within",
+#                   effect = "twoways",
+#                   data = comm_ind_panel_pin),
+#   
+#   "PIN (2)" = plm(fmv_growth_2011 ~ incent_prop,
+#                   model = "within",
+#                   effect = "twoways",
+#                   data = comm_ind_panel_pin)
+#   
+# )
+# modelsummary(fe_pin_model_list)
+
+plm(fmv_growth_2011 ~ base_year_fmv_2011 + land_use,
                   model = "within",
                   effect = "twoways",
-                  data = comm_ind_panel_pin),
+                  data = comm_ind_panel_pin) %>% summary()
   
-  "PIN (2)" = plm(fmv_growth_2011 ~ incent_prop,
+plm(fmv_growth_2011 ~ base_year_fmv_2011 + incent_prop,
                   model = "within",
                   effect = "twoways",
-                  data = comm_ind_panel_pin)
-  
-)
-
-
-modelsummary(fe_pin_model_list)
+                  data = comm_ind_panel_pin) %>% summary()
 
 ```
 
 ```{r}
 #| tbl-cap: "Municipal Fixed Effects"
 
-
+plm(fmv_growth_2011 ~ base_year_fmv_2011 + land_use,
+                  model = "within",
+                  effect = "twoways",
+                  data = comm_ind_panel_muni) %>% summary()
 
 ```
 
