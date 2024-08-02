@@ -82,6 +82,94 @@ comm_ind_panel_muni <- pdata.frame(comm_ind_temp, index = c("year", "clean_name"
 
 ```
 
+## Muni-Level FE Models
+(Because we lose all variation with PIN-level FE)
+
+```{r muni_twfe_change_interacts}
+
+change_interact_list <- list(
+  
+  model_1 <- plm(fmv_growth_2011 ~ landuse_change + incent_change,
+                 model = "within",
+                 effect = "twoways",
+                 data = comm_ind_panel_muni),
+  
+  model_2 <- plm(fmv_growth_2011 ~ landuse_change + incent_change
+                 + landuse_change*incent_change,
+                 model = "within",
+                 effect = "twoways",
+                 data = comm_ind_panel_muni),
+  
+  model_3 <- plm(fmv_growth_2011 ~ prop_use_change_bin + incent_change_bin,
+                 model = "within",
+                 effect = "twoways",
+                 data = comm_ind_panel_muni),
+  
+    model_4 <- plm(fmv_growth_2011 ~ prop_use_change_bin + incent_change_bin
+                 + prop_use_change_bin*incent_change_bin,
+                 model = "within",
+                 effect = "twoways",
+                 data = comm_ind_panel_muni)
+  
+)
+
+modelsummary(change_interact_list,
+             stars = TRUE)
+
+
+
+```
+
+```{r ind_vs_comm_models}
+#| tbl-cap: "Land Use Dummy"
+
+land_use_list <- list(
+  
+  "Land Use Change" <- plm(fmv_growth_2011 ~ prop_use_change_bin + land_use,
+                           model = "within",
+                           effect = "twoways",
+                           data = comm_ind_panel_muni),
+  
+  "Incentive Class Change" <- plm(fmv_growth_2011 ~ incent_change_bin + land_use,
+                                  model = "within",
+                                  effect = "twoways",
+                                  data = comm_ind_panel_muni)
+)
+
+modelsummary(land_use_list,
+             stars = TRUE)
+
+```
+
+```{r only_ind_models}
+#| eval: false
+#| tbl-cap: "Only Industrial"
+
+ind_panel_muni <- comm_ind_panel_muni |>
+  mutate(ind_bin = as.factor(
+    ifelse(land_use == "Industrial", 1, 0))
+    )|>
+  group_by(pin) |>
+  filter(ind_bin >= 1)
+
+only_ind_list <- list(
+  
+  "Land Use Change" <- plm(fmv_growth_2011 ~ prop_use_change_bin,
+                           model = "within",
+                           effect = "twoways",
+                           data = comm_ind_panel_muni),
+  
+  "Incentive Class Change" <- plm(fmv_growth_2011 ~ incent_change_bin + land_use,
+                                  model = "within",
+                                  effect = "twoways",
+                                  data = comm_ind_panel_muni)
+)
+
+modelsummary(land_use_list,
+             stars = TRUE)
+
+```
+
 ```{r}
 #| tbl-cap: "<b>2011-2022 PIN FMV Growth Rate</b><br><i>Industrial and Commercial PINs, 2011-2022</i>"
 
