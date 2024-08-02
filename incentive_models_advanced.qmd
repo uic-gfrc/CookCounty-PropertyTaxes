@@ -69,12 +69,14 @@ comm_ind <- comm_ind |>
 comm_ind_temp <- comm_ind |>
   # 1121436 obs. (lose 69,144) (MVH 8/2)
   filter(!is.na(fmv_2011)) |>
+  # 1121436 obs. (MVH 8/2)
+  filter(!is.na(fmv)) |>
   # 1121436 obs. (lose no obs) (MVH 8/2)
   filter(!is.na(fmv_growth_2011))
   
 
 comm_ind_temp <- comm_ind_temp |> 
-  select(pin, year, clean_name, fmv_growth_2011, fmv_2011, incent_prop, 
+  select(pin, year, clean_name, fmv, fmv_growth_2011, fmv_2011, incent_prop, 
          land_use, landuse_change, incent_change, triad, incent_change_bin, prop_use_change_bin)
 
 comm_ind_panel_pin <- pdata.frame(comm_ind_temp, index = c("pin", "year"))
@@ -142,57 +144,41 @@ ind_panel_muni <- comm_ind_panel_muni |>
   filter(pin_ind_count >= 1)
 
 ind_panel_muni |>
-  summarize(sum(is.na(fmv_growth_2011)), sum(is.na(landuse_change)), sum(is.na(incent_change)))
+  # Still 307920 obs.
+  summarize(sum(!is.na(fmv_growth_2011)), sum(!is.na(landuse_change)), sum(!is.na(incent_change)))
 
 is.pbalanced(ind_panel_muni)
 
 ```
-
+The models with just the industrial PINs similarly doesn't run.
 ```{r just_industrial}
+#| eval: false
 
 ind_list <- list(
   
-  land_use_model <- plm(fmv_growth_2011 ~ prop_use_change_bin,
+  land_use_model <- plm(fmv_growth_2011 ~ landuse_change,
                            model = "within",
                            effect = "twoways",
                            data = ind_panel_muni),
   
-  incentive_change_model <- plm(fmv_growth_2011 ~ incent_change_bin,
+  incentive_change_model <- plm(fmv_growth_2011 ~ incent_change,
                                   model = "within",
                                   effect = "twoways",
-                                  data = ind_panel_muni)
+                                  data = ind_panel_muni),
   
-  incentive_interact_model <- plm(fmv_growth_2011 ~ incent_change_bin + prop_use_change_bin
-                                  + incent_change_bin*prop_use_change_bin,
+  incentive_interact_model <- plm(fmv_growth_2011 ~ incent_change + landuse_change,
+                                  model = "within",
+                                  effect = "twoways",
+                                  data = ind_panel_muni),
+  
+  interactive_incent_model <- plm(fmv_growth_2011 ~ landuse_change + incent_change +
+                                    landuse_change*incent_change,
                                   model = "within",
                                   effect = "twoways",
                                   data = ind_panel_muni)
 )
 
 modelsummary(ind_list,
-             stars = TRUE)
-
-```
-## Only Industrial
-```{r only_ind_models}
-#| tbl-cap: "Only Industrial"
-
-
-
-only_ind_list <- list(
-  
-  "Land Use Change" <- plm(fmv_growth_2011 ~ prop_use_change_bin,
-                           model = "within",
-                           effect = "twoways",
-                           data = comm_ind_panel_muni),
-  
-  "Incentive Class Change" <- plm(fmv_growth_2011 ~ incent_change_bin + land_use,
-                                  model = "within",
-                                  effect = "twoways",
-                                  data = comm_ind_panel_muni)
-)
-
-modelsummary(land_use_list,
              stars = TRUE)
 
 ```
@@ -292,16 +278,7 @@ modelsummary(muni_change_model_list,
 
 ## Predicting Incentive Classifications
 
-```{r predict_incents}
-
-
-
-logit_list <- list(
-  "Prop Change" <- plm(has)
-)
-
-
-```
+[tbd]
 
 # Elasticity Models
 
