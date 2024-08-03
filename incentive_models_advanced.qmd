@@ -7,7 +7,7 @@ date-modified: last-modified
 date-format: long
 format: 
   html:
-    code-fold: true
+    code-fold: false
     toc: true
     toc-location: left
     tbl-cap-location: top
@@ -43,7 +43,10 @@ comm_ind <- comm_ind |>
          triad = as.factor(Triad),
          in_tif = as.factor(in_tif),
          land_use = as.factor(land_use),
-         incent_prop = as.factor(incent_prop)) |>
+         incent_prop = as.factor(incent_prop),
+         fmv_growth_2011 = as.numeric(as.character(fmv_growth_2011)),
+         clean_name = as.factor(clean_name),
+         fmv = as.numeric(as.character(fmv))) |>
   mutate(incent_change = relevel(incent_change, ref = "Never Incentive"),
          landuse_change = relevel(landuse_change, ref = "Always Commercial"),
          triad = relevel(triad, ref = "North"),
@@ -56,7 +59,9 @@ comm_ind <- comm_ind |>
                                                   "Changes Land Use", 1, 0)),
          is_chicago = as.factor(ifelse(clean_name == "Chicago", 1, 0))
          ) |>
-  rename(fmv_2011 = base_year_fmv_2011)
+  rename(fmv_2011 = base_year_fmv_2011) |>
+  mutate(fmv_2011 = as.numeric(as.character(fmv_2011)),
+         fmv_growth_2011 = as.numeric(as.character(fmv/fmv_2011)))
 
 ```
 
@@ -79,9 +84,13 @@ comm_ind_temp <- comm_ind_temp |>
   select(pin, year, clean_name, fmv, fmv_growth_2011, fmv_2011, incent_prop, 
          land_use, landuse_change, incent_change, triad, incent_change_bin, prop_use_change_bin)
 
-comm_ind_panel_pin <- pdata.frame(comm_ind_temp, index = c("year", "pin", "clean_name"))
+comm_ind_panel_pin <- pdata.frame(comm_ind_temp, index = c("year", "pin"))
 
 comm_ind_panel_muni <- pdata.frame(comm_ind_temp, index = c("year", "clean_name"))
+
+comm_ind_panel_muni <- comm_ind_panel_muni |>
+  mutate(fmv_growth_2011 = fmv/fmv_2011,
+         fmv_growth_2011 = as.numeric(as.character(fmv_growth_2011)))
 
 ```
 
@@ -133,17 +142,31 @@ modelsummary(change_interact_list,
 
 model_list <- list(
 
-plm(fmv_growth_2011 ~ land_use,
+mod_1 <- plm(fmv_growth_2011 ~ land_use,
     model = "within",
     effect = "twoways",
     data = comm_ind_panel_muni
   ),
 
-plm(fmv_growth_2011 ~ prop_use_change_bin,
+mod_2 <- plm(fmv_growth_2011 ~ prop_use_change_bin,
     model = "within",
     effect = "twoways",
     data = comm_ind_panel_muni
-  ))
+  ),
+
+mod_3 <- plm(fmv_growth_2011 ~ land_use + prop_use_change_bin,
+             model = "within",
+             effect = "twoways",
+             data = comm_ind_panel_muni
+             ),
+
+mod_4 <- plm(fmv_growth_2011 ~ land_use + prop_use_change_bin
+             + land_use*prop_use_change_bin,
+             model = "within",
+             effect = "twoways",
+             data = comm_ind_panel_muni
+             )
+)
 
 modelsummary(model_list)
 
@@ -560,5 +583,17 @@ ind_summ <- modelsummary(ind_models,
              )
 
 ind_summ
+
+```
+
+### Data WTF
+
+```{r}
+
+summary(comm_ind_panel_muni$fmv)
+
+summary(comm_ind_panel_muni$fmv_growth_2011)
+
+summary(comm_ind_panel_muni$fmv_2011)
 
 ```
