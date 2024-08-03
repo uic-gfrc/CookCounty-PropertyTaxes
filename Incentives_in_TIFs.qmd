@@ -130,18 +130,36 @@ bor %>%
   datatable(rownames = FALSE)
 ```
 
-```{r}
-# parcuniverse_keypins <- readxl::read_xlsx("./Inputs/parceluniverse_keypins_20240725.xlsx", sheet = "keypins_20240725") %>%
-#   mutate(pin14 = str_pad(as.character(pin), width = 14, side = "left", pad = "0"), 
-#          keypin = str_pad(as.character(proration_key_pin), width = 14, side = "left", pad = "0"),
-#          pin10 = str_sub(pin14,1,10),
-#          pin7 = str_sub(pin14,1,7), .before = "pin",) %>%
-#   select(-c(pin_7dig, pin, Column1)) %>%
-#   filter(class != "EX")
-# 
-# parcuniverse_keypins %>% group_by(keypin) %>% summarize(pincount = n()) %>%
-#   filter(pincount > 1) %>% arrange(desc(pincount))
+For the Archived Parcel Universe:
 
+- 13,000+ KeyPINs have more than 1 PIN associated with them.   
+
+- 11,849 when grouping by keypin and mailing name. But that is probably due to a bunch of keypins having mailing names that do not match completely so when grouped this way, they now have only 1 PIN associated with the keypin, which was filter out.  
+
+
+```{r}
+parcuniverse_keypins <- readxl::read_xlsx("./Inputs/parceluniverse_keypins_20240725.xlsx", 
+                                          sheet = "keypins_20240725") %>%
+  mutate(pin14 = str_pad(as.character(pin), width = 14, side = "left", pad = "0"),
+         keypin = str_pad(as.character(proration_key_pin), width = 14, side = "left", pad = "0"),
+         pin10 = str_sub(pin14,1,10),
+         pin7 = str_sub(pin14,1,7), .before = "pin",) %>%
+  select(-c(pin_7dig, pin, Column1)) %>%
+  filter(class != "EX")
+
+puni_keypins <- parcuniverse_keypins %>% select(pin14, keypin, proration_rate) %>% rename(puni_keypin = keypin)
+
+parcuniverse_keypins %>% 
+  group_by(keypin
+#, mailing_name
+           ) %>% 
+  summarize(pincount = n(), 
+            class = mean(as.numeric(class), na.rm=TRUE),
+            has_incent = sum(ifelse(as.numeric(between(class, 600, 899)), 1, 0))) %>%
+  filter(pincount > 1) %>% 
+  arrange(desc(has_incent), desc(pincount))
+
+# parcuniverse_keypins %>% filter(is.na(mailing_name))  # 21,612 keypins
 # parcuniverse_keypins %>% distinct(keypin)  # 21,612 keypins
 ```
 
@@ -207,11 +225,15 @@ ptax_pins <- read_csv("Output/Dont_Upload/0_joined_PIN_data_2022.csv") %>%
   mutate(class = as.numeric(class)) %>%
   #        # keep 500-899 class PINs
   filter((class >= 400 & class < 900)  
+#between(class, 0, 199) | between(class, 400, 899)
   #          # and keep land PINs if we want land property owned by them too.
   #        (class >= 100 & class < 200)  
           )  %>%
    select(-c(propclass_1dig:av.y)) %>%
-mutate(fmv = ifelse(is.na(fmv), 0, fmv))
+mutate(fmv = ifelse(is.na(fmv), 0, fmv)) %>%
+select(-c(exe_homeowner:exe_vet_dis_ge70))
+
+ptax_pins <- ptax_pins %>% left_join(puni_keypins, by = c("pin" = "pin14"))
 
 ```
 
@@ -268,13 +290,23 @@ ptax_pins <- ptax_pins %>%
 
 # now do it the other way and compare 
 ptax_pins <- ptax_pins %>% 
-  mutate( both_ids = project_id,
+  mutate(both_ids = puni_keypin) %>%
+  group_by(puni_keypin) %>% 
+  mutate(puni_PC = n()) %>%
+  ungroup() %>%
+  mutate(
+          no_punimatch = ifelse(is.na(puni_keypin) | puni_PC < 2, 1, 0),
+          both_ids = ifelse(puni_PC < 2, NA, both_ids),
+          both_ids = ifelse(is.na(both_ids), project_id, both_ids),
           both_ids = ifelse(is.na(both_ids), keypin, both_ids ),
           both_ids = ifelse(is.na(both_ids), pin, both_ids))
 
-# ptax_pins %>% 
-#   group_by(both_ids) %>% 
-#   summarize(pincount = n()) 
+ptax_pins %>%
+  group_by(both_ids) %>%
+  summarize(pincount = n()) %>% arrange(desc(pincount))
+
+ptax_pins %>%
+distinct(both_ids)
 
 table_list <- ptax_pins %>% 
   filter(class > 599) %>% 
@@ -773,7 +805,7 @@ table2 %>%
       high = "brown", low = "black",
 show.limits = TRUE,
     nice.breaks=FALSE,
-    na.value = "gray40",
+    na.value = "gray60",
     name = "Number of Projects",
    ) +
    geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray70')+
@@ -791,6 +823,8 @@ show.limits = TRUE,
 table2 %>% 
   left_join(nicknames) %>%
   filter(clean_name != "Chicago") %>%
+  filter(clean_name != "Unincorporated") %>%
+
   full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
   
   ggplot() +
@@ -801,7 +835,7 @@ table2 %>%
         high = "brown", low = "black",
 show.limits=TRUE,
     nice.breaks=FALSE,
-    na.value = "gray40",
+    na.value = "gray60",
     name = "Number of PINs in TIF",
    ) +
    geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray70')+
@@ -809,7 +843,6 @@ show.limits=TRUE,
               ), color = "black", alpha = 0.5, fill ="orange")
 
 ```
-
 
 ```{r}
 #| label: fig-pinspertif-onlychicago
@@ -844,7 +877,6 @@ left_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
     geom_sf(data = bound_tif, aes(geometry = geometry#, fill = project_count
               ), color = "black", alpha = 0.5, fill ="orange")
 ```
-
 
 ```{r}
 #| label: fig-nbhfmv-onlychicago
@@ -889,7 +921,6 @@ left_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
               ), color = "black", alpha = 0.5, fill ="orange")
 ```
 
-
 ```{r}
 #| label: fig-industrial-commercial-fmv
 #| layout-ncol: 2
@@ -901,6 +932,8 @@ left_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
 
 nonres_pins2022 %>% 
   filter(Alea_cat == "Industrial") %>%
+  filter(clean_name != "Unincorporated") %>%
+
   group_by(clean_name) %>% 
   summarize(pin_count = n(),
             project_count = n_distinct(keypin), 
@@ -962,6 +995,8 @@ nonres_pins2022 %>%
 
 nonres_pins2022 %>% 
   filter(Alea_cat == "Commercial") %>%
+  filter(clean_name != "Unincorporated") %>%
+
   group_by(clean_name) %>% 
   summarize(pin_count = n(),
             project_count = n_distinct(keypin), 
@@ -1028,7 +1063,6 @@ flextable(table) %>%
 
 ```
 
-
 ```{r}
 #| label: tbl-incentivizedornot
 #| tbl-cap: "Grouped by Incentivized or not within Municipality"
@@ -1056,8 +1090,10 @@ datatable(table2,
 table2 %>% 
   left_join(nicknames) %>%
   filter(clean_name != "Chicago" & !is.na(clean_name)) %>%
+  filter(clean_name != "Unincorporated") %>%
+
   filter(incent_prop  == "Incentive" &!is.na(clean_name)) %>%
-  left_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
+  full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
   
   ggplot() +
   geom_sf(aes(geometry = geometry, fill = project_count), color = "black") +
