@@ -675,7 +675,7 @@ for(i in years){
 # write_csv(muni_level_summary, "./Output/ptaxsim_muni_level_2006-2022.csv")
 # write_csv(muni_MC_summary, "./Output/ptaxsim_muni_MC_2006-2022.csv")
 
-write_csv(joined_pin_data, "./Output/apsa_df.csv")
+write_csv(joined_pin_data, "./apsa/apsa_df.csv")
 
 # write_csv(tc_mc_summaries, "./Output/ptaxsim_TC_MC_summaries_2006-2022.csv")
 # write_csv(tc_class_summaries, "./Output/ptaxsim_TC_Class_summaries_2006-2022.csv")
