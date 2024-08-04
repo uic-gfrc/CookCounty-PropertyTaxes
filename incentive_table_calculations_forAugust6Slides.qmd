@@ -195,7 +195,6 @@ ptax_pins <- ptax_pins %>%
 
 ```
 
-
 ```{r}
 ptax_pins %>% filter(naive_rev_forgone > 0) %>% select(pin, class, fmv, naive_rev_forgone, untaxable_incent_eav, taxed_eav, everything())
 ```
@@ -791,7 +790,6 @@ munilevel <- munilevel %>% left_join(nicknames, by = c("clean_name" = "shpfile_n
 # unincorp_areas2 <- muni_shp %>% filter(!MUNICIPALITY %in% munilevel$shpfile_name)
 ```
 
-
 ```{r eval=FALSE, include = FALSE}
 table_muni_percentages %>%
   select(clean_name, pct_fmv_w_incentclass) %>%
@@ -911,7 +909,6 @@ add_footer("There are 27 municipalities that do not use incentives and have a ma
   set_table_properties( layout = "autofit")
 ```
 
-
 ### Map
 
 ```{r}
@@ -942,10 +939,6 @@ filter(clean_name != "Unincorporated") %>%
 
 ```
 
-
-
-
-
 # Slide 7 - Tax Revenue and Burden Shift
 
 ```{r}
@@ -961,11 +954,7 @@ muni_rate <- read_csv("./Output/ptaxsim_muni_level_2006-2022.csv") %>%
   rename(cur_munilevel_rate = muni_current_rate_avg)
 ```
 
-
-
-
 ## Not Taxed FMV - PIN aggregated to County Level
-
 
 ```{r calculate-cook-altrates-fromPINlevel}
 
@@ -1118,7 +1107,6 @@ select(forgonerev_from_comind_incents, forgonerev_commerc_incents, forgonerev_in
 
 ```
 
-
 # Slide 8 Tax Rate Calculations
 
 ```{r}
@@ -1207,7 +1195,11 @@ classgroup_PC = n(),
     # rate_noC8 = levy / TEAV_noC8 * 100,
     rate_current = final_tax_to_dist / eav_taxed * 100,
 change_noInc = rate_current - rate_noInc,
-change_neither = rate_current - rate_neither
+change_neither = rate_current - rate_neither,
+change_noTIF = rate_current - rate_noTIFs,
+change_noExe = rate_current - rate_noExe,
+change_vacant = rate_current - rate_vacant,
+change_lowest = rate_current - rate_lowest
   )  %>%
 mutate(across(contains("rate_"), round, digits = 2))
 ```
@@ -1236,7 +1228,6 @@ bold(i = 8) %>%
 add_footer("There are 26 municipalities that do not use incentives and have a majority of their taxable EAV within Cook County.", top = FALSE) %>%
   set_table_properties( layout = "autofit")
 ```
-
 
 ```{r}
 #| label: fig-comptaxratechange-incents
@@ -1468,7 +1459,6 @@ muni_ratechange %>%
        subtitle = "Ordered by Current Composite Tax Rate", x = "Composite Tax Rate (%)", y = "")
 ```
 
-
 ```{r}
 #| label: fig-dotplot-byratechange
 #| fig-cap: "Change in tax rate if incentive properties were assessed at 25% of their FMV instead of their reduced level of assessment. Ordered by amount of change in composite tax rate."
@@ -1676,6 +1666,31 @@ filter(year == 2022) %>% select(-year)
 ```
 
 # Appendix Items
+
+## All Municipalities' Tax Rate Change Scenarios
+
+```{r}
+ratechange_table <- muni_ratechange %>% 
+  select(clean_name, starts_with("change")
+         
+  ) %>%
+  mutate(across(c(change_noInc:change_lowest), round, digits=2)) %>%
+  mutate(change_noInc = abs(round(change_noInc, digits = 2)) )
+
+
+datatable(ratechange_table,
+          rownames= FALSE,
+          extensions = 'Buttons',
+          class = "compact",
+          colnames = c('Municipality' = 'clean_name',   'Change: Tax GHE Exempt EAV' = 'change_noExe', 'Change: Additional Commerc & Indust. Value' = 'change_noInc', 'Change: no TIF Increment' = 'change_noTIF',  'Change: No Incentive Classes & No Exemptions' = 'change_neither', 'Change: Incent Props have $0 Value'= 'change_vacant', 'Change: No Exemps, Incents, or TIFs' = 'change_lowest' ), 
+          caption = 'Change in Tax Rates are calculated by subtracting the hypothetical tax rate for each scenario from the current composite tax rate.',
+          options = list(pageLength = 119, 
+                         dom = 'Brtip',
+                         filter = "none", buttons = c('copy', 'pdf', 'print')
+          ) )
+
+
+```
 
 ## Share of Commercial and Industrial Over Time
 
