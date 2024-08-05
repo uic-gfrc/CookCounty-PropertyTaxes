@@ -68,7 +68,6 @@ comm_ind <- comm_ind |>
 # Fixed Effects Models
 
 ```{r panel_data_setup}
-#| output: false
 
 # 1,190,580 obs. (MVH 8/2) 
 comm_ind_temp <- comm_ind |>
@@ -82,7 +81,8 @@ comm_ind_temp <- comm_ind |>
 
 comm_ind_temp <- comm_ind_temp |> 
   select(pin, year, clean_name, fmv, fmv_growth_2011, fmv_2011, incent_prop, 
-         land_use, landuse_change, incent_change, triad, incent_change_bin, prop_use_change_bin)
+         land_use, landuse_change, incent_change, triad, incent_change_bin, prop_use_change_bin,
+         in_tif)
 
 comm_ind_panel_pin <- pdata.frame(comm_ind_temp, index = c("year", "pin"))
 
@@ -93,47 +93,58 @@ comm_ind_panel_muni <- comm_ind_panel_muni |>
          fmv_growth_2011 = as.numeric(as.character(fmv_growth_2011)))
 
 ```
+## Pin-level FE Models
+
+```{r pin_FE}
+
+pin_fe_models <- list(
+  
+  pin_fe_model_1 = plm(fmv_growth_2011 ~ lag(incent_prop),
+                       model = "within",
+                       effect = "twoways",
+                       data = comm_ind_panel_pin),
+  
+  pin_fe_model_1 = plm(fmv_growth_2011 ~ lag(incent_prop) + land_use,
+                       model = "within",
+                       effect = "twoways",
+                       data = comm_ind_panel_pin)
+        )
+
+modelsummary(pin_fe_models,
+             stars = TRUE)
+
+```
 
 ## Muni-Level FE Models
-(Because we lose all variation with PIN-level FE)
 
-```{r muni_twfe_change_interacts}
+```{r muni_FE}
+#| eval: false
 
-change_interact_list <- list(
+muni_fe_models <- list(
   
-  model_1 <- plm(
-    fmv_growth_2011 ~ landuse_change + incent_change,
-    model = "within",
-    effect = "twoways",
-    data = comm_ind_panel_muni
-  ),
+  pin_fe_model_1 = plm(fmv_growth_2011 ~ lag(incent_prop),
+                       model = "within",
+                       effect = "twoways",
+                       data = comm_ind_panel_muni),
   
-  model_2 <- plm(
-    fmv_growth_2011 ~ landuse_change + incent_change
-    + landuse_change * incent_change,
-    model = "within",
-    effect = "twoways",
-    data = comm_ind_panel_muni
-  ),
+  pin_fe_model_2 = plm(fmv_growth_2011 ~ lag(incent_prop) + land_use,
+                       model = "within",
+                       effect = "twoways",
+                       data = comm_ind_panel_muni),
   
-  model_3 <- plm(
-    fmv_growth_2011 ~ prop_use_change_bin + incent_change_bin,
-    model = "within",
-    effect = "twoways",
-    data = comm_ind_panel_muni
-  ),
+  pin_fe_model_3 = plm(fmv_growth_2011 ~ lag(incent_prop) + land_use + fmv_2011,
+                       model = "within",
+                       effect = "twoways",
+                       data = comm_ind_panel_muni),
   
-  model_4 <- plm(
-    fmv_growth_2011 ~ prop_use_change_bin + incent_change_bin
-    + prop_use_change_bin * incent_change_bin,
-    model = "within",
-    effect = "twoways",
-    data = comm_ind_panel_muni
+  pin_fe_model_5 = plm(fmv_growth_2011 ~ lag(incent_prop) + land_use + fmv_2011 + 
+                         + in_tif,
+                       model = "within",
+                       effect = "twoways",
+                       data = comm_ind_panel_muni)
   )
-  
-)
 
-modelsummary(change_interact_list,
+modelsummary(pin_fe_models,
              stars = TRUE)
 
 ```
