@@ -25,6 +25,7 @@ knitr:
 library(tidyverse)
 library(fixest)
 library(modelsummary)
+library(dataReporter)
 
 
 options(scipen = 999)
@@ -36,12 +37,24 @@ Import data
 ```{r data_import}
 #| output: false
 
-df <- read_csv("./Output/apsa_data.csv")
+# 1865016 obs.
+df <- read_csv("./apsa_df.csv")
 
-## Convert to taxcode as unit of analysis
+#summarize(df)
+```
+```{r data_cleaning}
 
+df <- df |>
+  # dropping irrelevant variables
+  select(year, pin, tax_code, clean_name, agency_num, class, fmv, incent_prop, major_class_type, av, eq_av, eav, taxed_fmv, untaxable_value_fmv, fmv_inTIF,
+         fmv_tif_increment, fmv_incents_tif_increment, total_billed, final_tax_to_dist, final_tax_to_tif, tax_code_rate, taxing_agency_count, propclass_1dig,
+         assess_ratio,improvement_ind, vacant_ind, land, Alea_cat, in_tif, fmv_incents_inTIF)
+
+# Let's look at this dataframe!  
+summary(df)
 
 ```
+
 
 ```{r to_do}
 #| eval: FALSE
@@ -131,9 +144,7 @@ comm_ind_2011to2022 <- comm_ind_pins_ever  %>%
       TRUE ~ "Changes Sometime")
   )
 
-cross_county_lines <- c("030440000", "030585000", "030890000", "030320000", "031280000",
-                        "030080000", "030560000", "031120000", "030280000", "030340000",
-                        "030150000","030050000", "030180000","030500000","031210000")
+
 
 comm_ind_2011to2022 <- comm_ind_2011to2022 |>
   # 1.19mil obs.
