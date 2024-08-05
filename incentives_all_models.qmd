@@ -1,0 +1,85 @@
+---
+title: "Incentive Models"
+format: html
+editor: source
+---
+
+# Current Top Performing Model: 
+
+# Preliminary Code
+
+```{r setup}
+
+# load packages
+
+library(tidyverse)
+library(glue)
+library(plm)
+library(modelsummary)
+library(sandwich)
+
+# set defaults
+
+options(scipen = 999, digits = 4) #no scientific notation
+
+```
+
+# Load and Review Data
+
+```{r data_read}
+#| output: false
+
+comm_ind <- read_csv("./Output/comm_ind_PINs_2011-2022_balanced.csv") 
+
+comm_ind <- comm_ind |>
+  ## set variable types 
+  mutate(across(c(class, improvement_ind, has_AB_exemp, fmv_NA_indicator, in_tif), as.character))
+
+comm_ind <- comm_ind |>
+  # Change to factors
+  mutate(incent_change = as.factor(incent_change),
+         landuse_change = as.factor(landuse_change),
+         triad = as.factor(Triad),
+         in_tif = as.factor(in_tif),
+         land_use = as.factor(land_use),
+         incent_prop = as.factor(incent_prop),
+         fmv_growth_2011 = as.numeric(as.character(fmv_growth_2011)),
+         clean_name = as.factor(clean_name),
+         fmv = as.numeric(as.character(fmv))) |>
+  # Set reference levels
+  mutate(incent_change = relevel(incent_change, ref = "Never Incentive"),
+         landuse_change = relevel(landuse_change, ref = "Always Commercial"),
+         triad = relevel(triad, ref = "North"),
+         land_use = relevel(land_use, ref = "Land")
+         ) |>
+  # Create binary variables
+  mutate(incent_change_bin = as.factor(ifelse(incent_change == 
+                                                "Changes Sometime", 1, 0)),
+         prop_use_change_bin = as.factor(ifelse(landuse_change == 
+                                                  "Changes Land Use", 1, 0)),
+         is_chicago = as.factor(ifelse(clean_name == "Chicago", 1, 0))
+         ) |>
+  rename(fmv_2011 = base_year_fmv_2011) |>
+  mutate(fmv_2011 = as.numeric(as.character(fmv_2011)))
+
+```
+
+## Descriptive Statistics
+
+```{r descrip_stats}
+
+
+
+```
+
+
+# Current Best Models
+
+
+# OLS
+
+
+# Fixed Effect Models
+
+
+# Pooled OLS Models
