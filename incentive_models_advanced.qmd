@@ -44,13 +44,14 @@ comm_ind <- comm_ind |>
          in_tif = as.factor(in_tif),
          land_use = as.factor(land_use),
          incent_prop = as.factor(incent_prop),
-         fmv_growth_2011 = as.numeric(as.character(fmv_growth_2011)),
          clean_name = as.factor(clean_name),
-         fmv = as.numeric(as.character(fmv))) |>
+         fmv_growth_2011 = round(fmv_growth_2011)) |>
   mutate(incent_change = relevel(incent_change, ref = "Never Incentive"),
          landuse_change = relevel(landuse_change, ref = "Always Commercial"),
+         incent_prop = relevel(incent_prop, ref = "Non-Incentive"),
+
          triad = relevel(triad, ref = "North"),
-         land_use = relevel(land_use, ref = "Land")
+         land_use = relevel(land_use, ref = "Commercial")
          ) |>
   # Create binary variables
   mutate(incent_change_bin = as.factor(ifelse(incent_change == 
@@ -60,8 +61,10 @@ comm_ind <- comm_ind |>
          is_chicago = as.factor(ifelse(clean_name == "Chicago", 1, 0))
          ) |>
   rename(fmv_2011 = base_year_fmv_2011) |>
-  mutate(fmv_2011 = as.numeric(as.character(fmv_2011)),
-         fmv_growth_2011 = as.numeric(as.character(fmv/fmv_2011)))
+  arrange(pin, year)
+#  mutate(# fmv_2011 = as.numeric(as.character(fmv_2011)),
+  #       fmv_growth_2011 = fmv/fmv_2011)
+
 
 ```
 
@@ -70,86 +73,170 @@ comm_ind <- comm_ind |>
 ```{r panel_data_setup}
 
 # 1,190,580 obs. (MVH 8/2) 
-comm_ind_temp <- comm_ind |>
+comm_ind_temp <- comm_ind  |>
   # 1121436 obs. (lose 69,144) (MVH 8/2)
   filter(!is.na(fmv_2011)) |>
   # 1121436 obs. (MVH 8/2)
   filter(!is.na(fmv)) |>
-  # 1121436 obs. (lose no obs) (MVH 8/2)
+  # 1,121,436 obs. (lose no obs) (MVH 8/2)
   filter(!is.na(fmv_growth_2011))
-  
+
 
 comm_ind_temp <- comm_ind_temp |> 
   select(pin, year, clean_name, fmv, fmv_growth_2011, fmv_2011, incent_prop, 
-         land_use, landuse_change, incent_change, triad, incent_change_bin, prop_use_change_bin,
-         in_tif)
+         land_use, major_class_code, # landuse_change, incent_change, 
+         triad, 
+         # incent_change_bin, prop_use_change_bin,
+         in_tif)%>%
+  filter(fmv_2011 > 10)
 
-comm_ind_panel_pin <- pdata.frame(comm_ind_temp, index = c("year", "pin"))
 
-comm_ind_panel_muni <- pdata.frame(comm_ind_temp, index = c("year", "clean_name"))
+comm_ind_panel_pin <- pdata.frame(comm_ind_temp, index = c("pin", "year"))
 
-comm_ind_panel_muni <- comm_ind_panel_muni |>
-  mutate(fmv_growth_2011 = fmv/fmv_2011,
-         fmv_growth_2011 = as.numeric(as.character(fmv_growth_2011)))
+is.pbalanced(comm_ind_panel_pin)
+
+comm_ind_panel_muni <- pdata.frame(comm_ind_temp, index = c("clean_name", "year"))
+
+# comm_ind_panel_muni <- comm_ind_panel_muni |>
+#   mutate(fmv_growth_2011 = fmv/fmv_2011,
+#          fmv_growth_2011 = as.numeric(as.character(fmv_growth_2011)))
 
 ```
+
 ## Pin-level FE Models
 
 ```{r pin_FE}
 
-pin_fe_models <- list(
+#pin_fe_models <- list(
   
-  pin_fe_model_1 = plm(fmv_growth_2011 ~ lag(incent_prop),
+plm(fmv_growth_2011 ~ incent_prop*land_use,
                        model = "within",
                        effect = "twoways",
-                       data = comm_ind_panel_pin),
+                       data = comm_ind_panel_pin) %>% 
+  summary()
   
-  pin_fe_model_1 = plm(fmv_growth_2011 ~ lag(incent_prop) + land_use,
+plm(fmv_growth_2011 ~ lag(incent_prop) + land_use,
                        model = "within",
                        effect = "twoways",
-                       data = comm_ind_panel_pin)
-        )
+                       data = comm_ind_panel_pin) %>% 
+  summary()
 
-modelsummary(pin_fe_models,
-             stars = TRUE)
+plm(fmv_growth_2011 ~ lag(incent_prop) + land_use  + major_class_code,
+                       model = "within",
+                       effect = "twoways",
+                       data = comm_ind_panel_pin) %>% 
+  summary()
+ # modelsummary(pin_fe_models,
+ #             stars = TRUE)
 
 ```
 
 ## Muni-Level FE Models
 
-```{r muni_FE}
+```{r muni_FE_original}
 #| eval: false
 
 muni_fe_models <- list(
   
-  pin_fe_model_1 = plm(fmv_growth_2011 ~ lag(incent_prop),
+  pin_fe_model_1 = plm(fmv_growth_2011 ~ land_use,
                        model = "within",
                        effect = "twoways",
                        data = comm_ind_panel_muni),
   
-  pin_fe_model_2 = plm(fmv_growth_2011 ~ lag(incent_prop) + land_use,
+  pin_fe_model_2 = plm(fmv_growth_2011 ~ major_class_code + land_use,
                        model = "within",
                        effect = "twoways",
                        data = comm_ind_panel_muni),
   
-  pin_fe_model_3 = plm(fmv_growth_2011 ~ lag(incent_prop) + land_use + fmv_2011,
+  pin_fe_model_3 = plm(fmv_growth_2011 ~ incent_prop*land_use,
                        model = "within",
                        effect = "twoways",
                        data = comm_ind_panel_muni),
   
-  pin_fe_model_5 = plm(fmv_growth_2011 ~ lag(incent_prop) + land_use + fmv_2011 + 
+  pin_fe_model_5 = plm(fmv_growth_2011 ~ incent_prop + land_use + 
                          + in_tif,
                        model = "within",
                        effect = "twoways",
                        data = comm_ind_panel_muni)
   )
 
-modelsummary(pin_fe_models,
+#summary(pin_fe_model_3)
+modelsummary(muni_fe_models,
              stars = TRUE)
 
 ```
+
+```{r muni_FE_awm}
+
+
+plm(fmv_growth_2011 ~ land_use,
+                       model = "within",
+                       effect = "twoways",
+                       data = comm_ind_panel_muni) |> summary()
+  
+plm(fmv_growth_2011 ~ major_class_code + land_use,
+                       model = "within",
+                       effect = "twoways",
+                       data = comm_ind_panel_muni) |> summary()
+  
+plm(fmv_growth_2011 ~ incent_prop*land_use,
+                       model = "within",
+                       effect = "twoways",
+                       data = comm_ind_panel_muni) |> summary()
+  
+plm(fmv_growth_2011 ~ incent_prop + land_use + 
+                         + in_tif,
+                       model = "within",
+                       effect = "twoways",
+                       data = comm_ind_panel_muni) |> summary()
+  
+
+```
+
+> Models below run but they do not finish going through the modelsummary() command. Set chunk below to eval: false. 
+
+
+```{r muni_FE_original_usesmodelsummary}
+#| eval: false
+
+
+  pin_fe_model_1 = plm(fmv_growth_2011 ~ land_use,
+                       model = "within",
+                       effect = "twoways",
+                       data = comm_ind_panel_muni)
+  
+  pin_fe_model_2 = plm(fmv_growth_2011 ~ major_class_code + land_use,
+                       model = "within",
+                       effect = "twoways",
+                       data = comm_ind_panel_muni)
+  
+  pin_fe_model_3 = plm(fmv_growth_2011 ~ incent_prop*land_use,
+                       model = "within",
+                       effect = "twoways",
+                       data = comm_ind_panel_muni)
+  
+  pin_fe_model_5 = plm(fmv_growth_2011 ~ incent_prop + land_use + 
+                         + in_tif,
+                       model = "within",
+                       effect = "twoways",
+                       data = comm_ind_panel_muni)
+  
+models <- list(pin_fe_model_1, pin_fe_model_2, pin_fe_model_3, pin_fe_model_5)
+#summary(pin_fe_model_3)
+modelsummary(models = models #,stars = TRUE
+             )
+
+```
+
+
+
+**I STOPPED HERE**
+
+
 ***LOOK AT ME***
+
 ```{r}
+#| eval: false
 
 model_list <- list(
 
