@@ -117,6 +117,7 @@ bor_pins %>%
 ```{r}
 #| label: tbl-borproject-appellants
 #| tbl-cap: "**Non-residential PINs associated with an appellant each tax year.** Excludes property classes 0-399. Data from Board of Review Appeals dataset on Cook Data Portal. "
+#| eval: false
 
 
 appellant_table <- bor %>% 
@@ -124,6 +125,7 @@ appellant_table <- bor %>%
   group_by(pin) %>% 
   arrange(desc(tax_year)) %>%
   summarize(pin = first(pin),
+            incent_PC = sum(ifelse(class >=600 & class < 900, 1, 0)),
             class_bor = list(unique(class)),
             appellant = first(appellant),
             project_id = first(project_id), 
@@ -140,6 +142,49 @@ appellant_table <- bor %>%
   datatable(rownames = FALSE)
 
 appellant_table
+```
+
+
+```{r}
+#| label: tbl-borproject-appellants_moreyears
+#| tbl-cap: "**Non-residential PINs associated with an appellant each tax year.** Excludes property classes 0-299. Data from Board of Review Appeals dataset on Cook Data Portal. "
+
+
+appellant_table_moreyears <- bor %>% 
+  filter(class > 299 #& tax_year > 2018
+         ) %>%
+  mutate(has_incent = ifelse(class >=600 & class < 900, 1, 0)) %>%
+  group_by(pin) %>% 
+  arrange(desc(tax_year)) %>%
+  summarize(pin = first(pin),
+           # incent_pins = sum(has_incent),
+            class_bor = list(unique(class)),
+            appellant = first(appellant),           
+            project_id = first(project_id), 
+            timesappealed = n(),
+            tax_year=tax_year, 
+            has_incent = has_incent) %>%
+  mutate(proj_appellant = paste(project_id, "-", appellant)) %>%
+  ungroup() 
+
+appellant_table_moreyears %>%
+  group_by(tax_year, proj_appellant) %>% 
+  summarize(pincount = n()) %>%
+  filter(pincount > 1) %>%
+  arrange(desc(tax_year), desc(pincount)) %>%
+  pivot_wider(names_from = "tax_year", values_from = "pincount")%>%  
+  datatable(rownames = FALSE) 
+
+
+appellant_table_moreyears %>%
+  group_by(tax_year, proj_appellant) %>% 
+  summarize(#pincount = n(),
+    incent_count = sum(has_incent)) %>%
+    #  filter(pincount > 1) %>%
+ # select(-pincount) %>%
+  arrange(desc(tax_year), desc(incent_count)) %>%
+  pivot_wider(names_from = "tax_year", values_from = "incent_count")%>%  
+  datatable(rownames = FALSE)
 ```
 
 ## Create Project ID
