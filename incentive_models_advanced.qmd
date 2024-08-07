@@ -63,36 +63,6 @@ comm_ind <- comm_ind |>
   rename(fmv_2011 = base_year_fmv_2011) |>
   arrange(pin, year)
 
-
-```
-
-# Data Exploration
-
-```{r dataexploration}
-
-comm_ind_temp |>
-  ggplot(aes(fmv_growth_2011)) +
-  geom_area() +
-  theme_classic()
-
-comm_ind_temp |>
-  select(fmv_growth_2011) |>
-  summarize(max = max(fmv_growth_2011), min = min(fmv_growth_2011), mean(fmv_growth_2011), median(fmv_growth_2011), sd = sd(fmv_growth_2011))
-
-comm_ind_temp |>
-  arrange(desc(fmv_growth_2011)) |>
-  group_by(pin) |>
-  arrange(first(fmv_growth_2011)) |>
-  ungroup() |>
-  select(year, pin, fmv, fmv_growth_2011, clean_name, fmv_2011) |>
-  slice(21:30)
-
-```
-
-# Fixed Effects Models
-
-```{r panel_data_setup}
-
 # 1,190,580 obs. (MVH 8/2) 
 comm_ind_temp <- comm_ind  |>
   # 1121436 obs. (lose 69,144) (MVH 8/2)
@@ -102,13 +72,16 @@ comm_ind_temp <- comm_ind  |>
   # 1,121,436 obs. (lose no obs) (MVH 8/2)
   filter(!is.na(fmv_growth_2011))
 
+# Create panel data
 
 comm_ind_temp <- comm_ind_temp |> 
-  select(pin, year, clean_name, fmv, fmv_growth_2011, fmv_2011, incent_prop, 
+  select(pin, class, year, clean_name, fmv, fmv_growth_2011, fmv_2011, incent_prop, 
          land_use, major_class_code, landuse_change, incent_change, triad, 
          incent_change_bin, prop_use_change_bin,
          in_tif) |>
   filter(fmv_2011 > 10)
+
+comm_ind_raw <- comm_ind_temp
 
 
 comm_ind_panel_pin <- pdata.frame(comm_ind_temp, index = c("pin", "year"))
@@ -116,6 +89,126 @@ comm_ind_panel_pin <- pdata.frame(comm_ind_temp, index = c("pin", "year"))
 is.pbalanced(comm_ind_panel_pin)
 
 comm_ind_panel_muni <- pdata.frame(comm_ind_temp, index = c("clean_name", "year"))
+
+is.pbalanced(comm_ind_panel_muni)
+
+
+```
+
+# Data Exploration
+
+```{r dataexploration}
+
+comm_ind_raw |>
+  ggplot(aes(fmv_growth_2011)) +
+  geom_histogram(bins = 100) +
+  theme_classic()
+
+comm_ind_raw |>
+  select(fmv_growth_2011) |>
+  summarize(max = max(fmv_growth_2011), min = min(fmv_growth_2011), mean(fmv_growth_2011), median(fmv_growth_2011), sd = sd(fmv_growth_2011))
+
+comm_ind_raw |>
+  arrange(desc(fmv_growth_2011)) |>
+  group_by(pin) |>
+  arrange(first(fmv_growth_2011)) |>
+  ungroup() |>
+  select(year, pin, fmv, fmv_growth_2011, clean_name, fmv_2011)
+
+comm_ind_raw_2022 <- comm_ind_raw |>
+  filter(year == 2022)
+
+
+# Look at FMV growth
+comm_ind_raw_2022 |>
+  summarize(min_growth = min(fmv_growth_2011), max_growth = max(fmv_growth_2011), 
+            mean_growth = mean(fmv_growth_2011), med_growth = median(fmv_growth_2011),
+            sd_growth = sd(fmv_growth_2011))
+
+# Look at fmv_2011
+
+comm_ind_raw_2022 |>
+  summarize(min_fmv = min(fmv_2011), max_fmv = max(fmv_2011), 
+            mean_fmv = mean(fmv_2011), med_fmv = median(fmv_2011),
+            sd_fmv = sd(fmv_2011))
+
+comm_ind_raw_2022 |>
+  ggplot() +
+  geom_freqpoly(aes(fmv_growth_2011, color = "FMV Growth 2011")) +
+  geom_freqpoly(aes(fmv_2011, color = "FMV 2011")) +
+  labs(
+    title = "Distribution of 2011 FMV Values and Growth Rates (2022 Data)",
+    x = "FMV",
+    y = "n",
+    color = "Legend"
+  ) +
+  theme_classic()
+
+comm_ind_raw_2022 |>
+  ggplot() +
+  geom_point(aes(x = fmv_2011, y = fmv_growth_2011, color = land_use)) +
+    labs(
+    title = "Relationship between 2011 FMV Values and Growth Rates (2022 Data)",
+    x = "2011 FMV",
+    y = "FMV Growth",
+    color = "Land Use"
+  ) +
+  theme_classic()
+
+
+comm_ind_raw_2022 |>
+  filter(fmv_growth_2011 < 20000) |>
+  filter(fmv_2011 < 200000000) |>
+  ggplot() +
+  geom_point(aes(x = fmv_2011, y = fmv_growth_2011, color = land_use)) +
+    labs(
+    title = "Relationship between 2011 FMV Values and Growth Rates (2022 Data)",
+    x = "2011 FMV",
+    y = "FMV Growth",
+    color = "Land Use"
+  ) +
+  theme_classic()
+
+comm_ind_raw_2022 |>
+  filter(land_use %in% c("Industrial", "Commercial")) |>
+  ggplot() +
+  geom_point(aes(x = fmv_2011, y = fmv_growth_2011, color = land_use)) +
+    labs(
+    title = "Relationship between 2011 FMV Values and Growth Rates (2022 Data)",
+    x = "2011 FMV",
+    y = "FMV Growth",
+    color = "Land Use"
+  ) +
+  theme_classic()
+
+```
+## Evaluating Outliers
+
+### Growth Outliers
+
+```{r outliers}
+#| tbl-cap: "Observations > 2 standard deviations above growth mean"
+
+comm_ind_raw_2022 |>
+  filter(fmv_growth_2011 > 2.958 + 2*195.3) |>
+  arrange(desc(fmv_growth_2011)) |>
+  select(pin, class, clean_name, land_use, incent_prop, fmv, fmv_growth_2011, fmv_2011)
+
+```
+
+- 17 PINs are two or more standard deviations above the mean.
+- None have incentive classifications
+- 13 of the 17 are Commercial
+- 12 of the 17 are in Chicago
+- 7 of 17 had FMVs in 2011 under $1k (not arms length transactions?)
+
+
+
+# Fixed Effects Models
+
+```{r panel_data_setup}
+
+
 
 # comm_ind_panel_muni <- comm_ind_panel_muni |>
 #   mutate(fmv_growth_2011 = fmv/fmv_2011,
