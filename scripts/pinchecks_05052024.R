@@ -162,3 +162,37 @@ pinchecks %>% filter(year == 2022) %>%
 
 pinbills <- ptaxsim::tax_bill(2022, "18232000010000",
                               simplify = FALSE)
+
+# Project PIN Bills ---------------------------------------------
+
+pins <- c("32174220040000", "32174220050000", "32174220060000",
+          "32174220070000")
+
+pinchecks <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql(
+    "SELECT*
+  FROM pin
+  WHERE pin IN ({pins*}) AND
+  year IN ({years*})
+  ",
+    .con = ptaxsim_db_conn
+  ))
+
+#pinbills <- ptaxsim::tax_bill(2022, pins, simplify = FALSE)
+
+
+
+
+# PINs have prorated amounts of 0.95 and 0.05
+pins <- c("32174240070000", "32174240080000")
+pinchecks <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql(
+    "SELECT*
+  FROM pin
+  WHERE pin IN ({pins*}) AND
+  year IN ({years*})
+  ",
+    .con = ptaxsim_db_conn
+  ))
