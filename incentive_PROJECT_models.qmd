@@ -1,0 +1,167 @@
+---
+title: "Incentive PROJECT Models"
+format: html
+---
+
+## Fixed Effect Model using Project Level
+
+```{r}
+library(tidyverse)
+
+ptax_pins <- read_csv("./Output/comm_ind_PINs_2011-2022_balanced.csv")
+
+parcuniverse_keypins <- readxl::read_xlsx("./Inputs/parceluniverse_keypins_20240725.xlsx", 
+                                          sheet = "keypins_20240725") %>%
+  mutate(pin14 = str_pad(as.character(pin), width = 14, side = "left", pad = "0"),
+         keypin = str_pad(as.character(proration_key_pin), width = 14, side = "left", pad = "0"),
+         pin10 = str_sub(pin14,1,10),
+         pin7 = str_sub(pin14,1,7), .before = "pin",) %>%
+  select(-c(pin_7dig, pin, Column1)) %>%
+  filter(class != "EX")
+
+puni_keypins <- parcuniverse_keypins %>% 
+  select(pin14, 
+         puni_keypin = keypin, 
+         proration_rate2022 = proration_rate, 
+         mailing_name2022 = mailing_name)
+
+# Workaround for identifying more project IDs. 
+# Used Appeal ID to create unique identifier to group PINs.
+bor <- read_csv("Output/borappeals.csv") %>%
+  mutate(project_appellant = paste(project_id, sep = "-", appellant))
+
+bor_pins <- bor %>% 
+  group_by(pin) %>% 
+  arrange(desc(tax_year)) %>%
+  summarize(pin = first(pin),
+            class_bor = list(class),
+            taxyear_appealed = list(tax_year),
+            appellant = first(appellant),
+            project_id = first(project_id), 
+            timesappealed = n() ) %>%
+  mutate(proj_appeallant = paste(project_id, "-", appellant))
+
+ptax_proj <- ptax_pins %>% 
+  left_join(bor_pins) %>%
+  left_join(puni_keypins, by = c("pin" = "pin14")) 
+
+proj_xwalk <- read_csv("Output/all_keypins.csv")               
+ptax_proj <- ptax_proj %>% left_join(proj_xwalk, by = "pin")
+
+
+ptax_proj <- ptax_proj %>% 
+  mutate(actual_keypin = ifelse(is.na(proj_appeallant), puni_keypin, proj_appeallant))%>%
+  mutate(actual_keypin = ifelse(is.na(actual_keypin), keypin, actual_keypin)) %>%
+  select(year, actual_keypin, pin, tax_code_num, class, class_bor, tax_code_rate, fmv, av_clerk, tax_bill_total, everything())
+```
+
+
+```{r}
+ptax_proj_summs <- ptax_proj %>% 
+  group_by(year, actual_keypin) %>%
+  summarize(
+    incent_pins = sum(ifelse(class >= 600 & class < 900, 1, 0)),
+    project_pins = n(),
+    fmv = sum(fmv, na.rm=TRUE),
+    tax_code = mean(tax_code_num, na.rm=TRUE),
+    in_tif = mean(in_tif, na.rm=TRUE),
+    pin_classes = ifelse(project_pins < 10, list(class), list(unique(class))),
+    land_use = paste(unique(land_use), collapse = ","),
+    triad = first(Triad),
+    exe_abate = sum(exe_abate, na.rm = TRUE),
+    clean_name = first(clean_name),
+    landuse_change= paste(unique(landuse_change), collapse = ","),
+    incent_change = paste(unique(incent_change), collapse = ","),
+    tif_change = paste(unique(tif_change),collapse = ","),
+    ) %>%
+  ungroup() |>
+  group_by(actual_keypin) |>
+  mutate(
+    pin_classes_2011 = pin_classes[year == 2011],
+    pin_classes_2022 = pin_classes[year == 2022],
+    base_year_fmv_2011 = fmv[year == 2011],
+    end_year_fmv_2022 = fmv[year == 2022],
+    fmv_growth_2011 = fmv/base_year_fmv_2011,
+    fmv_2022_2011_diff = end_year_fmv_2022 - base_year_fmv_2011,
+   # land_use = paste(unlist(land_use), collapse = ","),
+    #incent_change = paste(unlist(incent_change), collapse = ","),
+   # landuse_change = paste(distinct(unlist(landuse_change)), collapse = ",")
+    ) %>% 
+  ungroup()
+
+were_exempt <- ptax_proj_summs %>%
+  group_by(actual_keypin) |>
+  filter(fmv == 0 & year == 2011)
+were_exempt
+
+became_exempt <- ptax_proj_summs %>%
+  group_by(actual_keypin) |>
+  filter(fmv == 0 & year == 2022)  |> arrange(desc(project_pins))
+became_exempt
+
+
+ptax_proj_summs <- ptax_proj_summs %>% 
+  filter(!actual_keypin %in% were_exempt$actual_keypin) %>% ## creates Infinite growth but these are the observations we do want to examine more for vacant to non-vacant properties.
+  filter(!actual_keypin %in% became_exempt$actual_keypin)
+
+```
+
+852 projects have a combined FMV of \$0 in 2011 but have value in 2022. 2,294 PINs have FMV > $0 in 2011 but become tax exempt by 2022. 
+
+
+> Problem example 1: 3714512 - DAVITA INC is a project where all PINs were exempt in 2011 and had FMV values of 0 but became an incentive project in 2015 with 800 level PINs. Using FMV growth from 2011 results in a growth of INF and would need to be dropped from the model.
+
+Problem example 2: 7308877 - LYCEE FRANCAIS DE CHIC	 became tax exempt. Filtering out PINs
+
+> making binary variable for if a PIN went from vacant to not-vacant or not might work in a logit model though.
+
+```{r}
+#| eval: false 
+
+ptax_proj <- ptax_proj %>%
+  mutate(#incent_change = as.factor(incent_change),
+        # landuse_change = as.factor(landuse_change),
+       #  triad = as.factor(Triad),
+       #  in_tif = as.factor(in_tif),
+         land_use = as.factor(land_use),
+         incent_prop = as.factor(incent_prop),
+         clean_name = as.factor(clean_name),
+         fmv_growth_2011 = round(fmv_growth_2011)) |>
+  
+  mutate(incent_change = relevel(incent_change, ref = "Never Incentive"),
+         landuse_change = relevel(landuse_change, ref = "Always Commercial"),
+         incent_prop = relevel(incent_prop, ref = "Non-Incentive"),
+         
+         #triad = relevel(triad, ref = "North"),
+         land_use = relevel(land_use, ref = "Commercial")
+  ) |>
+  # Create binary variables
+  mutate(incent_change_bin = as.factor(ifelse(incent_change == 
+                                                "Changes Sometime", 1, 0)),
+         prop_use_change_bin = as.factor(ifelse(landuse_change == 
+                                                  "Changes Land Use", 1, 0)),
+         is_chicago = as.factor(ifelse(clean_name == "Chicago", 1, 0))
+  ) |>
+  rename(fmv_2011 = base_year_fmv_2011) |>
+  arrange(pin, year)
+```
+
+```{r eval=FALSE}
+library(plm)
+
+proj_panel <- ptax_proj_summs %>% 
+  select(actual_keypin, year, in_tif, incent_pins, project_pins, 
+         fmv_growth_2011, base_year_fmv_2011)  %>% 
+  (is.numeric(fmv_growth_2011)) %>% 
+  arrange(actual_keypin, year) %>% 
+  filter(!is.na(actual_keypin ) ) 
+
+proj_panel <- proj_panel %>%
+  pdata.frame(index = c("actual_keypin", "year"))
+
+plm(fmv_growth_2011 ~   incent_pins + project_pins + in_tif, 
+    data = proj_panel,
+    model = "within",
+    effect = "twoways") %>% summary()
+```
+
