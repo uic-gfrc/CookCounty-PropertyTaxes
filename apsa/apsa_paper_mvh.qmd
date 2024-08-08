@@ -2,7 +2,9 @@
 title: "Polycentricity & Representation"
 subtitle: "Cook County Descriptive Statistics<br>(2012-2022)"
 author: "Michael Van Hulle"
-date: "July 11, 2024"
+date: "August 8, 2024"
+date-modified: last-modified
+date-format: long
 format: 
   html:
     embed-resources: true
@@ -17,41 +19,66 @@ knitr:
   opts_chunk:
     warning: true
     message: false
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup}
-#| Output: FALSE
+#| output: false
 
 library(tidyverse)
 library(fixest)
 library(modelsummary)
-library(dataReporter)
-
+library(tinytable)
+library(scales)
 
 options(scipen = 999)
 
 ```
 
-Import data
+# Import and clean data
 
 ```{r data_import}
 #| output: false
 
-# 1865016 obs.
-df <- read_csv("./apsa_df.csv")
+df <- read_csv("./apsa_data.csv")
 
-#summarize(df)
+df_clean <- df |>
+  rename_with(~ gsub("^tc_c_", "", .))
+
+df_clean |>
+  select(!c(tax_code, clean_name, year, class)) |>
+  datasummary_skim()
+
 ```
-```{r data_cleaning}
 
-df <- df |>
-  # dropping irrelevant variables
-  select(year, pin, tax_code, clean_name, agency_num, class, fmv, incent_prop, major_class_type, av, eq_av, eav, taxed_fmv, untaxable_value_fmv, fmv_inTIF,
-         fmv_tif_increment, fmv_incents_tif_increment, total_billed, final_tax_to_dist, final_tax_to_tif, tax_code_rate, taxing_agency_count, propclass_1dig,
-         assess_ratio,improvement_ind, vacant_ind, land, Alea_cat, in_tif, fmv_incents_inTIF)
+# Tax code as unit of observation
 
-# Let's look at this dataframe!  
-summary(df)
+```{r}
+
+# 346222 obs.
+
+if (any(!is.finite(df_clean$n))) {
+  stop("Non-finite values detected in df_clean$n")
+}
+
+# Compute the max value safely
+max_value <- max(df_clean$n, na.rm = TRUE)
+
+# Plot with rescaled y-axis
+df_clean |>
+  select(year, tax_code) |>
+  distinct() |>
+  group_by(year) |>
+  reframe(n = n()) |>
+  ggplot(aes(x = year, y = n)) +
+  geom_col() +
+  geom_text(aes(label = scales::label_number(scale = 1e-3)(n)), vjust = -0.5) +
+  scale_y_continuous(labels = scales::label_number(scale = 1e-3, suffix = "K"),
+                     breaks = seq(0, max_value, by = 1000)) +
+  labs(x = "Year", y = "Tax Codes per Year") +
+  theme_classic()
+  
 
 ```
 
