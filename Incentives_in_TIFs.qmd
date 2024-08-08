@@ -51,6 +51,8 @@ info = TRUE) #notes whether or not table is filtered
 # link to the API output as a JSON file
 muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/politicalBoundary/MapServer/2/query?outFields=*&where=1%3D1&f=geojson")
 
+forests <- read_sf("https://services2.arcgis.com/I5Or36sMcO7Y9vQ3/arcgis/rest/services/Forest_Preserve_Nature_Preserves/FeatureServer/0/query?outFields=*&where=1%3D1&f=geojson")
+
 
 
 
@@ -110,24 +112,24 @@ bor <- read_csv("Output/borappeals.csv") %>%
   mutate(project_appellant = paste(project_id, sep = "-", appellant))
 
 
-bor %>% 
-  group_by(tax_year, project_id, appellant) %>% 
-  summarize(pincount = n(),
-             pins = list(pin)) %>% 
-  filter(pincount > 1)  %>% 
-  arrange(desc(tax_year))  %>% 
-  head() %>%
-  datatable(rownames = FALSE)
-
-bor %>% 
-  group_by(tax_year, project_id) %>% 
-  summarize(pincount = n(),
-            appellant = list(unique(appellant)),
-             pins = list(pin)) %>% 
-  filter(pincount > 1)  %>% 
-  arrange(desc(tax_year))  %>% 
-  head() %>%
-  datatable(rownames = FALSE)
+# bor %>% 
+#   group_by(tax_year, project_id, appellant) %>% 
+#   summarize(pincount = n(),
+#              pins = list(pin)) %>% 
+#   filter(pincount > 1)  %>% 
+#   arrange(desc(tax_year))  %>% 
+#   head() %>%
+#   datatable(rownames = FALSE)
+# 
+# bor %>% 
+#   group_by(tax_year, project_id) %>% 
+#   summarize(pincount = n(),
+#             appellant = list(unique(appellant)),
+#              pins = list(pin)) %>% 
+#   filter(pincount > 1)  %>% 
+#   arrange(desc(tax_year))  %>% 
+#   head() %>%
+#   datatable(rownames = FALSE)
 ```
 
 For the Archived Parcel Universe:
@@ -147,7 +149,11 @@ parcuniverse_keypins <- readxl::read_xlsx("./Inputs/parceluniverse_keypins_20240
   select(-c(pin_7dig, pin, Column1)) %>%
   filter(class != "EX")
 
-puni_keypins <- parcuniverse_keypins %>% select(pin14, keypin, proration_rate) %>% rename(puni_keypin = keypin)
+puni_keypins <- parcuniverse_keypins %>% 
+select(pin14, 
+puni_keypin = keypin, 
+proration_rate2022 = proration_rate, 
+mailing_name2022 = mailing_name)
 
 parcuniverse_keypins %>% 
   group_by(keypin
@@ -171,7 +177,8 @@ bor_pins <- bor %>%
   group_by(pin) %>% 
   arrange(desc(tax_year)) %>%
   summarize(pin = first(pin),
-            class_bor = list(unique(class)),
+            class_bor = list(class),
+taxyear_appealed = list(tax_year),
             appellant = first(appellant),
             project_id = first(project_id), 
             timesappealed = n() ) %>%
@@ -179,29 +186,14 @@ bor_pins <- bor %>%
 
 
 #46,250 distinct projects based on IDs
-projects <- bor_pins %>% distinct(project_id)
+# projects <- bor_pins %>% distinct(project_id)
 
-#38,808 distinct apellant names
-appellants <- bor_pins %>% distinct(appellant)
+#38,808 distinct appellant names
+# appellants <- bor_pins %>% distinct(appellant)
 
 # 48,993 distinct project id-appellant combinations
 projects_appellant <- bor_pins %>% 
   distinct(project_id, appellant)
-
- 
-bor_pins %>%
-  group_by(project_id) %>%
-  summarize(pincount = n()) %>%
-  arrange(desc(pincount)) %>% 
-  # head() %>% 
-  datatable(rownames = FALSE)
-
-bor_pins %>% 
-  group_by(appellant) %>%
-  summarize(pincount = n()) %>%
-  arrange(desc(pincount)) %>%  
-  head() %>% 
-  datatable(rownames = FALSE)
 ```
 
 ### Joined Pin Data
@@ -215,17 +207,12 @@ Pull in the joined pin and exemption data for 2022. Extracted from PTAXSIM. See 
 
 loa <- read_csv("inputs/ccao_loa.csv") %>% filter(year == 2022)
 
-
-
-# file created in helper_pull_incentivepins_allyears.R
-# ptax_pins <- read_csv("./Output/incentivePINs_allyears.csv") 
-
 # all pins for 2022
 ptax_pins <- read_csv("Output/Dont_Upload/0_joined_PIN_data_2022.csv") %>% 
   mutate(class = as.numeric(class)) %>%
   #        # keep 500-899 class PINs
-  filter((class >= 400 & class < 900)  
-#between(class, 0, 199) | between(class, 400, 899)
+  filter(#(class >= 400 & class < 900) |
+between(class, 0, 199) | between(class, 400, 899)
   #          # and keep land PINs if we want land property owned by them too.
   #        (class >= 100 & class < 200)  
           )  %>%
@@ -233,7 +220,19 @@ ptax_pins <- read_csv("Output/Dont_Upload/0_joined_PIN_data_2022.csv") %>%
 mutate(fmv = ifelse(is.na(fmv), 0, fmv)) %>%
 select(-c(exe_homeowner:exe_vet_dis_ge70))
 
-ptax_pins <- ptax_pins %>% left_join(puni_keypins, by = c("pin" = "pin14"))
+ptax_pins <- ptax_pins %>% 
+left_join(bor_pins) %>%
+left_join(puni_keypins, by = c("pin" = "pin14")) %>%
+select(proj_appeallant, puni_keypin, pin, tax_code, class, class_bor, tax_code_rate, fmv, everything()) %>%
+select(-c(has_HO_exemp:has_DV_exemp))
+
+
+ptax_pins %>% 
+     filter(is.na(proj_appeallant) & is.na(puni_keypin) & class < 200)
+
+ptax_pins <- ptax_pins %>% 
+     filter((!is.na(proj_appeallant) & !is.na(puni_keypin)) | class > 200) 
+
 
 ```
 
@@ -258,7 +257,20 @@ proj_xwalk <- read_csv("Output/all_keypins.csv")
 # combine project IDs to PINs:
 ptax_pins <- ptax_pins %>% left_join(proj_xwalk, by = "pin")
 
-ptax_pins <- ptax_pins %>% left_join(bor_pins, by = "pin")
+project_sums <- ptax_pins %>% 
+mutate(actual_keypin = ifelse(is.na(proj_appeallant), puni_keypin, proj_appeallant))%>%
+mutate(actual_keypin = ifelse(is.na(actual_keypin), keypin, actual_keypin))%>%
+
+group_by(actual_keypin) %>%
+summarize(
+fmv = sum(fmv),
+tax_code = mean(tax_code),
+final_tax_to_dist = sum(final_tax_to_dist),
+pin_classes = list(unique(class)), 
+incent_pins = sum(ifelse(class >= 600 & class < 900, 1, 0)),
+project_pins = n()
+)
+project_sums
 
 
 #  create tc_muninames from helper file:
@@ -288,18 +300,18 @@ ptax_pins <- ptax_pins %>%
 #| label: tbl-createbothids2
 #| tbl-cap: "Incentive Properties only. Count of PINs in project ID (using `both_ids`). both_ids is created from using the BoR appeal ids as the default group ID. Then if a PIN in ptaxsim doesn't match to a Board of Review appeal PIN, project IDs from the commercial valuation data set are used."
 
-# now do it the other way and compare 
+
+newproject_pinlist <- ptax_pins %>% 
+mutate(actual_keypin = ifelse(is.na(proj_appeallant), puni_keypin, proj_appeallant)) %>%
+mutate(actual_keypin = ifelse(is.na(actual_keypin), keypin, actual_keypin)) %>%
+select(pin, actual_keypin)
+  
+  
 ptax_pins <- ptax_pins %>% 
-  mutate(both_ids = puni_keypin) %>%
-  group_by(puni_keypin) %>% 
-  mutate(puni_PC = n()) %>%
-  ungroup() %>%
-  mutate(
-          no_punimatch = ifelse(is.na(puni_keypin) | puni_PC < 2, 1, 0),
-          both_ids = ifelse(puni_PC < 2, NA, both_ids),
-          both_ids = ifelse(is.na(both_ids), project_id, both_ids),
-          both_ids = ifelse(is.na(both_ids), keypin, both_ids ),
-          both_ids = ifelse(is.na(both_ids), pin, both_ids))
+mutate(actual_keypin = ifelse(is.na(proj_appeallant), puni_keypin, proj_appeallant)) %>%
+mutate(actual_keypin = ifelse(is.na(actual_keypin), keypin, actual_keypin)) %>%
+mutate(both_ids = actual_keypin)
+
 
 ptax_pins %>%
   group_by(both_ids) %>%
@@ -809,6 +821,7 @@ show.limits = TRUE,
     name = "Number of Projects",
    ) +
    geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray70')+
+   geom_sf_pattern(data = forests, aes(geometry = geometry),  pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'darkgreen')+
     geom_sf(data = bound_tif, aes(geometry = geometry#, fill = project_count
               ), color = "black", alpha = 0.5, fill ="orange")
 
