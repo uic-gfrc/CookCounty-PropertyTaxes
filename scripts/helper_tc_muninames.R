@@ -1,4 +1,5 @@
 ### Code for pulling unique tax codes from PTAXSIM ###
+### for tax year 2021  
 ### Identifies the municipality name that taxes each tax code ###
 ### Joins "clean names", agency_num, etc. to unique tax codes
 
