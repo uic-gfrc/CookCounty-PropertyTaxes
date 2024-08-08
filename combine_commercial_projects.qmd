@@ -91,12 +91,14 @@ bor_pins <- bor %>%
   group_by(pin) %>% 
   arrange(desc(tax_year)) %>%
   summarize(pin = first(pin),
-            class_bor = list(unique(class)),
+            class_bor = list(class),
             appellant = first(appellant),
             project_id = first(project_id), 
+            tax_year_appealed = list(tax_year),
             timesappealed = n() ) %>%
   mutate(proj_appeallant = paste(project_id, "-", appellant))
-bor_pins %>% head()
+
+bor_pins %>% head() %>% unnest()
 ```
 
 ```{r}
@@ -118,6 +120,7 @@ bor_pins %>%
 #| label: tbl-borproject-appellants
 #| tbl-cap: "**Non-residential PINs associated with an appellant each tax year.** Excludes property classes 0-399. Data from Board of Review Appeals dataset on Cook Data Portal. "
 #| eval: false
+#| include: false
 
 
 appellant_table <- bor %>% 
@@ -129,13 +132,10 @@ appellant_table <- bor %>%
             class_bor = list(unique(class)),
             appellant = first(appellant),
             project_id = first(project_id), 
-            timesappealed = n(),
-            tax_year=tax_year) %>%
+            timesappealed = n()) %>%
   mutate(proj_appellant = paste(project_id, "-", appellant)) %>%
   ungroup() %>%
   group_by(tax_year, proj_appellant) %>%
-
- # group_by(tax_year, appellant) %>%
   summarize(pincount = n()) %>%
   arrange(desc(pincount))%>%
   pivot_wider(names_from = "tax_year", values_from = "pincount")%>%  
@@ -151,19 +151,17 @@ appellant_table
 
 
 appellant_table_moreyears <- bor %>% 
-  filter(class > 299 #& tax_year > 2018
-         ) %>%
+  filter(class > 299 | class < 200) %>%     # Exclude Class 2 residential pins
   mutate(has_incent = ifelse(class >=600 & class < 900, 1, 0)) %>%
   group_by(pin) %>% 
   arrange(desc(tax_year)) %>%
   summarize(pin = first(pin),
-           # incent_pins = sum(has_incent),
-            class_bor = list(unique(class)),
+            class_bor = class,
             appellant = first(appellant),           
             project_id = first(project_id), 
             timesappealed = n(),
-            tax_year=tax_year, 
-            has_incent = has_incent) %>%
+            has_incent = has_incent, 
+           tax_year = tax_year) %>%
   mutate(proj_appellant = paste(project_id, "-", appellant)) %>%
   ungroup() 
 
@@ -178,13 +176,44 @@ appellant_table_moreyears %>%
 
 appellant_table_moreyears %>%
   group_by(tax_year, proj_appellant) %>% 
-  summarize(#pincount = n(),
-    incent_count = sum(has_incent)) %>%
-    #  filter(pincount > 1) %>%
- # select(-pincount) %>%
+  summarize(incent_count = sum(has_incent)) %>%
+  filter(incent_count > 1) %>%
   arrange(desc(tax_year), desc(incent_count)) %>%
   pivot_wider(names_from = "tax_year", values_from = "incent_count")%>%  
   datatable(rownames = FALSE)
+```
+
+
+```{r}
+parcuniverse_keypins <- readxl::read_xlsx("./Inputs/parceluniverse_keypins_20240725.xlsx", 
+                                          sheet = "keypins_20240725") %>%
+  mutate(pin14 = str_pad(as.character(pin), width = 14, side = "left", pad = "0"),
+         keypin = str_pad(as.character(proration_key_pin), width = 14, side = "left", pad = "0"),
+         pin10 = str_sub(pin14,1,10),
+         pin7 = str_sub(pin14,1,7), .before = "pin",) %>%
+  select(-c(pin_7dig, pin, Column1)) %>%
+  filter(class != "EX")
+
+parcuniverse_keypins <- parcuniverse_keypins |> 
+  left_join(bor_pins, by = c("pin14"= "pin"))
+
+
+puni_keypins <- parcuniverse_keypins  %>% 
+  select(pin14, keypin, proration_rate) %>% 
+  rename(puni_keypin = keypin)
+
+parcuniverse_keypins %>% 
+  group_by(keypin
+#, mailing_name
+           ) %>% 
+  summarize(pincount = n(), 
+            class = mean(as.numeric(class), na.rm=TRUE),
+            has_incent = sum(ifelse(as.numeric(between(class, 600, 899)), 1, 0))) %>%
+  filter(pincount > 1) %>% 
+  arrange(desc(has_incent), desc(pincount))
+
+# parcuniverse_keypins %>% filter(is.na(mailing_name))  # 21,612 keypins
+# parcuniverse_keypins %>% distinct(keypin)  # 21,612 keypins
 ```
 
 ## Create Project ID
@@ -209,6 +238,8 @@ table_list <- ptax_pins %>%
   arrange(desc(pincount))
 
 table_list %>% datatable(rownames = FALSE)
+
+table_list %>% summarize(sum(has_incent))
 ```
 
 
