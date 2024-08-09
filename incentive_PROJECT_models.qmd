@@ -55,9 +55,24 @@ ptax_proj <- ptax_proj %>%
   select(year, actual_keypin, pin, tax_code_num, class, class_bor, tax_code_rate, fmv, av_clerk, tax_bill_total, everything())
 ```
 
+```{r manual-pin-codings, eval = FALSE}
+
+ptax_proj <- ptax_proj |> 
+mutate(actual_keypin = case_when(
+  pin %in% c(09253201421002, 09253201421007) ~ "ICUSS - 7720 W. Touhy", 
+  pin %in% c(04333020971001:04333020971020) ~  "611 Milwaukee Ave",
+  pin %in% c(18282000461001) ~ "ADCON EXPRESS INC", 
+  pin %in% c(18282000461003, 20084040010000: 20084040060000 ) ~ "959 W 51st St.",
+
+    pin %in% c(17221101220000, 17221101230000, 17221101240000 ) ~ "1231 S. Prairie Ave.",
+  TRUE ~ as.character(actual_keypin)))
+ 
+```
+
 
 ```{r}
 ptax_proj_summs <- ptax_proj %>% 
+  
   group_by(year, actual_keypin) %>%
   summarize(
     incent_pins = sum(ifelse(class >= 600 & class < 900, 1, 0)),
@@ -114,6 +129,13 @@ ptax_proj_summs <- ptax_proj_summs %>%
 Problem example 2: 7308877 - LYCEE FRANCAIS DE CHIC	 became tax exempt. Filtering out PINs
 
 > making binary variable for if a PIN went from vacant to not-vacant or not might work in a logit model though.
+
+
+**Large FMV Growth PINS**:
+
+- 17221101230000 for ACRON Navy Pier Hotel LLC was land class 100 in 2011, became 590 and gained value after it opened? 
+
+- 17221101230000 had large growth but it should be added to a project. (PINs in project also experienced subdivision adn changed PIN numbers)
 
 ```{r}
 #| eval: false 
