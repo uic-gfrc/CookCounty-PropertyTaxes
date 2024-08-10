@@ -41,10 +41,11 @@ options(scipen = 999)
 ```{r data_import}
 #| output: false
 
-df <- read_csv("./apsa_data.csv")
+df <- read_csv("./apsa/apsa_data.csv")
 
 df_clean <- df |>
-  rename_with(~ gsub("^tc_c_", "", .))
+  rename_with(~ gsub("^tc_c_", "", .)) |>
+  rename_with(~ gsub("^PC_", "pins_", .))
 
 df_clean |>
   select(!c(tax_code, clean_name, year, class)) |>
@@ -58,126 +59,49 @@ df_clean |>
 
 # 346222 obs.
 
-if (any(!is.finite(df_clean$n))) {
-  stop("Non-finite values detected in df_clean$n")
-}
+df_clean_temp <- df_clean |>
+  # We want to remove observations that are in unincorporated parts of Cook County
+  # 321,468 after removing unincorporated taxcodes
+  filter(!is.na(clean_name)) |>
+  group_by(tax_code, year) |>
+  # Calculate landuse mix
+  mutate(hhi = (sum(fmv_residential)/sum(fmv))^2 + (sum(fmv_industrial)/sum(fmv))^2 + (sum(fmv_commercial)/sum(fmv))^2)
 
-# Compute the max value safely
-max_value <- max(df_clean$n, na.rm = TRUE)
-
-# Plot with rescaled y-axis
-df_clean |>
-  select(year, tax_code) |>
-  distinct() |>
-  group_by(year) |>
-  reframe(n = n()) |>
-  ggplot(aes(x = year, y = n)) +
-  geom_col() +
-  geom_text(aes(label = scales::label_number(scale = 1e-3)(n)), vjust = -0.5) +
-  scale_y_continuous(labels = scales::label_number(scale = 1e-3, suffix = "K"),
-                     breaks = seq(0, max_value, by = 1000)) +
-  labs(x = "Year", y = "Tax Codes per Year") +
-  theme_classic()
+df_temp_tc <- df_clean_temp |>
+  group_by(year, tax_code) |>
+  reframe(rate = first(tax_code_rate), municipality = first(clean_name), mean_fmv = first(mean_fmv_all), median_fmv = first(median_fmv_all), 
+          min_fmv_all = first(min_fmv_all), fmv_incentive = sum(fmv_incentive), fmv_taxed = sum(fmv_taxed), fmv_inTIF = sum(fmv_inTIF), 
+          fmv_incents_inTIF = sum(fmv_incents_inTIF), fmv_residential = sum(fmv_residential), fmv_commercial = sum(fmv_commercial), 
+          fmv_industrial = sum(fmv_industrial), fmv = sum(fmv), tif_share = first(tif_share), total_tax = sum(total_bill_current), 
+          levy = sum(levy)
+            ) |>
+  arrange(year) |>
+  group_by(tax_code) |>
+  mutate(lag_fmv = lag(fmv, n = 1),
+         lag_fmv_incentive = lag(fmv_incentive, n = 1),
+         lag_fmv_tif = lag(fmv_inTIF, n = 1),
+         lag_incents_fmv_tif = lag(fmv_incents_inTIF),
+         delta_fmv = (fmv - lag_fmv)/lag_fmv
+  ) |>
+  ungroup()
   
 
 ```
 
 
+```{r very_naive}
+  
+lm()
+  
+  
+)
+
+```
+
 ```{r to_do}
 #| eval: FALSE
 
-comm_ind_pins_ever <- comm_ind_pins_ever |>
-  group_by(pin) |>
-  rename(land_use = Alea_cat) |>
-  mutate(incentive_years = sum(incent_prop == "Incentive"),
-         landuse_change = ifelse(
-           sum(land_use == "Commercial") == 17, "Always Commercial",
-           ifelse(sum(land_use == "Industrial") == 17, "Always Industrial",
-                  "Changes Land Use" )),
-         years_existed = n(),
-         base_year_fmv_2006 = ifelse(min(year)==2006, fmv[year == 2006], NA),
-         fmv_growth_2006 = fmv/base_year_fmv_2006,
-  )  %>%
-  ungroup() %>%
-  mutate(incent_change = case_when(
-    incentive_years == 17 ~ "Always Incentive",
-    incentive_years == 0 ~ "Never Incentive",
-    TRUE ~ "Changes Sometime")
-  )
 
-unincorp_pins <- comm_ind_pins_ever %>% filter(is.na(clean_name))
-# 3,919 observations are dropped because they are from unincorporated areas in Cook County.
-
-comm_ind_pins_ever <- comm_ind_pins_ever %>% filter(!is.na(clean_name))
-
-pin_classes<- comm_ind_pins_ever %>%
-  group_by(pin, class) %>%
-  summarize(count = n(),
-            first_year = first(year),
-            last_year = last(year)) %>%
-  ungroup() %>%
-  arrange(pin, first_year)
-
-
-unique_ptax_w_class <- pin_classes %>% group_by(pin) %>%
-  mutate(var2 = cumsum(row_number() == 1 | (class != dplyr::lag(class))))
-
-
-unique_ptax_wide <- unique_ptax_w_class %>%
-  pivot_wider(id_cols = "pin",
-              names_from = var2,
-              values_from = c(class, count, first_year, last_year))
-
-#write_csv(unique_ptax_wide, "./Output/pin_class_changes.csv")
-
-
-## 96,193 PINs exist every year - old
-## 95,355 PINs as of July 11 2024
-comm_ind_pins_ever %>%
-  filter(years_existed == 17) %>%
-  select(year, land_use, incent_prop, fmv_growth_2006) %>%
-  filter(year == 2022)
-
-#write_csv(comm_ind_pins_ever, "./Output/comm_ind_PINs_2006-2022.csv")
-
-
-dropped_pins <- comm_ind_2011to2022 <- comm_ind_pins_ever  %>%
-  filter(year >= 2011) %>%
-  group_by(years_existed = n()) %>%
-  filter(years_existed < 12)
-
-
-# 1.21 obs.
-comm_ind_2011to2022 <- comm_ind_pins_ever  %>%
-  filter(year >= 2011) %>%
-  group_by(pin) |>
-  mutate(incentive_years = sum(incent_prop == "Incentive"),
-         landuse_change =
-           ifelse(
-             sum(land_use == "Commercial") == 12, "Always Commercial",
-             ifelse(sum(land_use == "Industrial") == 12, "Always Industrial",
-                    ifelse(sum(land_use == "Exempt") == 12, "Drop Me",
-                           "Changes Land Use" ))),
-         years_existed = n()  )  %>%
-  ungroup() %>%
-  filter(years_existed == 12) %>%
-  group_by(pin) %>%
-  mutate(
-    base_year_fmv_2011 = fmv[year == 2011],
-    fmv_growth_2011 = fmv/base_year_fmv_2011,
-    incent_change = case_when(
-      incentive_years == 12 ~ "Always Incentive",
-      incentive_years == 0 ~ "Never Incentive",
-      TRUE ~ "Changes Sometime")
-  )
-
-
-
-comm_ind_2011to2022 <- comm_ind_2011to2022 |>
-  # 1.19mil obs.
-  filter(landuse_change!= "Drop Me") |>
-  # 1.18 mil obs.
-  filter(!(agency_num %in% cross_county_lines))
 
 ```
 
@@ -189,30 +113,7 @@ Initially, we have 1,282,930 PIN-year obs.
 
 ```{r data_clean}
 
-comm_ind_pins_2011 <- comm_ind_pins_ever  %>% 
-  #filter(year >= 2011) %>%
-  group_by(pin) |>
-  mutate(incentive_years = sum(incent_prop == "Incentive"),
-         landuse_change = 
-           ifelse(
-             sum(land_use == "Commercial") == 12, "Always Commercial",
-             ifelse(sum(land_use == "Industrial") == 12, "Always Industrial",
-                    ifelse(sum(land_use == "Exempt") == 12, "Drop Me",
-                           "Changes Land Use" ))),
-         years_existed = n()  
-         )  %>%
-  ungroup() %>%
-  #filter(years_existed == 12) %>%
-  group_by(pin) %>%
-  mutate(
-    base_year_fmv_2011 = fmv[year == 2011],
-    fmv_growth_2011 = fmv/base_year_fmv_2011,
-    incent_change = case_when(
-      incentive_years == 12 ~ "Always Incentive",
-      incentive_years == 0 ~ "Never Incentive",
-      TRUE ~ "Changes Sometime")
-  ) |> 
-  filter(landuse_change!= "Drop Me")
+
 
 ```
 
