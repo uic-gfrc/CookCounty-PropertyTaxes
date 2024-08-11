@@ -1,8 +1,8 @@
 ---
 title: "Polycentricity & Representation"
-subtitle: "Cook County Descriptive Statistics<br>(2012-2022)"
+subtitle: "Descriptive Statistics & Models<br>(2012-2022)"
 author: "Michael Van Hulle"
-date: "August 8, 2024"
+date: "August 11, 2024"
 date-modified: last-modified
 date-format: long
 format: 
@@ -15,16 +15,12 @@ format:
     toc: true
     toc-location: left
     df-print: paged
-knitr: 
-  opts_chunk:
-    warning: true
-    message: false
-editor_options: 
-  chunk_output_type: console
 ---
 
 ```{r setup}
 #| output: false
+
+# Load libraries
 
 library(tidyverse)
 library(fixest)
@@ -32,7 +28,21 @@ library(modelsummary)
 library(tinytable)
 library(scales)
 
+# Get rid of scientific notation
+
 options(scipen = 999)
+
+# Modelsummary Formatting
+
+fit_format <- function(x) format(round(x, 2), big.mark=",")
+
+fit <- list(
+  list("raw" = "nobs", "clean" = "N", "fmt" = fit_format),
+  list("raw" = "df", "clean" = "DF", "fmt" = fit_format),
+  list("raw" = "adj.r.squared", "clean" = "R2 Adj.", "fmt" = fit_format),
+  list("raw" = "F", "clean" = "F-stat.", "fmt" = fit_format),
+  list("raw" = "p.value", "clean" = "p-value", "fmt" = fit_format)
+)
 
 ```
 
@@ -41,39 +51,32 @@ options(scipen = 999)
 ```{r data_import}
 #| output: false
 
-df <- read_csv("./apsa/apsa_data.csv")
+df <- read_csv("./apsa_data.csv")
 
 df_clean <- df |>
   rename_with(~ gsub("^tc_c_", "", .)) |>
   rename_with(~ gsub("^PC_", "pins_", .))
 
-df_clean |>
-  select(!c(tax_code, clean_name, year, class)) |>
-  datasummary_skim()
-
 ```
 
-# Tax code as unit of observation
-
-```{r}
+```{r new_vars}
+#| output: false
 
 # 346222 obs.
 
-df_clean_temp <- df_clean |>
-  # We want to remove observations that are in unincorporated parts of Cook County
-  # 321,468 after removing unincorporated taxcodes
+df_tc <- df_clean |>
   filter(!is.na(clean_name)) |>
-  group_by(tax_code, year) |>
-  # Calculate landuse mix
-  mutate(hhi = (sum(fmv_residential)/sum(fmv))^2 + (sum(fmv_industrial)/sum(fmv))^2 + (sum(fmv_commercial)/sum(fmv))^2)
-
-df_temp_tc <- df_clean_temp |>
+  group_by(year) |>
+  mutate(cty_fmv = sum(fmv),
+         cty_mean_fmv = mean(fmv),
+         cty_med_fmv = median(fmv),
+         cty_sd_fmv = sd(fmv)) |>
+  ungroup() |>
   group_by(year, tax_code) |>
-  reframe(rate = first(tax_code_rate), municipality = first(clean_name), mean_fmv = first(mean_fmv_all), median_fmv = first(median_fmv_all), 
-          min_fmv_all = first(min_fmv_all), fmv_incentive = sum(fmv_incentive), fmv_taxed = sum(fmv_taxed), fmv_inTIF = sum(fmv_inTIF), 
-          fmv_incents_inTIF = sum(fmv_incents_inTIF), fmv_residential = sum(fmv_residential), fmv_commercial = sum(fmv_commercial), 
-          fmv_industrial = sum(fmv_industrial), fmv = sum(fmv), tif_share = first(tif_share), total_tax = sum(total_bill_current), 
-          levy = sum(levy)
+  reframe(rate = first(tax_code_rate), muni = first(clean_name), fmv_incentive = sum(fmv_incentive), fmv_taxed = sum(fmv_taxed),
+          fmv_inTIF = sum(fmv_inTIF), fmv_incents_inTIF = sum(fmv_incents_inTIF), fmv_residential = sum(fmv_residential), 
+          fmv_commercial = sum(fmv_commercial), fmv_industrial = sum(fmv_industrial), fmv = sum(fmv), total_rev_fmv = sum(total_bill_current), 
+          levy_fmv = sum(levy), cty_fmv = first(cty_fmv), cty_mean_fmv = first(cty_mean_fmv), cty_med_fmv = first(cty_med_fmv), cty_sd_fmv = first(cty_sd_fmv)
             ) |>
   arrange(year) |>
   group_by(tax_code) |>
@@ -81,72 +84,342 @@ df_temp_tc <- df_clean_temp |>
          lag_fmv_incentive = lag(fmv_incentive, n = 1),
          lag_fmv_tif = lag(fmv_inTIF, n = 1),
          lag_incents_fmv_tif = lag(fmv_incents_inTIF),
-         delta_fmv = (fmv - lag_fmv)/lag_fmv
+         delta_fmv = (fmv - lag_fmv)/lag_fmv,
+         lag_rate = lag(rate, n = 1),
+         lag_total_rev = lag(total_rev_fmv, n = 1),
+         land_hhi = (fmv_residential/fmv)^2 + (fmv_commercial/fmv)^2 + (fmv_industrial/fmv)^2,
+         perc_inc_prod = (fmv_industrial + fmv_commercial)/fmv,
+         chi = ifelse(muni == "Chicago", 1, 0)
   ) |>
+  ungroup()|>
+  group_by(year, muni) |>
+  mutate(muni_fmv = sum(fmv),
+         muni_tc_med = median(fmv),
+         muni_tc_mean = mean(fmv),
+         muni_tc_sd = sd(fmv)) |>
+  ungroup() |>
+  mutate(across(contains("fmv"),  ~ . / 1e6)) |>
+  mutate(tc_dist_med = (fmv - muni_tc_med)/muni_tc_sd,
+         tc_dist_mean = (fmv - muni_tc_mean)/muni_tc_sd,
+         cty_dist_med = (fmv - cty_med_fmv)/cty_sd_fmv,
+         cty_dist_mean = (fmv - cty_mean_fmv)/cty_sd_fmv) |>
+  filter(year >= 2012) |>
+  mutate(year = as.factor(year),
+         tax_code = as.character(tax_code),
+         muni = as.factor(muni),
+         chi = as.factor(chi)
+         ) |>
   ungroup()
-  
 
 ```
 
+# Descriptive Statistics
+
+```{r glimpse_new_vars}
+
+df_tc |>
+  select(!c(tax_code, muni, year)) |>
+  datasummary_skim()
+
+```
+
+# Best OLS Model
+
+**DV: FMV in Tax Code w/ Incentive Classification**
+
+```{r OLS}
+#| tbl-cap: "DV: FMV in Tax Code w/ Incentive Classification<br><i>Results are Robust to Mean and Median</i>"
+#| tbl-cap-location: top
+
+best_ols <- list(
+  
+  "(1)" = lm(fmv_incentive ~ cty_dist_mean + tc_dist_mean + land_hhi
+             + muni + year,
+             data = df_tc),
+
+  "(2)" = lm(fmv_incentive ~ cty_dist_mean + tc_dist_mean + land_hhi
+             + chi + chi*cty_dist_mean + chi*tc_dist_mean
+             + muni + year,
+             data = df_tc)
+      )
+
+modelsummary(best_ols,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+             coef_omit = "Intercept|muni|year"
+             )
+
+```
+
+Key takeaway: Chicago is less likely than the rest of the municipalities in Cook County to grant incentive classifications to low-FMV tax codes. This is important because it means Chicago is using an enabling rule (ability to grant incentive classifications) at a lower rate than the rest of Cook. This outcome lends itself to several interpretations, but, at a minimum, we know Chicago behaves differently.
+
+# Best FE Model
+
+**DV: FMV in Tax Code w/ Incentive Classification**
+
+```{r best_fe}
+#| tbl-cap: "DV: FMV in Tax Code w/ Incentive Classification"
+#| tbl-cap-location: top
+#| warning: false
+
+best_fe <- list(
+                
+  "(1)" = feols(fmv_incentive ~ cty_dist_mean + tc_dist_mean + land_hhi | muni + year,
+                data = df_tc),
+  
+  "(2)" = feols(fmv_incentive ~ cty_dist_mean + tc_dist_mean + land_hhi + chi
+                + chi*cty_dist_mean + chi*tc_dist_mean | muni + year,
+                data = df_tc),
+  
+  "(3)" = feols(fmv_incentive ~ cty_dist_mean + tc_dist_mean + land_hhi | year,
+                data = df_tc),
+  
+  "(4)" = feols(fmv_incentive ~ cty_dist_mean + tc_dist_mean + land_hhi + chi
+                + chi*cty_dist_mean + chi*tc_dist_mean | year,
+                data = df_tc)
+  )
+
+modelsummary(best_fe,
+             stars = TRUE,
+             fmt = function(x) round(x, 2)
+             )
+
+```
+
+Key takeaway: Chicago is less likely than the rest of the municipalities in Cook County to grant incentive classifications to low-FMV tax codes. This is important because it means Chicago is using an enabling rule (ability to grant incentive classifications) at a lower rate than the rest of Cook. This outcome lends itself to several interpretations, but, at a minimum, we know Chicago behaves differently.
+
+# Trial Models
+
+DV for *all* models is amount of FMV with incentive classification.
+
+## OLS
 
 ```{r very_naive}
+#| tbl-cap: "Naive Models (no control variables)"
+
+models_naive <- list(
   
-lm()
+  "(1)" = lm(fmv_incentive ~ fmv,
+             data = df_tc),
   
+  "(2)" = lm(fmv_incentive ~ fmv + rate,
+             data = df_tc),
+  
+  "(3)" = lm(fmv_incentive ~ fmv + rate + perc_inc_prod,
+             data = df_tc)
+
+  )
+
+modelsummary(models_naive,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+             coef_omit = "(Intercept)"
+             )
+
+```
+
+```{r w_controls}
+#| tbl-cap: "Naive Models with Muni and Year Controls"
+
+models_naive_controls <- list(
+  
+  "(1)" = lm(fmv_incentive ~ fmv + muni + year,
+             data = df_tc),
+  
+  "(2)" = lm(fmv_incentive ~ fmv + rate + muni + year,
+             data = df_tc),
+  
+  "(3)" = lm(fmv_incentive ~ fmv + rate + perc_inc_prod + muni + year,
+             data = df_tc)
   
 )
 
-```
-
-```{r to_do}
-#| eval: FALSE
-
-
-
-```
-
-# Pre-balancing
-
-Initially, we have 1,282,930 PIN-year obs. 
-
-## Cleanup
-
-```{r data_clean}
-
-
+modelsummary(models_naive_controls,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+             coef_omit = "Intercept|muni|year"
+             )
 
 ```
 
-## Descriptive Statistics
+```{r controls_lags}
 
-```{r unbalanced_descrips}
+models_lags_controls <- list(
+  
+  "(1)" = lm(fmv_incentive ~ fmv + lag_fmv + muni + year,
+             data = df_tc),
+  
+  "(2)" = lm(fmv_incentive ~ fmv + lag_fmv + perc_inc_prod + muni + year,
+             data = df_tc),
+  
+   "(3)" = lm(fmv_incentive ~ fmv + fmv^2 + perc_inc_prod + muni + year,
+             data = df_tc)
+)
 
-
-
-```
-
-# Balanced panel
-
-## Balancing panel
-
-```{r balance_panel}
+modelsummary(models_lags_controls,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+             coef_omit = "Intercept|muni|year"
+             )
 
 
 ```
 
+```{r controls_lags_hhi}
 
-### Tests of missingness
+models_lags_controls <- list(
+  
+  "(1)" = lm(log(fmv_incentive + 1) ~ log(fmv + 1) + log(lag_fmv + 1) + muni + year,
+             data = df_tc),
+  
+  "(2)" = lm(log(fmv_incentive + 1) ~ log(fmv + 1) + log(lag_fmv + 1) + land_hhi + muni + year,
+             data = df_tc),
+  
+   "(3)" = lm(log(fmv_incentive + 1) ~ log(fmv + 1) + log(lag_fmv + 1) + log(fmv^2 + 1) + land_hhi + muni + year,
+             data = df_tc)
+)
 
-```{r t_o_m}
+modelsummary(models_lags_controls,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+             coef_omit = "Intercept|muni|year"
+             )
+```
 
+```{r dif_from_tc}
+
+models_dif_from_tc <- list(
+  
+  "(1)" = lm(fmv_incentive ~ tc_dist_mean,
+             data = df_tc),
+  
+  "(2)" = lm(fmv_incentive ~ tc_dist_mean + land_hhi,
+             data = df_tc),
+  
+  "(3)" = lm(fmv_incentive ~ tc_dist_mean + muni + year,
+             data = df_tc),
+  
+  "(4)" = lm(fmv_incentive ~ tc_dist_mean + land_hhi + muni + year,
+             data = df_tc)
+  
+                        )
+
+modelsummary(models_dif_from_tc,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+             coef_omit = "Intercept|muni|year"
+             )
 
 ```
 
+```{r dif_from_cty}
 
-## Descriptive Statistics
+models_dif_from_cty <- list(
+  
+  "(1)" = lm(fmv_incentive ~ cty_dist_med,
+             data = df_tc),
+  
+  "(2)" = lm(fmv_incentive ~ cty_dist_mean,
+             data = df_tc),
+  
+  "(3)" = lm(fmv_incentive ~ cty_dist_med + muni + year,
+             data = df_tc),
+  
+  "(4)" = lm(fmv_incentive ~ cty_dist_mean + muni + year,
+             data = df_tc)
+  
+                            )
 
-```{r balanced_stats}
+modelsummary(models_dif_from_cty,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+             coef_omit = "Intercept|muni|year"
+             )
 
+```
 
+```{r dif_from_cty_land_use}
+
+models_dif_cty_landuse <- list(
+  
+  "(1)" = lm(fmv_incentive ~ cty_dist_med + land_hhi,
+             data = df_tc),
+  
+  "(2)" = lm(fmv_incentive ~ cty_dist_med + land_hhi + muni + year,
+             data = df_tc)
+  
+                  )
+
+modelsummary(models_dif_cty_landuse,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+             coef_omit = "Intercept|muni|year"
+             )
+
+```
+
+```{r cty_tc_land_use}
+
+models_cty_tc_landuse <- list(
+  
+  "(1)" = lm(fmv_incentive ~ cty_dist_med + tc_dist_med + land_hhi,
+             data = df_tc),
+  
+  "(2)" = lm(fmv_incentive ~ cty_dist_med + tc_dist_med + land_hhi + muni + year,
+             data = df_tc)
+  
+                  )
+
+modelsummary(models_cty_tc_landuse,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+             coef_omit = "Intercept|muni|year"
+             )
+
+```
+
+```{r cty_tc_land_use_mean}
+
+models_cty_tc_landuse <- list(
+  
+  "(1)" = lm(fmv_incentive ~ cty_dist_mean + tc_dist_mean + land_hhi,
+             data = df_tc),
+  
+  "(2)" = lm(fmv_incentive ~ cty_dist_mean + tc_dist_mean + land_hhi + muni + year,
+             data = df_tc)
+  
+                  )
+
+modelsummary(models_cty_tc_landuse,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+             coef_omit = "Intercept|muni|year"
+             )
+
+```
+
+## FE at municipality level
+
+```{r basic_fe_trial}
+
+fe_ez <- list(
+  
+  "(1)" = feols(fmv_incentive ~ cty_dist_mean + tc_dist_mean + land_hhi |
+                  muni + year,
+                data = df_tc),
+                
+  "(2)" = feols(fmv_incentive ~ cty_dist_mean + tc_dist_mean + land_hhi + chi
+                + chi*cty_dist_mean + chi*tc_dist_mean | muni + year,
+                data = df_tc),
+  
+  "(3)" = feols(fmv_incentive ~ cty_dist_mean + tc_dist_mean + land_hhi + chi
+                + chi*cty_dist_mean + chi*tc_dist_mean | year,
+                data = df_tc)
+  )
+
+modelsummary(fe_ez,
+             stars = TRUE,
+             fmt = function(x) round(x, 2)
+             )
 
 ```
