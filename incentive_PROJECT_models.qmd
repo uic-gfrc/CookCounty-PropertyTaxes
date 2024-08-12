@@ -1,9 +1,24 @@
 ---
 title: "Incentive PROJECT Models"
-format: html
+date: "August 10, 2024"
+date-modified: last-modified
+format: 
+  html:
+    embed-resources: true
+    theme: lumen
+    code-fold: true
+    code-line-numbers: true
+    code-overflow: wrap
+    toc: true
+    toc-location: left
+    df-print: paged
+knitr: 
+  opts_chunk:
+    warning: true
+    message: false
 ---
 
-## Fixed Effect Model using Project Level
+## Data prep
 
 ```{r}
 library(tidyverse)
@@ -55,7 +70,7 @@ ptax_proj <- ptax_proj %>%
   select(year, actual_keypin, pin, tax_code_num, class, class_bor, tax_code_rate, fmv, av_clerk, tax_bill_total, everything())
 ```
 
-```{r manual-pin-codings, eval = FALSE}
+```{r manual-pin-codings}
 
 ptax_proj <- ptax_proj |> 
 mutate(actual_keypin = case_when(
@@ -169,12 +184,13 @@ ptax_proj_summs %>%
   modelsummary::datasummary_skim("categorical")
 ```
 
+## Fixed Effect Model using Project Level
 
 ```{r}
 library(plm)
 
 proj_panel <- ptax_proj_summs %>% 
-  select(actual_keypin, year, incent_change2, tif_change2, incent_prop, landuse_change2, land_use2, in_tif2, triad, fmv_growth_2011, base_year_fmv_2011, project_pins, incent_pins)  %>% 
+  select(actual_keypin, year, incent_change2, tif_change2, incent_prop, landuse_change2, land_use2, in_tif2, triad, fmv_growth_2011, base_year_fmv_2011, project_pins, incent_pins, clean_name)  %>% 
   mutate( fmv_growth_2011 = as.numeric(fmv_growth_2011)) %>% 
   arrange(actual_keypin, year) %>% 
   filter(!is.na(actual_keypin ) & !is.na(fmv_growth_2011) & !is.na(base_year_fmv_2011) )  %>%
@@ -208,8 +224,8 @@ plm(fmv_growth_2011 ~ land_use2,
 
 library(fixest)
 
-panel(proj_panel, id = c(actual_keypin, year))
+#panel(proj_panel, id = c(actual_keypin, year))
 
-feols(fmv_growth_2011 ~ land_use2 + incent_prop | year, data = proj_panel)  %>% summary()
+feols(fmv_growth_2011 ~ land_use2*incent_prop + in_tif2 | actual_keypin, data = proj_panel)  %>% summary()
 ```
 
