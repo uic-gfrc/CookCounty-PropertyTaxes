@@ -69,6 +69,10 @@ mutate(actual_keypin = case_when(
  
 ```
 
+```{r}
+modelsummary::datasummary_skim(ptax_proj)
+```
+
 
 ```{r}
 ptax_proj_summs <- ptax_proj %>% 
@@ -80,14 +84,15 @@ ptax_proj_summs <- ptax_proj %>%
     fmv = sum(fmv, na.rm=TRUE),
     tax_code = mean(tax_code_num, na.rm=TRUE),
     in_tif = mean(in_tif, na.rm=TRUE),
-    pin_classes = ifelse(project_pins < 10, list(class), list(unique(class))),
-    land_use = paste(unique(land_use), collapse = ","),
+    pin_classes = paste(sort(unique(class)), collapse = ", "),
+    land_use = paste(sort(unique(land_use)), collapse = ", "),
+    incent_prop = paste(sort(unique(incent_prop)), collapse = ", "),
     triad = first(Triad),
     exe_abate = sum(exe_abate, na.rm = TRUE),
     clean_name = first(clean_name),
-    landuse_change= paste(unique(landuse_change), collapse = ","),
-    incent_change = paste(unique(incent_change), collapse = ","),
-    tif_change = paste(unique(tif_change),collapse = ","),
+    landuse_change= paste(sort(unique(landuse_change)), collapse = ", "),
+    incent_change = paste(sort(unique(incent_change)), collapse = ", "),
+    tif_change = paste(sort(unique(tif_change)), collapse = ", "),
     ) %>%
   ungroup() |>
   group_by(actual_keypin) |>
@@ -97,13 +102,29 @@ ptax_proj_summs <- ptax_proj %>%
     base_year_fmv_2011 = fmv[year == 2011],
     end_year_fmv_2022 = fmv[year == 2022],
     fmv_growth_2011 = fmv/base_year_fmv_2011,
-    fmv_2022_2011_diff = end_year_fmv_2022 - base_year_fmv_2011,
-   # land_use = paste(unlist(land_use), collapse = ","),
-    #incent_change = paste(unlist(incent_change), collapse = ","),
-   # landuse_change = paste(distinct(unlist(landuse_change)), collapse = ",")
-    ) %>% 
+    fmv_2022_2011_diff = end_year_fmv_2022 - base_year_fmv_2011) %>% 
   ungroup()
 
+ptax_proj_summs <- ptax_proj_summs %>%
+  mutate(landuse_change2 = ifelse(landuse_change!= "Always Commercial" & landuse_change != "Always Industrial", "Changes", landuse_change),
+         land_use2 = ifelse(!land_use %in% c("Commercial", "Industrial"), "Multi Land Uses", land_use),
+         tif_change2 = ifelse(!tif_change %in% c("Always TIF", "Never TIF"), "Changes", tif_change),
+         incent_change2 = ifelse(!incent_change %in% c("Always Incentive", "Never Incentive"), "Changes", incent_change),
+         in_tif2 = ifelse(in_tif != 0 & in_tif != 1, "Partly in TIF", in_tif))
+```
+
+
+```{r}
+# ptax_proj_summs %>% is.finite() %>% modelsummary::datasummary_skim()
+
+ptax_proj_summs %>% 
+  select(-c(land_use, incent_prop, landuse_change, tif_change, incent_change)) %>% 
+  modelsummary::datasummary_skim("categorical")
+
+```
+
+
+```{r}
 were_exempt <- ptax_proj_summs %>%
   group_by(actual_keypin) |>
   filter(fmv == 0 & year == 2011)
@@ -119,14 +140,16 @@ ptax_proj_summs <- ptax_proj_summs %>%
   filter(!actual_keypin %in% were_exempt$actual_keypin) %>% ## creates Infinite growth but these are the observations we do want to examine more for vacant to non-vacant properties.
   filter(!actual_keypin %in% became_exempt$actual_keypin)
 
+
 ```
 
 852 projects have a combined FMV of \$0 in 2011 but have value in 2022. 2,294 PINs have FMV > $0 in 2011 but become tax exempt by 2022. 
 
 
-> Problem example 1: 3714512 - DAVITA INC is a project where all PINs were exempt in 2011 and had FMV values of 0 but became an incentive project in 2015 with 800 level PINs. Using FMV growth from 2011 results in a growth of INF and would need to be dropped from the model.
+**Problem example 1:** 3714512 - DAVITA INC is a project where all PINs were exempt in 2011 and had FMV values of 0 but became an incentive project in 2015 with 800 level PINs. Using FMV growth from 2011 results in a growth of INF and would need to be dropped from the model.
 
-Problem example 2: 7308877 - LYCEE FRANCAIS DE CHIC	 became tax exempt. Filtering out PINs
+**Problem example 2:** 7308877 - LYCEE FRANCAIS DE CHIC	 became tax exempt. Filtering out PINs
+
 
 > making binary variable for if a PIN went from vacant to not-vacant or not might work in a logit model though.
 
@@ -135,55 +158,58 @@ Problem example 2: 7308877 - LYCEE FRANCAIS DE CHIC	 became tax exempt. Filterin
 
 - 17221101230000 for ACRON Navy Pier Hotel LLC was land class 100 in 2011, became 590 and gained value after it opened? 
 
-- 17221101230000 had large growth but it should be added to a project. (PINs in project also experienced subdivision adn changed PIN numbers)
+- 17221101230000 had large growth but it should be added to a project. (PINs in project also experienced subdivision and changed PIN numbers?)
+
 
 ```{r}
-#| eval: false 
+modelsummary::datasummary_skim(ptax_proj_summs)
 
-ptax_proj <- ptax_proj %>%
-  mutate(#incent_change = as.factor(incent_change),
-        # landuse_change = as.factor(landuse_change),
-       #  triad = as.factor(Triad),
-       #  in_tif = as.factor(in_tif),
-         land_use = as.factor(land_use),
-         incent_prop = as.factor(incent_prop),
-         clean_name = as.factor(clean_name),
-         fmv_growth_2011 = round(fmv_growth_2011)) |>
-  
-  mutate(incent_change = relevel(incent_change, ref = "Never Incentive"),
-         landuse_change = relevel(landuse_change, ref = "Always Commercial"),
-         incent_prop = relevel(incent_prop, ref = "Non-Incentive"),
-         
-         #triad = relevel(triad, ref = "North"),
-         land_use = relevel(land_use, ref = "Commercial")
-  ) |>
-  # Create binary variables
-  mutate(incent_change_bin = as.factor(ifelse(incent_change == 
-                                                "Changes Sometime", 1, 0)),
-         prop_use_change_bin = as.factor(ifelse(landuse_change == 
-                                                  "Changes Land Use", 1, 0)),
-         is_chicago = as.factor(ifelse(clean_name == "Chicago", 1, 0))
-  ) |>
-  rename(fmv_2011 = base_year_fmv_2011) |>
-  arrange(pin, year)
+ptax_proj_summs %>%  
+  select(-c(land_use, incent_prop, landuse_change, tif_change, incent_change)) %>% 
+  modelsummary::datasummary_skim("categorical")
 ```
 
-```{r eval=FALSE}
+
+```{r}
 library(plm)
 
 proj_panel <- ptax_proj_summs %>% 
-  select(actual_keypin, year, in_tif, incent_pins, project_pins, 
-         fmv_growth_2011, base_year_fmv_2011)  %>% 
-  (is.numeric(fmv_growth_2011)) %>% 
+  select(actual_keypin, year, incent_change2, tif_change2, incent_prop, landuse_change2, land_use2, in_tif2, triad, fmv_growth_2011, base_year_fmv_2011, project_pins, incent_pins)  %>% 
+  mutate( fmv_growth_2011 = as.numeric(fmv_growth_2011)) %>% 
   arrange(actual_keypin, year) %>% 
-  filter(!is.na(actual_keypin ) ) 
+  filter(!is.na(actual_keypin ) & !is.na(fmv_growth_2011) & !is.na(base_year_fmv_2011) )  %>%
+  mutate(across(year:triad, as.factor))
 
 proj_panel <- proj_panel %>%
-  pdata.frame(index = c("actual_keypin", "year"))
+  pdata.frame(index = c("actual_keypin", "year") )
+is.pbalanced(proj_panel)
 
-plm(fmv_growth_2011 ~   incent_pins + project_pins + in_tif, 
+plm(fmv_growth_2011 ~   incent_pins + project_pins + tif_change2, 
     data = proj_panel,
     model = "within",
     effect = "twoways") %>% summary()
+
+
+plm(fmv_growth_2011 ~ base_year_fmv_2011, 
+    data = proj_panel,
+    model = "within",
+    effect = "twoways") %>% summary()
+
+plm(fmv_growth_2011 ~ land_use2*incent_prop, 
+    data = proj_panel,
+    model = "within",
+    effect = "twoways") %>% summary()
+
+
+plm(fmv_growth_2011 ~ land_use2, 
+    data = proj_panel,
+    model = "within",
+    effect = "twoways") %>% summary()
+
+library(fixest)
+
+panel(proj_panel, id = c(actual_keypin, year))
+
+feols(fmv_growth_2011 ~ land_use2 + incent_prop | year, data = proj_panel)  %>% summary()
 ```
 
