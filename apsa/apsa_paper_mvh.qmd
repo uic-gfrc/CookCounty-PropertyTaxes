@@ -51,7 +51,7 @@ fit <- list(
 ```{r data_import}
 #| output: false
 
-df <- read_csv("./apsa_data.csv")
+df <- read_csv("./apsa/apsa_data.csv")
 
 df_clean <- df |>
   rename_with(~ gsub("^tc_c_", "", .)) |>
@@ -73,16 +73,26 @@ df_tc <- df_clean |>
          cty_sd_fmv = sd(fmv)) |>
   ungroup() |>
   group_by(year, tax_code) |>
-  reframe(rate = first(tax_code_rate), muni = first(clean_name), fmv_incentive = sum(fmv_incentive), fmv_taxed = sum(fmv_taxed),
-          fmv_inTIF = sum(fmv_inTIF), fmv_incents_inTIF = sum(fmv_incents_inTIF), fmv_residential = sum(fmv_residential), 
-          fmv_commercial = sum(fmv_commercial), fmv_industrial = sum(fmv_industrial), fmv = sum(fmv), total_rev_fmv = sum(total_bill_current), 
-          levy_fmv = sum(levy), cty_fmv = first(cty_fmv), cty_mean_fmv = first(cty_mean_fmv), cty_med_fmv = first(cty_med_fmv), cty_sd_fmv = first(cty_sd_fmv)
-            ) |>
+  reframe(rate = first(tax_code_rate), 
+          muni = first(clean_name), 
+          fmv_incentive = sum(fmv_incentive), 
+          fmv_taxed = sum(fmv_taxed),
+          inTIF = ifelse(fmv_inTIF > 0, 1, 0), 
+          fmv_incents_inTIF = sum(fmv_incents_inTIF), 
+          fmv_residential = sum(fmv_residential), 
+          fmv_commercial = sum(fmv_commercial), 
+          fmv_industrial = sum(fmv_industrial), 
+          fmv = sum(fmv), 
+          total_rev_fmv = sum(total_bill_current), 
+          levy_fmv = sum(levy), 
+          cty_fmv = first(cty_fmv), 
+          cty_mean_fmv = first(cty_mean_fmv), 
+          cty_med_fmv = first(cty_med_fmv), 
+          cty_sd_fmv = first(cty_sd_fmv)) |>
   arrange(year) |>
   group_by(tax_code) |>
   mutate(lag_fmv = lag(fmv, n = 1),
          lag_fmv_incentive = lag(fmv_incentive, n = 1),
-         lag_fmv_tif = lag(fmv_inTIF, n = 1),
          lag_incents_fmv_tif = lag(fmv_incents_inTIF),
          delta_fmv = (fmv - lag_fmv)/lag_fmv,
          lag_rate = lag(rate, n = 1),
@@ -120,6 +130,24 @@ df_tc <- df_clean |>
 df_tc |>
   select(!c(tax_code, muni, year)) |>
   datasummary_skim()
+
+```
+
+## Tax Codes
+
+```{r taxcode_descrip_stats}
+
+df_tc |>
+  filter(incentive == "Incentive") |>
+  group_by(tax_code, year) |>
+  select(fmv, 
+         fmv_incentive,
+         tc_dist_mean,
+         tc_dist_med,
+         cty_dist_med,
+         cty_dist_mean
+         ) |>
+
 
 ```
 
