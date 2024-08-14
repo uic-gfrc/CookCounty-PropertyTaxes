@@ -15,6 +15,8 @@ format:
     toc: true
     toc-location: left
     df-print: paged
+editor_options: 
+  chunk_output_type: inline
 ---
 
 ```{r setup}
@@ -51,7 +53,7 @@ fit <- list(
 ```{r data_import}
 #| output: false
 
-df <- read_csv("./apsa/apsa_data.csv")
+df <- read_csv("apsa_data.csv")
 
 df_clean <- df |>
   rename_with(~ gsub("^tc_c_", "", .)) |>
@@ -66,6 +68,7 @@ df_clean <- df |>
 
 df_tc <- df_clean |>
   filter(!is.na(clean_name)) |>
+  filter(fmv != 0) |> #revisit this
   group_by(year) |>
   mutate(cty_fmv = sum(fmv),
          cty_mean_fmv = mean(fmv),
@@ -73,12 +76,12 @@ df_tc <- df_clean |>
          cty_sd_fmv = sd(fmv)) |>
   ungroup() |>
   group_by(year, tax_code) |>
-  reframe(rate = first(tax_code_rate), 
+  summarize(rate = first(tax_code_rate), 
           muni = first(clean_name), 
           fmv_incentive = sum(fmv_incentive), 
           fmv_taxed = sum(fmv_taxed),
-          inTIF = ifelse(fmv_inTIF > 0, 1, 0), 
-          fmv_incents_inTIF = sum(fmv_incents_inTIF), 
+          inTIF = ifelse(sum(fmv_inTIF) > 0, 1, 0), 
+          fmv_incents_inTIF = sum(fmv_incents_inTIF),
           fmv_residential = sum(fmv_residential), 
           fmv_commercial = sum(fmv_commercial), 
           fmv_industrial = sum(fmv_industrial), 
@@ -88,7 +91,8 @@ df_tc <- df_clean |>
           cty_fmv = first(cty_fmv), 
           cty_mean_fmv = first(cty_mean_fmv), 
           cty_med_fmv = first(cty_med_fmv), 
-          cty_sd_fmv = first(cty_sd_fmv)) |>
+          cty_sd_fmv = first(cty_sd_fmv) ) |>
+  mutate( perc_incent = fmv_incentive/fmv) |>
   arrange(year) |>
   group_by(tax_code) |>
   mutate(lag_fmv = lag(fmv, n = 1),
@@ -97,7 +101,7 @@ df_tc <- df_clean |>
          delta_fmv = (fmv - lag_fmv)/lag_fmv,
          lag_rate = lag(rate, n = 1),
          lag_total_rev = lag(total_rev_fmv, n = 1),
-         land_hhi = (fmv_residential/fmv)^2 + (fmv_commercial/fmv)^2 + (fmv_industrial/fmv)^2,
+         #land_hhi = ((fmv_residential/fmv)^2 + (fmv_commercial/fmv)^2 + (fmv_industrial/fmv)^2, na.rm = TRUE),
          perc_inc_prod = (fmv_industrial + fmv_commercial)/fmv,
          chi = ifelse(muni == "Chicago", 1, 0)
   ) |>
@@ -117,7 +121,8 @@ df_tc <- df_clean |>
   mutate(year = as.factor(year),
          tax_code = as.character(tax_code),
          muni = as.factor(muni),
-         chi = as.factor(chi)
+         chi = as.factor(chi),
+         inTIF = as.factor(inTIF)
          ) |>
   ungroup()
 
@@ -128,26 +133,84 @@ df_tc <- df_clean |>
 ```{r glimpse_new_vars}
 
 df_tc |>
-  select(!c(tax_code, muni, year)) |>
+  select(-tax_code, -muni) |>
+  group_by(year) |>
   datasummary_skim()
 
 ```
 
-## Tax Codes
+## Tax Code Visualizations
+
+```{r n_code_graphs}
+
+summary_data <- df_tc |>
+  group_by(year) |>
+  summarize(n = n() / 1000)
+
+ggplot(summary_data, aes(x = n, y = factor(year, levels = 2022:2012))) + 
+  geom_col() + 
+  geom_text(aes(label = sprintf("%.1f", n)), hjust = -0.3) +  
+  labs(title = "Tax Codes by Year, 2012-2022 (in thousands)",
+       x = "tax codes (thousands)",
+       y = "Year") + 
+  scale_x_continuous(limits = c(0, max(summary_data$n, na.rm = TRUE) * 1.1), 
+                     expand = expansion(add = c(0, 0))) +  
+  theme_classic()
+
+```
+
+```{r fmv_dist_graphs}
+
+summary_data <- df_tc |>
+  group_by(year, muni) |>
+  summarize(mean_fmv = mean(fmv), .groups = 'drop') |>
+  group_by(year) |>
+  summarize(avg_muni_fmv = mean(mean_fmv))
+
+ggplot(summary_data, aes(x = avg_muni_fmv, y = factor(year, levels = 2022:2012))) + 
+  geom_col() + 
+  geom_text(aes(label = sprintf("%.1f", avg_muni_fmv)), hjust = -0.3) +  # Increased hjust
+  labs(title = "Average Municipal Tax Code FMV by Year, 2012-2022", 
+       y = "Year",
+       x = "Average FMV") + 
+  scale_x_continuous(limits = c(0, max(summary_data$avg_muni_fmv, na.rm = TRUE) * 1.1), 
+                     expand = expansion(add = c(0, 0))) +  
+  theme_classic()
+
+```
+
+```{r n_tc_muni}
+
+# Calculate summary data and store in a temporary variable
+summary_data <- df_tc |>
+  group_by(year, muni) |>
+  summarize(n = n(), .groups = 'drop') |> 
+  group_by(year) |>
+  summarize(avg_n = mean(n))
+
+# Calculate max_avg_n
+max_avg_n <- max(summary_data$avg_n, na.rm = TRUE)
+
+# Create the plot using the summary_data and max_avg_n
+ggplot(summary_data, aes(x = avg_n, y = factor(year, levels = 2022:2012))) +
+  geom_col() +
+  geom_text(aes(label = sprintf("%.1f", avg_n)), hjust = -0.3) + 
+  labs(title = "Average Tax Codes per Municipality by Year, 2012-2022", 
+       y = "Year",
+       x = "Average Number of Tax Codes") + 
+  scale_x_continuous(limits = c(0, max_avg_n * 1.1), 
+                     expand = expansion(add = c(0, 0))) +  
+  theme_classic()
+
+
+```
+
+```{r fmv_tc_muni}
+
+
+```
 
 ```{r taxcode_descrip_stats}
-
-df_tc |>
-  filter(incentive == "Incentive") |>
-  group_by(tax_code, year) |>
-  select(fmv, 
-         fmv_incentive,
-         tc_dist_mean,
-         tc_dist_med,
-         cty_dist_med,
-         cty_dist_mean
-         ) |>
-
 
 ```
 
@@ -161,12 +224,13 @@ df_tc |>
 
 best_ols <- list(
   
-  "(1)" = lm(fmv_incentive ~ cty_dist_mean + tc_dist_mean + land_hhi
-             + muni + year,
+  "(1)" = lm(fmv_incentive ~ cty_dist_mean + tc_dist_mean + perc_inc_prod
+             + muni + year + inTIF,
              data = df_tc),
 
-  "(2)" = lm(fmv_incentive ~ cty_dist_mean + tc_dist_mean + land_hhi
-             + chi + chi*cty_dist_mean + chi*tc_dist_mean
+  "(2)" = lm(fmv_incentive ~ cty_dist_mean + tc_dist_mean + perc_inc_prod
+             + chi + chi*cty_dist_mean + chi*tc_dist_mean + inTIF + chi*inTIF
+             + chi*inTIF
              + muni + year,
              data = df_tc)
       )
@@ -176,6 +240,11 @@ modelsummary(best_ols,
              fmt = function(x) round(x, 2),
              coef_omit = "Intercept|muni|year"
              )
+
+```
+
+```{r}
+
 
 ```
 
