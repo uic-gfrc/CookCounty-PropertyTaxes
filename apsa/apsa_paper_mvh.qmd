@@ -29,6 +29,7 @@ library(fixest)
 library(modelsummary)
 library(tinytable)
 library(scales)
+library(sandwich)
 
 # Get rid of scientific notation
 
@@ -238,8 +239,9 @@ best_ols <- list(
 modelsummary(best_ols,
              stars = TRUE,
              fmt = function(x) round(x, 2),
-             coef_omit = "Intercept|muni|year"
-             )
+             coef_omit = "Intercept|muni|year",
+             gof_map = fit) |>
+  theme_tt("grid")
 
 ```
 
@@ -261,25 +263,29 @@ Key takeaway: Chicago is less likely than the rest of the municipalities in Cook
 
 best_fe <- list(
                 
-  "(1)" = feols(fmv_incentive ~ cty_dist_mean + tc_dist_mean + land_hhi | muni + year,
+  "(1)" = feols(fmv_incentive ~ cty_dist_mean + tc_dist_mean + perc_inc_prod | muni + year,
                 data = df_tc),
   
-  "(2)" = feols(fmv_incentive ~ cty_dist_mean + tc_dist_mean + land_hhi + chi
-                + chi*cty_dist_mean + chi*tc_dist_mean | muni + year,
+  "(2)" = feols(fmv_incentive ~ cty_dist_mean + tc_dist_mean + perc_inc_prod 
+                + chi + chi*cty_dist_mean + chi*tc_dist_mean | muni + year,
                 data = df_tc),
   
-  "(3)" = feols(fmv_incentive ~ cty_dist_mean + tc_dist_mean + land_hhi | year,
+  "(3)" = feols(fmv_incentive ~ cty_dist_mean + tc_dist_mean + perc_inc_prod | year,
                 data = df_tc),
   
-  "(4)" = feols(fmv_incentive ~ cty_dist_mean + tc_dist_mean + land_hhi + chi
+  "(4)" = feols(fmv_incentive ~ cty_dist_mean + tc_dist_mean + perc_inc_prod 
+                + chi
                 + chi*cty_dist_mean + chi*tc_dist_mean | year,
                 data = df_tc)
   )
 
 modelsummary(best_fe,
              stars = TRUE,
-             fmt = function(x) round(x, 2)
-             )
+             fmt = function(x) round(x, 2),
+             coef_omit = "Intercept|muni|year",
+             gof_map = fit
+             ) |>
+  theme_tt("grid")
 
 ```
 
@@ -310,7 +316,9 @@ models_naive <- list(
 modelsummary(models_naive,
              stars = TRUE,
              fmt = function(x) round(x, 2),
-             coef_omit = "(Intercept)"
+             coef_omit = "Intercept|muni|year",
+             gof_map = fit,
+             gof_omit = "AIC|BIC|Log.Lik.|RMSE"
              )
 
 ```
@@ -334,7 +342,9 @@ models_naive_controls <- list(
 modelsummary(models_naive_controls,
              stars = TRUE,
              fmt = function(x) round(x, 2),
-             coef_omit = "Intercept|muni|year"
+             coef_omit = "Intercept|muni|year",
+             gof_map = fit,
+             gof_omit = "AIC|BIC|Log.Lik.|RMSE"
              )
 
 ```
@@ -356,7 +366,9 @@ models_lags_controls <- list(
 modelsummary(models_lags_controls,
              stars = TRUE,
              fmt = function(x) round(x, 2),
-             coef_omit = "Intercept|muni|year"
+             coef_omit = "Intercept|muni|year",
+             gof_map = fit,
+             gof_omit = "AIC|BIC|Log.Lik.|RMSE"
              )
 
 
@@ -369,17 +381,19 @@ models_lags_controls <- list(
   "(1)" = lm(log(fmv_incentive + 1) ~ log(fmv + 1) + log(lag_fmv + 1) + muni + year,
              data = df_tc),
   
-  "(2)" = lm(log(fmv_incentive + 1) ~ log(fmv + 1) + log(lag_fmv + 1) + land_hhi + muni + year,
+  "(2)" = lm(log(fmv_incentive + 1) ~ log(fmv + 1) + log(lag_fmv + 1) + perc_inc_prod + muni + year,
              data = df_tc),
   
-   "(3)" = lm(log(fmv_incentive + 1) ~ log(fmv + 1) + log(lag_fmv + 1) + log(fmv^2 + 1) + land_hhi + muni + year,
+   "(3)" = lm(log(fmv_incentive + 1) ~ log(fmv + 1) + log(lag_fmv + 1) + log(fmv^2 + 1) + perc_inc_prod + muni + year,
              data = df_tc)
 )
 
 modelsummary(models_lags_controls,
              stars = TRUE,
              fmt = function(x) round(x, 2),
-             coef_omit = "Intercept|muni|year"
+             coef_omit = "Intercept|muni|year",
+             gof_map = fit,
+             gof_omit = "AIC|BIC|Log.Lik.|RMSE"
              )
 ```
 
@@ -390,13 +404,13 @@ models_dif_from_tc <- list(
   "(1)" = lm(fmv_incentive ~ tc_dist_mean,
              data = df_tc),
   
-  "(2)" = lm(fmv_incentive ~ tc_dist_mean + land_hhi,
+  "(2)" = lm(fmv_incentive ~ tc_dist_mean + perc_inc_prod,
              data = df_tc),
   
   "(3)" = lm(fmv_incentive ~ tc_dist_mean + muni + year,
              data = df_tc),
   
-  "(4)" = lm(fmv_incentive ~ tc_dist_mean + land_hhi + muni + year,
+  "(4)" = lm(fmv_incentive ~ tc_dist_mean + perc_inc_prod + muni + year,
              data = df_tc)
   
                         )
@@ -404,7 +418,9 @@ models_dif_from_tc <- list(
 modelsummary(models_dif_from_tc,
              stars = TRUE,
              fmt = function(x) round(x, 2),
-             coef_omit = "Intercept|muni|year"
+             coef_omit = "Intercept|muni|year",
+             gof_map = fit,
+             gof_omit = "AIC|BIC|Log.Lik.|RMSE"
              )
 
 ```
@@ -430,7 +446,9 @@ models_dif_from_cty <- list(
 modelsummary(models_dif_from_cty,
              stars = TRUE,
              fmt = function(x) round(x, 2),
-             coef_omit = "Intercept|muni|year"
+             coef_omit = "Intercept|muni|year",
+             gof_map = fit,
+             gof_omit = "AIC|BIC|Log.Lik.|RMSE"
              )
 
 ```
@@ -439,10 +457,10 @@ modelsummary(models_dif_from_cty,
 
 models_dif_cty_landuse <- list(
   
-  "(1)" = lm(fmv_incentive ~ cty_dist_med + land_hhi,
+  "(1)" = lm(fmv_incentive ~ cty_dist_med + perc_inc_prod,
              data = df_tc),
   
-  "(2)" = lm(fmv_incentive ~ cty_dist_med + land_hhi + muni + year,
+  "(2)" = lm(fmv_incentive ~ cty_dist_med + perc_inc_prod + muni + year,
              data = df_tc)
   
                   )
@@ -450,7 +468,9 @@ models_dif_cty_landuse <- list(
 modelsummary(models_dif_cty_landuse,
              stars = TRUE,
              fmt = function(x) round(x, 2),
-             coef_omit = "Intercept|muni|year"
+             coef_omit = "Intercept|muni|year",
+             gof_map = fit,
+             gof_omit = "AIC|BIC|Log.Lik.|RMSE"
              )
 
 ```
@@ -459,10 +479,10 @@ modelsummary(models_dif_cty_landuse,
 
 models_cty_tc_landuse <- list(
   
-  "(1)" = lm(fmv_incentive ~ cty_dist_med + tc_dist_med + land_hhi,
+  "(1)" = lm(fmv_incentive ~ cty_dist_med + tc_dist_med + perc_inc_prod,
              data = df_tc),
   
-  "(2)" = lm(fmv_incentive ~ cty_dist_med + tc_dist_med + land_hhi + muni + year,
+  "(2)" = lm(fmv_incentive ~ cty_dist_med + tc_dist_med + perc_inc_prod + muni + year,
              data = df_tc)
   
                   )
@@ -470,7 +490,9 @@ models_cty_tc_landuse <- list(
 modelsummary(models_cty_tc_landuse,
              stars = TRUE,
              fmt = function(x) round(x, 2),
-             coef_omit = "Intercept|muni|year"
+             coef_omit = "Intercept|muni|year",
+             gof_map = fit,
+             gof_omit = "AIC|BIC|Log.Lik.|RMSE"
              )
 
 ```
@@ -479,10 +501,10 @@ modelsummary(models_cty_tc_landuse,
 
 models_cty_tc_landuse <- list(
   
-  "(1)" = lm(fmv_incentive ~ cty_dist_mean + tc_dist_mean + land_hhi,
+  "(1)" = lm(fmv_incentive ~ cty_dist_mean + tc_dist_mean + perc_inc_prod,
              data = df_tc),
   
-  "(2)" = lm(fmv_incentive ~ cty_dist_mean + tc_dist_mean + land_hhi + muni + year,
+  "(2)" = lm(fmv_incentive ~ cty_dist_mean + tc_dist_mean + perc_inc_prod + muni + year,
              data = df_tc)
   
                   )
@@ -490,7 +512,9 @@ models_cty_tc_landuse <- list(
 modelsummary(models_cty_tc_landuse,
              stars = TRUE,
              fmt = function(x) round(x, 2),
-             coef_omit = "Intercept|muni|year"
+             coef_omit = "Intercept|muni|year",
+             gof_map = fit,
+             gof_omit = "AIC|BIC|Log.Lik.|RMSE"
              )
 
 ```
@@ -501,22 +525,25 @@ modelsummary(models_cty_tc_landuse,
 
 fe_ez <- list(
   
-  "(1)" = feols(fmv_incentive ~ cty_dist_mean + tc_dist_mean + land_hhi |
+  "(1)" = feols(fmv_incentive ~ cty_dist_mean + tc_dist_mean + perc_inc_prod |
                   muni + year,
                 data = df_tc),
                 
-  "(2)" = feols(fmv_incentive ~ cty_dist_mean + tc_dist_mean + land_hhi + chi
+  "(2)" = feols(fmv_incentive ~ cty_dist_mean + tc_dist_mean + perc_inc_prod + chi
                 + chi*cty_dist_mean + chi*tc_dist_mean | muni + year,
                 data = df_tc),
   
-  "(3)" = feols(fmv_incentive ~ cty_dist_mean + tc_dist_mean + land_hhi + chi
+  "(3)" = feols(fmv_incentive ~ cty_dist_mean + tc_dist_mean + perc_inc_prod + chi
                 + chi*cty_dist_mean + chi*tc_dist_mean | year,
                 data = df_tc)
   )
 
 modelsummary(fe_ez,
              stars = TRUE,
-             fmt = function(x) round(x, 2)
+             fmt = function(x) round(x, 2),
+             coef_omit = "Intercept|muni|year",
+             gof_map = fit,
+             gof_omit = "AIC|BIC|Log.Lik.|RMSE"
              )
 
 ```
