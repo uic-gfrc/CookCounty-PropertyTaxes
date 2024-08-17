@@ -1,0 +1,215 @@
+---
+title: "Top Performing Quantitative Models"
+subtitle: "Incentive Classifications, 2011-2022"
+author: "Michael P Van Hulle and Alea Wilbur-Mujtaba"
+date: 8/16/2024
+date-modified: last-modified
+date-format: long
+format: 
+  pdf:
+      toc: true
+      toc-location: left
+      lof: true
+      lot: true
+---
+
+# Does this render?
+
+```{r setup}
+#| output: false
+
+options(scipen = 999, digits = 4) #no scientific notation
+
+# Load packages
+
+library(tidyverse)
+library(glue)
+library(fixest)
+library(modelsummary)
+library(tinytable)
+library(sandwich)
+library(tinytex)
+
+comm_ind <- read_csv("./Output/comm_ind_PINs_2011-2022_balanced.csv") 
+
+comm_ind <- comm_ind |>
+  ## set variable types 
+  mutate(across(c(class, improvement_ind, has_AB_exemp, fmv_NA_indicator, in_tif), as.character))
+
+comm_ind <- comm_ind |>
+  # Change to factors; set reference levels
+  mutate(incent_change = as.factor(incent_change),
+         landuse_change = as.factor(landuse_change),
+         triad = as.factor(Triad),
+         in_tif = as.factor(in_tif),
+         land_use = as.factor(land_use),
+         incent_prop = as.factor(incent_prop),
+         clean_name = as.factor(clean_name),
+         fmv_growth_2011 = round(fmv_growth_2011)) |>
+  mutate(incent_change = relevel(incent_change, ref = "Never Incentive"),
+         landuse_change = relevel(landuse_change, ref = "Always Commercial"),
+         incent_prop = relevel(incent_prop, ref = "Non-Incentive"),
+
+         triad = relevel(triad, ref = "North"),
+         land_use = relevel(land_use, ref = "Commercial")
+         ) |>
+  # Create binary variables
+  mutate(incent_change_bin = as.factor(ifelse(incent_change == 
+                                                "Changes Sometime", 1, 0)),
+         prop_use_change_bin = as.factor(ifelse(landuse_change == 
+                                                  "Changes Land Use", 1, 0)),
+         is_chicago = as.factor(ifelse(clean_name == "Chicago", 1, 0))
+         ) |>
+  rename(fmv_2011 = base_year_fmv_2011) |>
+  arrange(pin, year)
+
+# 1,190,580 obs. (MVH 8/2) 
+comm_ind_temp <- comm_ind  |>
+  # 1121436 obs. (lose 69,144) (MVH 8/2)
+  filter(!is.na(fmv_2011)) |>
+  # 1121436 obs. (MVH 8/2)
+  filter(!is.na(fmv)) |>
+  # 1,121,436 obs. (lose no obs) (MVH 8/2)
+  filter(!is.na(fmv_growth_2011))
+
+# Create panel data
+
+comm_ind_temp <- comm_ind_temp |> 
+  select(pin, class, year, clean_name, fmv, fmv_growth_2011, fmv_2011, incent_prop, 
+         land_use, major_class_code, landuse_change, incent_change, triad, 
+         incent_change_bin, prop_use_change_bin,
+         in_tif) |>
+  filter(fmv_2011 > 1000) |>
+  mutate(year = as.factor(year))
+
+comm_ind_raw <- comm_ind_temp
+
+comm_ind_panel_pin <- pdata.frame(comm_ind_temp, index = c("pin", "year"))
+
+is.pbalanced(comm_ind_panel_pin)
+
+comm_ind_panel_muni <- pdata.frame(comm_ind_temp, index = c("clean_name", "year"))
+
+is.pbalanced(comm_ind_panel_muni)
+
+```
+
+# OLS
+
+## Only 2022
+
+```{r ols_2022_models}
+
+comm_ind_ols_2022 <- comm_ind_temp |>
+  filter(year == 2022)
+
+ols_2022_models <- list(
+  
+  "(1)" = lm(fmv_growth_2011 ~ incent_change + prop_use_change_bin + incent_change*prop_use_change_bin,
+                data = comm_ind_ols_2022),
+  
+  "(2)*" = lm(fmv_growth_2011 ~ incent_change + prop_use_change_bin + incent_change*prop_use_change_bin
+             + clean_name,
+                data = comm_ind_ols_2022)
+)
+
+
+modelsummary(ols_2022_models)
+
+
+```
+*Controls for municipality
+
+## Includes 2011-2022
+
+```{r ols_models}
+
+ols_models <- list(
+  
+  "(1)" = lm(fmv_growth_2011 ~ incent_change_bin + prop_use_change_bin + incent_change_bin*prop_use_change_bin
+             + year,
+                data = comm_ind_raw),
+  
+  "(2)*" = lm(fmv_growth_2011 ~ incent_change_bin + prop_use_change_bin + incent_change_bin*prop_use_change_bin
+             + clean_name + year,
+                data = comm_ind_raw)
+)
+
+
+modelsummary(ols_models,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+             coef_omit= 'clean_name',
+             gof_omit = "AIC|BIC|Log.Lik.|RMSE") |>
+  theme_tt("grid")
+
+```
+*Controls for Municipality
+
+```{r ind_comm_models}
+
+ind_comm_models <- list(
+  
+  "Industrial" = lm(fmv_growth_2011 ~ incent_change_bin + prop_use_change_bin + incent_change_bin*prop_use_change_bin
+             + clean_name + year,
+                data = comm_ind_raw |> filter(land_use == "Industrial")),
+  
+  "Commercial" = lm(fmv_growth_2011 ~ incent_change_bin + prop_use_change_bin + incent_change_bin*prop_use_change_bin
+             + clean_name + year,
+                data = comm_ind_raw |> filter(land_use == "Commercial"))
+  
+)
+
+modelsummary(ind_comm_models,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+             coef_omit= 'clean_name|year',
+             gof_omit = "AIC|BIC|Log.Lik.|RMSE") |>
+  theme_tt("grid")
+
+```
+
+# Fixed Effect Models
+
+```{r pin_fe}
+
+pin_fe_models <- list(
+  
+      pin_fe_mod_1 = feols(fmv_growth_2011 ~ land_use | pin + year,
+                       data = comm_ind_raw),
+  
+      pin_fe_mod_2 = feols(fmv_growth_2011 ~ incent_prop | pin + year,
+                       data = comm_ind_raw),
+
+      pin_fe_mod_3 = feols(fmv_growth_2011 ~ incent_prop*land_use | pin + year,
+                       data = comm_ind_raw)
+)
+
+modelsummary(pin_fe_models,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+             coef_omit= 'pin|year',
+             gof_omit = "AIC|BIC|Log.Lik.|RMSE") |>
+  theme_tt("grid")
+
+
+pin_fe_models <- list(
+  
+      pin_fe_mod_1 = feols(fmv_growth_2011 ~ land_use | pin + year,
+                       data = comm_ind_raw %>% filter(land_use != "Rental")),
+  
+      pin_fe_mod_2 = feols(fmv_growth_2011 ~ incent_prop | pin + year,
+                       data = comm_ind_raw),
+
+      pin_fe_mod_3 = feols(fmv_growth_2011 ~ incent_prop*land_use | pin + year,
+                       data = comm_ind_raw%>% filter(land_use != "Rental"))
+)
+
+modelsummary(pin_fe_models,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+             coef_omit= 'pin|year',
+             gof_omit = "AIC|BIC|Log.Lik.|RMSE") |>
+  theme_tt("grid")
+
+```
