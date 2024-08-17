@@ -1,16 +1,18 @@
 ---
-title: "Top Performing Quantitative Models"
-subtitle: "Incentive Classifications, 2011-2022"
-author: "Michael P Van Hulle and Alea Wilbur-Mujtaba"
-date: 8/16/2024
+title: "Models for Circulation"
+subtitle: "Better Performing Models"
+author: "MVH & AWM"
+date: 8/17/24
 date-modified: last-modified
 date-format: long
 format: 
-  pdf:
-      toc: true
-      toc-location: left
-      lof: true
-      lot: true
+  html:
+    code-fold: true
+    toc: true
+    toc-location: left
+    tbl-cap-location: top
+    fig-cap-location: top
+    df-print: paged
 ---
 
 # Does this render?
@@ -84,13 +86,13 @@ comm_ind_temp <- comm_ind_temp |>
 
 comm_ind_raw <- comm_ind_temp
 
-comm_ind_panel_pin <- pdata.frame(comm_ind_temp, index = c("pin", "year"))
-
-is.pbalanced(comm_ind_panel_pin)
-
-comm_ind_panel_muni <- pdata.frame(comm_ind_temp, index = c("clean_name", "year"))
-
-is.pbalanced(comm_ind_panel_muni)
+# comm_ind_panel_pin <- pdata.frame(comm_ind_temp, index = c("pin", "year"))
+# 
+# is.pbalanced(comm_ind_panel_pin)
+# 
+# comm_ind_panel_muni <- pdata.frame(comm_ind_temp, index = c("clean_name", "year"))
+# 
+# is.pbalanced(comm_ind_panel_muni)
 
 ```
 
@@ -101,7 +103,8 @@ is.pbalanced(comm_ind_panel_muni)
 ```{r ols_2022_models}
 
 comm_ind_ols_2022 <- comm_ind_temp |>
-  filter(year == 2022)
+  filter(year == 2022) |>
+  filter(land_use != "Rental")
 
 ols_2022_models <- list(
   
@@ -114,7 +117,12 @@ ols_2022_models <- list(
 )
 
 
-modelsummary(ols_2022_models)
+modelsummary(ols_2022_models,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+             coef_omit= 'clean_name',
+             gof_omit = "AIC|BIC|Log.Lik.|RMSE") |>
+  theme_tt("grid")
 
 
 ```
@@ -139,7 +147,7 @@ ols_models <- list(
 modelsummary(ols_models,
              stars = TRUE,
              fmt = function(x) round(x, 2),
-             coef_omit= 'clean_name',
+             coef_omit= 'clean_name|year',
              gof_omit = "AIC|BIC|Log.Lik.|RMSE") |>
   theme_tt("grid")
 
@@ -171,19 +179,32 @@ modelsummary(ind_comm_models,
 
 # Fixed Effect Models
 
+## PIN-level fixed effects
+
 ```{r pin_fe}
+#| warning: false
 
 pin_fe_models <- list(
   
-      pin_fe_mod_1 = feols(fmv_growth_2011 ~ land_use | pin + year,
-                       data = comm_ind_raw),
-  
-      pin_fe_mod_2 = feols(fmv_growth_2011 ~ incent_prop | pin + year,
-                       data = comm_ind_raw),
+      "1" = feols(fmv_growth_2011 ~ land_use 
+                  | pin + year,
+                       data = comm_ind_raw |>
+                         filter(land_use != "Rental")
+                       ),
+      
+      "2" = feols(fmv_growth_2011 ~ incent_prop + land_use 
+                  | pin + year,
+                       data = comm_ind_raw |> 
+                         filter(land_use != "Rental")
+                       ),
 
-      pin_fe_mod_3 = feols(fmv_growth_2011 ~ incent_prop*land_use | pin + year,
-                       data = comm_ind_raw)
-)
+
+      "3" = feols(fmv_growth_2011 ~ incent_prop + land_use + incent_prop*land_use 
+                  | pin + year,
+                       data = comm_ind_raw |> 
+                         filter(land_use != "Rental")
+                       )
+                )
 
 modelsummary(pin_fe_models,
              stars = TRUE,
@@ -192,18 +213,30 @@ modelsummary(pin_fe_models,
              gof_omit = "AIC|BIC|Log.Lik.|RMSE") |>
   theme_tt("grid")
 
+```
+## Muni-Level Fixed Effects
 
-pin_fe_models <- list(
-  
-      pin_fe_mod_1 = feols(fmv_growth_2011 ~ land_use | pin + year,
-                       data = comm_ind_raw %>% filter(land_use != "Rental")),
-  
-      pin_fe_mod_2 = feols(fmv_growth_2011 ~ incent_prop | pin + year,
-                       data = comm_ind_raw),
+```{r muni_fe}
+#| warning: false
 
-      pin_fe_mod_3 = feols(fmv_growth_2011 ~ incent_prop*land_use | pin + year,
-                       data = comm_ind_raw%>% filter(land_use != "Rental"))
-)
+muni_fe_models <- list(
+  
+      "1" = feols(fmv_growth_2011 ~ land_use | clean_name + year,
+                       data = comm_ind_raw |>
+                         filter(land_use != "Rental")
+                       ),
+      
+      "2" = feols(fmv_growth_2011 ~ incent_prop + land_use | clean_name + year,
+                       data = comm_ind_raw |> 
+                         filter(land_use != "Rental")
+                       ),
+
+
+      "3" = feols(fmv_growth_2011 ~ incent_prop + land_use + incent_prop*land_use | clean_name + year,
+                       data = comm_ind_raw |> 
+                         filter(land_use != "Rental")
+                       )
+                        )
 
 modelsummary(pin_fe_models,
              stars = TRUE,
@@ -211,5 +244,47 @@ modelsummary(pin_fe_models,
              coef_omit= 'pin|year',
              gof_omit = "AIC|BIC|Log.Lik.|RMSE") |>
   theme_tt("grid")
+
+```
+
+## Variations of Property Type and Change Variables
+
+```{r muni_prop_incent_var_types}
+#| warning: false
+
+muni_log_log_mods <- list(
+  
+     "1" = feols(fmv_growth_2011 ~ incent_change_bin + prop_use_change_bin + incent_change_bin*prop_use_change_bin
+                 | clean_name + year,
+                       data = comm_ind_raw |>
+                         filter(land_use != "Rental")
+                       ),
+      
+      "2" = feols(fmv_growth_2011 ~ incent_prop + land_use + incent_prop*land_use 
+                   | clean_name + year,
+                     data = comm_ind_raw |> 
+                     filter(land_use != "Rental")
+                       ),
+     
+      "3" = feols(fmv_growth_2011 ~ incent_change_bin + prop_use_change_bin + land_use + incent_prop + incent_change_bin*prop_use_change_bin
+                 | clean_name + year,
+                   data = comm_ind_raw |>
+                   filter(land_use != "Rental")
+                       ),
+     
+      "4" = feols(fmv_growth_2011 ~ incent_change_bin + prop_use_change_bin + land_use + incent_prop + land_use*incent_prop
+                 | clean_name + year,
+                   data = comm_ind_raw |>
+                   filter(land_use != "Rental")
+                       )
+)
+
+modelsummary(muni_log_log_mods,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+            # coef_omit= 'pin|year',
+             gof_omit = "AIC|BIC|Log.Lik.|RMSE") |>
+  theme_tt("grid")
+
 
 ```
