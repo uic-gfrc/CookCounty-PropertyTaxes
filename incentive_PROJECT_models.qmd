@@ -88,6 +88,97 @@ mutate(actual_keypin = case_when(
 modelsummary::datasummary_skim(ptax_proj)
 ```
 
+**Which came first: The TIF or the incentive class??**
+
+```{r}
+#| label: tbl-whichcamefirst
+#| tbl-cap: "PINS that were in a TIF before receiving an incentive classification. 254 PINs had incentive classes before they were in a TIF. 1373 PINs were in a TIF before they had an incentive classification"
+
+
+change_table <- ptax_proj |>
+  ungroup() |>
+  arrange(pin, year) |>
+  group_by(pin) |>
+  summarize(first_tif_year = first(year[in_tif==1]),
+                     first_incent_year = first(year[incent_prop=="Incentive"])) |>
+  filter(!is.na(first_tif_year) & !is.na(first_incent_year)) |>
+  select(pin, first_tif_year, first_incent_year)|> 
+  distinct() 
+
+#254 PINs had incentive classes before they were in a TIF
+# change_table |> filter(first_tif_year > first_incent_year)
+
+#1373 PINs were in a TIF before they had an incentive classification
+change_table |> filter(first_tif_year < first_incent_year)
+```
+
+
+```{r }
+#| label: tbl-keypin-tiforincent
+#| tbl-cap: "Projects that were in a TIF before they also got an incentive classification."
+
+change_table <- ptax_proj |>
+  ungroup() |>
+  arrange(pin, year) |>
+  group_by(actual_keypin) |>
+  summarize(first_tif_year = first(year[in_tif==1]),
+                     first_incent_year = first(year[incent_prop=="Incentive"])) |>
+  filter(!is.na(first_tif_year) & !is.na(first_incent_year)) |>
+  select(actual_keypin, first_tif_year, first_incent_year)|> 
+  distinct() 
+
+# 152 projects were in a tif
+# change_table |> filter(first_tif_year > first_incent_year) 
+# 329 projects were in a TIF before they received incentive classes
+change_table |> filter(first_tif_year < first_incent_year) 
+```
+
+
+**How many Commercial PINs become Industrial PINs? If commercial pins are the comparison group, we should know the sample size of PINs that change to other land uses.**
+
+```{r}
+#| label: tbl-commercial-toOther-pins
+#| tbl-cap: "Commercial PINs that became Industrial or other land use types"
+
+
+change_table <- ptax_proj |>
+  ungroup() |>
+  arrange(pin, year) |>
+  group_by(pin) |>
+  summarize(
+    first_commerc_year = first(year[land_use == "Commercial"]),
+    first_indust_year = first(year[land_use == "Industrial"]),
+    first_other_year = first(year[!land_use %in% c("Commercial", "Industrial")]))  |>
+  select(pin, first_commerc_year, first_indust_year, first_other_year)|> 
+  distinct() 
+
+change_table |> filter(first_commerc_year < first_indust_year)
+  
+change_table |> filter(first_commerc_year < first_other_year)
+```
+
+
+```{r }
+#| label: tbl-keypinchange
+#| tbl-cap: "Projects where the first year as a commercial land use is before becoming commercial."
+
+change_table <- ptax_proj |>
+  ungroup() |>
+  arrange(pin, year) |>
+  group_by(actual_keypin) |>
+  summarize(
+    first_commerc_year = first(year[land_use == "Commercial"]),
+    first_indust_year = first(year[land_use == "Industrial"]),
+    first_other_year = first(year[!land_use %in% c("Commercial", "Industrial")])) |>
+  select(actual_keypin, first_commerc_year, first_indust_year, first_other_year)|> 
+  distinct() 
+
+change_table |> filter(first_commerc_year < first_other_year)
+  
+change_table |> filter(first_commerc_year < first_indust_year)
+
+
+```
 
 ```{r}
 ptax_proj_summs <- ptax_proj %>% 
@@ -125,11 +216,15 @@ ptax_proj_summs <- ptax_proj_summs %>%
          land_use2 = ifelse(!land_use %in% c("Commercial", "Industrial"), "Multi Land Uses", land_use),
          tif_change2 = ifelse(!tif_change %in% c("Always TIF", "Never TIF"), "Changes", tif_change),
          incent_change2 = ifelse(!incent_change %in% c("Always Incentive", "Never Incentive"), "Changes", incent_change),
-         in_tif2 = ifelse(in_tif != 0 & in_tif != 1, "Partly in TIF", in_tif))
+         in_tif2 = ifelse(in_tif != 0 & in_tif != 1, "Partly in TIF", in_tif)) %>%
+  mutate(land_use2 = factor(land_use2, levels = c("Commercial", "Industrial", "Multi Land Uses"), ordered = TRUE),
+         incent_prop2 = factor(incent_prop, levels = c("Non-Incentive", "Incentive"), ordered = TRUE),
+         
+         )
 ```
 
 
-```{r}
+```{r eval=FALSE}
 # ptax_proj_summs %>% is.finite() %>% modelsummary::datasummary_skim()
 
 ptax_proj_summs %>% 
@@ -140,6 +235,9 @@ ptax_proj_summs %>%
 
 
 ```{r}
+#| label: tbl-exemptprojects
+#| tbl-cap: Projects that were exempt or became exempt. 
+
 were_exempt <- ptax_proj_summs %>%
   group_by(actual_keypin) |>
   filter(fmv == 0 & year == 2011)
@@ -150,6 +248,9 @@ became_exempt <- ptax_proj_summs %>%
   filter(fmv == 0 & year == 2022)  |> arrange(desc(project_pins))
 became_exempt
 
+#write_csv(were_exempt, "./Output/properties_were_exempt.csv")
+
+#write_csv(became_exempt, "./Output/properties_became_exempt.csv")
 
 ptax_proj_summs <- ptax_proj_summs %>% 
   filter(!actual_keypin %in% were_exempt$actual_keypin) %>% ## creates Infinite growth but these are the observations we do want to examine more for vacant to non-vacant properties.
@@ -176,7 +277,7 @@ ptax_proj_summs <- ptax_proj_summs %>%
 - 17221101230000 had large growth but it should be added to a project. (PINs in project also experienced subdivision and changed PIN numbers?)
 
 
-```{r}
+```{r eval=FALSE}
 modelsummary::datasummary_skim(ptax_proj_summs)
 
 ptax_proj_summs %>%  
@@ -200,13 +301,13 @@ proj_panel <- proj_panel %>%
   pdata.frame(index = c("actual_keypin", "year") )
 is.pbalanced(proj_panel)
 
-plm(fmv_growth_2011 ~   incent_pins + project_pins + tif_change2, 
+plm(fmv_growth_2011 ~ incent_pins*in_tif2, 
     data = proj_panel,
     model = "within",
     effect = "twoways") %>% summary()
 
 
-plm(fmv_growth_2011 ~ base_year_fmv_2011, 
+plm(fmv_growth_2011 ~ lag(incent_prop) + lag(incent_prop, 2), 
     data = proj_panel,
     model = "within",
     effect = "twoways") %>% summary()
