@@ -100,9 +100,6 @@ bor <- bor %>%
 write_csv(bor, "Output/borappeals.csv")
 ```
 
-::: callout-caution
-Have not checked uniqueness of appeal ID. ( Seems to at least be unique for "projects" per year.)
-:::
 
 ```{r}
 #| label: tbl-getBORappeals2
@@ -134,10 +131,9 @@ bor <- read_csv("Output/borappeals.csv") %>%
 
 For the Archived Parcel Universe:
 
-- 13,000+ KeyPINs have more than 1 PIN associated with them.   
+-   13,000+ KeyPINs have more than 1 PIN associated with them.
 
-- 11,849 when grouping by keypin and mailing name. But that is probably due to a bunch of keypins having mailing names that do not match completely so when grouped this way, they now have only 1 PIN associated with the keypin, which was filter out.  
-
+-   11,849 when grouping by keypin and mailing name. But that is probably due to a bunch of keypins having mailing names that do not match completely so when grouped this way, they now have only 1 PIN associated with the keypin, which was filter out.
 
 ```{r}
 parcuniverse_keypins <- readxl::read_xlsx("./Inputs/parceluniverse_keypins_20240725.xlsx", 
@@ -205,7 +201,8 @@ Pull in the joined pin and exemption data for 2022. Extracted from PTAXSIM. See 
 #| code-fold: false
 
 
-loa <- read_csv("inputs/ccao_loa.csv") %>% filter(year == 2022)
+loa <- read_csv("inputs/ccao_loa.csv") %>% 
+filter(year == 2022)
 
 # all pins for 2022
 ptax_pins <- read_csv("Output/Dont_Upload/0_joined_PIN_data_2022.csv") %>% 
@@ -279,8 +276,8 @@ tc_muninames <- tc_muninames %>%  select(-year)
 
 # add muni names by joining tax code info:
 ptax_pins <- ptax_pins %>% 
-  mutate(tax_code_num = as.character(tax_code_num)) %>%
-  left_join(tc_muninames)
+mutate(tax_code_num = as.character(tax_code_num)) %>%
+left_join(tc_muninames)
 
 
 
@@ -320,16 +317,16 @@ ptax_pins %>%
 ptax_pins %>%
 distinct(both_ids)
 
-table_list <- ptax_pins %>% 
-  filter(class > 599) %>% 
-  group_by(both_ids) %>% 
-  summarize(pincount = n(),
-            pin_list = (list(unique(pin))),
-            class_list = (list(unique(class))),
-            appellant = ((list(unique(appellant)))) ) %>%
-  arrange(desc(pincount))
-
-table_list %>% datatable(rownames = FALSE)
+# table_list <- ptax_pins %>% 
+#   filter(class > 599) %>% 
+#   group_by(both_ids) %>% 
+#   summarize(pincount = n(),
+#             pin_list = (list(unique(pin))),
+#             class_list = (list(unique(class))),
+#             appellant = ((list(unique(appellant)))) ) %>%
+#   arrange(desc(pincount))
+# 
+# table_list %>% datatable(rownames = FALSE)
 ```
 
 ```{r}
@@ -343,6 +340,7 @@ table <- ptax_pins %>%
             av_incent = sum(ifelse(incent_prop == "Incentive", av, 0)),
             av_nonincent = sum(ifelse(incent_prop == "Non-Incentive", av, 0)),
             av=sum(av),
+incentpins_inTIF = sum(ifelse(in_tif == 1 & incent_prop == "Incentive", 1, 0)),
 pins_inTIF = sum(in_tif, na.rm=TRUE),
 fmv = sum(fmv, na.rm=TRUE)
 
@@ -745,7 +743,7 @@ flextable(table) %>%
 
 ```{r}
 #| label: tbl-amount-incentivized
-#| tbl-cap: "Percent of Commercial and Industrial \"Market Value for Assessment Purposes\" that has a reduced assessment rate due to incentive classification"
+#| tbl-cap: "Percent of Commercial and Industrial Market Value for Assessment Purposes that has a reduced assessment rate due to incentive classification"
 
 
 table2 <- nonres_pins2022 %>% 
@@ -759,6 +757,7 @@ table2 <- nonres_pins2022 %>%
             fmv_w_incent = sum(ifelse(between(class, 600, 899), fmv, 0)),
             av=sum(av), 
 fmv =sum(fmv, na.rm=TRUE),
+incent_pins_inTIF = sum(ifelse(between(class, 600, 899) & in_tif == 1, 1, 0), na.rm = TRUE),
 pins_inTIF = sum(in_tif, na.rm=TRUE)
 ) %>%
   mutate(av_incent = ifelse(av_incent == 0, NA, av_incent),
@@ -766,7 +765,7 @@ pins_inTIF = sum(in_tif, na.rm=TRUE)
     pct_incent = ifelse(pct_incent == 0, NA, pct_incent),
 pct_fmv = fmv_w_incent/fmv)  %>%
   select(-av_incent) %>% 
-  select(clean_name, pct_incent, av, fmv, pct_fmv, av_adjusted, pin_count, project_count, pins_inTIF)
+  select(clean_name, pct_incent, av, fmv, pct_fmv, av_adjusted, pin_count, project_count, pins_inTIF, incent_pins_inTIF)
 
 datatable(table2,
           rownames= FALSE,
@@ -807,7 +806,8 @@ if (all(nicknames$shpfile_name |>
 
 table2 %>% 
   left_join(nicknames) %>%
-  filter(clean_name != "Chicago"& !is.na(clean_name)) %>%
+  filter(clean_name != "Chicago"& clean_name!="0_Unincorporated" &
+           !is.na(clean_name)) %>%
   full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
   ggplot() +
   geom_sf(aes(geometry = geometry, fill = project_count), color = "black", alpha = 0.3) +
@@ -816,7 +816,7 @@ table2 %>%
   scale_fill_steps2(
       high = "brown", low = "black",
 show.limits = TRUE,
-    nice.breaks=FALSE,
+   # nice.breaks=FALSE,
     na.value = "gray60",
     name = "Number of Projects",
    ) +
@@ -828,15 +828,41 @@ show.limits = TRUE,
 ```
 
 ```{r}
+#| label: fig-incentivePINsinTIFS-counts
+#| fig-cap: "Number of Commercial and Industrial INCENTIVE PINs within a TIF per Municipality. Chicago and Markham both have around 600 incentive pins in TIFs and are  exclude from this map to avoid washing out other municipalities." 
+
+table2 %>% 
+  filter(clean_name != "Chicago" & clean_name != "Markham" & 
+           clean_name != "0_Unincorporated" & !is.na(clean_name) ) %>%
+    left_join(nicknames) %>%
+  full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
+  ggplot() +
+  geom_sf(aes(geometry = geometry, fill = incent_pins_inTIF), color = "black") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+  scale_fill_steps2(
+      high = "brown", low = "black",
+show.limits = TRUE,
+    nice.breaks=FALSE,
+    na.value = "gray50",
+    name = "Number of Incent\nPINs in TIFs",
+   ) +
+   geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray70')+
+ #  geom_sf_pattern(data = forests, aes(geometry = geometry),  pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'darkgreen')+
+    geom_sf(data = bound_tif, aes(geometry = geometry), color = "black", alpha = 0.5, fill ="orange")
+
+```
+
+```{r}
 #| label: fig-pinsInTIF
 #| fig-cap: "Number of PINs (all class types) within a TIF, per Municipality. Excludes Chicago (which has nearly 29K PINs located in TIFs)" 
 
 
 
 table2 %>% 
-  left_join(nicknames) %>%
   filter(clean_name != "Chicago") %>%
-  filter(clean_name != "Unincorporated") %>%
+  filter(clean_name != "0_Unincorporated") %>%
+    left_join(nicknames) %>%
 
   full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
   
@@ -884,12 +910,37 @@ left_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
     show.limits=TRUE,
     nice.breaks=FALSE,
     na.value = "gray50",
-    name = "Number of PINs in TIF",
-   # labels = scales::percent
+    name = "Number of Incent\nPINs in TIF",
    ) +
     geom_sf(data = bound_tif, aes(geometry = geometry#, fill = project_count
               ), color = "black", alpha = 0.5, fill ="orange")
 ```
+
+
+```{r}
+#| label: fig-incentpinspertif
+#| fig-cap: Number of PINs with incentive property class that are also in a TIF. Summarized by assessor neighborhoods. Excludes the Amazon warehouse located in Markham which has over 600 PINs associated with it."
+
+nbh_sum %>% 
+  filter(PC_incents_inTIFs < 500) %>%
+  mutate(PC_incents_inTIFs = ifelse(PC_incents_inTIFs == 0, NA, PC_incents_inTIFs))%>%
+left_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
+
+  ggplot() +
+  geom_sf(aes(geometry = geometry, fill = PC_incents_inTIFs), color = "black") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+  scale_fill_steps2(
+        high = "brown", low = "black",
+    show.limits=TRUE,
+    nice.breaks=FALSE,
+    na.value = "gray50",
+    name = "Number of Incent\nPINs in TIF",
+   ) +
+    geom_sf(data = bound_tif, aes(geometry = geometry#, fill = project_count
+              ), color = "black", alpha = 0.5, fill ="orange")
+```
+
 
 ```{r}
 #| label: fig-nbhfmv-onlychicago
@@ -945,7 +996,7 @@ left_join(NBHs, by = c("nbhd_code" = "town_nbhd")) %>%
 
 nonres_pins2022 %>% 
   filter(Alea_cat == "Industrial") %>%
-  filter(clean_name != "Unincorporated") %>%
+  filter(clean_name != "0_Unincorporated") %>%
 
   group_by(clean_name) %>% 
   summarize(pin_count = n(),
@@ -1120,10 +1171,4 @@ show.limits=TRUE,
     name = "Number of Projects",
    ) +
    geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray70')
-
-
-
-
-
-
 ```
