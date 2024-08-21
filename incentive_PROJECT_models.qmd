@@ -217,10 +217,10 @@ ptax_proj_summs <- ptax_proj_summs %>%
          tif_change2 = ifelse(!tif_change %in% c("Always TIF", "Never TIF"), "Changes", tif_change),
          incent_change2 = ifelse(!incent_change %in% c("Always Incentive", "Never Incentive"), "Changes", incent_change),
          in_tif2 = ifelse(in_tif != 0 & in_tif != 1, "Partly in TIF", in_tif)) %>%
-  mutate(land_use2 = factor(land_use2, levels = c("Commercial", "Industrial", "Multi Land Uses"), ordered = TRUE),
-         incent_prop2 = factor(incent_prop, levels = c("Non-Incentive", "Incentive"), ordered = TRUE),
-         
+  mutate(land_use2 = factor(land_use2, levels = c("Commercial", "Industrial", "Multi Land Uses"), ordered = TRUE)
          )
+
+write_csv(ptax_proj_summs, "Output/project_summaries.csv")
 ```
 
 
@@ -287,11 +287,13 @@ ptax_proj_summs %>%
 
 ## Fixed Effect Model using Project Level
 
-```{r}
+```{r eval=FALSE}
 library(plm)
 
 proj_panel <- ptax_proj_summs %>% 
-  select(actual_keypin, year, incent_change2, tif_change2, incent_prop, landuse_change2, land_use2, in_tif2, triad, fmv_growth_2011, base_year_fmv_2011, project_pins, incent_pins, clean_name)  %>% 
+  select(actual_keypin, year, incent_change2, tif_change2, incent_prop, 
+         landuse_change2, land_use2, in_tif2, triad, fmv_growth_2011, 
+         base_year_fmv_2011, project_pins, incent_pins, clean_name)  %>% 
   mutate( fmv_growth_2011 = as.numeric(fmv_growth_2011)) %>% 
   arrange(actual_keypin, year) %>% 
   filter(!is.na(actual_keypin ) & !is.na(fmv_growth_2011) & !is.na(base_year_fmv_2011) )  %>%
@@ -322,11 +324,51 @@ plm(fmv_growth_2011 ~ land_use2,
     data = proj_panel,
     model = "within",
     effect = "twoways") %>% summary()
+```
 
+
+```{r}
 library(fixest)
 
-#panel(proj_panel, id = c(actual_keypin, year))
+proj_panel <- ptax_proj_summs %>% 
+  select(actual_keypin, year, incent_change2, tif_change2, incent_prop, incent_prop2,
+         landuse_change2, land_use2, in_tif2, triad, fmv_growth_2011, 
+         base_year_fmv_2011, project_pins, incent_pins, clean_name)  %>% 
+  mutate( fmv_growth_2011 = as.numeric(fmv_growth_2011)) %>% 
+  arrange(actual_keypin, year) %>% 
+  filter(!is.na(actual_keypin ) & !is.na(fmv_growth_2011) & !is.na(base_year_fmv_2011) )  %>%
+  mutate(across(year:triad, as.factor),
+         land_use2 = as.character(land_use2),
+         incent_prop2 = factor(incent_prop2, levels= c("Non-Incentive", "Incentive"), labels = c("Non-Incentive", "Incentive"), ordered = TRUE))
 
-feols(fmv_growth_2011 ~ land_use2*incent_prop + in_tif2 | actual_keypin, data = proj_panel)  %>% summary()
+class(proj_panel$land_use2)
+class(ptax_proj_summs$incent_prop2)
+
+table(ptax_proj_summs$land_use2)
+table(proj_panel$land_use2)
+
+table(ptax_proj_summs$incent_prop2)
+table(ptax_proj_summs$incent_change2)
+```
+
+
+```{r}
+projectlevel = feols(fmv_growth_2011 ~ land_use2 + incent_prop2 + land_use2*incent_prop2  + incent_prop2+ in_tif2 | actual_keypin + year, panel.id = c("actual_keypin", "year"), vcov = "twoway", data = proj_panel)
+
+munilevel = feols(fmv_growth_2011 ~ land_use2*incent_prop2 + incent_prop2 + land_use2 + in_tif2 | clean_name + year, panel.id = c("actual_keypin", "year"), vcov = "twoway", data = proj_panel)
+
+etable(projectlevel, munilevel)
+```
+
+
+```{r}
+projectlevel = feols(fmv_growth_2011 ~ land_use2*incent_prop2 + in_tif2  | actual_keypin + year, panel.id = c("actual_keypin", "year"), vcov = "twoway", data = ptax_proj_summs)
+
+projectlevel2 = feols(fmv_growth_2011 ~ land_use2*incent_prop2 + in_tif2  | actual_keypin + clean_name+ year, panel.id = c("actual_keypin", "year"), vcov = "twoway", data = ptax_proj_summs)
+
+munilevel = feols(fmv_growth_2011 ~ land_use2*incent_prop2 + incent_prop2 + in_tif2 | clean_name + year, panel.id = c("actual_keypin", "year"), vcov = "twoway", data = ptax_proj_summs)
+
+etable(projectlevel, projectlevel2, munilevel)
+
 ```
 
