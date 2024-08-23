@@ -22,6 +22,8 @@ knitr:
 
 ```{r warning = FALSE}
 library(tidyverse)
+library(jsonlite)
+
 
 ptax_pins <- read_csv("./Output/comm_ind_PINs_2011-2022_balanced.csv")
 
@@ -34,11 +36,31 @@ parcuniverse_keypins <- readxl::read_xlsx("./Inputs/parceluniverse_keypins_20240
   select(-c(pin_7dig, pin, Column1)) %>%
   filter(class != "EX")
 
+base_url <- "https://datacatalog.cookcountyil.gov/resource/tx2p-k2g9.json"
+
+nbh_pins <- GET(
+  base_url,
+  query = list(
+    tax_year = 2022,
+    `$select` = paste0(c("pin", # "pin10", 
+                         "nbhd_code"
+    ),
+    collapse = ","),
+    `$limit` = 500000000L
+  )
+)
+
+nbh_pins <- fromJSON(rawToChar(nbh_pins$content))
+nbh_pins <- nbh_pins |> filter(pin %in% ptax_pins$pin)
+```
+
+
+```{r warning = FALSE}
 puni_keypins <- parcuniverse_keypins %>% 
   select(pin14, 
          puni_keypin = keypin, 
          proration_rate2022 = proration_rate, 
-         mailing_name2022 = mailing_name)
+         mailing_name2022 = mailing_name )
 
 # Workaround for identifying more project IDs. 
 # Used Appeal ID to create unique identifier to group PINs.
@@ -49,8 +71,8 @@ bor_pins <- bor %>%
   group_by(pin) %>% 
   arrange(desc(tax_year)) %>%
   summarize(pin = first(pin),
-            class_bor = list(class),
-            taxyear_appealed = list(tax_year),
+            class_bor = paste(list(unique(class)), collapse = ", "),
+            taxyear_appealed = paste(list(tax_year), collapse = ", "),
             appellant = first(appellant),
             project_id = first(project_id), 
             timesappealed = n() ) %>%
@@ -58,7 +80,9 @@ bor_pins <- bor %>%
 
 ptax_proj <- ptax_pins %>% 
   left_join(bor_pins) %>%
-  left_join(puni_keypins, by = c("pin" = "pin14")) 
+  left_join(puni_keypins, by = c("pin" = "pin14"))  %>%
+  left_join(nbh_pins)
+
 
 proj_xwalk <- read_csv("Output/all_keypins.csv")               
 ptax_proj <- ptax_proj %>% left_join(proj_xwalk, by = "pin", relationship = "many-to-many")
@@ -67,7 +91,7 @@ ptax_proj <- ptax_proj %>% left_join(proj_xwalk, by = "pin", relationship = "man
 ptax_proj <- ptax_proj %>% 
   mutate(actual_keypin = ifelse(is.na(proj_appeallant), puni_keypin, proj_appeallant))%>%
   mutate(actual_keypin = ifelse(is.na(actual_keypin), keypin, actual_keypin)) %>%
-  select(year, actual_keypin, pin, tax_code_num, class, class_bor, tax_code_rate, fmv, av_clerk, tax_bill_total, everything())
+  select(year, actual_keypin, pin, nbhd_code, tax_code_num, class, class_bor, tax_code_rate, fmv, av_clerk, tax_bill_total, everything())
 ```
 
 ```{r manual-pin-codings}
@@ -179,6 +203,14 @@ change_table |> filter(first_commerc_year < first_indust_year)
 
 
 ```
+```{r}
+table(ptax_proj$incent_prop)
+ptax_proj %>% 
+  arrange(pin, year) %>%
+ # select(-c(landuse_change, land_use, incent_change, tif_change, pin_classes_2011, pin_classes_2022) ) %>%
+  filter(incent_change2 %in% c("Incentive")) %>%
+           write_csv("Output/incentive_project_summaries.csv")
+```
 
 ```{r}
 ptax_proj_summs <- ptax_proj %>% 
@@ -225,6 +257,11 @@ ptax_proj_summs <- ptax_proj_summs %>%
 ptax_proj_summs %>% 
   select(-c(landuse_change, land_use, incent_change, tif_change, pin_classes_2011, pin_classes_2022) ) %>%
            write_csv("Output/project_summaries.csv")
+
+ptax_proj_summs %>% 
+  select(-c(landuse_change, land_use, incent_change, tif_change, pin_classes_2011, pin_classes_2022) ) %>%
+  filter(incent_change2 %in% c("Always Incentive", "Changes")) %>%
+           write_csv("Output/incentive_project_summaries.csv")
 ```
 
 
@@ -376,7 +413,8 @@ etable(projectlevel, munilevel)
 ```
 
 
-**
+** some other variable combination **
+
 ```{r}
 projectlevel = feols(fmv_growth_2011 ~ land_use2*incent_prop2 + in_tif2  | actual_keypin + year, panel.id = c("actual_keypin", "year"), vcov = "twoway", data = proj_panel)
 
