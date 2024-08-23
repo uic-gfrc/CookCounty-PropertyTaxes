@@ -94,7 +94,7 @@ comm_ind_raw <- comm_ind_temp
 
 ```
 
-#DV for all regressions: FMV growth since 2011
+# DV for all regressions: FMV growth since 2011
 
 # OLS
 
@@ -199,7 +199,7 @@ pin_fe_models <- list(
                        ),
 
 
-      "3" = feols(fmv_growth_2011 ~ incent_prop + land_use + incent_prop*land_use 
+      "3" = feols(fmv_growth_2011 ~ incent_prop*land_use  
                   | pin + year,
                        data = comm_ind_raw |> 
                          filter(land_use != "Rental")
@@ -214,6 +214,8 @@ modelsummary(pin_fe_models,
   theme_tt("grid")
 
 ```
+
+
 ## Muni-Level Fixed Effects
 
 ```{r muni_fe}
@@ -221,7 +223,7 @@ modelsummary(pin_fe_models,
 
 muni_fe_models <- list(
   
-      "1" = feols(fmv_growth_2011 ~ land_use | clean_name + year,
+      "1" = feols(fmv_growth_2011 ~ land_use | clean_name + pin + year,
                        data = comm_ind_raw |>
                          filter(land_use != "Rental")
                        ),
@@ -235,15 +237,17 @@ muni_fe_models <- list(
       "3" = feols(fmv_growth_2011 ~ incent_prop + land_use + incent_prop*land_use | clean_name + year,
                        data = comm_ind_raw |> 
                          filter(land_use != "Rental")
-                       )
+                       ),
+          "4" = feols(fmv_growth_2011 ~  incent_prop*land_use + in_tif | clean_name + year,
+                       data = comm_ind_raw |> 
+                         filter(land_use != "Rental"))
                         )
 
-modelsummary(pin_fe_models,
+modelsummary(muni_fe_models,
              stars = TRUE,
              fmt = function(x) round(x, 2),
-             coef_omit= 'pin|year',
-             gof_omit = "AIC|BIC|Log.Lik.|RMSE") |>
-  theme_tt("grid")
+             coef_omit= 'pin|year|clean_name',
+             gof_omit = "AIC|BIC|Log.Lik.|RMSE")# |>theme_tt("grid")
 
 ```
 
@@ -272,7 +276,7 @@ muni_fe_new_vars_mods <- list(
                    filter(land_use != "Rental")
                        ),
      
-      "4" = feols(fmv_growth_2011 ~ incent_change_bin + prop_use_change_bin + land_use + incent_prop + land_use*incent_prop
+      "4" = feols(fmv_growth_2011 ~ incent_change_bin + prop_use_change_bin + land_use*incent_prop
                  | clean_name + year,
                    data = comm_ind_raw |>
                    filter(land_use != "Rental")
@@ -283,8 +287,7 @@ modelsummary(muni_fe_new_vars_mods,
              stars = TRUE,
              fmt = function(x) round(x, 2),
             # coef_omit= 'pin|year',
-             gof_omit = "AIC|BIC|Log.Lik.|RMSE") |>
-  theme_tt("grid")
+             gof_omit = "AIC|BIC|Log.Lik.|RMSE") #|>  theme_tt("grid")
 
 
 ```
