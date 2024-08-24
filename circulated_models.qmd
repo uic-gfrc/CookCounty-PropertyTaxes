@@ -1,6 +1,5 @@
 ---
-title: "Models for Circulation"
-subtitle: "Better Performing Models"
+title: "Models for Circulation - Updated after Circulation"
 author: "MVH & AWM"
 date: 8/17/24
 date-modified: last-modified
@@ -32,12 +31,20 @@ library(tinytex)
 
 comm_ind <- read_csv("./Output/comm_ind_PINs_2011-2022_balanced.csv") 
 
+# has binary variable for if it was a reassessment year or not. 
+# Manually created based on the 3 year rotation used for reassessments.
+reassessment_years <- read_csv("./Necessary_Files/Triad_reassessment_years.csv")
+
+
+reassessments_long <- reassessment_years %>% 
+  pivot_longer(cols = c(`2006`:`2022`), names_to = "year", values_to = "reassess_year")
+
 comm_ind <- comm_ind |>
   ## set variable types 
   mutate(across(c(class, improvement_ind, has_AB_exemp, fmv_NA_indicator, in_tif), as.character))
 
 comm_ind <- comm_ind |>
-  # Change to factors; set reference levels
+  # Change to factors; set reference levels in next steps
   mutate(incent_change = as.factor(incent_change),
          landuse_change = as.factor(landuse_change),
          triad = as.factor(Triad),
@@ -45,12 +52,13 @@ comm_ind <- comm_ind |>
          land_use = as.factor(land_use),
          incent_prop = as.factor(incent_prop),
          clean_name = as.factor(clean_name),
-         fmv_growth_2011 = round(fmv_growth_2011)) |>
+         fmv_growth_2011 = round(fmv_growth_2011, digits = 4) ) |>
+  
+  # set reference levels
   mutate(incent_change = relevel(incent_change, ref = "Never Incentive"),
          landuse_change = relevel(landuse_change, ref = "Always Commercial"),
          incent_prop = relevel(incent_prop, ref = "Non-Incentive"),
-
-         triad = relevel(triad, ref = "North"),
+         triad = relevel(triad, ref = "City"),
          land_use = relevel(land_use, ref = "Commercial")
          ) |>
   # Create binary variables
@@ -58,10 +66,20 @@ comm_ind <- comm_ind |>
                                                 "Changes Sometime", 1, 0)),
          prop_use_change_bin = as.factor(ifelse(landuse_change == 
                                                   "Changes Land Use", 1, 0)),
-         is_chicago = as.factor(ifelse(clean_name == "Chicago", 1, 0))
+        # is_chicago = as.factor(ifelse(clean_name == "Chicago", 1, 0))
          ) |>
+  # percent change from previous years 
+  group_by(pin) |> 
+  arrange(year)|> 
+  mutate(fmv_pct_change = (fmv - lag(fmv))/ lag(fmv),
+         av_clerk_pct_change = (av_clerk - lag(av_clerk)) / lag(av_clerk),
+         av_mailed_pct_change = (av_mailed - lag(av_mailed)) / lag(av_mailed)
+
+         ) |>
+  ungroup() |>
   rename(fmv_2011 = base_year_fmv_2011) |>
-  arrange(pin, year)
+  arrange(pin, year) |> 
+  left_join(reassessment_years)
 
 # 1,190,580 obs. (MVH 8/2) 
 comm_ind_temp <- comm_ind  |>
@@ -96,49 +114,16 @@ comm_ind_raw <- comm_ind_temp
 
 # DV for all regressions: FMV growth since 2011
 
-# OLS
-
-## Only 2022
-
-```{r ols_2022_models}
-
-comm_ind_ols_2022 <- comm_ind_temp |>
-  filter(year == 2022) |>
-  filter(land_use != "Rental")
-
-ols_2022_models <- list(
-  
-  "(1)" = lm(fmv_growth_2011 ~ incent_change + prop_use_change_bin + incent_change*prop_use_change_bin,
-                data = comm_ind_ols_2022),
-  
-  "(2)*" = lm(fmv_growth_2011 ~ incent_change + prop_use_change_bin + incent_change*prop_use_change_bin
-             + clean_name,
-                data = comm_ind_ols_2022)
-)
-
-
-modelsummary(ols_2022_models,
-             stars = TRUE,
-             fmt = function(x) round(x, 2),
-             coef_omit= 'clean_name',
-             gof_omit = "AIC|BIC|Log.Lik.|RMSE") |>
-  theme_tt("grid")
-
-
-```
-*Controls for municipality
-
-## Includes 2011-2022
+# OLS - Multi-year with Muni and Year Controls
 
 ```{r ols_models}
 
 ols_models <- list(
   
-  "(1)" = lm(fmv_growth_2011 ~ incent_change_bin + prop_use_change_bin + incent_change_bin*prop_use_change_bin
-             + year,
+  "Year Controls" = lm(fmv_growth_2011 ~ incent_change_bin*prop_use_change_bin + year,
                 data = comm_ind_raw),
   
-  "(2)*" = lm(fmv_growth_2011 ~ incent_change_bin + prop_use_change_bin + incent_change_bin*prop_use_change_bin
+  "Year and Muni Controls" = lm(fmv_growth_2011 ~ incent_change_bin*prop_use_change_bin
              + clean_name + year,
                 data = comm_ind_raw)
 )
@@ -148,32 +133,7 @@ modelsummary(ols_models,
              stars = TRUE,
              fmt = function(x) round(x, 2),
              coef_omit= 'clean_name|year',
-             gof_omit = "AIC|BIC|Log.Lik.|RMSE") |>
-  theme_tt("grid")
-
-```
-*Controls for Municipality
-
-```{r ind_comm_models}
-
-ind_comm_models <- list(
-  
-  "Industrial" = lm(fmv_growth_2011 ~ incent_change_bin + prop_use_change_bin + incent_change_bin*prop_use_change_bin
-             + clean_name + year,
-                data = comm_ind_raw |> filter(land_use == "Industrial")),
-  
-  "Commercial" = lm(fmv_growth_2011 ~ incent_change_bin + prop_use_change_bin + incent_change_bin*prop_use_change_bin
-             + clean_name + year,
-                data = comm_ind_raw |> filter(land_use == "Commercial"))
-  
-)
-
-modelsummary(ind_comm_models,
-             stars = TRUE,
-             fmt = function(x) round(x, 2),
-             coef_omit= 'clean_name|year',
-             gof_omit = "AIC|BIC|Log.Lik.|RMSE") |>
-  theme_tt("grid")
+             gof_omit = "AIC|BIC|Log.Lik.|RMSE") #|>  theme_tt("grid")
 
 ```
 
@@ -187,20 +147,20 @@ modelsummary(ind_comm_models,
 pin_fe_models <- list(
   
       "1" = feols(fmv_growth_2011 ~ land_use 
-                  | pin + year,
+                  | pin + year, vcov = "twoway",
                        data = comm_ind_raw |>
                          filter(land_use != "Rental")
                        ),
       
       "2" = feols(fmv_growth_2011 ~ incent_prop + land_use 
-                  | pin + year,
+                  | pin + year, vcov = "twoway",
                        data = comm_ind_raw |> 
                          filter(land_use != "Rental")
                        ),
 
 
       "3" = feols(fmv_growth_2011 ~ incent_prop*land_use  
-                  | pin + year,
+                  | pin + year, vcov = "twoway",
                        data = comm_ind_raw |> 
                          filter(land_use != "Rental")
                        )
@@ -210,8 +170,7 @@ modelsummary(pin_fe_models,
              stars = TRUE,
              fmt = function(x) round(x, 2),
              coef_omit= 'pin|year',
-             gof_omit = "AIC|BIC|Log.Lik.|RMSE") |>
-  theme_tt("grid")
+             gof_omit = "AIC|BIC|Log.Lik.|RMSE")
 
 ```
 
@@ -224,17 +183,20 @@ modelsummary(pin_fe_models,
 muni_fe_models <- list(
   
       "1" = feols(fmv_growth_2011 ~ land_use | clean_name + pin + year,
+                   vcov = "twoway",
                        data = comm_ind_raw |>
                          filter(land_use != "Rental")
                        ),
       
-      "2" = feols(fmv_growth_2011 ~ incent_prop + land_use | clean_name + year,
+      "2" = feols(fmv_growth_2011 ~ incent_prop + land_use | pin + year,
+                                     vcov = "twoway",
+
                        data = comm_ind_raw |> 
                          filter(land_use != "Rental")
                        ),
 
 
-      "3" = feols(fmv_growth_2011 ~ incent_prop + land_use + incent_prop*land_use | clean_name + year,
+      "3" = feols(fmv_growth_2011 ~ incent_prop*land_use | clean_name + year,
                        data = comm_ind_raw |> 
                          filter(land_use != "Rental")
                        ),
@@ -258,19 +220,19 @@ modelsummary(muni_fe_models,
 
 muni_fe_new_vars_mods <- list(
   
-     "1" = feols(fmv_growth_2011 ~ incent_change_bin + prop_use_change_bin + incent_change_bin*prop_use_change_bin
+     "1" = feols(fmv_growth_2011 ~ incent_change_bin*prop_use_change_bin
                  | clean_name + year,
                        data = comm_ind_raw |>
                          filter(land_use != "Rental")
                        ),
       
-      "2" = feols(fmv_growth_2011 ~ incent_prop + land_use + incent_prop*land_use 
+      "2" = feols(fmv_growth_2011 ~ incent_prop*land_use 
                    | clean_name + year,
                      data = comm_ind_raw |> 
                      filter(land_use != "Rental")
                        ),
      
-      "3" = feols(fmv_growth_2011 ~ incent_change_bin + prop_use_change_bin + land_use + incent_prop + incent_change_bin*prop_use_change_bin
+      "3" = feols(fmv_growth_2011 ~ land_use + incent_prop + incent_change_bin*prop_use_change_bin
                  | clean_name + year,
                    data = comm_ind_raw |>
                    filter(land_use != "Rental")
