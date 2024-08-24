@@ -1,0 +1,126 @@
+---
+title: "Untitled"
+format: pdf
+---
+
+# Theory: Open Market Hypothes-ish and Reassessment Cycle as Exogenous Shock
+
+The value of the availability of an incentive classification should already be capitalized into the fair market value of any given PIN. That said, despite CCAO's involvement in the re-classification process, it is fundamentally unaware whether a PIN is in the process of obtaining an incentive classification. Moreover, it is unlikely CCAO incorporates the value of the opportunity cost of foregoing an incentive classification when valuing income-producing propertiers.
+
+Thus, obtaining an incentive classification should immediately increase the FMV of a PIN. At the same time, we would not see that increase reflected in the PIN's assessment until its next reassessment cycle. While CCAO claims it never uses "fully loaded cap rates," the point is fundamentally irrelevant to the FMV of a PIN, which is what CCAO is legally obligated to calculate.
+
+The next reassessment following the grant of incentive classification, then, serves as the exogenous shock necessary to make a credible causal claim about the effect of incentivizing a PIN. For the first time, CCAO is able to observe the existence of an incentive classification as it shifts from an unknown (to CCAO) fact about a PIN to a known (to CCAO) face about a PIN.
+
+# Data import and prep
+
+Note that we have dropped outliers from our dataset for purposes of these models.
+
+```{r setup}
+
+options(scipen = 999, digits = 4) #no scientific notation
+
+# Load packages
+
+library(tidyverse)
+library(glue)
+library(fixest)
+library(modelsummary)
+library(tinytable)
+library(sandwich)
+library(tinytex)
+
+```
+
+```{r data_prep}
+
+comm_ind <- read_csv("./Output/comm_ind_PINs_2011-2022_balanced.csv") 
+
+comm_ind <- comm_ind |>
+  ## set variable types 
+  mutate(across(c(class, improvement_ind, has_AB_exemp, fmv_NA_indicator, in_tif), as.character))
+
+comm_ind <- comm_ind |>
+  # Change to factors; set reference levels
+  mutate(incent_change = as.factor(incent_change),
+         landuse_change = as.factor(landuse_change),
+         triad = as.factor(Triad),
+         in_tif = as.factor(in_tif),
+         land_use = as.factor(land_use),
+         incent_prop = as.factor(incent_prop),
+         clean_name = as.factor(clean_name),
+         fmv_growth_2011 = round(fmv_growth_2011)) |>
+  mutate(incent_change = relevel(incent_change, ref = "Never Incentive"),
+         landuse_change = relevel(landuse_change, ref = "Always Commercial"),
+         incent_prop = relevel(incent_prop, ref = "Non-Incentive"),
+
+         triad = relevel(triad, ref = "North"),
+         land_use = relevel(land_use, ref = "Commercial")
+         ) |>
+  # Create binary variables
+  mutate(incent_change_bin = as.factor(ifelse(incent_change == 
+                                                "Changes Sometime", 1, 0)),
+         prop_use_change_bin = as.factor(ifelse(landuse_change == 
+                                                  "Changes Land Use", 1, 0)),
+         is_chicago = as.factor(ifelse(clean_name == "Chicago", 1, 0))
+         ) |>
+  rename(fmv_2011 = base_year_fmv_2011) |>
+  arrange(pin, year)
+
+# 1,190,580 obs. (MVH 8/23) 
+comm_ind_temp <- comm_ind  |>
+  # 1121436 obs. (lose 69,144) (MVH 8/23)
+  filter(!is.na(fmv_2011)) |>
+  # 1121436 obs. (MVH 8/23)
+  filter(!is.na(fmv)) |>
+  # 1,121,436 obs. (lose no obs) (MVH 8/23)
+  filter(!is.na(fmv_growth_2011))
+
+comm_ind_raw <- comm_ind_temp |> 
+  select(pin, class, year, clean_name, fmv, fmv_growth_2011, fmv_2011, incent_prop, 
+         land_use, major_class_code, landuse_change, incent_change, triad, 
+         incent_change_bin, prop_use_change_bin,
+         in_tif) |>
+  filter(fmv_2011 > 1000) |>
+  mutate(year = as.factor(year))
+
+```
+
+# Causal Model
+
+We propose a basic difference-in-difference design for our casual model, using the next reassessment following an incentive class change as the exogenous shock.
+
+## Dependent Variable
+
+% Change in FMV from Prior Year
+
+Given that the value (or at least opportunity cost) of the availability of an incetive classification is "baked into" the value of a PIN, we should only see a single bump in growth: at the next assessment cycle following the grant of the incentive. The alternative--that land owners don't account for the value of incentive classifications--is implausible and thus, following the initial bump in value, the PIN's FMV growth should return to the general trend.
+
+## Independent Variable of Interest
+
+First Assessment Year following Reclassification
+
+Given that CCAO does not "know," a priori, the availability of an incentive classification for a given PIN, we should not see its value appear until the next reassmment cycle. An alternative set of IVs of interest--several lag variables of having an incentive classification--also makes theoretical sense, but would reduce the explanatory value of the model.
+
+## Control Variables
+
+### Change in Land Use
+
+Change in land use has consistently been statistically and practically significant in conection with PIN FMV.
+
+### Year
+
+Since we are using a DiD model with a staggered treatment, we can't use TWFE. Thus, we're including year as a control variable
+
+## Fixed Effects
+
+We will be using municipality-level fixed effects because those entities are the "deciders" on incentive classifications and the level at which we want to remove the "across" variation.
+
+# Models Lacking Valid Causal Claims
+
+Absent incorporation of an exogenous shock, we cannot make causal claims based on the models below, but can identify important associations.
+
+## Pooled OLS
+
+
+
+## TWFE
