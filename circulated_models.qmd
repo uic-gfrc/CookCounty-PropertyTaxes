@@ -83,9 +83,12 @@ comm_ind <- comm_ind |>
          av_mailed_pct_change = (av_mailed - lag(av_mailed)) / lag(av_mailed),
          class_lag = lag(class),
          improvement_lag = lag(improvement_ind),
-         reassess_lag = lag(reassessed_year),
-         base_year_fmv_2011_w = DescTools::Winsorize(base_year_fmv_2011, quantile(base_year_fmv_2011, probs = c(0.02,0.98), na.rm=TRUE)), 
-         ) |>
+         reassess_lag = lag(reassessed_year)) |>
+  ungroup() |>
+  group_by(year) |>
+         base_year_fmv_2011_w = DescTools::Winsorize(base_year_fmv_2011, quantile(base_year_fmv_2011, probs = c(0.02,0.98), na.rm=TRUE), 
+         fmv_growth_2011_w = DescTools::Winsorize(fmv_growth_2011, quantile(fmv_growth_2011, probs = c(0.02,0.98), na.rm=TRUE))
+         )|>
   ungroup() |>
   rename(fmv_2011 = base_year_fmv_2011) |>
   arrange(pin, year) 
@@ -107,26 +110,28 @@ comm_ind <- comm_ind |>
   mutate(first_incent_year = ifelse(incent_prop != lag(incent_prop), year, NA),
          next_reassessment = ifelse(!is.na(first_incent_year) & reassessed_year == 1, "Same Year",
                                     ifelse(!is.na(first_incent_year) & reassessed_year == 0, "Next Assessment", NA))
-         # treatment = ifelse(!is.na(first_incent_year) & reassessed_year == 0, "Control",
-         #                    !is.na(first_incent_year) & reassessed_year == 1, "Control 2",
-         #                    !is.na(first_incent_year) & lead(reassessed_year),
-         
   )
+```
 
+
+```{r}
 table(comm_ind$first_incent_year)
 table(comm_ind$next_reassessment)
-
 table( comm_ind$year, comm_ind$next_reassessment)
+```
 
+
+```{r}
 #comm_ind_temp <- comm_ind_temp |> 
 comm_ind_temp <- comm_ind |> 
 
   select(pin, class, year, clean_name, fmv, fmv_growth_2011, fmv_2011, incent_prop, 
          land_use, major_class_code, landuse_change, incent_change, triad, 
          incent_change_bin, prop_use_change_bin, reassess_lag, reassessed_year,
+         fmv_growth_2011_w, base_year_fmv_2011_w,
          in_tif) |>
-  mutate(fmv_growth_2011_w = DescTools::Winsorize(fmv_growth_2011, quantile(fmv_growth_2011, probs = c(0.02,0.98), na.rm=TRUE)), 
-         fmv_w = DescTools::Winsorize(fmv, val = c(100, max(fmv), na.rm=TRUE))) |>
+  # mutate(fmv_growth_2011_w = DescTools::Winsorize(fmv_growth_2011, quantile(fmv_growth_2011, probs = c(0.02,0.98), na.rm=TRUE)), 
+  #        fmv_w = DescTools::Winsorize(fmv, val = c(100, max(fmv), na.rm=TRUE))) |>
  # filter(fmv_2011 > 100) |>
  # filter(fmv_growth_2011 < 1000) |>
    mutate(year = as.factor(year))
@@ -500,10 +505,6 @@ comm_ind_raw |>
             sd= sd(fmv_growth_2011_w, na.rm=TRUE))
 
 
-comm_ind_raw_2022 <- comm_ind_raw |>
-  filter(year == 2022)
-
-
 # Look at FMV growth
 comm_ind_raw |> ungroup() |>
       filter(year == 2022)|>
@@ -513,8 +514,8 @@ comm_ind_raw |> ungroup() |>
             med_growth = median(fmv_growth_2011_w, na.rm=TRUE),
             sd_growth = sd(fmv_growth_2011_w, na.rm=TRUE))
 
-# Look at fmv_2011
 
+# Look at fmv_2011
 comm_ind_raw |> ungroup() |>
     filter(year == 2022)|>
   summarize(min_fmv = min(base_year_fmv_2011_w, na.rm=TRUE), 
@@ -524,55 +525,49 @@ comm_ind_raw |> ungroup() |>
             sd_fmv = sd(base_year_fmv_2011_w, na.rm=TRUE))
 
 comm_ind_raw |>
-      filter(year == 2022)|>
+      filter(year == 2021)|>
   ggplot() +
-  geom_freqpoly(aes(fmv_growth_2011_w, color = "FMV Growth 2011")) +
-  geom_freqpoly(aes(base_year_fmv_2011_w, color = "FMV 2011")) +
+  #geom_freqpoly(aes(fmv_growth_2011_w, color = "FMV Growth since 2011")) +
+  geom_freqpoly(aes(base_year_fmv_2011_w, color = "FMV in 2011")) +
   labs(
-    title = "Distribution of 2011 FMV Values and Growth Rates (2022 Data)",
-    x = "FMV",
-    y = "n",
+    title = "Distribution of 2011 FMV Values",# and Growth Rates (2022 Data)",
+    x = "FMV",   y = "n",
+    color = "Legend") +
+  theme_classic()
+
+comm_ind_raw |>
+      filter(year == 2021)|>
+  ggplot() +
+  geom_freqpoly(aes(fmv_growth_2011_w, color = "FMV Growth since 2011")) +
+ # geom_freqpoly(aes(base_year_fmv_2011_w, color = "FMV in 2011")) +
+  labs(
+    title = "Distribution of Growth Rates since 2011 (2021 Data)",
+    x = "Growth since 2011",   y = "n",
     color = "Legend") +
   theme_classic()
 
 comm_ind_raw |>
       filter(year == 2022)|>
   ggplot() +
-  geom_point(aes(x = fmv_2011, y = fmv_growth_2011, color = land_use)) +
+  geom_point(aes(x = base_year_fmv_2011_w, y = fmv_growth_2011_w, color = land_use)) +
     labs(
     title = "Relationship between 2011 FMV Values and Growth Rates (2022 Data)",
-    x = "2011 FMV",
-    y = "FMV Growth",
+    x = "2011 FMV",    y = "FMV Growth",
     color = "Land Use") +
   theme_classic()
 
 
 comm_ind_raw |>
-      filter(year == 2022)|>
-  filter(fmv_growth_2011_w < 20000) |>
-  filter(base_year_fmv_2011_w < 200000000) |>
-  ggplot() +
-  geom_point(aes(x = base_year_fmv_2011_w, y = fmv_growth_2011_w, color = land_use)) +
-    labs(
-    title = "Relationship between 2011 FMV Values and Growth Rates (2022 Data)",
-    x = "2011 FMV",
-    y = "FMV Growth",
-    color = "Land Use"
-  ) +
-  theme_classic()
-
-comm_ind_raw |>
-      filter(year == 2022)|>
-
+  filter(year == 2021)|>
   filter(land_use %in% c("Industrial", "Commercial")) |>
+  filter(fmv_growth_2011_w < 250000) |>
   ggplot() +
   geom_point(aes(x = base_year_fmv_2011_w, y = fmv_growth_2011_w, color = land_use)) +
     labs(
     title = "Relationship between 2011 FMV Values and Growth Rates (2022 Data)",
     x = "2011 FMV",
     y = "FMV Growth",
-    color = "Land Use"
-  ) +
+    color = "Land Use") +
   theme_classic()
 
 ```
