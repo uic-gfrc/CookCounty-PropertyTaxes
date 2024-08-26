@@ -83,7 +83,8 @@ comm_ind <- comm_ind |>
          av_mailed_pct_change = (av_mailed - lag(av_mailed)) / lag(av_mailed),
          class_lag = lag(class),
          improvement_lag = lag(improvement_ind),
-         reassess_lag = lag(reassessed_year)
+         reassess_lag = lag(reassessed_year),
+         base_year_fmv_2011_w = DescTools::Winsorize(base_year_fmv_2011, quantile(base_year_fmv_2011, probs = c(0.02,0.98), na.rm=TRUE)), 
          ) |>
   ungroup() |>
   rename(fmv_2011 = base_year_fmv_2011) |>
@@ -145,10 +146,16 @@ comm_ind_raw <- comm_ind_temp
 **How many properties LOSE their incentives?**
 
 ```{r}
-lose_incent_pins <-comm_ind_raw |> filter(incent_prop == "Incentive" & lead(incent_prop) == "Non-Incentive") %>% select(pin, year) 
-gains_incent_pins <-comm_ind_raw |> filter(incent_prop == "Incentive" & lag(incent_prop) == "Non-Incentive") %>% select(pin, year)
+lose_incent_pins <-comm_ind_raw |> 
+  filter(incent_prop == "Incentive" & lead(incent_prop) == "Non-Incentive") %>% 
+  select(pin, year) 
 
-comm_ind_raw |> filter(pin %in% lose_incent_pins$pin) %>% arrange(pin)
+gains_incent_pins <-comm_ind_raw |> 
+  filter(incent_prop == "Incentive" & lag(incent_prop) == "Non-Incentive") %>% 
+  select(pin, year)
+
+comm_ind_raw |> 
+  filter(pin %in% lose_incent_pins$pin) %>% arrange(pin)
 
 comm_ind_raw <- comm_ind_raw %>% 
   mutate(gain_lose_incent = ifelse(pin %in% lose_incent_pins$pin, "Loses Incentive", 
@@ -317,6 +324,38 @@ modelsummary(muni_fe_models,
 
 ```
 
+```{r winsorize-muni_fe}
+#| warning: false
+
+muni_fe_models <- list(
+  
+      "1" = feols(fmv_growth_2011_w ~ land_use | clean_name + year,
+                   vcov = "twoway",
+                       data = comm_ind_raw # |>  filter(land_use != "Rental")
+                       ),
+      
+      "2" = feols(fmv_growth_2011_w ~ incent_prop + land_use | clean_name + year,
+                                     vcov = "twoway",
+                       data = comm_ind_raw #|>  filter(land_use != "Rental")
+                       ),
+
+
+      "3" = feols(fmv_growth_2011_w ~ incent_prop*land_use | clean_name + year,
+                       data = comm_ind_raw #|> filter(land_use != "Rental")
+                       ),
+          "4" = feols(fmv_growth_2011_w ~  incent_prop*land_use + in_tif | clean_name + year,
+                       data = comm_ind_raw #|> filter(land_use != "Rental")
+                      )
+                        )
+
+modelsummary(muni_fe_models,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+             coef_omit= 'pin|year|clean_name',
+             gof_omit = "AIC|BIC|Log.Lik.|RMSE")# |>theme_tt("grid")
+
+```
+
 ## Variations of Property Type and Change Variables
 
 ```{r muni_prop_incent_var_types}
@@ -356,29 +395,39 @@ modelsummary(muni_fe_new_vars_mods,
 
 # Commercial VS Industrial Models
 
+The industrial subset keeps a property (all years) if they were industrial property at any point in time.
+
+The commercial subset keeps a property (all years) if they were commercial property at any point in time.
+
 
 ```{r industrial_models}
+
+
+industrial_subset <- comm_ind_raw |> 
+  group_by(pin) |>
+  filter(any(land_use == "Industrial"))
+
 
 muni_fe_new_vars_mods <- list(
   
      "1" = feols(fmv_growth_2011 ~ incent_change_bin*prop_use_change_bin
                  | clean_name + year,
-                       data = comm_ind_raw |> filter(land_use == "Industrial"[year==2011])
-                       ),
+                 data = industrial_subset
+),
       
       "2" = feols(fmv_growth_2011 ~ incent_prop*land_use 
                    | clean_name + year,
-                     data = comm_ind_raw  |> filter(land_use == "Industrial"[year==2011])
+                 data = industrial_subset
                        ),
      
       "3" = feols(fmv_growth_2011 ~ land_use + incent_prop + incent_change_bin*prop_use_change_bin
                  | clean_name + year,
-                   data = comm_ind_raw |> filter(land_use == "Industrial"[year==2011])
+                 data = industrial_subset
                        ),
      
       "4" = feols(fmv_growth_2011 ~ incent_change_bin + prop_use_change_bin + land_use*incent_prop
                  | clean_name + year, 
-                   data = comm_ind_raw |> filter(land_use == "Industrial"[year==2011])
+                 data = industrial_subset
                        )
 )
 
@@ -392,27 +441,32 @@ modelsummary(muni_fe_new_vars_mods,
 ```
 
 ```{r commercial_models}
+commercial_subset <- comm_ind_raw |> 
+  group_by(pin) |>
+  filter(any(land_use == "Commercial"))
+
+
 
 muni_fe_new_vars_mods <- list(
   
      "1" = feols(fmv_growth_2011 ~ incent_change_bin*prop_use_change_bin
                  | clean_name + year,
-                       data = comm_ind_raw |> filter(land_use == "Commercial"[year==2011])
-                       ),
+                 data = commercial_subset
+                 ),
       
       "2" = feols(fmv_growth_2011 ~ incent_prop*land_use 
                    | clean_name + year,
-                     data = comm_ind_raw  |> filter(land_use == "Commercial"[year==2011])
+                 data = commercial_subset
                        ),
      
       "3" = feols(fmv_growth_2011 ~ land_use + incent_prop + incent_change_bin*prop_use_change_bin
                  | clean_name + year,
-                   data = comm_ind_raw |> filter(land_use == "Commercial"[year==2011])
+                 data = commercial_subset
                        ),
      
       "4" = feols(fmv_growth_2011 ~ incent_change_bin + prop_use_change_bin + land_use*incent_prop
                  | clean_name + year, 
-                   data = comm_ind_raw |> filter(land_use == "Commercial"[year==2011])
+                 data = commercial_subset
                        )
 )
 
@@ -425,3 +479,100 @@ modelsummary(muni_fe_new_vars_mods,
 
 ```
 
+
+# graphs 
+
+```{r dataexploration}
+
+comm_ind_raw |>
+  filter(year==2022)|>
+  ggplot(aes(fmv_growth_2011_w)) +
+  geom_histogram(bins = 100) +
+  theme_classic()
+
+comm_ind_raw |>
+  select(fmv_growth_2011_w) |>
+  ungroup() |>
+  summarize(max = max(fmv_growth_2011_w, na.rm = TRUE), 
+            min = min(fmv_growth_2011_w, na.rm=TRUE), 
+            mean = mean(fmv_growth_2011_w, na.rm = TRUE),
+            median = median(fmv_growth_2011_w, na.rm = TRUE), 
+            sd= sd(fmv_growth_2011_w, na.rm=TRUE))
+
+
+comm_ind_raw_2022 <- comm_ind_raw |>
+  filter(year == 2022)
+
+
+# Look at FMV growth
+comm_ind_raw |> ungroup() |>
+      filter(year == 2022)|>
+  summarize(min_growth = min(fmv_growth_2011_w, na.rm=TRUE), 
+            max_growth = max(fmv_growth_2011_w, na.rm=TRUE), 
+            mean_growth = mean(fmv_growth_2011_w, na.rm=TRUE), 
+            med_growth = median(fmv_growth_2011_w, na.rm=TRUE),
+            sd_growth = sd(fmv_growth_2011_w, na.rm=TRUE))
+
+# Look at fmv_2011
+
+comm_ind_raw |> ungroup() |>
+    filter(year == 2022)|>
+  summarize(min_fmv = min(base_year_fmv_2011_w, na.rm=TRUE), 
+            max_fmv = max(base_year_fmv_2011_w, na.rm=TRUE), 
+            mean_fmv = mean(base_year_fmv_2011_w, na.rm=TRUE), 
+            med_fmv = median(base_year_fmv_2011_w, na.rm=TRUE),
+            sd_fmv = sd(base_year_fmv_2011_w, na.rm=TRUE))
+
+comm_ind_raw |>
+      filter(year == 2022)|>
+  ggplot() +
+  geom_freqpoly(aes(fmv_growth_2011_w, color = "FMV Growth 2011")) +
+  geom_freqpoly(aes(base_year_fmv_2011_w, color = "FMV 2011")) +
+  labs(
+    title = "Distribution of 2011 FMV Values and Growth Rates (2022 Data)",
+    x = "FMV",
+    y = "n",
+    color = "Legend") +
+  theme_classic()
+
+comm_ind_raw |>
+      filter(year == 2022)|>
+  ggplot() +
+  geom_point(aes(x = fmv_2011, y = fmv_growth_2011, color = land_use)) +
+    labs(
+    title = "Relationship between 2011 FMV Values and Growth Rates (2022 Data)",
+    x = "2011 FMV",
+    y = "FMV Growth",
+    color = "Land Use") +
+  theme_classic()
+
+
+comm_ind_raw |>
+      filter(year == 2022)|>
+  filter(fmv_growth_2011_w < 20000) |>
+  filter(base_year_fmv_2011_w < 200000000) |>
+  ggplot() +
+  geom_point(aes(x = base_year_fmv_2011_w, y = fmv_growth_2011_w, color = land_use)) +
+    labs(
+    title = "Relationship between 2011 FMV Values and Growth Rates (2022 Data)",
+    x = "2011 FMV",
+    y = "FMV Growth",
+    color = "Land Use"
+  ) +
+  theme_classic()
+
+comm_ind_raw |>
+      filter(year == 2022)|>
+
+  filter(land_use %in% c("Industrial", "Commercial")) |>
+  ggplot() +
+  geom_point(aes(x = base_year_fmv_2011_w, y = fmv_growth_2011_w, color = land_use)) +
+    labs(
+    title = "Relationship between 2011 FMV Values and Growth Rates (2022 Data)",
+    x = "2011 FMV",
+    y = "FMV Growth",
+    color = "Land Use"
+  ) +
+  theme_classic()
+
+```
