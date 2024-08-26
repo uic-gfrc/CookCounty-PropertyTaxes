@@ -142,6 +142,22 @@ comm_ind_raw <- comm_ind_temp
 
 ```
 
+**How many properties LOSE their incentives?**
+
+```{r}
+lose_incent_pins <-comm_ind_raw |> filter(incent_prop == "Incentive" & lead(incent_prop) == "Non-Incentive") %>% select(pin, year) 
+gains_incent_pins <-comm_ind_raw |> filter(incent_prop == "Incentive" & lag(incent_prop) == "Non-Incentive") %>% select(pin, year)
+
+comm_ind_raw |> filter(pin %in% lose_incent_pins$pin) %>% arrange(pin)
+
+comm_ind_raw <- comm_ind_raw %>% 
+  mutate(gain_lose_incent = ifelse(pin %in% lose_incent_pins$pin, "Loses Incentive", 
+                                   ifelse(pin %in% gains_incent_pins$pin, "Gains Incentive", "Non-Incentive")))
+
+table(comm_ind_raw$gain_lose_incent)
+```
+
+
 **Figure out how to code something that would represent this situation and allow us to model it:** 
 
 The treatment is having the class of property go from a non-incentive class to an incentive class. Need to consider if it is a reassessment year or not. If it is not a reassessment year, then the class change should result in a change in AV that comes purely from the change in the level of assessment (25% to 10%).  If it is a reassessment year, then the change in value is due to the change in level of assessment and the change in the FMV of the property due to local property trends.  
@@ -197,6 +213,27 @@ modelsummary(ols_models,
              gof_omit = "AIC|BIC|Log.Lik.|RMSE") #|>  theme_tt("grid")
 
 ```
+
+
+```{r} 
+
+ols_models <- list(
+    "Year Controls" = lm(fmv_growth_2011 ~  reassessed_year*gain_lose_incent + year,
+                data = comm_ind_raw),
+  
+  "Year and Muni Controls" = lm(fmv_growth_2011 ~ gain_lose_incent*reassessed_year +
+             + clean_name + year,
+                data = comm_ind_raw))
+
+
+modelsummary(ols_models,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+             coef_omit= 'clean_name|year',
+             gof_omit = "AIC|BIC|Log.Lik.|RMSE") #|>  theme_tt("grid")
+
+```
+
 
 # Fixed Effect Models
 
@@ -316,3 +353,75 @@ modelsummary(muni_fe_new_vars_mods,
 
 
 ```
+
+# Commercial VS Industrial Models
+
+
+```{r industrial_models}
+
+muni_fe_new_vars_mods <- list(
+  
+     "1" = feols(fmv_growth_2011 ~ incent_change_bin*prop_use_change_bin
+                 | clean_name + year,
+                       data = comm_ind_raw |> filter(land_use == "Industrial"[year==2011])
+                       ),
+      
+      "2" = feols(fmv_growth_2011 ~ incent_prop*land_use 
+                   | clean_name + year,
+                     data = comm_ind_raw  |> filter(land_use == "Industrial"[year==2011])
+                       ),
+     
+      "3" = feols(fmv_growth_2011 ~ land_use + incent_prop + incent_change_bin*prop_use_change_bin
+                 | clean_name + year,
+                   data = comm_ind_raw |> filter(land_use == "Industrial"[year==2011])
+                       ),
+     
+      "4" = feols(fmv_growth_2011 ~ incent_change_bin + prop_use_change_bin + land_use*incent_prop
+                 | clean_name + year, 
+                   data = comm_ind_raw |> filter(land_use == "Industrial"[year==2011])
+                       )
+)
+
+modelsummary(muni_fe_new_vars_mods,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+            # coef_omit= 'pin|year',
+             gof_omit = "AIC|BIC|Log.Lik.|RMSE") #|>  theme_tt("grid")
+
+
+```
+
+```{r commercial_models}
+
+muni_fe_new_vars_mods <- list(
+  
+     "1" = feols(fmv_growth_2011 ~ incent_change_bin*prop_use_change_bin
+                 | clean_name + year,
+                       data = comm_ind_raw |> filter(land_use == "Commercial"[year==2011])
+                       ),
+      
+      "2" = feols(fmv_growth_2011 ~ incent_prop*land_use 
+                   | clean_name + year,
+                     data = comm_ind_raw  |> filter(land_use == "Commercial"[year==2011])
+                       ),
+     
+      "3" = feols(fmv_growth_2011 ~ land_use + incent_prop + incent_change_bin*prop_use_change_bin
+                 | clean_name + year,
+                   data = comm_ind_raw |> filter(land_use == "Commercial"[year==2011])
+                       ),
+     
+      "4" = feols(fmv_growth_2011 ~ incent_change_bin + prop_use_change_bin + land_use*incent_prop
+                 | clean_name + year, 
+                   data = comm_ind_raw |> filter(land_use == "Commercial"[year==2011])
+                       )
+)
+
+modelsummary(muni_fe_new_vars_mods,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+            # coef_omit= 'pin|year',
+             gof_omit = "AIC|BIC|Log.Lik.|RMSE") #|>  theme_tt("grid")
+
+
+```
+
