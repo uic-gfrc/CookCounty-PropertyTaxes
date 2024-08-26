@@ -392,11 +392,12 @@ muni_fe_new_vars_mods <- list(
 modelsummary(muni_fe_new_vars_mods,
              stars = TRUE,
              fmt = function(x) round(x, 2),
-            # coef_omit= 'pin|year',
+             # coef_omit= 'pin|year',
              gof_omit = "AIC|BIC|Log.Lik.|RMSE") #|>  theme_tt("grid")
 
 
 ```
+
 
 # Commercial VS Industrial Models
 
@@ -404,10 +405,43 @@ The industrial subset keeps a property (all years) if they were industrial prope
 
 The commercial subset keeps a property (all years) if they were commercial property at any point in time.
 
+**Not winsorized**
+```{r}
+muni_fe_new_vars_mods <- list(
+  "Industrial Subset" = feols(fmv_growth_2011 ~ incent_change_bin*prop_use_change_bin
+                              | clean_name + year,
+                              data = industrial_subset
+  ),
+  "Commercial Subset" = feols(fmv_growth_2011 ~ incent_change_bin*prop_use_change_bin
+                              | clean_name + year,
+                              data = commercial_subset
+  )
+)
+modelsummary(muni_fe_new_vars_mods,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+             gof_omit = "AIC|BIC|Log.Lik.|RMSE")
+```
+
+**Winsorized FMV Growth**
+```{r}
+muni_fe_new_vars_mods <- list(
+  "Industrial Subset" = feols(fmv_growth_2011 ~ incent_change_bin*prop_use_change_bin
+                              | clean_name + year,
+                              data = industrial_subset
+  ),
+  "Commercial Subset" = feols(fmv_growth_2011 ~ incent_change_bin*prop_use_change_bin
+                              | clean_name + year,
+                              data = commercial_subset
+  )
+)
+modelsummary(muni_fe_new_vars_mods,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+             gof_omit = "AIC|BIC|Log.Lik.|RMSE")
+```
 
 ```{r industrial_models}
-
-
 industrial_subset <- comm_ind_raw |> 
   group_by(pin) |>
   filter(any(land_use == "Industrial"))
