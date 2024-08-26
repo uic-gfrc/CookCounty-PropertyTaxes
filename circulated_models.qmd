@@ -155,12 +155,23 @@ lose_incent_pins <-comm_ind_raw |>
   filter(incent_prop == "Incentive" & lead(incent_prop) == "Non-Incentive") %>% 
   select(pin, year) 
 
+lose_incent_pins %>% distinct(pin)
+gains_incent_pins %>% distinct(pin)
+
+
 gains_incent_pins <-comm_ind_raw |> 
   filter(incent_prop == "Incentive" & lag(incent_prop) == "Non-Incentive") %>% 
   select(pin, year)
+gains_incent_pins %>% distinct(pin)
+
 
 comm_ind_raw |> 
+  filter(year == 2022) |> 
   filter(pin %in% lose_incent_pins$pin) %>% arrange(pin)
+
+comm_ind_raw |> 
+  filter(year == 2022) |> 
+  filter(pin %in% gains_incent_pins$pin) %>% arrange(pin)
 
 comm_ind_raw <- comm_ind_raw %>% 
   mutate(gain_lose_incent = ifelse(pin %in% lose_incent_pins$pin, "Loses Incentive", 
@@ -265,22 +276,22 @@ So before clustering, think about whether both conditions are likely to be true.
 
 ## PIN-level fixed effects - shouldn't be used! 
 
-```{r pin_fe, eval=FALSE}
+```{r pin_fe}
 
 pin_fe_models <- list(
   
-      "1" = feols(fmv_growth_2011 ~ land_use 
+      "1" = feols(fmv_growth_2011_w ~ land_use 
                   | pin + year, vcov = "twoway",
                        data = comm_ind_raw # |>filter(land_use != "Rental")
                        ),
       
-      "2" = feols(fmv_growth_2011 ~ incent_prop + land_use 
+      "2" = feols(fmv_growth_2011_w ~ incent_prop + land_use 
                   | pin + year, vcov = "twoway",
                        data = comm_ind_raw #|>  filter(land_use != "Rental")
                        ),
 
 
-      "3" = feols(fmv_growth_2011 ~ incent_prop*land_use  
+      "3" = feols(fmv_growth_2011_w ~ incent_prop*land_use  
                   | pin + year, vcov = "twoway",
                        data = comm_ind_raw # |>  filter(land_use != "Rental")
                        )
@@ -406,6 +417,7 @@ The industrial subset keeps a property (all years) if they were industrial prope
 The commercial subset keeps a property (all years) if they were commercial property at any point in time.
 
 **Not winsorized**
+
 ```{r}
 industrial_subset <- comm_ind_raw |> 
   group_by(pin) |>
@@ -431,14 +443,32 @@ modelsummary(muni_fe_new_vars_mods,
              gof_omit = "AIC|BIC|Log.Lik.|RMSE")
 ```
 
-**Winsorized FMV Growth**
+**Winsorized FMV Growth, Muni and Year Fixed Effects**
+
 ```{r}
 muni_fe_new_vars_mods <- list(
-  "Industrial Subset" = feols(fmv_growth_2011 ~ incent_change_bin*prop_use_change_bin
+  "Industrial Subset" = feols(fmv_growth_2011_w ~ incent_change_bin*prop_use_change_bin
                               | clean_name + year,
                               data = industrial_subset
   ),
-  "Commercial Subset" = feols(fmv_growth_2011 ~ incent_change_bin*prop_use_change_bin
+  "Commercial Subset" = feols(fmv_growth_2011_w ~ incent_change_bin*prop_use_change_bin
+                              | clean_name + year,
+                              data = commercial_subset
+  )
+)
+modelsummary(muni_fe_new_vars_mods,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+             gof_omit = "AIC|BIC|Log.Lik.|RMSE")
+```
+
+```{r}
+muni_fe_new_vars_mods <- list(
+  "Industrial Subset" = feols(fmv_growth_2011_w ~ land_use*incent_prop + in_tif
+                              | clean_name + year,
+                              data = industrial_subset
+  ),
+  "Commercial Subset" = feols(fmv_growth_2011_w ~ land_use*incent_prop + in_tif
                               | clean_name + year,
                               data = commercial_subset
   )
