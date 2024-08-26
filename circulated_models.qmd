@@ -407,6 +407,14 @@ The commercial subset keeps a property (all years) if they were commercial prope
 
 **Not winsorized**
 ```{r}
+industrial_subset <- comm_ind_raw |> 
+  group_by(pin) |>
+  filter(any(land_use == "Industrial"))
+
+commercial_subset <- comm_ind_raw |> 
+  group_by(pin) |>
+  filter(any(land_use == "Commercial"))
+
 muni_fe_new_vars_mods <- list(
   "Industrial Subset" = feols(fmv_growth_2011 ~ incent_change_bin*prop_use_change_bin
                               | clean_name + year,
@@ -442,9 +450,7 @@ modelsummary(muni_fe_new_vars_mods,
 ```
 
 ```{r industrial_models}
-industrial_subset <- comm_ind_raw |> 
-  group_by(pin) |>
-  filter(any(land_use == "Industrial"))
+
 
 
 muni_fe_new_vars_mods <- list(
@@ -473,18 +479,12 @@ muni_fe_new_vars_mods <- list(
 modelsummary(muni_fe_new_vars_mods,
              stars = TRUE,
              fmt = function(x) round(x, 2),
-            # coef_omit= 'pin|year',
-             gof_omit = "AIC|BIC|Log.Lik.|RMSE") #|>  theme_tt("grid")
+             gof_omit = "AIC|BIC|Log.Lik.|RMSE") 
 
 
 ```
 
 ```{r commercial_models}
-commercial_subset <- comm_ind_raw |> 
-  group_by(pin) |>
-  filter(any(land_use == "Commercial"))
-
-
 
 muni_fe_new_vars_mods <- list(
   
