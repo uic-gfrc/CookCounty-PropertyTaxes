@@ -101,16 +101,21 @@ comm_ind <- comm_ind |>
 # Create panel data
 
 comm_ind <- comm_ind |> 
-  group_by(pin) |>  arrange(year)|>
+  group_by(pin) |>  
+  arrange(year)|>
   mutate(first_incent_year = ifelse(incent_prop != lag(incent_prop), year, NA),
-         next_reassessment = ifelse(is.na(first_incent_year) & year > first_incent_year, year[reassessed_year==1], NA)
+         next_reassessment = ifelse(!is.na(first_incent_year) & reassessed_year == 1, "Same Year",
+                                    ifelse(!is.na(first_incent_year) & reassessed_year == 0, "Next Assessment", NA))
          # treatment = ifelse(!is.na(first_incent_year) & reassessed_year == 0, "Control",
          #                    !is.na(first_incent_year) & reassessed_year == 1, "Control 2",
          #                    !is.na(first_incent_year) & lead(reassessed_year),
-         )
+         
+  )
 
 table(comm_ind$first_incent_year)
 table(comm_ind$next_reassessment)
+
+table( comm_ind$year, comm_ind$next_reassessment)
 
 #comm_ind_temp <- comm_ind_temp |> 
 comm_ind_temp <- comm_ind |> 
