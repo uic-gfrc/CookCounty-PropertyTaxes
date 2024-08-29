@@ -129,8 +129,7 @@ comm_ind_temp <- comm_ind |>
          land_use, major_class_code, landuse_change, incent_change, triad, 
          incent_change_bin, prop_use_change_bin, reassess_lag, reassessed_year,
          fmv_growth_2011_w, base_year_fmv_2011_w,
-         in_tif) |>
-   mutate(year = as.factor(year))
+         in_tif)
 
 comm_ind_raw <- comm_ind_temp
 ```
@@ -138,32 +137,47 @@ comm_ind_raw <- comm_ind_temp
 **How many properties LOSE their incentives?**
 
 ```{r}
-lose_incent_pins <-comm_ind_raw |> 
+lose_incent_pins <- comm_ind_raw |> 
   filter(incent_prop == "Incentive" & lead(incent_prop) == "Non-Incentive") %>% 
-  select(pin, year) 
+  select(pin, year) %>% mutate(status = "Loses Incentive")
 
-lose_incent_pins %>% distinct(pin)
-
-
-gains_incent_pins <-comm_ind_raw |> 
+gains_incent_pins <- comm_ind_raw |> 
   filter(incent_prop == "Incentive" & lag(incent_prop) == "Non-Incentive") %>% 
-  select(pin, year)
-gains_incent_pins %>% distinct(pin)
+  select(pin, year) %>% mutate(status = "Gains Incentive")
 
+gains_loses <- rbind(lose_incent_pins, gains_incent_pins) %>%
+  mutate(treatment_year = as.numeric(year))
 
-comm_ind_raw |> 
-  filter(year == 2022) |> 
-  filter(pin %in% lose_incent_pins$pin) %>% arrange(pin)
-
-comm_ind_raw |> 
-  filter(year == 2022) |> 
-  filter(pin %in% gains_incent_pins$pin) %>% arrange(pin)
+# comm_ind_raw |> 
+#   filter(year == 2022) |> 
+#   filter(pin %in% lose_incent_pins$pin) %>% arrange(pin)
+# 
+# comm_ind_raw |> 
+#   filter(year == 2022) |> 
+#   filter(pin %in% gains_incent_pins$pin) %>% arrange(pin)
 
 comm_ind_raw <- comm_ind_raw %>% 
-  mutate(gain_lose_incent = ifelse(pin %in% lose_incent_pins$pin, "Loses Incentive", 
-                                   ifelse(pin %in% gains_incent_pins$pin, "Gains Incentive", "Non-Incentive")))
+  left_join(gains_loses, by = "pin") %>%
+  rename(year = year.x)
+#  group_by(pin) %>%
+ # mutate(treatment_year = as.numeric(ifelse(any(!is.na(status)), as.numeric(year), NA)))
 
-table(comm_ind_raw$gain_lose_incent)
+table(comm_ind_raw$treatment_year)
+table(comm_ind_raw$year)
+
+comm_ind_raw <- comm_ind_raw |>
+  ungroup() |> 
+ # mutate(year = as.numeric(year)) %>%
+  mutate(treated = ifelse(treatment_year < year, "pretreatment", 
+                         ifelse(treatment_year > year, "posttreatment", 
+                                 ifelse(treatment_year == year, "Treatment year",
+                                        "Control"))))
+
+table(comm_ind_raw$treated)
+table(comm_ind_raw$status)
+
+
+# feols(fmv_growth_2011 ~ i(year, treated, ref=2016) | clean_name + year, data = comm_ind_raw)
 ```
 
 
@@ -231,7 +245,7 @@ modelsummary(ols_models,
 **StandardErrors **   
 "For clustering with fixed effects to be necessary (and a good idea), several conditions need to hold. First, there needs to be treatment effect heterogeneity. That is, the treatment effect must be quite different for different individuals.
 
-If that is true, there’s a second condition. Either the fixed effect groups/individuals in your data need to be a non-random sampling of the population,2929 That is, some groups are more likely to be included in your sample than others. or, within fixed effect groups/individuals, your treatment variable is assigned in a clustered way.3030 For example, with city fixed effects, are certain individuals in that city more likely to be treated than others?
+If that is true, there’s a second condition. Either the fixed effect groups/individuals in your data need to be a non-random sampling of the population. That is, some groups are more likely to be included in your sample than others. or, within fixed effect groups/individuals, your treatment variable is assigned in a clustered way. For example, with city fixed effects, are certain individuals in that city more likely to be treated than others?
 
 So before clustering, think about whether both conditions are likely to be true. If it is, go ahead and cluster! If not, don’t bother, as the clustering will make your standard errors larger than they’re supposed to be." - [The Effect](https://theeffectbook.net/ch-FixedEffects.html) 
 
@@ -308,6 +322,42 @@ modelsummary(muni_fe_models,
 
 ```
 
+## Muni and PIN fixed effects
+
+```{r winsorize-muni-pin_fe}
+#| warning: false
+
+muni_fe_models <- list(
+  
+      "1" = feols(fmv_growth_2011_w ~ land_use + reassessed_year + l(reassessed_year, 1) + l(reassessed_year, 2) | pin + clean_name + year,
+                   vcov = "threeway", panel.id = c("pin", "year"), 
+                       data = comm_ind_raw ),
+      
+      "2" = feols(fmv_growth_2011_w ~ incent_prop + land_use | pin + clean_name + year,
+                                     vcov = "threeway", panel.id = c("pin", "year"),
+                       data = comm_ind_raw 
+                       ),
+
+
+      "3" = feols(fmv_growth_2011_w ~ incent_prop*land_use + reassessed_year + l(reassessed_year, 1) + l(reassessed_year, 2) | pin + clean_name + year,
+                                                       vcov = "threeway", panel.id = c("pin", "year"),
+
+                       data = comm_ind_raw  ),
+          "4" = feols(fmv_growth_2011_w ~ incent_prop*land_use + in_tif | pin + clean_name + triad^year,
+                                                           vcov = "threeway", panel.id = c("pin", "year"),
+
+                       data = comm_ind_raw )
+                        )
+
+modelsummary(muni_fe_models,
+             stars = TRUE,
+            # fmt = function(x) round(x, 2),
+            # coef_omit= 'pin|year|clean_name',
+             gof_omit = "AIC|BIC|Log.Lik.|RMSE", output = "flextable")
+
+```
+
+
 ## Variations of Property Type and Change Variables
 
 ```{r muni_prop_incent_var_types}
@@ -350,31 +400,6 @@ modelsummary(muni_fe_new_vars_mods,
 The industrial subset keeps a property (all years) if they were industrial property at any point in time.
 
 The commercial subset keeps a property (all years) if they were commercial property at any point in time.
-
-**Not winsorized**
-
-```{r}
-industrial_subset <- comm_ind_raw |> 
-  group_by(pin) |>
-  filter(any(land_use == "Industrial"))
-
-commercial_subset <- comm_ind_raw |> 
-  group_by(pin) |>
-  filter(any(land_use == "Commercial"))
-
-muni_fe_new_vars_mods <- list(
-  "Industrial Subset" = feols(fmv_growth_2011 ~ incent_change_bin*prop_use_change_bin
-                 | clean_name + year,  vcov = "twoway",
-                              data = industrial_subset |> filter(fmv_growth_2011 < 10000)  ),
-  "Commercial Subset" = feols(fmv_growth_2011 ~ incent_change_bin*prop_use_change_bin
-                 | clean_name + year,  vcov = "twoway",
-                              data = commercial_subset |> filter(fmv_growth_2011 < 10000)  )
-)
-modelsummary(muni_fe_new_vars_mods,
-             stars = TRUE,
-             fmt = function(x) round(x, 2),
-             gof_omit = "AIC|BIC|Log.Lik.|RMSE")
-```
 
 **Winsorized FMV Growth, Muni and Year Fixed Effects**
 
