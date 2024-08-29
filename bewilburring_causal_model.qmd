@@ -1,11 +1,19 @@
 ---
-title: "Untitled"
-format: pdf
+title: "Potentially Actual Causal Model"
+format: 
+  html:
+    code-fold: true
+    toc: true
+    toc-location: left
+    tbl-cap-location: top
+    fig-cap-location: top
+    df-print: paged
+  
 ---
 
 # Theory: Open Market Hypothes-ish and Reassessment Cycle as Exogenous Shock
 
-The value of the availability of an incentive classification should already be capitalized into the fair market value of any given PIN. That said, despite CCAO's involvement in the re-classification process, it is fundamentally unaware whether a PIN is in the process of obtaining an incentive classification. Moreover, it is unlikely CCAO incorporates the value of the opportunity cost of foregoing an incentive classification when valuing income-producing propertiers.
+The value of the availability of an incentive classification should already be capitalized into the fair market value of any given PIN. That said, despite CCAO's involvement in the re-classification process, it is fundamentally unaware whether a PIN is in the process of obtaining an incentive classification. Moreover, it is unlikely CCAO incorporates the value of the opportunity cost of foregoing an incentive classification when valuing income-producing properties.
 
 Thus, obtaining an incentive classification should immediately increase the FMV of a PIN. At the same time, we would not see that increase reflected in the PIN's assessment until its next reassessment cycle. While CCAO claims it never uses "fully loaded cap rates," the point is fundamentally irrelevant to the FMV of a PIN, which is what CCAO is legally obligated to calculate.
 
@@ -31,63 +39,192 @@ library(tinytex)
 
 ```
 
-```{r data_prep}
+```{r setup}
+#| output: false
+
+options(scipen = 999, digits = 4) #no scientific notation
+
+# Load packages
+
+library(tidyverse)
+library(glue)
+library(fixest)
+library(modelsummary)
+library(tinytable)
+library(sandwich)
+library(tinytex)
 
 comm_ind <- read_csv("./Output/comm_ind_PINs_2011-2022_balanced.csv") 
 
+# has binary variable for if it was a reassessment year or not. 
+# Manually created based on the 3 year rotation used for reassessments.
+reassessment_years <- read_csv("./Necessary_Files/Triad_reassessment_years.csv")
+
+
+reassessments_long <- reassessment_years %>% 
+  pivot_longer(cols = c(`2006`:`2022`), names_to = "year", values_to = "reassessed_year")
+```
+
+
+```{r}
 comm_ind <- comm_ind |>
+
   ## set variable types 
   mutate(across(c(class, improvement_ind, has_AB_exemp, fmv_NA_indicator, in_tif), as.character))
 
 comm_ind <- comm_ind |>
-  # Change to factors; set reference levels
-  mutate(incent_change = as.factor(incent_change),
+  mutate(year = as.character(year)) |> 
+    left_join(reassessments_long, by = c("year", "Triad")) |>
+
+  # Change to factors; set reference levels in next steps
+  mutate(land_use = ifelse(!land_use %in% c("Commercial", "Industrial", "Land"), "Other Land Use", land_use),
+         
+    incent_change = as.factor(incent_change),
          landuse_change = as.factor(landuse_change),
          triad = as.factor(Triad),
          in_tif = as.factor(in_tif),
          land_use = as.factor(land_use),
          incent_prop = as.factor(incent_prop),
          clean_name = as.factor(clean_name),
-         fmv_growth_2011 = round(fmv_growth_2011)) |>
+         fmv_growth_2011 = round(fmv_growth_2011, digits = 4) ) |>
+  
+  # set reference levels
   mutate(incent_change = relevel(incent_change, ref = "Never Incentive"),
          landuse_change = relevel(landuse_change, ref = "Always Commercial"),
          incent_prop = relevel(incent_prop, ref = "Non-Incentive"),
-
-         triad = relevel(triad, ref = "North"),
+         triad = relevel(triad, ref = "City"),
          land_use = relevel(land_use, ref = "Commercial")
          ) |>
-  # Create binary variables
-  mutate(incent_change_bin = as.factor(ifelse(incent_change == 
-                                                "Changes Sometime", 1, 0)),
-         prop_use_change_bin = as.factor(ifelse(landuse_change == 
-                                                  "Changes Land Use", 1, 0)),
-         is_chicago = as.factor(ifelse(clean_name == "Chicago", 1, 0))
-         ) |>
-  rename(fmv_2011 = base_year_fmv_2011) |>
-  arrange(pin, year)
-
-# 1,190,580 obs. (MVH 8/23) 
-comm_ind_temp <- comm_ind  |>
-  # 1121436 obs. (lose 69,144) (MVH 8/23)
-  filter(!is.na(fmv_2011)) |>
-  # 1121436 obs. (MVH 8/23)
-  filter(!is.na(fmv)) |>
-  # 1,121,436 obs. (lose no obs) (MVH 8/23)
-  filter(!is.na(fmv_growth_2011))
-
-comm_ind_raw <- comm_ind_temp |> 
-  select(pin, class, year, clean_name, fmv, fmv_growth_2011, fmv_2011, incent_prop, 
-         land_use, major_class_code, landuse_change, incent_change, triad, 
-         incent_change_bin, prop_use_change_bin,
-         in_tif) |>
-  filter(fmv_2011 > 1000) |>
-  mutate(year = as.factor(year))
+  # percent change from previous years 
+  group_by(pin) |> 
+  arrange(year)|> 
+  mutate(fmv_pct_change = (fmv - lag(fmv))/ lag(fmv),
+         av_clerk_pct_change = (av_clerk - lag(av_clerk)) / lag(av_clerk),
+         av_mailed_pct_change = (av_mailed - lag(av_mailed)) / lag(av_mailed),
+         
+  # lagged categorical variables
+         class_lag = lag(class),
+         improvement_lag = lag(improvement_ind),
+         reassess_lag = lag(reassessed_year),
+  reassessed_taxyear = lead(reassessed_year)) |>
+  ungroup() |>
+  group_by(year) |>
+         mutate(base_year_fmv_2011_w = DescTools::Winsorize(base_year_fmv_2011,
+                                                            quantile(base_year_fmv_2011, probs = c(0.01,0.99), na.rm=TRUE)), 
+         fmv_growth_2011_w = DescTools::Winsorize(fmv_growth_2011, 
+                                                  quantile(fmv_growth_2011, probs = c(0.01,0.99), na.rm=TRUE)),
+         first_incent_year = ifelse(incent_prop != lag(incent_prop), year, NA),
+         next_reassessment = ifelse(!is.na(first_incent_year) & reassessed_year == 1, "Same Year",
+                                    ifelse(!is.na(first_incent_year) & reassessed_year == 0, "Next Assessment", NA))
+         )|>
+  ungroup() |>
+  arrange(pin, year) 
 
 ```
+
+
+```{r}
+table(comm_ind$first_incent_year)
+table(comm_ind$next_reassessment)
+table(comm_ind$year, comm_ind$next_reassessment)
+```
+
+
+```{r}
+#comm_ind_temp <- comm_ind_temp |> 
+comm_ind_temp <- comm_ind |> 
+
+  select(pin, class, year, clean_name, fmv, fmv_growth_2011, fmv_2011, incent_prop, 
+         land_use, major_class_code, landuse_change, incent_change, triad, 
+         incent_change_bin, prop_use_change_bin, reassess_lag, reassessed_year,
+         fmv_growth_2011_w, base_year_fmv_2011_w,
+         in_tif) |>
+   mutate(year = as.factor(year))
+
+comm_ind_raw <- comm_ind_temp
+
+
+```
+
+**How many properties LOSE their incentives?**
+
+```{r}
+# unique PINs that no longer had an incentive class within the data time frame
+lose_incent_pins <- comm_ind_raw |> 
+  group_by(pin) |> 
+  filter(incent_prop == "Incentive" & lead(incent_prop) == "Non-Incentive") %>% 
+  select(pin, year) %>%
+  mutate(type = "Loses Incentive")
+
+lose_incent_pins %>% distinct(pin)
+
+# unique PINs that received an incentive class within the data time frame
+gains_incent_pins <- comm_ind_raw |> 
+    group_by(pin) |> 
+  filter(incent_prop == "Incentive" & lag(incent_prop) == "Non-Incentive") %>% 
+  select(pin, year) %>%
+  mutate(type = "Gains Incentive")
+
+gains_incent_pins %>% distinct(pin)
+
+gain_lose_pins <- rbind(gains_incent_pins, lose_incent_pins)
+
+comm_ind_raw |> 
+  filter(year == 2022) |> 
+  filter(pin %in% lose_incent_pins$pin) %>% arrange(pin)
+
+comm_ind_raw |> 
+  filter(year == 2022) |> 
+  filter(pin %in% gains_incent_pins$pin) %>% arrange(pin)
+
+comm_ind_raw <- comm_ind_raw %>% 
+  mutate(gain_lose_incent = ifelse(pin %in% lose_incent_pins$pin, "Loses Incentive", 
+                                   ifelse(pin %in% gains_incent_pins$pin, "Gains Incentive", "Non-Incentive")))
+
+gain_lose_pins %>% group_by(year, type) %>% summarize(n = n()) %>%
+  pivot_wider(names_from = "type", values_from = n)
+```
+
+
+**Figure out how to code something that would represent this situation and allow us to model it:** 
+
+The treatment is having the class of property go from a non-incentive class to an incentive class. Need to consider if it is a reassessment year or not. If it is not a reassessment year, then the class change should result in a change in AV that comes purely from the change in the level of assessment (25% to 10%).  If it is a reassessment year, then the change in value is due to the change in level of assessment and the change in the FMV of the property due to local property trends.  
+
+- We still have the mailed_av that is then appealed by the incentive property which should only reflect the change in market trends since CCAO is removed from the incentive process and the board of appeals is the one that changes the property class. The mailed_av and the clerk_av should still have the same proportion of change in the the AV from the level of assessment (25% to 10%).   
+
+- After a property gets its class changed to an incentive class, how does its fair market value change in the **next assessment cycle** compared to properties that did not get an incentive class?  
+
+- some kind of difference-in-differences design   
 
 # Causal Model
 
 We propose a basic difference-in-difference design for our casual model, using the next reassessment following an incentive class change as the exogenous shock.
+
+```{r}
+## From AV_DID file in the levy project
+
+comm_ind_raw  <- panel(comm_ind_raw, panel.id = c("pin", "year"))
+
+TRA <- read_csv("./Necessary_Files/triad_reassessment_years_piv2.csv") %>% 
+  select(Triad, `2014`:`2018`)
+
+TRA2 <- TRA %>% pivot_longer(cols = `2014`:`2018`, names_to = "year", values_to = "reassess_01")
+
+# panel_data0 <- recoded_data %>%
+#   filter(minor_type == "MUNI") %>%
+#   filter(home_rule_ind == 1) %>%
+#  # mutate(reassess_year = as.numeric(reassess_year)) %>%
+#   mutate(agency_num = as.factor(agency_num)) %>%
+#   mutate(year_num = as.character(year),
+#          year = as.factor(year))
+# 
+# panel_data1 <- panel_data0 %>% filter(year_num > 2014 & year_num < 2019)
+# 
+# 
+# panel_data2 <- left_join(panel_data1, TRA2, by = c("Triad", "year_num" = "year"))
+# table(panel_data2$year)
+```
+
 
 ## Dependent Variable
 
@@ -99,7 +236,7 @@ Given that the value (or at least opportunity cost) of the availability of an in
 
 First Assessment Year following Reclassification
 
-Given that CCAO does not "know," a priori, the availability of an incentive classification for a given PIN, we should not see its value appear until the next reassmment cycle. An alternative set of IVs of interest--several lag variables of having an incentive classification--also makes theoretical sense, but would reduce the explanatory value of the model.
+Given that CCAO does not "know," a priori, the availability of an incentive classification for a given PIN, we should not see its value appear until the next reassessment cycle. An alternative set of IVs of interest--several lag variables of having an incentive classification--also makes theoretical sense, but would reduce the explanatory value of the model.
 
 ## Control Variables
 
@@ -114,6 +251,10 @@ Since we are using a DiD model with a staggered treatment, we can't use TWFE. Th
 ## Fixed Effects
 
 We will be using municipality-level fixed effects because those entities are the "deciders" on incentive classifications and the level at which we want to remove the "across" variation.
+
+**Want to control for group differences and time differences. Essentially have a "Treated" and "Untreated" group Fixed Effects and "before treatment" and "after treatment" time fixed effects.**
+
+- Coefficient on "Treated" would be the DID effect. Uses an interaction term for Groups and pre-post treatment time frames.
 
 ## Matching
 
