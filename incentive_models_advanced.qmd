@@ -61,23 +61,25 @@ comm_ind <- comm_ind |>
                                                 "Changes Sometime", 1, 0)),
          prop_use_change_bin = as.factor(ifelse(landuse_change == 
                                                   "Changes Land Use", 1, 0)),
-         is_chicago = as.factor(ifelse(clean_name == "Chicago", 1, 0))
+         is_chicago = as.factor(ifelse(clean_name == "Chicago", 1, 0)),
+         base_year_fmv_2011 = DescTools::Winsorize(base_year_fmv_2011, quantile(base_year_fmv_2011, probs = c(0.01,0.99), na.rm=TRUE)), 
+         fmv_growth_2011 = DescTools::Winsorize(fmv_growth_2011, quantile(fmv_growth_2011, probs = c(0.01,0.99), na.rm=TRUE))
          ) |>
   rename(fmv_2011 = base_year_fmv_2011) |>
   arrange(pin, year)
 
-# 1,190,580 obs. (MVH 8/2) 
-comm_ind_temp <- comm_ind  |>
-  # 1121436 obs. (lose 69,144) (MVH 8/2)
-  filter(!is.na(fmv_2011)) |>
-  # 1121436 obs. (MVH 8/2)
-  filter(!is.na(fmv)) |>
-  # 1,121,436 obs. (lose no obs) (MVH 8/2)
-  filter(!is.na(fmv_growth_2011))
+# # 1,190,580 obs. (MVH 8/2) 
+# comm_ind_temp <- comm_ind  |>
+#   # 1121436 obs. (lose 69,144) (MVH 8/2)
+#   filter(!is.na(fmv_2011)) |>
+#   # 1121436 obs. (MVH 8/2)
+#   filter(!is.na(fmv)) |>
+#   # 1,121,436 obs. (lose no obs) (MVH 8/2)
+#   filter(!is.na(fmv_growth_2011))
 
 # Create panel data
 
-comm_ind_temp <- comm_ind_temp |> 
+comm_ind_temp <- comm_ind |> 
   select(pin, class, year, clean_name, fmv, fmv_growth_2011, fmv_2011, incent_prop, 
          land_use, major_class_code, landuse_change, incent_change, triad, 
          incent_change_bin, prop_use_change_bin,
@@ -150,8 +152,6 @@ comm_ind_raw_2022 |>
 
 
 comm_ind_raw_2022 |>
-  filter(fmv_growth_2011 < 20000) |>
-  filter(fmv_2011 < 200000000) |>
   ggplot() +
   geom_point(aes(x = fmv_2011, y = fmv_growth_2011, color = land_use)) +
     labs(
@@ -642,10 +642,10 @@ cfm <- c(#'incent_changeChanges Sometime' = 'Changed Incentive',
                   'triadCity' = 'City Triad',
                   'triadSouth' = "South Triad",
                   'triadNorth' = 'North Triad',
-         'land_useIndustrial' = 'Industrial',
-         'land_useCommercial' = 'Commercial',
-         'land_useLand' = 'Empty Land',
-         'land_useOther Residential' = 'Residential',	
+         'land_useIndustrial' = 'Becomes Industrial',
+         'land_useCommercial' = 'Becomes Commercial',
+         'land_useLand' = 'Becomes Empty Land',
+         'land_useOther Residential' = 'Becomes Residential',	
          'land_useOwner Occupied' = 'Owner Occupied',	
          'land_useRental' = 'Rental'
                   )
@@ -677,136 +677,6 @@ muni_dummy_summ
 
 df_2022_comm <- df_2022 |>
   filter(land_use == "Commercial")
-
-```
-
-#### Dependent Variable: 2011-2022 PIN FMV Growth (Commercial Subset)
-
-```{r tbl-comm_models}
-#| tbl-cap: "<b>2011-2022 PIN FMV Growth</b><br><i>2022 Commercial PINs</i>"
-
-comm_models <- list(
-  
-  "(1)" = lm(fmv_growth_2011 ~ incent_change + clean_name,
-                data = df_2022_comm),
-
-  "(2)" = lm(fmv_growth_2011 ~ incent_change + fmv_2011 + clean_name,
-                data = df_2022_comm),
-
-  "(3)" = lm(fmv_growth_2011 ~ incent_change + fmv_2011 + triad 
-                   + clean_name,
-                data = df_2022_comm),
-
-  "(4)" = lm(fmv_growth_2011 ~ incent_change + fmv_2011 + triad 
-                   + prop_use_change_bin + clean_name,
-                data = df_2022_comm),
-
-  "(5)" = lm(fmv_growth_2011 ~ incent_change + fmv_2011 + triad 
-                   + prop_use_change_bin + in_tif 
-                   + clean_name,
-                data = df_2022_comm)
-  )
-
-comm_coef_map <- c('incent_changeChanges Sometime' = '<b>Changed Incentive</b>',
-                  'change_prop_use_bin1' = 'Changed Prop. Use',
-                  'fmv_2011' = 'Base FMV (2011)',
-                  'in_tif1' = 'TIF',
-                  'triadCity' = 'City Triad',
-                  'triadSouth' = "South Triad",
-                  'triadNorth' = 'North Triad'
-                  )
-
-fit_format <- function(x) format(round(x, 2), big.mark=",")
-
-fit <- list(
-  list("raw" = "nobs", "clean" = "N", "fmt" = fit_format),
-  list("raw" = "df", "clean" = "DF", "fmt" = fit_format),
-  list("raw" = "adj.r.squared", "clean" = "R2 Adj.", "fmt" = fit_format),
-  list("raw" = "F", "clean" = "F-stat.", "fmt" = fit_format),
-  list("raw" = "p.value", "clean" = "p-value", "fmt" = fit_format)
-)
-
-comm_summ <- modelsummary(comm_models,
-             fmt = function(x) round(x, 2),
-             stars = TRUE,
-             coef_omit = 'clean_name',
-             coef_map = comm_coef_map,
-             gof_map = fit,
-             notes = 'All models include municipality-level control variables.'
-             )
-
-comm_summ
-
-```
-
-```{r ind_data}
-
-df_2022_ind <- df_2022 |>
-  filter(land_use == "Industrial")
-
-```
-
-#### Dependent Variable: 2011-2022 PIN FMV Growth (Industrial Subset)
-
-```{r tbl-ind_models}
-#| tbl-cap: "<b>2011-2022 PIN FMV Growth</b><br><i>2022 Industrial PINs</i>"
-
-ind_models <- list(
-  
-  "(1)" = lm(fmv_growth_2011 ~ incent_change + clean_name,
-                data = df_2022_ind),
-
-  "(2)" = lm(fmv_growth_2011 ~ incent_change + fmv_2011 + clean_name,
-                data = df_2022_ind),
-
-  "(3)" = lm(fmv_growth_2011 ~ incent_change + fmv_2011 + triad 
-                   + clean_name,
-                data = df_2022_ind),
-
-  "(4)" = lm(fmv_growth_2011 ~ incent_change + fmv_2011 + triad 
-                   + prop_use_change_bin + clean_name,
-                data = df_2022_ind),
-
-  "(5)" = lm(fmv_growth_2011 ~ incent_change + fmv_2011 + triad 
-                   + prop_use_change_bin + in_tif 
-                   + clean_name,
-                data = df_2022_ind)
-                    
-  )
-
-ind_coef_map <- c(#'(Intercept)' = 'Constant',
-                  #'incent_changeAlways Incentive' = 'Incentive (Always)',
-                  'incent_changeChanges Sometime' = '<b>Changed Incentive</b>',
-                  'change_prop_use_bin1' = 'Changed Prop. Use',
-                  'fmv_2011' = 'Base FMV (2011)',
-                  'in_tif1' = 'TIF',
-                  'triadCity' = 'City Triad',
-                  'triadSouth' = "South Triad",
-                  'triadNorth' = 'North Triad'
-                  )
-
-fit_format <- function(x) format(round(x, 2), big.mark=",")
-
-fit_f <- function(x) format(round(x, 3))
-
-fit <- list(
-  list("raw" = "nobs", "clean" = "N", "fmt" = fit_format),
-  list("raw" = "df", "clean" = "DF", "fmt" = fit_format),
-  list("raw" = "adj.r.squared", "clean" = "R2 Adj.", "fmt" = fit_format),
-  list("raw" = "F", "clean" = "F-stat.", "fmt" = fit_f),
-  list("raw" = "p.value", "clean" = "p-value", "fmt" = fit_format)
-)
-
-ind_summ <- modelsummary(ind_models,
-             fmt = function(x) round(x, 2),
-             stars = TRUE,
-             coef_omit = 'clean_name',
-             #coef_map = ind_coef_map,
-             gof_map = fit,
-             notes = 'All models include municipality-level control variables.'
-             )
-
-ind_summ
 
 ```
 

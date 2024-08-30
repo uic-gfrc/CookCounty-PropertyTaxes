@@ -187,9 +187,7 @@ gains_loses <- rbind(lose_incent_pins, gains_incent_pins) %>%
 #   filter(pin %in% gains_incent_pins$pin) %>% arrange(pin)
  
 comm_ind_raw <- comm_ind_raw %>%
-  left_join(gains_loses, by = "pin")# %>%
- # group_by(pin) %>%
- # mutate(treatment_year = as.numeric(ifelse(any(!is.na(status)), year, NA)))
+  left_join(gains_loses, by = "pin")
 
 table(comm_ind_raw$treatment_year)
 table(comm_ind_raw$year)
@@ -272,7 +270,7 @@ modelsummary(ols_models,
 comm_ind_raw <- comm_ind_raw %>% 
   mutate(incent_indicator = ifelse(incent_prop == "Incentive", 1, 0))
 
-mod1 <- fixest::feglm(incent_indicator ~ land_use + reassessed_year | pin + year,
+mod1 <- fixest::feglm(incent_indicator ~ land_use + reassessed_year | pin + clean_name + year,
                                           panel.id = c("pin", "year"),   
                       data = comm_ind_raw, 
                       family = binomial(link = "logit"),
@@ -423,12 +421,23 @@ commercial_subset <- comm_ind_raw |>
 
 
 muni_fe_new_vars_mods <- list(
+  
   "Industrial Subset" = feols(fmv_growth_2011_w ~ land_use*incent_prop + in_tif
                  | clean_name + year,  vcov = "twoway",
                               data = industrial_subset
   ),
+    
+  "Industrial Subset, Muni&PIN FE" = feols(fmv_growth_2011_w ~ land_use*incent_prop + in_tif
+                 | pin + clean_name + year,  vcov = "threeway",
+                              data = industrial_subset
+  ),
+
   "Commercial Subset" = feols(fmv_growth_2011_w ~ land_use*incent_prop + in_tif
                  | clean_name + year,  vcov = "twoway",
+                              data = commercial_subset
+  ),
+    "Commercial Subset, Muni&PIN FE" = feols(fmv_growth_2011_w ~ land_use*incent_prop + in_tif
+                 | pin + clean_name + year,  vcov = "threeway",
                               data = commercial_subset
   )
 )
@@ -445,17 +454,20 @@ modelsummary(muni_fe_new_vars_mods,
 
 muni_fe_new_vars_mods <- list(
   
-     "1" = feols(fmv_growth_2011_w ~ incent_prop
+     "Incentive Calass" = feols(fmv_growth_2011_w ~ incent_prop
                  | clean_name + year,  vcov = "twoway",
                  data = industrial_subset
 ),
-      
-      "2" = feols(fmv_growth_2011_w ~ incent_prop*land_use 
+     
+      "Land Use" = feols(fmv_growth_2011_w ~ relevel(land_use, ref="Industrial")
                  | clean_name + year,  vcov = "twoway",
                  data = industrial_subset
                        ),
-     
-      "3" = feols(fmv_growth_2011_w ~ land_use
+      "Pin, Muni, Year FE" = feols(fmv_growth_2011_w ~ incent_prop*relevel(land_use, ref="Industrial") 
+                 | pin + clean_name + year,  vcov = "threeway",
+                 data = industrial_subset
+                       ),
+      "Muni Year FE" = feols(fmv_growth_2011_w ~ incent_prop*relevel(land_use, ref="Industrial") 
                  | clean_name + year,  vcov = "twoway",
                  data = industrial_subset
                        )
@@ -475,18 +487,22 @@ modelsummary(muni_fe_new_vars_mods,
 
 muni_fe_new_vars_mods <- list(
   
-     "1" = feols(fmv_growth_2011_w ~ incent_prop
+     "Incentive Class" = feols(fmv_growth_2011_w ~ incent_prop
                  | clean_name + year,  vcov = "twoway",
                  data = commercial_subset
                  ),
-      
-      "2" = feols(fmv_growth_2011_w ~ incent_prop*land_use 
+      "Land Use" = feols(fmv_growth_2011_w ~ land_use
+                 | clean_name + year,  vcov = "twoway",
+                 data = commercial_subset
+                       ),
+      "Muni, Year FE" = feols(fmv_growth_2011_w ~ incent_prop*land_use 
                  | clean_name + year,  vcov = "twoway",
                  data = commercial_subset
                        ),
      
-      "3" = feols(fmv_growth_2011_w ~ land_use
-                 | clean_name + year,  vcov = "twoway",
+  
+        "PIN,Muni,Year FE" = feols(fmv_growth_2011_w ~ incent_prop*land_use
+                 | pin + clean_name + year,  vcov = "threeway",
                  data = commercial_subset
                        )
 )
@@ -509,10 +525,10 @@ modelsummary(muni_fe_new_vars_mods,
 pooled_ols_models <- list(
   
   "2" = feols(fmv_growth_2011_w ~ land_use + incent_prop + land_use*incent_prop,
-              data = comm_ind_temp),
+              data = comm_ind_raw),
   
   "3" = feols(fmv_growth_2011_w ~ land_use + incent_prop + land_use*incent_prop + fmv_2011,
-              data = comm_ind_temp)
+              data = comm_ind_raw)
 
   )
 
@@ -522,7 +538,7 @@ modelsummary(pooled_ols_models)
 
 # graphs 
 
-```{r dataexploration, eval=FALSE}
+```{r dataexploration}
 
 comm_ind_raw |>
   filter(year==2022)|>
