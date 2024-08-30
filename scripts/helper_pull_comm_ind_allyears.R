@@ -43,7 +43,7 @@ ccao_loa <- read_csv("./inputs/ccao_loa.csv") %>%
 muni_agency_names <- DBI::dbGetQuery(
   ptaxsim_db_conn,
   "SELECT DISTINCT agency_num, agency_name, minor_type
-    FROM agency_info
+    FROM agency_info 
     WHERE minor_type = 'MUNI'
     OR agency_num = '020060000'
     "
@@ -164,7 +164,7 @@ comm_ind_pins_ever <- comm_ind_pins_ever %>%
   mutate(
     has_AB_exemp = as.character(ifelse(exe_abate > 0, 1, 0)),
     fmv = av_clerk / loa,
-    fmv_NA_indicator = ifelse(is.na(fmv),1,0),
+    fmv_NA_flag = ifelse(is.na(fmv),1,0),
     fmv = ifelse(is.na(fmv), 0, fmv),
     in_tif = as.character(ifelse(tax_code_num %in% tif_distrib$tax_code_num, 1, 0)),
     class_group = str_sub(class, 1,1),
@@ -178,7 +178,135 @@ comm_ind_pins_ever <- comm_ind_pins_ever %>%
       TRUE ~ as.character(class_group))
 )
 
-write_csv(comm_ind_pins_ever, "./Output/comm_ind_inmunis_timeseries_2006to2022.csv")
+
+timespan = 17
+
+comm_ind_pins_ever <- comm_ind_pins_ever  %>%
+  group_by(pin) |>
+  arrange(desc(year)) |>
+  mutate(multi_muni = n_distinct(clean_name),
+         multimuni_flag = ifelse(sum(multi_muni) > 1, 1, 0)) |>  
+  
+  ## fill in muni names for the 700+ PINs that had multiple muni names or did not have a muni name for all years
+  ## 471 were the Harvey/Markham Amazon PINs.
+  mutate(clean_name = first(clean_name, na_rm = TRUE)) %>% 
+  
+  mutate(
+    tif_years = sum(in_tif==1),
+    years_existed = n(),  
+    incentive_years = sum(incent_prop == "Incentive"),
+    landuse_change =
+      ifelse(
+        sum(land_use == "Commercial") == timespan, "Always Commercial",
+        ifelse(sum(land_use == "Industrial") == timespan, "Always Industrial",
+               # some properties had an incentive class before 2011 and then were tax exempt. Dropped from panel.
+               ifelse(sum(land_use == "Exempt") == timespan, "Drop Me",   # created to remove PINs if they were tax exempt every year between 2011 and 2022. 
+                      "Changes Land Use" ))),
+    incent_change = case_when(
+      incentive_years == timespan ~ "Always Incentive",
+      incentive_years == 0 ~ "Never Incentive",
+      TRUE ~ "Changes Sometime"),
+    tif_change = case_when(
+      tif_years == timespan ~ "Always TIF",
+      tif_years == 0 ~ "Never TIF",
+      TRUE ~ "Changes")
+  ) |> 
+  ungroup()
+
+comm_ind_pins_ever <- comm_ind_pins_ever |> 
+  filter(
+    !is.na(clean_name) & 
+      !agency_num %in% cross_county_lines &
+      landuse_change != "Drop Me"
+  )
+
+comm_ind_pins_ever <- comm_ind_pins_ever |>
+  mutate(exempt_flag = ifelse(land_use == "Exempt", 1, 0)) |>
+  group_by(pin) |>
+  mutate(
+    base_year_fmv_2006 = ifelse( sum(exempt_flag) > 0, NA, fmv[year == 2006]),
+    fmv_growth_2006 = fmv/base_year_fmv_2006,
+    base_year_fmv_2011 = ifelse( sum(exempt_flag) > 0, NA, fmv[year == 2011]),
+    fmv_growth_2011 = fmv/base_year_fmv_2011) |>
+  ungroup()
+
+
+
+reassessment_years <- read_csv("./Necessary_Files/Triad_reassessment_years.csv")
+
+
+reassessments_long <- reassessment_years %>% 
+  pivot_longer(cols = c(`2006`:`2022`), names_to = "year", values_to = "reassessed_year")
+
+
+
+
+comm_ind_pins_ever <- comm_ind_pins_ever |>
+  
+  ## set variable types 
+  mutate(across(c(class, improvement_ind, has_AB_exemp, fmv_NA_flag, in_tif), as.character))
+
+comm_ind_pins_ever <- comm_ind_pins_ever |>
+  mutate(year = as.character(year)) |> 
+  left_join(reassessments_long, by = c("year", "Triad")) |>
+  
+  # Change to factors; set reference levels in next steps
+  mutate(land_use = ifelse(!land_use %in% c("Commercial", "Industrial", "Land"), "Other Land Use", land_use),
+         
+         incent_change = as.factor(incent_change),
+         landuse_change = as.factor(landuse_change),
+         triad = as.factor(Triad),
+         in_tif = as.factor(in_tif),
+         land_use = as.factor(land_use),
+         incent_prop = as.factor(incent_prop),
+         clean_name = as.factor(clean_name),
+         fmv_growth_2006 = round(fmv_growth_2006, digits = 4),
+         fmv_growth_2011 = round(fmv_growth_2011, digits = 4) ) |>
+  
+  # set reference levels
+  mutate(incent_change = relevel(incent_change, ref = "Never Incentive"),
+         landuse_change = relevel(landuse_change, ref = "Always Commercial"),
+         incent_prop = relevel(incent_prop, ref = "Non-Incentive"),
+         triad = relevel(triad, ref = "City"),
+         land_use = relevel(land_use, ref = "Commercial")
+  ) |>
+  # percent change from previous years 
+  group_by(pin) |> 
+  arrange(year)|> 
+  mutate(fmv_pct_change = (fmv - lag(fmv))/ lag(fmv),
+         av_clerk_pct_change = (av_clerk - lag(av_clerk)) / lag(av_clerk),
+         av_mailed_pct_change = (av_mailed - lag(av_mailed)) / lag(av_mailed),
+         
+         # lagged categorical variables
+         class_lag = lag(class),
+         improvement_lag = lag(improvement_ind),
+         reassess_lag = lag(reassessed_year),
+         reassessed_taxyear = lead(reassessed_year)) |>
+  ungroup() |>
+  group_by(year) |>
+  mutate(
+    base_year_fmv_2006_w = DescTools::Winsorize(base_year_fmv_2006,
+                                                quantile(base_year_fmv_2006, probs = c(0.01,0.99), na.rm=TRUE)), 
+    fmv_growth_2006_w = DescTools::Winsorize(fmv_growth_2006, 
+                                             quantile(fmv_growth_2006, probs = c(0.01,0.99), na.rm=TRUE)),
+    base_year_fmv_2011_w = DescTools::Winsorize(base_year_fmv_2011,
+                                                     quantile(base_year_fmv_2011, probs = c(0.01,0.99), na.rm=TRUE)), 
+         fmv_growth_2011_w = DescTools::Winsorize(fmv_growth_2011, 
+                                                  quantile(fmv_growth_2011, probs = c(0.01,0.99), na.rm=TRUE)),
+         first_incent_year = ifelse(incent_prop != lag(incent_prop), year, NA),
+         next_reassessment = ifelse(!is.na(first_incent_year) & reassessed_year == 1, "Same Year",
+                                    ifelse(!is.na(first_incent_year) & reassessed_year == 0, "Next Assessment", NA))
+  )|>
+  ungroup() |>
+  arrange(pin, year) 
+
+
+write_csv(comm_ind_pins_ever, "./Output/comm_ind_PINs_2006to2022_timeseries.csv")
+
+
+# write_csv(comm_ind_pins_ever, "./Output/comm_ind_inmunis_timeseries_2006to2022.csv")
+
+
 
 # Create 2006 PIN level Panel Data ----------------------------------------
 # 
@@ -267,12 +395,15 @@ write_csv(unique_ptax_wide, "./Output/pin_class_changes.csv")
 
 # Create 2011-2022 PIN level Panel Data -----------------------------------
 
+timespan = 12
+
+
 comm_ind_2011to2022 <- comm_ind_pins_ever  %>%
   filter(year >= 2011 ) %>%
   group_by(pin) |>
   arrange(desc(year)) |>
   mutate(multi_muni = n_distinct(clean_name),
-         multimuni_ind = ifelse(sum(multi_muni) > 1, 1, 0)) |>  
+         multimuni_flag = ifelse(sum(multi_muni) > 1, 1, 0)) |>  
   
   ## fill in muni names for the 700+ PINs that had multiple muni names or did not have a muni name for all years
   ## 471 were the Harvey/Markham Amazon PINs.
@@ -284,17 +415,17 @@ comm_ind_2011to2022 <- comm_ind_pins_ever  %>%
     incentive_years = sum(incent_prop == "Incentive"),
     landuse_change =
       ifelse(
-        sum(land_use == "Commercial") == 12, "Always Commercial",
-        ifelse(sum(land_use == "Industrial") == 12, "Always Industrial",
+        sum(land_use == "Commercial") == timespan, "Always Commercial",
+        ifelse(sum(land_use == "Industrial") == timespan, "Always Industrial",
                # some properties had an incentive class before 2011 and then were tax exempt. Dropped from panel.
-               ifelse(sum(land_use == "Exempt") == 12, "Drop Me",   # created to remove PINs if they were tax exempt every year between 2011 and 2022. 
+               ifelse(sum(land_use == "Exempt") == timespan, "Drop Me",   # created to remove PINs if they were tax exempt every year between 2011 and 2022. 
                       "Changes Land Use" ))),
     incent_change = case_when(
-      incentive_years == 12 ~ "Always Incentive",
+      incentive_years == timespan ~ "Always Incentive",
       incentive_years == 0 ~ "Never Incentive",
       TRUE ~ "Changes Sometime"),
     tif_change = case_when(
-      tif_years == 12 ~ "Always TIF",
+      tif_years == timespan ~ "Always TIF",
       tif_years == 0 ~ "Never TIF",
       TRUE ~ "Changes")
   ) |> 
@@ -336,7 +467,7 @@ weirdpins <- comm_ind_2011to2022 |>
   filter(years_existed2 !=12)
 
 # drop the 27,644 PINs from not having a muni name, being 50% in cook, and being taxable
-comm_ind_2011to2022 <- comm_ind_2011to2022 |> 
+comm_ind_2011to2022 <- comm_ind_2022to2022 |> 
   filter(
  #   years_existed == 12 &
       !is.na(clean_name) & 
@@ -362,10 +493,10 @@ comm_ind_2011to2022 <- comm_ind_2011to2022 %>%
 # 1,187,124 obs remain
 
 comm_ind_2011to2022 <- comm_ind_2011to2022 |>
-  mutate(exempt_indicator = ifelse(land_use == "Exempt", 1, 0)) |>
+  mutate(exempt_flag = ifelse(land_use == "Exempt", 1, 0)) |>
  group_by(pin) |>
   mutate(
-    base_year_fmv_2011 = ifelse( sum(exempt_indicator) > 0, NA, fmv[year == 2011]),
+    base_year_fmv_2011 = ifelse( sum(exempt_flag) > 0, NA, fmv[year == 2011]),
     fmv_growth_2011 = fmv/base_year_fmv_2011) |>
   ungroup()
 
@@ -386,4 +517,5 @@ comm_ind_2011to2022 %>%
 
 ## Write CSV to Output Folder
 write_csv(comm_ind_2011to2022, "./Output/comm_ind_PINs_2011-2022_balanced.csv")
+
 
