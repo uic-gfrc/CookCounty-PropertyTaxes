@@ -259,13 +259,13 @@ Absent incorporation of an exogenous shock, we cannot make causal claims based o
 
 ## Logit
 
-```{r logit_models}
+```{r logit_models_simple}
 
-comm_ind_raw <- comm_ind_raw |>
-  mutate(incent_prop = as.numeric(incent_prop)) |>
-  mutate(incent_prop = incent_prop - 1)
+# comm_ind_raw <- comm_ind_raw |>
+#   mutate(incent_prop = as.numeric(incent_prop)) |>
+#   mutate(incent_prop = incent_prop - 1)
 
-logit_list <- list(
+logit_simple_list <- list(
   
  "pin/year FE" =  feglm(incent_prop ~ land_use | pin + year,
       data = comm_ind_raw,
@@ -276,7 +276,7 @@ logit_list <- list(
   "pin/muni/year FE" =  feglm(incent_prop ~ land_use | pin + clean_name + year,
       data = comm_ind_raw,
       family = binomial(link = "logit"),
-      vcov = "twoway",
+      vcov = "threeway",
       panel.id = ~ pin + year),
   
   "muni/year FE" =  feglm(incent_prop ~ land_use | clean_name + year,
@@ -287,8 +287,74 @@ logit_list <- list(
   
 )
 
-modelsummary(logit_list,
+modelsummary(logit_simple_list,
              stars = TRUE)
+
+```
+
+```{r logit_year_landuse}
+
+land_year_list <- list(
+  
+  "standard" = feglm(incent_prop ~ land_use | pin + clean_name + year,
+      data = comm_ind_raw,
+      family = binomial(link = "logit"),
+      vcov = "threeway",
+      panel.id = ~ pin + year) |> summary(),
+  
+  "land_use/year" = feglm(incent_prop ~ land_use + land_use*year | pin + clean_name + year,
+      data = comm_ind_raw,
+      family = binomial(link = "logit"),
+      vcov = "threeway",
+      panel.id = ~ pin + year)  |> summary(),
+  
+  "triad" = feglm(incent_prop ~ land_use + triad | pin + clean_name + year,
+                  data = comm_ind_raw,
+                  family = binomial(link = "logit"),
+                  vcov = "threeway",
+                  panel.id = ~ pin + year) |> summary()
+)
+
+modelsummary(land_year_list,
+             stars = TRUE)
+
+```
+
+```{r logit_intermediate_models}
+
+logit_med_list <- list(
+  
+    "TIF?" =  feglm(incent_prop ~ land_use + in_tif | pin + clean_name + year,
+      data = comm_ind_raw,
+      family = binomial(link = "logit"),
+      vcov = "threeway",
+      panel.id = ~ pin + year),
+    
+    "Landuse-Year Interact." = feglm(incent_prop ~ land_use + land_use*year | pin + clean_name + year,
+      data = comm_ind_raw,
+      family = binomial(link = "logit"),
+      vcov = "threeway",
+      panel.id = ~ pin + year),
+    
+    "Reassess?" = feglm(incent_prop ~ land_use + reassessed_year | pin + clean_name + year,
+      data = comm_ind_raw,
+      family = binomial(link = "logit"),
+      vcov = "threeway",
+      panel.id = ~ pin + year),
+    
+    "Reassess-Year Interact." = feglm(incent_prop ~ land_use + reassessed_year + reassessed_year*land_use
+                                      | pin + clean_name + year,
+      data = comm_ind_raw,
+      family = binomial(link = "logit"),
+      vcov = "threeway",
+      panel.id = ~ pin + year)
+  
+)
+
+modelsummary(logit_med_list,
+             stars = TRUE,
+             coef_omit = "year"
+             )
 
 ```
 
