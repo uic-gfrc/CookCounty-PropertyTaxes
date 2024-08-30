@@ -13,7 +13,7 @@ format:
     fig-cap-location: top
     df-print: paged
 ---
-
+# Data Prep
 ```{r setup}
 #| output: false
 
@@ -37,18 +37,26 @@ reassessment_years <- read_csv("./Necessary_Files/Triad_reassessment_years.csv")
 
 
 reassessments_long <- reassessment_years %>% 
-  pivot_longer(cols = c(`2006`:`2022`), names_to = "year", values_to = "reassessed_year")
+  pivot_longer(cols = c(`2006`:`2022`), names_to = "year", values_to = "reassessed_year") %>% mutate(year = as.numeric(year))
+
+land <- c(100, 180, 190, 192, 193, 500, 550, 637, 650, 651, 700, 742, 800, 850, 900)
+
+building <- c(201: 221, 225:236, 278:299, 301:399,401, 417:499, 501:549, 551:599, 638, 654:693, 701:735, 743:799, 800:835, 851:899, 901:999)
+
+vacant = c(100:199)
+
+business_land = c(400, 500, 550, 637, 650, 651, 700, 742, 800, 850)
+
+
 ```
 
 
 ```{r}
 comm_ind <- comm_ind |>
-
   ## set variable types 
   mutate(across(c(class, improvement_ind, has_AB_exemp, fmv_NA_indicator, in_tif), as.character))
 
 comm_ind <- comm_ind |>
-  mutate(year = as.character(year)) |> 
     left_join(reassessments_long, by = c("year", "Triad")) |>
 
   # Change to factors; set reference levels in next steps
@@ -122,12 +130,22 @@ table(comm_ind$year, comm_ind$next_reassessment)
 
 
 ```{r}
+
+comm_ind <- comm_ind |> 
+  mutate(building = ifelse(class %in% building, 1, 0),
+         nonvacant = ifelse(class %in% vacant, 0, 1)) %>%
+  group_by(pin) %>% 
+  arrange(year) %>%
+  mutate(building_lag = lag(building),
+         nonvacant_lag = lag(nonvacant))
+
 #comm_ind_temp <- comm_ind_temp |> 
 comm_ind_temp <- comm_ind |> 
 
-  select(pin, class, year, clean_name, fmv, fmv_growth_2011, fmv_2011, incent_prop, 
+  select(pin, class, year, clean_name,
+         incent_prop, fmv_2011,
          land_use, major_class_code, landuse_change, incent_change, triad, 
-         incent_change_bin, prop_use_change_bin, reassess_lag, reassessed_year,
+         reassess_lag, reassessed_year, building, nonvacant,
          fmv_growth_2011_w, base_year_fmv_2011_w,
          in_tif)
 
@@ -138,18 +156,22 @@ comm_ind_raw <- comm_ind_temp
 
 ```{r}
 lose_incent_pins <- comm_ind_raw |> 
-  group_by(pin) %>%  filter(incent_prop == "Incentive" & lead(incent_prop) == "Non-Incentive") %>% 
-  select(pin, year) %>% mutate(status = "Loses Incentive")
+  group_by(pin) %>%  
+  filter(incent_prop == "Incentive" & lead(incent_prop) == "Non-Incentive") %>% 
+  select(pin, year) %>% 
+  mutate(status = "Loses Incentive")
 
 gains_incent_pins <- comm_ind_raw |> 
   group_by(pin) %>% 
   filter(incent_prop == "Incentive" & lag(incent_prop) == "Non-Incentive") %>% 
-  select(pin, year) %>% mutate(status = "Gains Incentive")
+  select(pin, year) %>% 
+  mutate(status = "Gains Incentive")
 
 gains_loses <- rbind(lose_incent_pins, gains_incent_pins) %>%
-  mutate(treatment_year = as.numeric(as.character(year))) %>% 
+  mutate(treatment_year = year) %>% 
+  select(-year) %>%
     group_by(pin) %>% 
-  summarize( year = first(as.character(year)),
+  summarize(treatment_year = first(treatment_year),
              status = first(status) )
 
 ```
@@ -163,12 +185,11 @@ gains_loses <- rbind(lose_incent_pins, gains_incent_pins) %>%
 # comm_ind_raw |> 
 #   filter(year == 2022) |> 
 #   filter(pin %in% gains_incent_pins$pin) %>% arrange(pin)
-# 
+ 
 comm_ind_raw <- comm_ind_raw %>%
-  left_join(gains_loses, by = "pin") %>%
-  rename(year = year.x) %>%
- group_by(pin) %>%
-mutate(treatment_year = as.numeric(ifelse(any(!is.na(status)), as.numeric(as.character(year)), NA)))
+  left_join(gains_loses, by = "pin")# %>%
+ # group_by(pin) %>%
+ # mutate(treatment_year = as.numeric(ifelse(any(!is.na(status)), year, NA)))
 
 table(comm_ind_raw$treatment_year)
 table(comm_ind_raw$year)
@@ -185,9 +206,6 @@ comm_ind_raw <- comm_ind_raw |>
 
 table(comm_ind_raw$treated)
 table(comm_ind_raw$status)
-
-
-# feols(fmv_growth_2011 ~ i(year, treated, ref=2016) | clean_name + year, data = comm_ind_raw)
 ```
 
 
@@ -245,6 +263,22 @@ modelsummary(ols_models,
              coef_omit= 'clean_name|year',
              gof_omit = "AIC|BIC|Log.Lik.|RMSE") #|>  theme_tt("grid")
 
+```
+
+# Logit Models
+
+```{r}
+
+comm_ind_raw <- comm_ind_raw %>% 
+  mutate(incent_indicator = ifelse(incent_prop == "Incentive", 1, 0))
+
+mod1 <- fixest::feglm(incent_indicator ~ land_use + reassessed_year | pin + year,
+                                          panel.id = c("pin", "year"),   
+                      data = comm_ind_raw, 
+                      family = binomial(link = "logit"),
+                      vcov = ~ pin + year)
+
+modelsummary(mod1, stars = TRUE)
 ```
 
 
@@ -338,8 +372,8 @@ modelsummary(muni_fe_models,
 
 muni_fe_models <- list(
   
-      "1" = feols(fmv_growth_2011_w ~ land_use + reassessed_year + 
-                    l(reassessed_year, 1) + l(reassessed_year, 2) 
+      "1" = feols(fmv_growth_2011_w ~ land_use + year*reassessed_year + 
+                   year*l(reassessed_year, 1:2) 
                   | pin  + year + clean_name ,
                 panel.id = c("pin", "year"), 
                        data = comm_ind_raw ),
@@ -355,7 +389,7 @@ muni_fe_models <- list(
                   panel.id = c("pin", "year"),
                        data = comm_ind_raw  ),
       
-          "4" = feols(fmv_growth_2011_w ~ incent_prop*land_use + in_tif | pin + year + triad^year + clean_name ,
+          "4" = feols(fmv_growth_2011_w ~ incent_prop*land_use + in_tif | pin + year + reassessed_year^year + clean_name ,
                     #    vcov = "threeway", 
                       panel.id = c("pin", "year"),
                        data = comm_ind_raw )
@@ -370,43 +404,6 @@ modelsummary(muni_fe_models,
 ```
 
 
-## Variations of Property Type and Change Variables
-
-```{r muni_prop_incent_var_types}
-#| warning: false
-
-muni_fe_new_vars_mods <- list(
-  
-     "1" = feols(fmv_growth_2011_w ~ incent_change_bin*prop_use_change_bin
-                 | clean_name + year,  vcov = "twoway",
-
-                       data = comm_ind_raw
-                       ),
-      
-      "2" = feols(fmv_growth_2011_w ~ incent_prop*land_use 
-                 | clean_name + year,  vcov = "twoway",
-                     data = comm_ind_raw 
-                       ),
-     
-      "3" = feols(fmv_growth_2011_w ~ land_use + incent_prop + incent_change_bin*prop_use_change_bin
-                 | clean_name + year,  vcov = "twoway",
-                   data = comm_ind_raw ),
-     
-      "4" = feols(fmv_growth_2011_w ~ incent_change_bin + prop_use_change_bin + land_use*incent_prop
-                 | clean_name + year,  vcov = "twoway",
-                   data = comm_ind_raw
-                       )
-)
-
-modelsummary(muni_fe_new_vars_mods,
-             stars = TRUE,
-             fmt = function(x) round(x, 2),
-             gof_omit = "AIC|BIC|Log.Lik.|RMSE") 
-
-
-```
-
-
 # Commercial VS Industrial Models
 
 The industrial subset keeps a property (all years) if they were industrial property at any point in time.
@@ -416,7 +413,6 @@ The commercial subset keeps a property (all years) if they were commercial prope
 **Winsorized FMV Growth, Muni and Year Fixed Effects**
 
 ```{r}
-
 industrial_subset <- comm_ind_raw |> 
   group_by(pin) |>
   filter(any(land_use == "Industrial"))
@@ -425,23 +421,7 @@ commercial_subset <- comm_ind_raw |>
   group_by(pin) |>
   filter(any(land_use == "Commercial"))
 
-muni_fe_new_vars_mods <- list(
-  "Industrial Subset" = feols(fmv_growth_2011_w ~ incent_change_bin*prop_use_change_bin
-                 | clean_name + year,  vcov = "twoway",
-                              data = industrial_subset
-  ),
-  "Commercial Subset" = feols(fmv_growth_2011_w ~ incent_change_bin*prop_use_change_bin
-                 | clean_name + year,  vcov = "twoway",
-                              data = commercial_subset
-  )
-)
-modelsummary(muni_fe_new_vars_mods,
-             stars = TRUE,
-             fmt = function(x) round(x, 2),
-             gof_omit = "AIC|BIC|Log.Lik.|RMSE")
-```
 
-```{r}
 muni_fe_new_vars_mods <- list(
   "Industrial Subset" = feols(fmv_growth_2011_w ~ land_use*incent_prop + in_tif
                  | clean_name + year,  vcov = "twoway",
@@ -465,7 +445,7 @@ modelsummary(muni_fe_new_vars_mods,
 
 muni_fe_new_vars_mods <- list(
   
-     "1" = feols(fmv_growth_2011_w ~ incent_change_bin*prop_use_change_bin
+     "1" = feols(fmv_growth_2011_w ~ incent_prop
                  | clean_name + year,  vcov = "twoway",
                  data = industrial_subset
 ),
@@ -475,12 +455,7 @@ muni_fe_new_vars_mods <- list(
                  data = industrial_subset
                        ),
      
-      "3" = feols(fmv_growth_2011_w ~ land_use + incent_prop + incent_change_bin*prop_use_change_bin
-                 | clean_name + year,  vcov = "twoway",
-                 data = industrial_subset
-                       ),
-     
-      "4" = feols(fmv_growth_2011_w ~ incent_change_bin + prop_use_change_bin + land_use*incent_prop
+      "3" = feols(fmv_growth_2011_w ~ land_use
                  | clean_name + year,  vcov = "twoway",
                  data = industrial_subset
                        )
@@ -500,7 +475,7 @@ modelsummary(muni_fe_new_vars_mods,
 
 muni_fe_new_vars_mods <- list(
   
-     "1" = feols(fmv_growth_2011_w ~ incent_change_bin*prop_use_change_bin
+     "1" = feols(fmv_growth_2011_w ~ incent_prop
                  | clean_name + year,  vcov = "twoway",
                  data = commercial_subset
                  ),
@@ -510,12 +485,7 @@ muni_fe_new_vars_mods <- list(
                  data = commercial_subset
                        ),
      
-      "3" = feols(fmv_growth_2011_w ~ land_use + incent_prop + incent_change_bin*prop_use_change_bin
-                 | clean_name + year,  vcov = "twoway",
-                 data = commercial_subset
-                       ),
-     
-      "4" = feols(fmv_growth_2011_w ~ incent_change_bin + prop_use_change_bin + land_use*incent_prop
+      "3" = feols(fmv_growth_2011_w ~ land_use
                  | clean_name + year,  vcov = "twoway",
                  data = commercial_subset
                        )
@@ -537,9 +507,6 @@ modelsummary(muni_fe_new_vars_mods,
 ```{r pooled_ols-winsor}
 
 pooled_ols_models <- list(
-  
-  "1" = feols(fmv_growth_2011_w ~ incent_change_bin + prop_use_change_bin + incent_change_bin*prop_use_change_bin,
-                          data = comm_ind_temp),
   
   "2" = feols(fmv_growth_2011_w ~ land_use + incent_prop + land_use*incent_prop,
               data = comm_ind_temp),
