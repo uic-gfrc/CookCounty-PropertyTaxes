@@ -25,9 +25,11 @@ knitr:
 ```{r warning = FALSE}
 library(tidyverse)
 library(jsonlite)
+library(httr)
 
 
 ptax_pins <- read_csv("./Output/comm_ind_PINs_2011-2022_balanced.csv")
+#ptax_pins <- read_csv("./Output/comm_ind_inmunis_timeseries_2006to2022.csv")
 
 parcuniverse_keypins <- readxl::read_xlsx("./Inputs/parceluniverse_keypins_20240725.xlsx", 
                                           sheet = "keypins_20240725") %>%
@@ -110,8 +112,42 @@ mutate(actual_keypin = case_when(
  
 ```
 
-```{r}
+```{r eval = FALSE}
 modelsummary::datasummary_skim(ptax_proj)
+```
+
+
+```{r}
+lose_incent_pins <- ptax_pins |> 
+  filter(incent_prop == "Incentive" & lead(incent_prop) == "Non-Incentive") %>% 
+  select(pin, year) %>% mutate(status = "Loses Incentive")
+
+gains_incent_pins <- ptax_pins |> 
+  filter(incent_prop == "Incentive" & lag(incent_prop) == "Non-Incentive") %>% 
+  select(pin, year) %>% mutate(status = "Gains Incentive")
+
+gains_loses <- rbind(lose_incent_pins, gains_incent_pins) %>%
+  mutate(treatment_year = as.numeric(year))
+
+
+ptax_pins <- ptax_pins %>% 
+  left_join(gains_loses, by = "pin") %>%
+  rename(year = year.x)
+
+
+table(ptax_pins$year)
+table(ptax_pins$incent_change)
+
+comm_ind <- ptax_pins |>
+  ungroup() |> 
+ # mutate(year = as.numeric(year)) %>%
+  mutate(treated = ifelse(treatment_year < year & incent_change == "Changes Sometime", "Pre Treatment", 
+                         ifelse(treatment_year > year & incent_change == "Changes Sometime", "Post Treatment", 
+                                 ifelse(treatment_year == year & incent_change == "Changes Sometime", "Treatment year",
+                                        "Control"))))
+
+table(comm_ind$treated)
+table(comm_ind$status)
 ```
 
 **Which came first: The TIF or the incentive class??**
@@ -126,7 +162,7 @@ change_table <- ptax_proj |>
   arrange(pin, year) |>
   group_by(pin) |>
   summarize(first_tif_year = first(year[in_tif==1]),
-                     first_incent_year = first(year[incent_prop=="Incentive"])) |>
+            first_incent_year = first(year[incent_prop=="Incentive"])) |>
   filter(!is.na(first_tif_year) & !is.na(first_incent_year)) |>
   select(pin, first_tif_year, first_incent_year)|> 
   distinct() 
