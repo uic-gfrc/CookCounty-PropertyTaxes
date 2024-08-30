@@ -24,22 +24,6 @@ The next reassessment following the grant of incentive classification, then, ser
 Note that we have dropped outliers from our dataset for purposes of these models.
 
 ```{r setup}
-
-options(scipen = 999, digits = 4) #no scientific notation
-
-# Load packages
-
-library(tidyverse)
-library(glue)
-library(fixest)
-library(modelsummary)
-library(tinytable)
-library(sandwich)
-library(tinytex)
-
-```
-
-```{r setup}
 #| output: false
 
 options(scipen = 999, digits = 4) #no scientific notation
@@ -131,17 +115,15 @@ table(comm_ind$year, comm_ind$next_reassessment)
 
 
 ```{r}
-#comm_ind_temp <- comm_ind_temp |> 
-comm_ind_temp <- comm_ind |> 
 
-  select(pin, class, year, clean_name, fmv, fmv_growth_2011, fmv_2011, incent_prop, 
+comm_ind_raw <- comm_ind |> 
+
+  select(pin, class, year, clean_name, fmv, fmv_growth_2011, incent_prop, 
          land_use, major_class_code, landuse_change, incent_change, triad, 
-         incent_change_bin, prop_use_change_bin, reassess_lag, reassessed_year,
+         reassess_lag, reassessed_year,
          fmv_growth_2011_w, base_year_fmv_2011_w,
          in_tif) |>
    mutate(year = as.factor(year))
-
-comm_ind_raw <- comm_ind_temp
 
 
 ```
@@ -185,6 +167,11 @@ gain_lose_pins %>% group_by(year, type) %>% summarize(n = n()) %>%
   pivot_wider(names_from = "type", values_from = n)
 ```
 
+```{r convert_panel_data}
+
+comm_ind_panel <- panel(comm_ind_raw, panel.id = ~pin + year)
+
+```
 
 **Figure out how to code something that would represent this situation and allow us to model it:** 
 
@@ -201,6 +188,7 @@ The treatment is having the class of property go from a non-incentive class to a
 We propose a basic difference-in-difference design for our casual model, using the next reassessment following an incentive class change as the exogenous shock.
 
 ```{r}
+#| eval: false
 ## From AV_DID file in the levy project
 
 comm_ind_raw  <- panel(comm_ind_raw, panel.id = c("pin", "year"))
@@ -269,8 +257,43 @@ We will be using municipality-level fixed effects because those entities are the
 
 Absent incorporation of an exogenous shock, we cannot make causal claims based on the models below, but can identify important associations.
 
+## Logit
+
+```{r logit_models}
+
+comm_ind_raw <- comm_ind_raw |>
+  mutate(incent_prop = as.numeric(incent_prop)) |>
+  mutate(incent_prop = incent_prop - 1)
+
+logit_list <- list(
+  
+ "pin/year FE" =  feglm(incent_prop ~ land_use | pin + year,
+      data = comm_ind_raw,
+      family = binomial(link = "logit"),
+      vcov = "twoway",
+      panel.id = ~ pin + year),
+ 
+  "pin/muni/year FE" =  feglm(incent_prop ~ land_use | pin + clean_name + year,
+      data = comm_ind_raw,
+      family = binomial(link = "logit"),
+      vcov = "twoway",
+      panel.id = ~ pin + year),
+  
+  "muni/year FE" =  feglm(incent_prop ~ land_use | clean_name + year,
+      data = comm_ind_raw,
+      family = binomial(link = "logit"),
+      vcov = "twoway",
+      panel.id = ~ pin + year)
+  
+)
+
+modelsummary(logit_list,
+             stars = TRUE)
+
+```
+
 ## Pooled OLS
 
-
+Pooled stands for "do nothing."
 
 ## TWFE
