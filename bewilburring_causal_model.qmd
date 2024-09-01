@@ -38,7 +38,9 @@ library(tinytable)
 library(sandwich)
 library(tinytex)
 
-comm_ind <- read_csv("./Output/comm_ind_PINs_2011-2022_balanced.csv") 
+#comm_ind <- read_csv("./Output/comm_ind_PINs_2011-2022_balanced.csv") 
+comm_ind <- read_csv("./Output/comm_ind_PINs_2006to2022_timeseries.csv") %>% 
+  filter(year >= 2011)
 
 # has binary variable for if it was a reassessment year or not. 
 # Manually created based on the 3 year rotation used for reassessments.
@@ -50,7 +52,7 @@ reassessments_long <- reassessment_years %>%
 ```
 
 
-```{r}
+```{r chunktoDELETE, eval=FALSE}
 comm_ind <- comm_ind |>
 
   ## set variable types 
@@ -78,7 +80,7 @@ comm_ind <- comm_ind |>
          incent_prop = relevel(incent_prop, ref = "Non-Incentive"),
          triad = relevel(triad, ref = "City"),
          land_use = relevel(land_use, ref = "Commercial")
-         ) |>
+  ) |>
   # percent change from previous years 
   group_by(pin) |> 
   arrange(year)|> 
@@ -86,21 +88,22 @@ comm_ind <- comm_ind |>
          av_clerk_pct_change = (av_clerk - lag(av_clerk)) / lag(av_clerk),
          av_mailed_pct_change = (av_mailed - lag(av_mailed)) / lag(av_mailed),
          
-  # lagged categorical variables
+         # lagged categorical variables
          class_lag = lag(class),
          improvement_lag = lag(improvement_ind),
          reassess_lag = lag(reassessed_year),
-  reassessed_taxyear = lead(reassessed_year)) |>
+         reassessed_taxyear = lead(reassessed_year),
+         
+         first_incent_year = ifelse(incent_prop != lag(incent_prop), year, NA),
+         next_reassessment = ifelse(!is.na(first_incent_year) & reassessed_year == 1, "Same Year",
+                                    ifelse(!is.na(first_incent_year) & reassessed_year == 0, "Next Assessment", NA))
+  ) |>
   ungroup() |>
   group_by(year) |>
          mutate(base_year_fmv_2011_w = DescTools::Winsorize(base_year_fmv_2011,
                                                             quantile(base_year_fmv_2011, probs = c(0.01,0.99), na.rm=TRUE)), 
          fmv_growth_2011_w = DescTools::Winsorize(fmv_growth_2011, 
-                                                  quantile(fmv_growth_2011, probs = c(0.01,0.99), na.rm=TRUE)),
-         first_incent_year = ifelse(incent_prop != lag(incent_prop), year, NA),
-         next_reassessment = ifelse(!is.na(first_incent_year) & reassessed_year == 1, "Same Year",
-                                    ifelse(!is.na(first_incent_year) & reassessed_year == 0, "Next Assessment", NA))
-         )|>
+                                                  quantile(fmv_growth_2011, probs = c(0.01,0.99), na.rm=TRUE)))|>
   ungroup() |>
   arrange(pin, year) 
 
@@ -116,7 +119,7 @@ table(comm_ind$year, comm_ind$next_reassessment)
 
 ```{r}
 
-comm_ind_raw <- comm_ind |> 
+comm_ind_df <- comm_ind |> 
 
   select(pin, class, year, clean_name, fmv, fmv_growth_2011, incent_prop, 
          land_use, major_class_code, landuse_change, incent_change, triad, 
@@ -131,45 +134,46 @@ comm_ind_raw <- comm_ind |>
 **How many properties LOSE their incentives?**
 
 ```{r}
-# unique PINs that no longer had an incentive class within the data time frame
-lose_incent_pins <- comm_ind_raw |> 
-  group_by(pin) |> 
-  filter(incent_prop == "Incentive" & lead(incent_prop) == "Non-Incentive") %>% 
-  select(pin, year) %>%
-  mutate(type = "Loses Incentive")
+# # unique PINs that no longer had an incentive class within the data time frame
+# lose_incent_pins <- comm_ind_df |> 
+#   group_by(pin) |> 
+#   filter(incent_prop == "Incentive" & lead(incent_prop) == "Non-Incentive") %>% 
+#   select(pin, year) %>%
+#   mutate(type = "Loses Incentive")
+# 
+# lose_incent_pins %>% distinct(pin)
+# 
+# # unique PINs that received an incentive class within the data time frame
+# gains_incent_pins <- comm_ind_df |> 
+#     group_by(pin) |> 
+#   filter(incent_prop == "Incentive" & lag(incent_prop) == "Non-Incentive") %>% 
+#   select(pin, year) %>%
+#   mutate(type = "Gains Incentive")
+# 
+# gains_incent_pins %>% distinct(pin)
+# 
+# gain_lose_pins <- rbind(gains_incent_pins, lose_incent_pins)
+# 
+# comm_ind_df |> 
+#   filter(year == 2022) |> 
+#   filter(pin %in% lose_incent_pins$pin) %>% arrange(pin)
+# 
+# comm_ind_df |> 
+#   filter(year == 2022) |> 
+#   filter(pin %in% gains_incent_pins$pin) %>% arrange(pin)
+# 
+# comm_ind_df <- comm_ind_df %>% 
+#   mutate(gain_lose_incent = ifelse(pin %in% lose_incent_pins$pin, "Loses Incentive", 
+#                                    ifelse(pin %in% gains_incent_pins$pin, "Gains Incentive", "Non-Incentive")))
 
-lose_incent_pins %>% distinct(pin)
-
-# unique PINs that received an incentive class within the data time frame
-gains_incent_pins <- comm_ind_raw |> 
-    group_by(pin) |> 
-  filter(incent_prop == "Incentive" & lag(incent_prop) == "Non-Incentive") %>% 
-  select(pin, year) %>%
-  mutate(type = "Gains Incentive")
-
-gains_incent_pins %>% distinct(pin)
-
-gain_lose_pins <- rbind(gains_incent_pins, lose_incent_pins)
-
-comm_ind_raw |> 
-  filter(year == 2022) |> 
-  filter(pin %in% lose_incent_pins$pin) %>% arrange(pin)
-
-comm_ind_raw |> 
-  filter(year == 2022) |> 
-  filter(pin %in% gains_incent_pins$pin) %>% arrange(pin)
-
-comm_ind_raw <- comm_ind_raw %>% 
-  mutate(gain_lose_incent = ifelse(pin %in% lose_incent_pins$pin, "Loses Incentive", 
-                                   ifelse(pin %in% gains_incent_pins$pin, "Gains Incentive", "Non-Incentive")))
-
-gain_lose_pins %>% group_by(year, type) %>% summarize(n = n()) %>%
+gain_lose_pins %>% group_by(year, type) %>% 
+  summarize(n = n()) %>%
   pivot_wider(names_from = "type", values_from = n)
 ```
 
 ```{r convert_panel_data}
 
-comm_ind_panel <- panel(comm_ind_raw, panel.id = ~pin + year)
+comm_ind_panel <- panel(comm_ind_df, panel.id = ~pin + year)
 
 ```
 
@@ -189,9 +193,10 @@ We propose a basic difference-in-difference design for our casual model, using t
 
 ```{r}
 #| eval: false
+
 ## From AV_DID file in the levy project
 
-comm_ind_raw  <- panel(comm_ind_raw, panel.id = c("pin", "year"))
+comm_ind_df  <- panel(comm_ind_df, panel.id = c("pin", "year"))
 
 TRA <- read_csv("./Necessary_Files/triad_reassessment_years_piv2.csv") %>% 
   select(Triad, `2014`:`2018`)
@@ -261,26 +266,26 @@ Absent incorporation of an exogenous shock, we cannot make causal claims based o
 
 ```{r logit_models_simple}
 
-# comm_ind_raw <- comm_ind_raw |>
+# comm_ind_df <- comm_ind_df |>
 #   mutate(incent_prop = as.numeric(incent_prop)) |>
 #   mutate(incent_prop = incent_prop - 1)
 
 logit_simple_list <- list(
   
  "pin/year FE" =  feglm(incent_prop ~ land_use | pin + year,
-      data = comm_ind_raw,
+      data = comm_ind_df,
       family = binomial(link = "logit"),
       vcov = "twoway",
       panel.id = ~ pin + year),
  
   "pin/muni/year FE" =  feglm(incent_prop ~ land_use | pin + clean_name + year,
-      data = comm_ind_raw,
+      data = comm_ind_df,
       family = binomial(link = "logit"),
       vcov = "threeway",
       panel.id = ~ pin + year),
   
   "muni/year FE" =  feglm(incent_prop ~ land_use | clean_name + year,
-      data = comm_ind_raw,
+      data = comm_ind_df,
       family = binomial(link = "logit"),
       vcov = "twoway",
       panel.id = ~ pin + year)
@@ -297,19 +302,19 @@ modelsummary(logit_simple_list,
 land_year_list <- list(
   
   "standard" = feglm(incent_prop ~ land_use | pin + clean_name + year,
-      data = comm_ind_raw,
+      data = comm_ind_df,
       family = binomial(link = "logit"),
       vcov = "threeway",
       panel.id = ~ pin + year) |> summary(),
   
   "land_use/year" = feglm(incent_prop ~ land_use + land_use*year | pin + clean_name + year,
-      data = comm_ind_raw,
+      data = comm_ind_df,
       family = binomial(link = "logit"),
       vcov = "threeway",
       panel.id = ~ pin + year)  |> summary(),
   
   "triad" = feglm(incent_prop ~ land_use + triad | pin + clean_name + year,
-                  data = comm_ind_raw,
+                  data = comm_ind_df,
                   family = binomial(link = "logit"),
                   vcov = "threeway",
                   panel.id = ~ pin + year) |> summary()
@@ -324,27 +329,29 @@ modelsummary(land_year_list,
 
 logit_med_list <- list(
   
-    "TIF?" =  feglm(incent_prop ~ land_use + in_tif | pin + clean_name + year,
-      data = comm_ind_raw,
+      "TIF?" =  feglm(incent_prop ~ land_use + in_tif | pin + clean_name + year,
+      data = comm_ind_df,
       family = binomial(link = "logit"),
       vcov = "threeway",
       panel.id = ~ pin + year),
     
-    "Landuse-Year Interact." = feglm(incent_prop ~ land_use + land_use*year | pin + clean_name + year,
-      data = comm_ind_raw,
+     "Landuse-Year Interact." = feglm(incent_prop ~ land_use + land_use*year | 
+                                       pin + clean_name + year,
+      data = comm_ind_df,
       family = binomial(link = "logit"),
       vcov = "threeway",
       panel.id = ~ pin + year),
     
-    "Reassess?" = feglm(incent_prop ~ land_use + reassessed_year | pin + clean_name + year,
-      data = comm_ind_raw,
+    "Reassess?" = feglm(incent_prop ~ land_use + reassessed_year | 
+                          pin +      clean_name + year,
+      data = comm_ind_df,
       family = binomial(link = "logit"),
       vcov = "threeway",
       panel.id = ~ pin + year),
     
     "Reassess-Year Interact." = feglm(incent_prop ~ land_use + reassessed_year + reassessed_year*land_use
-                                      | pin + clean_name + year,
-      data = comm_ind_raw,
+      | pin + clean_name + year,
+      data = comm_ind_df,
       family = binomial(link = "logit"),
       vcov = "threeway",
       panel.id = ~ pin + year)
