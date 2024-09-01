@@ -1,3 +1,7 @@
+### DOES NOT CREATE THE FILE USED BY THE MODELS. 
+### helper_pull_comm_ind_allyears.R creates data used in model files. 
+### File to be deleted.
+
 ### Helper File: Generate Balanced Panel ###
 ### Commercial and Industrial PINs in Cook County
 ### Years 2011 - 2022 ###
@@ -191,91 +195,6 @@ comm_ind_pins_2011_2022 <- comm_ind_pins_2011_2022_raw %>%
   )
 
 # write_csv(comm_ind_pins_ever, "./Output/comm_ind_inmunis_timeseries_2011to2022.csv")
-
-
-
-# # Create 2006 PIN level Panel Data ----------------------------------------
-#
-# comm_ind_pins_2006 <- comm_ind_pins_ever |>
-#   group_by(pin) |>
-#   mutate(
-#     years_existed = n(),
-#     incentive_years = sum(incent_prop == "Incentive"),
-#     landuse_change =
-#       ifelse(sum(land_use == "Commercial") == 17, "Always Commercial",
-#              ifelse(sum(land_use == "Industrial") == 17, "Always Industrial",
-#                     "Changes Land Use" )),
-#     base_year_fmv_2006 = ifelse(min(year)==2006, fmv[year == 2006], NA),
-#     fmv_growth_2006 = fmv/base_year_fmv_2006,
-#   )  %>%
-#   ungroup() %>%
-#   mutate(incent_change = case_when(
-#     incentive_years == 17 ~ "Always Incentive",
-#     incentive_years == 0 ~ "Never Incentive",
-#     TRUE ~ "Changes Sometime")
-#   )
-#
-# ## Examine dropped PINs from 2006 to 2022 panel data -----------------------
-#
-#
-# ## View the PINs that will be dropped in future step
-# ## 219,187 PINs are will be dropped from the 2006-2022 panel data
-# dropped_pins1 <- comm_ind_pins_2006 %>%
-#   filter(
-#     years_existed < 17  |      ## 196,780 PINs do not exist all 17 years
-#       is.na(clean_name)  |       ## 6,837 PINs do not have municipality names
-#       agency_num %in% cross_county_lines   ## 19,554 PINs located in Municipalities that have a majority of their EAV in other counties
-#   )
-#
-# write_csv(dropped_pins1, "dropped_frompanel_2006to2022.csv")
-#
-# ### Drop PINs and export File -----------------------------------------------
-#
-#
-# ## This step "balances the panel" - all PINs left in the sample exist during every year.
-# ## Also drops PINs in unincorporated areas of Cook County
-# comm_ind_pins_2006 <- comm_ind_pins_2006 %>%
-#   filter(
-#     years_existed == 17  &
-#       !is.na(clean_name)  &
-#       !agency_num %in% cross_county_lines
-#   )
-# ## 1,598,968 obs remain July 12 2024 - AWM
-#
-#
-# ## 96,193 PINs exist every year - old
-# ## 95,355 PINs as of July 11 2024
-# ## 94,243 PINs as of July 12
-# comm_ind_pins_2006 %>%
-#   select(year, land_use, incent_prop, fmv_growth_2006) %>%
-#   filter(year == 2022)
-#
-# write_csv(comm_ind_pins_2006, "./Output/comm_ind_PINs_2006to2022_balanced.csv")
-#
-#
-#
-# ## Unique PINs and their property classes over time ------------------------------------
-#
-# pin_classes <- comm_ind_pins_ever %>%
-#   group_by(clean_name, pin, class) %>%
-#   summarize(count = n(),
-#             first_year = first(year),
-#             last_year = last(year)) %>%
-#   ungroup() %>%
-#   arrange(pin, first_year)
-#
-#
-# unique_ptax_w_class <- pin_classes %>% group_by(pin) %>%
-#   mutate(var2 = cumsum(row_number() == 1 | (class != dplyr::lag(class))))
-#
-#
-# unique_ptax_wide <- unique_ptax_w_class %>%
-#   pivot_wider(id_cols = c("pin", "clean_name"),
-#               names_from = var2,
-#               values_from = c(class, count, first_year, last_year))
-#
-# ## 119,993 Unique PINs and any class change they experienced:
-# write_csv(unique_ptax_wide, "./Output/pin_class_changes.csv")
 
 
 # Create 2011-2022 PIN level Panel Data -----------------------------------
