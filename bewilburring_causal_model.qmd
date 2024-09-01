@@ -52,64 +52,6 @@ reassessments_long <- reassessment_years %>%
 ```
 
 
-```{r chunktoDELETE, eval=FALSE}
-comm_ind <- comm_ind |>
-
-  ## set variable types 
-  mutate(across(c(class, improvement_ind, has_AB_exemp, fmv_NA_indicator, in_tif), as.character))
-
-comm_ind <- comm_ind |>
-  mutate(year = as.character(year)) |> 
-    left_join(reassessments_long, by = c("year", "Triad")) |>
-
-  # Change to factors; set reference levels in next steps
-  mutate(land_use = ifelse(!land_use %in% c("Commercial", "Industrial", "Land"), "Other Land Use", land_use),
-         
-    incent_change = as.factor(incent_change),
-         landuse_change = as.factor(landuse_change),
-         triad = as.factor(Triad),
-         in_tif = as.factor(in_tif),
-         land_use = as.factor(land_use),
-         incent_prop = as.factor(incent_prop),
-         clean_name = as.factor(clean_name),
-         fmv_growth_2011 = round(fmv_growth_2011, digits = 4) ) |>
-  
-  # set reference levels
-  mutate(incent_change = relevel(incent_change, ref = "Never Incentive"),
-         landuse_change = relevel(landuse_change, ref = "Always Commercial"),
-         incent_prop = relevel(incent_prop, ref = "Non-Incentive"),
-         triad = relevel(triad, ref = "City"),
-         land_use = relevel(land_use, ref = "Commercial")
-  ) |>
-  # percent change from previous years 
-  group_by(pin) |> 
-  arrange(year)|> 
-  mutate(fmv_pct_change = (fmv - lag(fmv))/ lag(fmv),
-         av_clerk_pct_change = (av_clerk - lag(av_clerk)) / lag(av_clerk),
-         av_mailed_pct_change = (av_mailed - lag(av_mailed)) / lag(av_mailed),
-         
-         # lagged categorical variables
-         class_lag = lag(class),
-         improvement_lag = lag(improvement_ind),
-         reassess_lag = lag(reassessed_year),
-         reassessed_taxyear = lead(reassessed_year),
-         
-         first_incent_year = ifelse(incent_prop != lag(incent_prop), year, NA),
-         next_reassessment = ifelse(!is.na(first_incent_year) & reassessed_year == 1, "Same Year",
-                                    ifelse(!is.na(first_incent_year) & reassessed_year == 0, "Next Assessment", NA))
-  ) |>
-  ungroup() |>
-  group_by(year) |>
-         mutate(base_year_fmv_2011_w = DescTools::Winsorize(base_year_fmv_2011,
-                                                            quantile(base_year_fmv_2011, probs = c(0.01,0.99), na.rm=TRUE)), 
-         fmv_growth_2011_w = DescTools::Winsorize(fmv_growth_2011, 
-                                                  quantile(fmv_growth_2011, probs = c(0.01,0.99), na.rm=TRUE)))|>
-  ungroup() |>
-  arrange(pin, year) 
-
-```
-
-
 ```{r}
 table(comm_ind$first_incent_year)
 table(comm_ind$next_reassessment)
@@ -134,38 +76,6 @@ comm_ind_df <- comm_ind |>
 **How many properties LOSE their incentives?**
 
 ```{r}
-# # unique PINs that no longer had an incentive class within the data time frame
-# lose_incent_pins <- comm_ind_df |> 
-#   group_by(pin) |> 
-#   filter(incent_prop == "Incentive" & lead(incent_prop) == "Non-Incentive") %>% 
-#   select(pin, year) %>%
-#   mutate(type = "Loses Incentive")
-# 
-# lose_incent_pins %>% distinct(pin)
-# 
-# # unique PINs that received an incentive class within the data time frame
-# gains_incent_pins <- comm_ind_df |> 
-#     group_by(pin) |> 
-#   filter(incent_prop == "Incentive" & lag(incent_prop) == "Non-Incentive") %>% 
-#   select(pin, year) %>%
-#   mutate(type = "Gains Incentive")
-# 
-# gains_incent_pins %>% distinct(pin)
-# 
-# gain_lose_pins <- rbind(gains_incent_pins, lose_incent_pins)
-# 
-# comm_ind_df |> 
-#   filter(year == 2022) |> 
-#   filter(pin %in% lose_incent_pins$pin) %>% arrange(pin)
-# 
-# comm_ind_df |> 
-#   filter(year == 2022) |> 
-#   filter(pin %in% gains_incent_pins$pin) %>% arrange(pin)
-# 
-# comm_ind_df <- comm_ind_df %>% 
-#   mutate(gain_lose_incent = ifelse(pin %in% lose_incent_pins$pin, "Loses Incentive", 
-#                                    ifelse(pin %in% gains_incent_pins$pin, "Gains Incentive", "Non-Incentive")))
-
 gain_lose_pins %>% group_by(year, type) %>% 
   summarize(n = n()) %>%
   pivot_wider(names_from = "type", values_from = n)
