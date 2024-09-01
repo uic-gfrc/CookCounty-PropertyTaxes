@@ -34,11 +34,11 @@ comm_ind <- read_csv("./Output/comm_ind_PINs_2006to2022_timeseries.csv")
 
 # has binary variable for if it was a reassessment year or not. 
 # Manually created based on the 3 year rotation used for reassessments.
-# reassessment_years <- read_csv("./Necessary_Files/Triad_reassessment_years.csv")
+reassessment_years <- read_csv("./Necessary_Files/Triad_reassessment_years.csv")
 
 
-# reassessments_long <- reassessment_years %>% 
-#   pivot_longer(cols = c(`2006`:`2022`), names_to = "year", values_to = "reassessed_year") %>% mutate(year = as.numeric(year))
+reassessments_long <- reassessment_years %>% 
+  pivot_longer(cols = c(`2006`:`2022`), names_to = "year", values_to = "reassessed_year")
 
 land <- c(100, 180, 190, 192, 193, 500, 550, 637, 650, 651, 700, 742, 800, 850, 900)
 
@@ -49,77 +49,6 @@ vacant = c(100:199)
 business_land = c(400, 500, 550, 637, 650, 651, 700, 742, 800, 850)
 
 
-```
-
-
-```{r}
-# comm_ind <- comm_ind |>
-#   ## set variable types 
-#   mutate(across(c(class, improvement_ind, has_AB_exemp, fmv_NA_indicator, in_tif), as.character))
-
-# comm_ind <- comm_ind |>
-#     left_join(reassessments_long, by = c("year", "Triad")) |>
-# 
-#   # Change to factors; set reference levels in next steps
-#   mutate(land_use = ifelse(!land_use %in% c("Commercial", "Industrial", "Land"), "Other Land Use", land_use),
-#          
-#     incent_change = as.factor(incent_change),
-#          landuse_change = as.factor(landuse_change),
-#          triad = as.factor(Triad),
-#          in_tif = as.factor(in_tif),
-#          land_use = as.factor(land_use),
-#          incent_prop = as.factor(incent_prop),
-#          clean_name = as.factor(clean_name),
-#          fmv_growth_2011 = round(fmv_growth_2011, digits = 4) ) |>
-#   
-#   # set reference levels
-#   mutate(incent_change = relevel(incent_change, ref = "Never Incentive"),
-#          landuse_change = relevel(landuse_change, ref = "Always Commercial"),
-#          incent_prop = relevel(incent_prop, ref = "Non-Incentive"),
-#          triad = relevel(triad, ref = "City"),
-#          land_use = relevel(land_use, ref = "Commercial")
-#          ) |>
-#   # Create binary variables
-#   mutate(incent_change_bin = as.factor(ifelse(incent_change == 
-#                                                 "Changes Sometime", 1, 0)),
-#          prop_use_change_bin = as.factor(ifelse(landuse_change == 
-#                                                 "Changes Land Use", 1, 0))) |>
-#   # percent change from previous years 
-#   group_by(pin) |> 
-#   arrange(year)|> 
-#   mutate(fmv_pct_change = (fmv - lag(fmv))/ lag(fmv),
-#          av_clerk_pct_change = (av_clerk - lag(av_clerk)) / lag(av_clerk),
-#          av_mailed_pct_change = (av_mailed - lag(av_mailed)) / lag(av_mailed),
-#          class_lag = lag(class),
-#          improvement_lag = lag(improvement_ind),
-#          reassess_lag = lag(reassessed_year)) |>
-#   ungroup() |>
-#   group_by(year) |>
-#          mutate(base_year_fmv_2011_w = DescTools::Winsorize(base_year_fmv_2011, quantile(base_year_fmv_2011, probs = c(0.01, 0.99), na.rm=TRUE)), 
-#          fmv_growth_2011_w = DescTools::Winsorize(fmv_growth_2011, quantile(fmv_growth_2011, probs = c(0.01, 0.99), na.rm=TRUE))
-#          )|>
-#   ungroup() |>
-#   rename(fmv_2011 = base_year_fmv_2011) |>
-#   arrange(pin, year) 
-
-# # 1,190,580 obs. (MVH 8/2) 
-# comm_ind_temp <- comm_ind  |>
-#   # 1121436 obs. (lose 69,144) (MVH 8/2)
-#   filter(!is.na(fmv_2011)) |>
-#   # 1121436 obs. (MVH 8/2)
-#   filter(!is.na(fmv)) |>
-#   # 1,121,436 obs. (lose no obs) (MVH 8/2)
-#   filter(!is.na(fmv_growth_2011))
-
-# Create panel data
-
-comm_ind <- comm_ind |> 
-  group_by(pin) |>  
-  arrange(year)|>
-  mutate(first_incent_year = ifelse(incent_prop != lag(incent_prop), year, NA),
-         next_reassessment = ifelse(!is.na(first_incent_year) & reassessed_year == 1, "Same Year",
-                                    ifelse(!is.na(first_incent_year) & reassessed_year == 0, "Next Assessment", NA))
-  )
 ```
 
 
@@ -155,41 +84,8 @@ comm_ind_df <- comm_ind_temp
 
 **How many properties LOSE their incentives?**
 
-```{r}
-lose_incent_pins <- comm_ind_df |> 
-  group_by(pin) %>%  
-  filter(incent_prop == "Incentive" & lead(incent_prop) == "Non-Incentive") %>% 
-  select(pin, year) %>% 
-  mutate(status = "Loses Incentive")
-
-gains_incent_pins <- comm_ind_df |> 
-  group_by(pin) %>% 
-  filter(incent_prop == "Incentive" & lag(incent_prop) == "Non-Incentive") %>% 
-  select(pin, year) %>% 
-  mutate(status = "Gains Incentive")
-
-gains_loses <- rbind(lose_incent_pins, gains_incent_pins) %>%
-  mutate(treatment_year = year) %>% 
-  select(-year) %>%
-    group_by(pin) %>% 
-  summarize(treatment_year = first(treatment_year),
-             status = first(status) )
-
-```
-
 
 ```{r}
-# comm_ind_df |> 
-#   filter(year == 2022) |> 
-#   filter(pin %in% lose_incent_pins$pin) %>% arrange(pin)
-# 
-# comm_ind_df |> 
-#   filter(year == 2022) |> 
-#   filter(pin %in% gains_incent_pins$pin) %>% arrange(pin)
- 
-comm_ind_df <- comm_ind_df %>%
-  left_join(gains_loses, by = "pin")
-
 table(comm_ind_df$treatment_year)
 table(comm_ind_df$year)
 table(comm_ind_df$incent_change)
