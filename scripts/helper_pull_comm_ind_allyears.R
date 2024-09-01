@@ -53,10 +53,7 @@ muni_agency_names <- DBI::dbGetQuery(
 
 ## Pulls ALL distinct PINs that existed between 2006 and 2022 in munis
 ## Syntax: "*" means "all the things" "pin" references the table w/in PTAXSIM DB
-      ## OLD COMMENT: Takes a while to run. (~1 min w/ 64GB RAM or 28GB M2 Chip)
-      ## OLD COMMENT: ~31.47 million obs. when including all PINs each year (PIN-YEAR combos)
 ## 1,661,125 PINs when only including classes 400 to 899
-## Change to numeric to merge w/ CDE
 
 tax_codes_muni <- DBI::dbGetQuery(
   ptaxsim_db_conn,
@@ -281,24 +278,54 @@ comm_ind_pins_ever <- comm_ind_pins_ever |>
          class_lag = lag(class),
          improvement_lag = lag(improvement_ind),
          reassess_lag = lag(reassessed_year),
-         reassessed_taxyear = lead(reassessed_year)) |>
-  ungroup() |>
-  group_by(year) |>
-  mutate(
-    base_year_fmv_2006_w = DescTools::Winsorize(base_year_fmv_2006,
-                                                quantile(base_year_fmv_2006, probs = c(0.01,0.99), na.rm=TRUE)), 
-    fmv_growth_2006_w = DescTools::Winsorize(fmv_growth_2006, 
-                                             quantile(fmv_growth_2006, probs = c(0.01,0.99), na.rm=TRUE)),
-    base_year_fmv_2011_w = DescTools::Winsorize(base_year_fmv_2011,
-                                                     quantile(base_year_fmv_2011, probs = c(0.01,0.99), na.rm=TRUE)), 
-         fmv_growth_2011_w = DescTools::Winsorize(fmv_growth_2011, 
-                                                  quantile(fmv_growth_2011, probs = c(0.01,0.99), na.rm=TRUE)),
+         reassessed_taxyear = lead(reassessed_year),
          first_incent_year = ifelse(incent_prop != lag(incent_prop), year, NA),
          next_reassessment = ifelse(!is.na(first_incent_year) & reassessed_year == 1, "Same Year",
                                     ifelse(!is.na(first_incent_year) & reassessed_year == 0, "Next Assessment", NA))
-  )|>
+  ) |>
+  ungroup() |>
+  group_by(year) |>
+  mutate(
+    base_year_fmv_2006_w = 
+      DescTools::Winsorize(base_year_fmv_2006,
+                           quantile(base_year_fmv_2006, 
+                                    probs = c(0.01,0.99), na.rm=TRUE)), 
+    fmv_growth_2006_w = 
+      DescTools::Winsorize(fmv_growth_2006, 
+                           quantile(fmv_growth_2006, probs = c(0.01,0.99), na.rm=TRUE)),
+    base_year_fmv_2011_w = 
+      DescTools::Winsorize(base_year_fmv_2011,
+                           quantile(base_year_fmv_2011, probs = c(0.01,0.99), na.rm=TRUE)), 
+    fmv_growth_2011_w = 
+      DescTools::Winsorize(fmv_growth_2011, 
+                           quantile(fmv_growth_2011, probs = c(0.01,0.99), na.rm=TRUE))) |>
   ungroup() |>
   arrange(pin, year) 
+
+### How many properties LOSE their incentives? ####
+  
+# unique PINs that no longer had an incentive class within the data time frame
+lose_incent_pins <- comm_ind_pins_ever |> 
+  group_by(pin) |> 
+  filter(incent_prop == "Incentive" & lead(incent_prop) == "Non-Incentive") %>% 
+  select(pin, year) %>%
+  mutate(type = "Loses Incentive")
+
+# unique PINs that received an incentive class within the data time frame
+gains_incent_pins <- comm_ind_pins_ever |> 
+  group_by(pin) |> 
+  filter(incent_prop == "Incentive" & lag(incent_prop) == "Non-Incentive") %>% 
+  select(pin, year) %>%
+  mutate(type = "Gains Incentive")
+
+gain_lose_pins <- rbind(gains_incent_pins, lose_incent_pins)
+
+
+
+comm_ind_pins_ever <- comm_ind_pins_ever %>% 
+  mutate(gain_lose_incent = ifelse(pin %in% lose_incent_pins$pin, "Loses Incentive", 
+                                   ifelse(pin %in% gains_incent_pins$pin, "Gains Incentive", "Non-Incentive")))
+
 
 
 write_csv(comm_ind_pins_ever, "./Output/comm_ind_PINs_2006to2022_timeseries.csv")
@@ -344,7 +371,7 @@ write_csv(comm_ind_pins_ever, "./Output/comm_ind_PINs_2006to2022_timeseries.csv"
 # 
 # write_csv(dropped_pins1, "dropped_frompanel_2006to2022.csv")
 # 
-# ### Drop PINs and export File -----------------------------------------------
+#### Drop PINs and export File -----------------------------------------------
 # 
 # 
 # ## This step "balances the panel" - all PINs left in the sample exist during every year.
