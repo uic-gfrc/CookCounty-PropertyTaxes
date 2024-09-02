@@ -249,24 +249,8 @@ comm_ind_pins_ever <- comm_ind_pins_ever |>
   
   # Change to factors; set reference levels in next steps
   mutate(land_use = ifelse(!land_use %in% c("Commercial", "Industrial", "Land"), "Other Land Use", land_use),
-         
-         incent_change = as.factor(incent_change),
-         landuse_change = as.factor(landuse_change),
-         triad = as.factor(Triad),
-         in_tif = as.factor(in_tif),
-         land_use = as.factor(land_use),
-         incent_prop = as.factor(incent_prop),
-         clean_name = as.factor(clean_name),
          fmv_growth_2006 = round(fmv_growth_2006, digits = 4),
          fmv_growth_2011 = round(fmv_growth_2011, digits = 4) ) |>
-  
-  # set reference levels
-  mutate(incent_change = relevel(incent_change, ref = "Never Incentive"),
-         landuse_change = relevel(landuse_change, ref = "Always Commercial"),
-         incent_prop = relevel(incent_prop, ref = "Non-Incentive"),
-         triad = relevel(triad, ref = "City"),
-         land_use = relevel(land_use, ref = "Commercial")
-  ) |>
   # percent change from previous years 
   group_by(pin) |> 
   arrange(year) |> 
@@ -331,10 +315,14 @@ gain_lose_pins <- rbind(gains_incent_pins, lose_incent_pins) |>
 comm_ind_pins_ever <- comm_ind_pins_ever %>%
   left_join(gain_lose_pins, by = "pin")
 
-# comm_ind_pins_ever <- comm_ind_pins_ever %>% 
-#   mutate(gain_lose_incent = ifelse(pin %in% lose_incent_pins$pin, "Loses Incentive", 
-#                                    ifelse(pin %in% gains_incent_pins$pin, "Gains Incentive", "Non-Incentive")))
-
+comm_ind_pins_ever <- comm_ind_pins_ever |>
+  mutate(status = ifelse(treatment_year < year & incent_change == "Changes Sometime",
+                         "Pre Treatment", 
+                         ifelse(treatment_year > year & incent_change == "Changes Sometime", 
+                                "Post Treatment", 
+                                ifelse(treatment_year == year & incent_change == "Changes Sometime", 
+                                       "Treatment year",
+                                       "Control")))         )
 
 
 write_csv(comm_ind_pins_ever, "./Output/comm_ind_PINs_2006to2022_timeseries.csv")
