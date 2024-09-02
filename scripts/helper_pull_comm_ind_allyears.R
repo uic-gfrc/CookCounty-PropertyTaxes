@@ -269,7 +269,7 @@ comm_ind_pins_ever <- comm_ind_pins_ever |>
   ) |>
   # percent change from previous years 
   group_by(pin) |> 
-  arrange(year)|> 
+  arrange(year) |> 
   mutate(fmv_pct_change = (fmv - lag(fmv))/ lag(fmv),
          av_clerk_pct_change = (av_clerk - lag(av_clerk)) / lag(av_clerk),
          av_mailed_pct_change = (av_mailed - lag(av_mailed)) / lag(av_mailed),
@@ -285,6 +285,8 @@ comm_ind_pins_ever <- comm_ind_pins_ever |>
   ) |>
   ungroup() |>
   group_by(year) |>
+  
+  # Winsorize FMV values observed. Remove extreme values from each year of observations
   mutate(
     base_year_fmv_2006_w = 
       DescTools::Winsorize(base_year_fmv_2006,
@@ -318,13 +320,20 @@ gains_incent_pins <- comm_ind_pins_ever |>
   select(pin, year) %>%
   mutate(type = "Gains Incentive")
 
-gain_lose_pins <- rbind(gains_incent_pins, lose_incent_pins)
+gain_lose_pins <- rbind(gains_incent_pins, lose_incent_pins) |>
+  mutate(treatment_year = year) |>
+  select(-year) |>
+  group_by(pin) |>
+  summarize(treatment_year = first(treatment_year),
+            type = first(type) )
+            
 
+comm_ind_pins_ever <- comm_ind_pins_ever %>%
+  left_join(gain_lose_pins, by = "pin")
 
-
-comm_ind_pins_ever <- comm_ind_pins_ever %>% 
-  mutate(gain_lose_incent = ifelse(pin %in% lose_incent_pins$pin, "Loses Incentive", 
-                                   ifelse(pin %in% gains_incent_pins$pin, "Gains Incentive", "Non-Incentive")))
+# comm_ind_pins_ever <- comm_ind_pins_ever %>% 
+#   mutate(gain_lose_incent = ifelse(pin %in% lose_incent_pins$pin, "Loses Incentive", 
+#                                    ifelse(pin %in% gains_incent_pins$pin, "Gains Incentive", "Non-Incentive")))
 
 
 
