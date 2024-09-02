@@ -39,8 +39,23 @@ library(sandwich)
 library(tinytex)
 
 #comm_ind <- read_csv("./Output/comm_ind_PINs_2011-2022_balanced.csv") 
-comm_ind <- read_csv("./Output/comm_ind_PINs_2006to2022_timeseries.csv") %>% 
-  filter(year >= 2011)
+
+comm_ind <- read_csv("./Output/comm_ind_PINs_2006to2022_timeseries.csv") |>
+  filter(year >= 2011) |>
+      
+  # set reference levels
+  mutate(incent_change = as.factor(incent_change),
+         landuse_change = as.factor(landuse_change),
+         triad = as.factor(Triad),
+         in_tif = as.factor(in_tif),
+         land_use = as.factor(land_use),
+         incent_prop = as.factor(incent_prop),
+         clean_name = as.factor(clean_name), 
+         incent_change = relevel(incent_change, ref = "Never Incentive"),
+         landuse_change = relevel(landuse_change, ref = "Always Commercial"),
+         incent_prop = relevel(incent_prop, ref = "Non-Incentive"),
+         triad = relevel(triad, ref = "City"),
+         land_use = relevel(land_use, ref = "Commercial"))
 
 # has binary variable for if it was a reassessment year or not. 
 # Manually created based on the 3 year rotation used for reassessments.
@@ -53,13 +68,11 @@ reassessments_long <- reassessment_years %>%
 
 
 ```{r}
-table(comm_ind$first_incent_year)
-table(comm_ind$next_reassessment)
-table(comm_ind$year, comm_ind$next_reassessment)
+table(comm_ind$first_incent_year, comm_ind$next_reassessment)
 ```
 
 
-```{r}
+```{r convert_panel_data}
 
 comm_ind_df <- comm_ind |> 
 
@@ -67,23 +80,11 @@ comm_ind_df <- comm_ind |>
          land_use, major_class_code, landuse_change, incent_change, triad, 
          reassess_lag, reassessed_year,
          fmv_growth_2011_w, base_year_fmv_2011_w,
-         in_tif) |>
-   mutate(year = as.factor(year))
+         in_tif) %>%
+  mutate(incent_prop = ifelse(incent_prop == "Incentive", 1, 0))
 
 
-```
-
-**How many properties LOSE their incentives?**
-
-```{r}
-gain_lose_pins %>% group_by(year, type) %>% 
-  summarize(n = n()) %>%
-  pivot_wider(names_from = "type", values_from = n)
-```
-
-```{r convert_panel_data}
-
-comm_ind_panel <- panel(comm_ind_df, panel.id = ~pin + year)
+comm_ind_df <- panel(comm_ind_df, panel.id = c("pin", "year"))
 
 ```
 
@@ -106,7 +107,6 @@ We propose a basic difference-in-difference design for our casual model, using t
 
 ## From AV_DID file in the levy project
 
-comm_ind_df  <- panel(comm_ind_df, panel.id = c("pin", "year"))
 
 TRA <- read_csv("./Necessary_Files/triad_reassessment_years_piv2.csv") %>% 
   select(Triad, `2014`:`2018`)
@@ -176,10 +176,6 @@ Absent incorporation of an exogenous shock, we cannot make causal claims based o
 
 ```{r logit_models_simple}
 
-# comm_ind_df <- comm_ind_df |>
-#   mutate(incent_prop = as.numeric(incent_prop)) |>
-#   mutate(incent_prop = incent_prop - 1)
-
 logit_simple_list <- list(
   
  "pin/year FE" =  feglm(incent_prop ~ land_use | pin + year,
@@ -215,19 +211,19 @@ land_year_list <- list(
       data = comm_ind_df,
       family = binomial(link = "logit"),
       vcov = "threeway",
-      panel.id = ~ pin + year) |> summary(),
+      panel.id = ~ pin + year),
   
   "land_use/year" = feglm(incent_prop ~ land_use + land_use*year | pin + clean_name + year,
       data = comm_ind_df,
       family = binomial(link = "logit"),
       vcov = "threeway",
-      panel.id = ~ pin + year)  |> summary(),
+      panel.id = ~ pin + year) ,
   
   "triad" = feglm(incent_prop ~ land_use + triad | pin + clean_name + year,
                   data = comm_ind_df,
                   family = binomial(link = "logit"),
                   vcov = "threeway",
-                  panel.id = ~ pin + year) |> summary()
+                  panel.id = ~ pin + year)
 )
 
 modelsummary(land_year_list,
