@@ -243,7 +243,7 @@ pin_fe_models <- list(
 modelsummary(pin_fe_models,
              stars = TRUE,
              fmt = function(x) round(x, 2),
-             gof_omit = "AIC|BIC|Log.Lik.|RMSE")
+             gof_omit = "AIC|BIC|Log.Lik.")
 
 ```
 
@@ -298,12 +298,14 @@ muni_fe_models <- list(
                                                        vcov = "twoway",
 
                        data = comm_ind_df  )
+      
                         )
 
 modelsummary(muni_fe_models,
              stars = TRUE,
              fmt = function(x) round(x, 2),
-             gof_omit = "AIC|BIC|Log.Lik.")
+             gof_omit = "AIC|BIC|Log.Lik.", 
+             output = "flextable")
 
 ```
 
@@ -315,34 +317,41 @@ modelsummary(muni_fe_models,
 
 muni_fe_models <- list(
   
-      "1" = feols(fmv_growth_2011_w ~ land_use + triad*reassessed_year + 
+      "One FE" = feols(fmv_growth_2011_w ~ land_use + triad*reassessed_year + 
                    triad*l(reassessed_year, 1:2) 
                   | pin  + year + clean_name ,
                 panel.id = c("pin", "year"), 
                        data = comm_ind_df ),
       
-      "2" = feols(fmv_growth_2011_w ~ incent_prop + land_use | pin + year+ clean_name,
-                      #   vcov = "threeway", 
+      "PIN Muni FE" = feols(fmv_growth_2011_w ~ incent_prop + land_use | pin + clean_name + year,
+                        vcov = "twoway", 
                   panel.id = c("pin", "year"),
                        data = comm_ind_df 
                        ),
 
-      "3" = feols(fmv_growth_2011_w ~ incent_prop*land_use + reassessed_year + l(reassessed_year, 1) + l(reassessed_year, 2)  | pin  + year + clean_name,
-                 #        vcov = "threeway", 
+      "Threeway FE" = feols(fmv_growth_2011_w ~ incent_prop*land_use + reassessed_year + l(reassessed_year, 1) + l(reassessed_year, 2)  | pin  + year + clean_name,
+                        vcov = "threeway", 
                   panel.id = c("pin", "year"),
                        data = comm_ind_df  ),
       
-          "4" = feols(fmv_growth_2011_w ~ incent_prop*land_use + in_tif | pin + year + reassessed_year^year + clean_name ,
-                    #    vcov = "threeway", 
+          "Pin Year FE" = feols(fmv_growth_2011_w ~ incent_prop*land_use + in_tif | pin + year + clean_name ,
+                       vcov = "twoway", 
+                      panel.id = c("pin", "year"),
+                       data = comm_ind_df ),
+      
+           "Threeway FE" = feols(fmv_growth_2011_w ~ incent_prop*land_use + in_tif | pin + year  + clean_name ,
+                       vcov = "threeway", 
                       panel.id = c("pin", "year"),
                        data = comm_ind_df )
+           
                         )
 
 modelsummary(muni_fe_models,
              stars = TRUE,
             # fmt = function(x) round(x, 2),
              coef_omit= 'pin|year|clean_name',
-             gof_omit = "AIC|BIC|Log.Lik.|RMSE")
+             gof_omit = "AIC|BIC|Log.Lik.", 
+            outoupt = "flextable")
 
 ```
 
