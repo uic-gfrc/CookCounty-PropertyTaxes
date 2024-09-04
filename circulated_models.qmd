@@ -130,10 +130,10 @@ The treatment is having the class of property go from a non-incentive class to a
 ```{r}
 
 ols_models <- list(
-    "Year Controls" = lm(fmv_growth_2011_w ~ incent_prop*land_use + year + triad*reassessed_year,
+    "Year Controls" = lm(fmv_growth_2011_w ~ incent_prop*land_use + year,
                 data = comm_ind_df),
   
-  "Year and Muni Controls" = lm(fmv_growth_2011_w ~ incent_prop*land_use
+  "Pooled OLS - Year & City Controls" = lm(fmv_growth_2011_w ~ incent_prop*land_use
              + clean_name + year,
                 data = comm_ind_df))
 
@@ -148,7 +148,10 @@ modelsummary(ols_models,
 
 
 ```{r} 
-
+#| tbl-reassessinteractwithstatus
+#| tbl-cap: "Interaction between status (pre and post treatment) and assessment year (0 or 1) plus year FE and then year and city FE."
+#| eval: false
+#| include: false
 ols_models <- list(
     "Year Controls" = lm(fmv_growth_2011_w ~  reassessed_year*status + year,
                 data = comm_ind_df),
@@ -173,13 +176,27 @@ modelsummary(ols_models,
 comm_ind_df <- comm_ind_df %>% 
   mutate(incent_indicator = ifelse(incent_prop == "Incentive", 1, 0))
 
-mod1 <- fixest::feglm(incent_indicator ~ land_use + reassessed_year | pin + clean_name + year,
-                                          panel.id = c("pin", "year"),   
-                      data = comm_ind_df, 
-                      family = binomial(link = "logit"),
-                      vcov = ~ pin + year)
+models <- list(
+  "Land Use"  = fixest::feglm(incent_indicator ~ land_use | pin + clean_name + year,
+                              panel.id = c("pin", "year"),   
+                              data = comm_ind_df, 
+                              family = binomial(link = "logit"),
+                              vcov = ~ pin + year),
+  
+  "Land Use andFMV Growth" <- fixest::feglm(incent_indicator ~ land_use + fmv_growth_2011_w | pin + clean_name + year,
+                                           panel.id = c("pin", "year"),   
+                                           data = comm_ind_df, 
+                                           family = binomial(link = "logit"),
+                                           vcov = ~ pin + year),
+  
+  "Land Use Interact FMV" <- fixest::feglm(incent_indicator ~ land_use*fmv_growth_2011_w | pin + clean_name + year,
+                                    panel.id = c("pin", "year"),   
+                                    data = comm_ind_df, 
+                                    family = binomial(link = "logit"),
+                                    vcov = ~ pin + year)
+)
 
-modelsummary(mod1, stars = TRUE)
+modelsummary(models, stars = TRUE, output = "flextable")
 ```
 
 
@@ -480,26 +497,6 @@ modelsummary(muni_fe_new_vars_mods,
             # coef_omit= 'pin|year',
              gof_omit = "AIC|BIC|Log.Lik.|RMSE") #|>  theme_tt("grid")
 
-
-```
-
-# Pooled OLS
-
-**Pooled OLS with Winsorized FMV Growth:**
-
-```{r pooled_ols-winsor}
-
-pooled_ols_models <- list(
-  
-  "2" = feols(fmv_growth_2011_w ~ land_use + incent_prop + land_use*incent_prop,
-              data = comm_ind_df),
-  
-  "3" = feols(fmv_growth_2011_w ~ land_use + incent_prop + land_use*incent_prop + base_year_fmv_2011,
-              data = comm_ind_df)
-
-  )
-
-modelsummary(pooled_ols_models)
 
 ```
 
