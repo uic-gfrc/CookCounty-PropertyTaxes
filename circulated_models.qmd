@@ -319,7 +319,7 @@ modelsummary(logitted_models_1,
 
 ```{r }
 #| label: tbl-logit-buildingDV
-#| tbl-cap: "DV is if a parcel has a building or not. 0 = no building, 1 = building."
+#| tbl-cap: "DV is if a parcel has a building or not. 0 = no building, 1 = building. Does not have robust standard errors like previous logit model. Is not converted to odds."
 #| warning: false
 #| message: false
 
@@ -360,8 +360,13 @@ models <- list(
   
 )
 
-modelsummary(models, stars = TRUE, output = "flextable", 
-             gof_omit = "AIC|BIC", exponentiate = TRUE,
+#logitted_models_1 <- lapply(logitted_models_vcov, `[[`, "model")
+#vcovs <- lapply(logitted_models_vcov, `[[`, "vcov")
+
+modelsummary(models, stars = TRUE, 
+           #  vcov = vcovs,
+             output = "flextable", 
+             gof_omit = "AIC|BIC",# exponentiate = TRUE,
                           fmt = function(x) round(x, 2)
 )
 ```
@@ -385,7 +390,9 @@ So before clustering, think about whether both conditions are likely to be true.
 
 ## PIN-level fixed effects - winsorized
 
-```{r pin_fe}
+```{r}
+#| label: tbl-pin_fe
+#| tbl-cap: "DV is Indexed Growth since 2011. Excludes tax year 2011. PIN & Year Fixed Effects."
 #| warning: false
 #| message: false
 
@@ -397,25 +404,31 @@ pin_fe_models <- list(
   
       "1" = feols(fmv_growth_2011_w ~ land_use 
                   | pin + year,
-                       data = comm_ind_df
+                       data = comm_ind_df %>% filter(year>2011)
                        ),
       
       "2" = feols(fmv_growth_2011_w ~ incent_prop + land_use 
                   | pin + year,
-                       data = comm_ind_df 
-                       ),
+                  data = comm_ind_df %>% filter(year>2011)    
+                  ),
 
 
       "3" = feols(fmv_growth_2011_w ~ incent_prop*land_use  
                   | pin + year, 
-                       data = comm_ind_df 
-                       )
+data = comm_ind_df %>% filter(year>2011)
+),
+
+          "4" = feols(fmv_growth_2011_w ~ incent_prop*land_use + reassessed_year*incent_prop 
+                  | pin + year, 
+                  data = comm_ind_df %>% filter(year>2011),
+)
                 )
 
 modelsummary(pin_fe_models,
+             
              stars = TRUE,
              fmt = function(x) round(x, 2),
-             gof_omit = "AIC|BIC|Log.Lik.")
+             gof_omit = "AIC|BIC|Log.Lik.", output = "flextable")
 
 ```
 
@@ -487,48 +500,41 @@ modelsummary(muni_fe_models,
 
 ## Muni and PIN fixed effects
 
-```{r winsorize-muni-pin_fe}
+```{r}
+#| label: tbl-winsorize-muni-pin_fe
+#| tbl-cap: "Muni, PIN, and Year Fixed Effects. 2012-2022. "
 #| warning: false
 #| results: hold
 
 
 muni_fe_models <- list(
   
-      "One FE" = feols(fmv_growth_2011_w ~ land_use + triad*reassessed_year + 
-                   triad*l(reassessed_year, 1:2) 
-                  | pin  + year + clean_name ,
-                panel.id = c("pin", "year"), 
-                       data = comm_ind_df ),
-      
-      "PIN Muni FE" = feols(fmv_growth_2011_w ~ incent_prop + land_use | pin + clean_name + year,
-                        vcov = "twoway", 
-                  panel.id = c("pin", "year"),
-                       data = comm_ind_df 
-                       ),
-
-      "Threeway FE" = feols(fmv_growth_2011_w ~ incent_prop*land_use + reassessed_year + l(reassessed_year, 1) + l(reassessed_year, 2)  | pin  + year + clean_name,
-                        vcov = "threeway", 
-                  panel.id = c("pin", "year"),
-                       data = comm_ind_df  ),
-      
-          "Pin Year FE" = feols(fmv_growth_2011_w ~ incent_prop*land_use + in_tif | pin + year + clean_name ,
-                       vcov = "twoway", 
-                      panel.id = c("pin", "year"),
-                       data = comm_ind_df ),
-      
-           "Threeway FE" = feols(fmv_growth_2011_w ~ incent_prop*land_use + in_tif | pin + year  + clean_name ,
-                       vcov = "threeway", 
-                      panel.id = c("pin", "year"),
-                       data = comm_ind_df )
-           
-                        )
+  "One FE" = feols(fmv_growth_2011_w ~ land_use | pin,
+                   panel.id = c("pin", "year"), 
+                   data = comm_ind_df %>% filter(year>2011)                ),
+  
+  "PIN-Muni FE" = feols(fmv_growth_2011_w ~ incent_prop + land_use | pin + clean_name,
+                        panel.id = c("pin", "year"),
+                        data = comm_ind_df %>% filter(year>2011) ),
+  
+   "Pin-Year FE" = feols(fmv_growth_2011_w ~ incent_prop+land_use | pin + year ,
+                        panel.id = c("pin", "year"),
+                        data = comm_ind_df %>% filter(year>2011)  ),  
+  
+  "Threeway FE" = feols(fmv_growth_2011_w ~ incent_prop + land_use   | pin  + year + clean_name,
+                        panel.id = c("pin", "year"),
+                        data = comm_ind_df %>% filter(year>2011)),
+  
+  "Threeway FE - Extra Vars" = feols(fmv_growth_2011_w ~ incent_prop*land_use + reassessed_year*incent_prop + in_tif | pin + year  + clean_name ,
+                        panel.id = c("pin", "year"),
+                        data = comm_ind_df %>% filter(year>2011))           
+)
 
 modelsummary(muni_fe_models,
              stars = TRUE,
             # fmt = function(x) round(x, 2),
-             coef_omit= 'pin|year|clean_name',
              gof_omit = "AIC|BIC|Log.Lik.", 
-            outoupt = "flextable")
+            output = "flextable")
 
 ```
 
@@ -598,28 +604,29 @@ commercial_subset <- comm_ind_df |>
 muni_fe_new_vars_mods <- list(
   
   "Industrial- Muni Year FE" = feols(fmv_growth_2011_w ~ land_use*incent_prop + in_tif
-                 | clean_name + year,  vcov = "twoway",
+                 | clean_name + year, 
                               data = industrial_subset
   ),
     
   "Industrial- PIN, Muni, Year FE" = feols(fmv_growth_2011_w ~ land_use*incent_prop + in_tif
-                 | pin + clean_name + year,  vcov = "threeway",
+                 | pin + clean_name + year,
                               data = industrial_subset
   ),
 
   "Commercial- Muni Year FE" = feols(fmv_growth_2011_w ~ land_use*incent_prop + in_tif
-                 | clean_name + year,  vcov = "twoway",
+                 | clean_name + year,  
                               data = commercial_subset
   ),
     "Commercial Subset, Muni&PIN FE" = feols(fmv_growth_2011_w ~ land_use*incent_prop + in_tif
-                 | pin + clean_name + year,  vcov = "threeway",
+                 | pin + clean_name + year,
                               data = commercial_subset
   )
 )
 modelsummary(muni_fe_new_vars_mods,
              stars = TRUE,
              fmt = function(x) round(x, 2),
-             gof_omit = "AIC|BIC|Log.Lik.")
+             gof_omit = "AIC|BIC|Log.Lik.",
+             output = "flextable")
 ```
 
 
@@ -631,23 +638,18 @@ modelsummary(muni_fe_new_vars_mods,
 muni_fe_new_vars_mods <- list(
   
      "Incentive Calass" = feols(fmv_growth_2011_w ~ incent_prop
-                 | clean_name + year,  vcov = "twoway",
-                 data = industrial_subset
-),
+                 | pin + clean_name + year,
+                 data = industrial_subset),
      
       "Land Use" = feols(fmv_growth_2011_w ~ relevel(land_use, ref="Industrial")
-                 | clean_name + year,  vcov = "twoway",
+                 | pin+ clean_name + year, 
                  data = industrial_subset
                        ),
-      "Pin, Muni, Year FE" = feols(fmv_growth_2011_w ~ incent_prop*relevel(land_use, ref="Industrial") 
-                 | pin + clean_name + year,  vcov = "threeway",
+      "Interaction" = feols(fmv_growth_2011_w ~ i(land_use, incent_prop, ref = "Industrial")
+                      #        incent_prop*relevel(land_use, ref="Industrial") 
+                 | pin + clean_name + year, 
                  data = industrial_subset
-                       ),
-      "Muni Year FE" = feols(fmv_growth_2011_w ~ incent_prop*relevel(land_use, ref="Industrial") 
-                 | clean_name + year,  vcov = "twoway",
-                 data = industrial_subset
-                       )
-)
+                       ))
 
 modelsummary(muni_fe_new_vars_mods,
              stars = TRUE,
@@ -665,21 +667,21 @@ modelsummary(muni_fe_new_vars_mods,
 muni_fe_new_vars_mods <- list(
   
      "Incentive Class" = feols(fmv_growth_2011_w ~ incent_prop
-                 | clean_name + year,  vcov = "twoway",
+                 | clean_name + year,
                  data = commercial_subset
                  ),
       "Land Use" = feols(fmv_growth_2011_w ~ land_use
-                 | clean_name + year,  vcov = "twoway",
+                 | clean_name + year, 
                  data = commercial_subset
                        ),
       "Muni, Year FE" = feols(fmv_growth_2011_w ~ incent_prop*land_use 
-                 | clean_name + year,  vcov = "twoway",
+                 | clean_name + year, 
                  data = commercial_subset
                        ),
      
   
         "PIN,Muni,Year FE" = feols(fmv_growth_2011_w ~ incent_prop*land_use
-                 | pin + clean_name + year,  vcov = "threeway",
+                 | pin + clean_name + year,  
                  data = commercial_subset
                        )
 )
@@ -687,7 +689,6 @@ muni_fe_new_vars_mods <- list(
 modelsummary(muni_fe_new_vars_mods,
              stars = TRUE,
              fmt = function(x) round(x, 2),
-            # coef_omit= 'pin|year',
              gof_omit = "AIC|BIC|Log.Lik.") 
 
 
