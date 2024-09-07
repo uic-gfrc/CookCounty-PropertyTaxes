@@ -369,6 +369,7 @@ ptax_proj_summs %>%
 ```{r}
 library(dplyr)
 proj_panel <- ptax_proj_summs %>% 
+    filter(year >= 2012) %>% # drop first year of data when fmv growth is 1
   select(actual_keypin, year, incent_prop,
          land_use2, in_tif2, triad, fmv_growth_2011, years_existed,
         base_year_fmv_2011, reassessed_year, incent_pins,
@@ -376,13 +377,14 @@ proj_panel <- ptax_proj_summs %>%
   #mutate( fmv_growth_2011_w = as.numeric(fmv_growth_2011_2)) %>% 
   arrange(actual_keypin, year) %>% 
   #filter(!is.na(actual_keypin ) & !is.na(fmv_growth_2011_w) & !is.na(base_year_fmv_2011_w) )  %>%
-  mutate(across(year:triad, as.factor),
+  mutate(#across(year:triad, as.factor),
          land_use2 = as.character(land_use2),
-         incent_prop2 = factor(incent_prop, levels= c("Non-Incentive", "Incentive"), labels = c("NonIncentive", "Incentive"), ordered = TRUE))
+         incent_prop2 = factor(incent_prop, levels= c("Non-Incentive", "Incentive"), labels = c("NonIncentive", "Incentive"), ordered = TRUE)) 
 
 # table(proj_panel$incent_prop2)
 table(proj_panel$years_existed)
 
+proj_panel <- proj_panel |> filter(years_existed > 7)
 #write_csv(proj_panel, "Output/project_panel_summaries.csv")
 
 ```
@@ -405,84 +407,85 @@ glance_custom.glm <- glance_custom.lm
 
 ```{r}
 #| label: tbl-growthcomparison-winsor
-#| tbl-cap: "Winsorized Growth and non-winsorized growth"
+#| tbl-cap: "Winsorized Growth growth for projects."
+
+
 library(fixest)
 
 models <- list(
-  projectlevel_2FE = feols(fmv_growth_2011_w ~ land_use2 + incent_prop2 + land_use2*incent_prop2 | actual_keypin + year^triad, panel.id = c("actual_keypin", "year"), vcov = "twoway", data = proj_panel),
-               
-  projectlevel_3FE = feols(fmv_growth_2011_w ~ land_use2 + incent_prop2 + land_use2*incent_prop2  | actual_keypin + year^triad + clean_name, panel.id = c("actual_keypin", "year"), vcov = "threeway", data = proj_panel),
+  "Project-Year FE" = feols(fmv_growth_2011_w ~  land_use2*incent_prop2 | actual_keypin + year, panel.id = c("actual_keypin", "year"),  data = proj_panel),
   
-  munilevel = feols(fmv_growth_2011_w ~ land_use2 + incent_prop2 + incent_prop2*land_use2 + clean_name | actual_keypin + year^triad, panel.id = c("actual_keypin", "year"), vcov = "twoway", data = proj_panel)
+  "Project, Year & Muni FE" = feols(fmv_growth_2011_w ~ land_use2*incent_prop2  | actual_keypin + clean_name + year, 
+                                          panel.id = c("actual_keypin", "year"), data = proj_panel)
 )
 
 
 modelsummary::modelsummary(model = models, output = "flextable",
                             coef_omit = "clean_name", stars = TRUE,
-                           gof_omit = "AIC|BIC", include_reference = TRUE)
+                           gof_omit = "AIC|BIC")
+```
 
+
+```{r}
+#| label: tbl-growthcomparison-nonwinsor
+#| tbl-cap: "Non-winsorized growth for projects."
 
 models <- list(
-  projectlevel_2FE = feols(fmv_growth_2011 ~ land_use2 + incent_prop2 + land_use2*incent_prop2 | actual_keypin + year^triad, panel.id = c("actual_keypin", "year"), vcov = "twoway", data = proj_panel),
+  projectlevel_2FE = feols(fmv_growth_2011 ~  land_use2*incent_prop2 | actual_keypin + year, panel.id = c("actual_keypin", "year"), data = proj_panel),
                
-  projectlevel_3FE = feols(fmv_growth_2011 ~ land_use2 + incent_prop2 + land_use2*incent_prop2  | actual_keypin + year^triad + clean_name, panel.id = c("actual_keypin", "year"), vcov = "threeway", data = proj_panel),
-  
-  munilevel = feols(fmv_growth_2011 ~ land_use2 + incent_prop2 + incent_prop2*land_use2 + clean_name | actual_keypin + year^triad, panel.id = c("actual_keypin", "year"), vcov = "twoway", data = proj_panel)
+  projectlevel_3FE = feols(fmv_growth_2011 ~  land_use2*incent_prop2  | actual_keypin + clean_name + year, panel.id = c("actual_keypin", "year"), data = proj_panel)
 )
 
 
 modelsummary::modelsummary(model = models, output = "flextable",
-                            coef_omit = "clean_name", stars = TRUE,
+                           stars = TRUE,
                            gof_omit = "AIC|BIC", include_reference = TRUE)
 ```
+
+
 ```{r }
 #| label: tbl-winsorized-reassessed
-#| tbl-cap: "Other variations of fixed effects and lagged reassessment years. "
+#| tbl-cap: "With reassessment years interaction with Winsorized FMV Growth"
 
 models <- list(
-  reassess_year = feols(fmv_growth_2011_w ~ land_use2 + incent_prop2 + land_use2*incent_prop2  + reassessed_year | actual_keypin + year, panel.id = c("actual_keypin", "year"), vcov = "twoway", data = proj_panel),
+  reassess_year = feols(fmv_growth_2011_w ~ land_use2*incent_prop2  + reassessed_year | actual_keypin + clean_name + year, panel.id = c("actual_keypin", "year"), data = proj_panel),
   
-  triad = feols(fmv_growth_2011_w ~ land_use2 + incent_prop2 + land_use2*incent_prop2 + triad | actual_keypin + year, panel.id = c("actual_keypin", "year"), vcov = "twoway", data = proj_panel),
+  reassess_interact = feols(fmv_growth_2011_w ~  land_use2*incent_prop2 + reassessed_year*incent_prop2 | actual_keypin + clean_name + year, panel.id = c("actual_keypin", "year"),  data = proj_panel),
   
-  lagged_assessment = feols(fmv_growth_2011_w ~ land_use2 + incent_prop2 + land_use2*incent_prop2 + in_tif2 + l(reassessed_year, 0:2) | actual_keypin + year, panel.id = c("actual_keypin", "year"), vcov = "twoway", data = proj_panel),
+   triadFE1 = feols(fmv_growth_2011_w ~ land_use2*incent_prop2  + reassessed_year | actual_keypin + clean_name + year^triad, panel.id = c("actual_keypin", "year"), data = proj_panel),
   
-  yeartriad_FE = feols(fmv_growth_2011_w ~ land_use2 + incent_prop2 + land_use2*incent_prop2 + in_tif2 + l(reassessed_year, 0:2) | actual_keypin +year+ year^triad, panel.id = c("actual_keypin", "year"), vcov = "threeway", data = proj_panel)
+  triadFE2 = feols(fmv_growth_2011_w ~  land_use2*incent_prop2 + reassessed_year*incent_prop2 | actual_keypin + clean_name + year^triad, panel.id = c("actual_keypin", "year"),  data = proj_panel)
 )
 
 
 
 modelsummary::modelsummary(model = models, 
                            output = "flextable", 
-                           coef_omit = "clean_name", stars = TRUE,
+                          stars = TRUE,
                            gof_omit = "AIC|BIC", include_reference = TRUE)
 ```
 
 
-
-**TIF and and incentive property interactions**
-```{r}
+```{r }
+#| label: tbl-nonwinsorized-reassessed
+#| tbl-cap: "With reassessment years interaction with FMV Growth"
 
 models <- list(
-  projectlevel = feols(fmv_growth_2011 ~ land_use2*incent_prop2 + in_tif2*incent_prop2 + incent_pins | actual_keypin + year, panel.id = c("actual_keypin", "year"), vcov = "twoway", data = proj_panel),
-
-  yeartriad_FE = feols(fmv_growth_2011 ~ land_use2*incent_prop2 + land_use2*in_tif2| actual_keypin + year^triad, panel.id = c("actual_keypin", "year"), vcov = "twoway", data = proj_panel))
-
-modelsummary::modelsummary(models, stars = TRUE, output = "flextable")
-```
-
-
-** some other variable combination **
-
-```{r}
-models <- list(
-  projectlevel = feols(fmv_growth_2011 ~ land_use2*incent_prop2 + in_tif2  | actual_keypin + year, panel.id = c("actual_keypin", "year"), vcov = "twoway", data = proj_panel),
-
-  projectlevel2 = feols(fmv_growth_2011 ~ land_use2*incent_prop2 + in_tif2  | actual_keypin + clean_name+ year, panel.id = c("actual_keypin", "year"), vcov = "twoway", data = proj_panel),
-
-  munilevel = feols(fmv_growth_2011 ~ land_use2*incent_prop2 + incent_prop2 + in_tif2 | clean_name + year, panel.id = c("actual_keypin", "year"), vcov = "twoway", data = proj_panel)
+  reassess_year = feols(fmv_growth_2011 ~ land_use2*incent_prop2  + reassessed_year | actual_keypin + clean_name + year, panel.id = c("actual_keypin", "year"), data = proj_panel),
+  
+  reassess_interact = feols(fmv_growth_2011 ~  land_use2*incent_prop2 + reassessed_year*incent_prop2 | actual_keypin + clean_name + year, panel.id = c("actual_keypin", "year"),  data = proj_panel),
+  
+   triadFE1 = feols(fmv_growth_2011 ~ land_use2*incent_prop2  + reassessed_year | actual_keypin + clean_name + year^triad, panel.id = c("actual_keypin", "year"), data = proj_panel),
+  
+  triadFE2 = feols(fmv_growth_2011 ~  land_use2*incent_prop2 + reassessed_year*incent_prop2 | actual_keypin + clean_name + year^triad, panel.id = c("actual_keypin", "year"),  data = proj_panel)
 )
 
-modelsummary::modelsummary(models, statrs = TRUE, output = "flextable")
 
+
+modelsummary::modelsummary(model = models, 
+                           output = "flextable", 
+                          stars = TRUE,
+                           gof_omit = "AIC|BIC", include_reference = TRUE)
 ```
+
 
