@@ -268,13 +268,12 @@ ptax_proj_summs <- ptax_proj_summs %>%
     end_year_fmv_2022 = ifelse(years_existed == timespan, fmv[year == 2022], NA),
     fmv_2022_2011_diff = ifelse(!is.na(end_year_fmv_2022) & !is.na(base_year_fmv_2011), end_year_fmv_2022 - base_year_fmv_2011, NA)
   ) %>% 
-  # filter(years_existed == 12) |>
   ungroup() %>%
   mutate(fmv_growth_2011 = fmv/base_year_fmv_2011) |>
   group_by(year) %>%
   mutate(fmv_w = DescTools::Winsorize(fmv, quantile(fmv, probs = c(0.01, 0.99), na.rm=TRUE)),
-         fmv_growth_2011_w = DescTools::Winsorize(fmv_growth_2011, quantile(fmv_growth_2011, probs = c(0.01,0.99), na.rm=TRUE)),
-         fmv_2022_2011_diff_w = DescTools::Winsorize(fmv_2022_2011_diff, quantile(fmv_2022_2011_diff, probs = c(0.01,0.99), na.rm=TRUE))) |>
+         fmv_growth_2011_w = DescTools::Winsorize(fmv_growth_2011, quantile(fmv_growth_2011, probs = c(0.01, 0.99), na.rm=TRUE)),
+         fmv_2022_2011_diff_w = DescTools::Winsorize(fmv_2022_2011_diff, quantile(fmv_2022_2011_diff, probs = c(0.01, 0.99), na.rm=TRUE))) |>
   ungroup() 
 
 ptax_proj_summs <- ptax_proj_summs %>%
@@ -285,7 +284,9 @@ ptax_proj_summs <- ptax_proj_summs %>%
          # tif_change2 = ifelse(!tif_change %in% c("Always TIF", "Never TIF"), "Changes", tif_change),
         #  incent_change2 = ifelse(!incent_change %in% c("Always Incentive", "Never Incentive"), "Changes", incent_change),
          in_tif2 = ifelse(in_tif != 0 & in_tif != 1, "Partly in TIF", in_tif)) %>%
-  mutate(across(c(fmv, tax_code), round, digits = 0))
+  mutate(across(c(fmv, tax_code), round, digits = 0))   %>%
+  filter(years_existed == 12) 
+
 
 ```
 
@@ -316,25 +317,37 @@ ptax_proj_summs %>%
 #| label: tbl-exemptprojects
 #| tbl-cap: Projects that were exempt or became exempt. 
 
+summary(ptax_proj_summs$fmv_growth_2011)
+summary(ptax_proj_summs$fmv_growth_2011_w)
+
+ptax_proj_summs %>% filter(is.na(fmv_growth_2011))
+
+exempt_anyyear <- ptax_proj_summs %>%
+  filter(fmv == 0) # |> distinct(actual_keypin)
+# 4138 unique projects, 31,076 observations
+
+
+lowFMV <- ptax_proj_summs %>%
+  filter(fmv < 100 & fmv != 0)  # |> distinct(actual_keypin)
+# 206 unique projects, 1645 observations
+
+
+# projects exempt in 2011. Cause infinite growth in DV
 were_exempt <- ptax_proj_summs %>%
   group_by(actual_keypin) |>
   filter(fmv == 0 & year == 2011) |> 
   arrange(desc(fmv), actual_keypin)
-were_exempt
+were_exempt 
+# 1822 unique projects exempt in 2011
 
+# projects exempt in 2022. Cause DV to be 0. (not the worst thing)
 became_exempt <- ptax_proj_summs %>%
   group_by(actual_keypin) |>
   filter(fmv == 0 & year == 2022)  |> 
   arrange(desc(fmv), actual_keypin)
+# 3289 projects
 became_exempt
 
-exempt_anyyear <- ptax_proj_summs %>%
-  filter(fmv == 0) # |> distinct(actual_keypin)
-# 308 unique projects
-
-lowFMV <- ptax_proj_summs %>%
-  filter(fmv < 100) # |> distinct(actual_keypin)
-# 427 unique projects 
 
 #write_csv(were_exempt, "./Output/properties_were_exempt.csv")
 
@@ -343,9 +356,12 @@ lowFMV <- ptax_proj_summs %>%
 ptax_proj_summs <- ptax_proj_summs %>% 
   filter(!actual_keypin %in% were_exempt$actual_keypin) %>% ## creates Infinite growth but these are the observations we do want to examine more for vacant to non-vacant properties.
   filter(!actual_keypin %in% became_exempt$actual_keypin) %>%
-  filter(!actual_keypin %in% exempt_anyyear$actual_keypin) %>%
-  filter(!actual_keypin %in% lowFMV$actual_keypin) %>%
+  #filter(!actual_keypin %in% exempt_anyyear$actual_keypin) %>%
+ # filter(!actual_keypin %in% lowFMV$actual_keypin) %>%
   arrange(desc(fmv), actual_keypin)
+
+summary(ptax_proj_summs$fmv_growth_2011)
+summary(ptax_proj_summs$fmv_growth_2011_w)
 
 ```
 
@@ -387,17 +403,21 @@ proj_panel <- ptax_proj_summs %>%
          land_use2, in_tif2, triad, fmv_growth_2011, years_existed,
         base_year_fmv_2011, reassessed_year, incent_pins,
          project_pins, incent_pins, clean_name, fmv_growth_2011_w)  %>% 
-  #mutate( fmv_growth_2011_w = as.numeric(fmv_growth_2011_2)) %>% 
+  #mutate( fmv_growth_2011_w = as.numeric(fmv_growth_2011_w)) %>% 
   arrange(actual_keypin, year) %>% 
   #filter(!is.na(actual_keypin ) & !is.na(fmv_growth_2011_w) & !is.na(base_year_fmv_2011_w) )  %>%
   mutate(#across(year:triad, as.factor),
          land_use2 = as.character(land_use2),
-         incent_prop2 = factor(incent_prop, levels= c("Non-Incentive", "Incentive"), labels = c("NonIncentive", "Incentive"), ordered = TRUE)) 
+         incent_prop2 = factor(incent_prop, levels= c("Non-Incentive", "Incentive"), labels = c("NonIncentive", "Incentive"), ordered = TRUE))  %>%
+  group_by(year) %>%
+  mutate(fmv_w = DescTools::Winsorize(fmv, quantile(fmv, probs = c(0.005, 0.995), na.rm=TRUE)),
+         fmv_growth_2011_w = DescTools::Winsorize(fmv_growth_2011, quantile(fmv_growth_2011, probs = c(0.005, 0.995), na.rm=TRUE)))
 
 # table(proj_panel$incent_prop2)
 table(proj_panel$years_existed)
 
-proj_panel <- proj_panel |> filter(years_existed > 7)
+summary(proj_panel$fmv_growth_2011)
+summary(proj_panel$fmv_growth_2011_w)
 #write_csv(proj_panel, "Output/project_panel_summaries.csv")
 
 ```
@@ -434,7 +454,7 @@ models <- list(
 
 
 modelsummary::modelsummary(model = models, output = "flextable",
-                            coef_omit = "clean_name", stars = TRUE,
+                           stars = TRUE,
                            gof_omit = "AIC|BIC")
 ```
 
@@ -452,7 +472,7 @@ models <- list(
 
 modelsummary::modelsummary(model = models, output = "flextable",
                            stars = TRUE,
-                           gof_omit = "AIC|BIC", include_reference = TRUE)
+                           gof_omit = "AIC|BIC")
 ```
 
 
@@ -475,7 +495,7 @@ models <- list(
 modelsummary::modelsummary(model = models, 
                            output = "flextable", 
                           stars = TRUE,
-                           gof_omit = "AIC|BIC", include_reference = TRUE)
+                           gof_omit = "AIC|BIC")
 ```
 
 
@@ -498,7 +518,7 @@ models <- list(
 modelsummary::modelsummary(model = models, 
                            output = "flextable", 
                           stars = TRUE,
-                           gof_omit = "AIC|BIC", include_reference = TRUE)
+                           gof_omit = "AIC|BIC")
 ```
 
 
