@@ -270,9 +270,9 @@ ptax_proj_summs <- ptax_proj_summs %>%
   ungroup() %>%
   mutate(fmv_growth_2011 = fmv/base_year_fmv_2011) |>
   group_by(year) %>%
-  mutate(fmv_w = DescTools::Winsorize(fmv, quantile(fmv, probs = c(0.01,0.99), na.rm=TRUE)),
+  mutate(fmv_w = DescTools::Winsorize(fmv, quantile(fmv, probs = c(0.03,0.97), na.rm=TRUE)),
          fmv_growth_2011_w = DescTools::Winsorize(fmv_growth_2011, quantile(fmv_growth_2011, probs = c(0.01,0.99), na.rm=TRUE)),
-         fmv_2022_2011_diff_w = DescTools::Winsorize(fmv_2022_2011_diff, quantile(fmv_2022_2011_diff, probs = c(0.01,0.99), na.rm=TRUE))) |>
+         fmv_2022_2011_diff_w = DescTools::Winsorize(fmv_2022_2011_diff, quantile(fmv_2022_2011_diff, probs = c(0.03,0.97), na.rm=TRUE))) |>
   ungroup() 
 
 ptax_proj_summs <- ptax_proj_summs %>%
@@ -324,6 +324,14 @@ became_exempt <- ptax_proj_summs %>%
   arrange(desc(fmv), actual_keypin)
 became_exempt
 
+exempt_anyyear <- ptax_proj_summs %>%
+  filter(fmv == 0) |> 
+distinct(actual_keypin)
+
+lowFMV <- ptax_proj_summs %>%
+  filter(fmv < 100) |> 
+distinct(actual_keypin)
+
 #write_csv(were_exempt, "./Output/properties_were_exempt.csv")
 
 #write_csv(became_exempt, "./Output/properties_became_exempt.csv")
@@ -331,8 +339,9 @@ became_exempt
 ptax_proj_summs <- ptax_proj_summs %>% 
   filter(!actual_keypin %in% were_exempt$actual_keypin) %>% ## creates Infinite growth but these are the observations we do want to examine more for vacant to non-vacant properties.
   filter(!actual_keypin %in% became_exempt$actual_keypin) %>%
+  filter(!actual_keypin %in% exempt_anyyear$actual_keypin) %>%
+  filter(!actual_keypin %in% lowFMV$actual_keypin) %>%
   arrange(desc(fmv), actual_keypin)
-
 
 ```
 
@@ -370,7 +379,7 @@ ptax_proj_summs %>%
 library(dplyr)
 proj_panel <- ptax_proj_summs %>% 
     filter(year >= 2012) %>% # drop first year of data when fmv growth is 1
-  select(actual_keypin, year, incent_prop,
+  select(actual_keypin, year, fmv, fmv_w, incent_prop,
          land_use2, in_tif2, triad, fmv_growth_2011, years_existed,
         base_year_fmv_2011, reassessed_year, incent_pins,
          project_pins, incent_pins, clean_name, fmv_growth_2011_w)  %>% 
