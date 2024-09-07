@@ -236,7 +236,7 @@ ptax_proj_summs <- ptax_proj %>%
     fmv = sum(fmv, na.rm=TRUE),
     tax_code = mean(tax_code_num, na.rm=TRUE),
     in_tif = mean(in_tif, na.rm=TRUE),
-    pin_classes = paste(sort(unique(class)), collapse = ", "),
+    # pin_classes = paste(sort(unique(class)), collapse = ", "),
     land_use = paste(sort(unique(land_use)), collapse = ", "),
     incent_prop = paste(sort(unique(incent_prop)), collapse = ", "),
     triad = first(Triad),
@@ -259,8 +259,10 @@ ptax_proj_summs <- ptax_proj_summs %>%
   group_by(actual_keypin) |>
   mutate(
     years_existed = n(),
-    pin_classes_2011 = ifelse(years_existed == timespan, pin_classes[year == 2011], NA),
-    pin_classes_2022 = ifelse(years_existed == timespan, pin_classes[year == 2022], NA),
+    # commenting out just to make it run faster
+    # but maybe interesting for looking at types of PINs included in a project
+   # pin_classes_2011 = ifelse(years_existed == timespan, pin_classes[year == 2011], NA),
+    #pin_classes_2022 = ifelse(years_existed == timespan, pin_classes[year == 2022], NA),
     base_year_fmv_2011 = ifelse(years_existed == timespan, 
                                 fmv[year == 2011], NA),
     end_year_fmv_2022 = ifelse(years_existed == timespan, fmv[year == 2022], NA),
@@ -270,16 +272,18 @@ ptax_proj_summs <- ptax_proj_summs %>%
   ungroup() %>%
   mutate(fmv_growth_2011 = fmv/base_year_fmv_2011) |>
   group_by(year) %>%
-  mutate(fmv_w = DescTools::Winsorize(fmv, quantile(fmv, probs = c(0.03,0.97), na.rm=TRUE)),
+  mutate(fmv_w = DescTools::Winsorize(fmv, quantile(fmv, probs = c(0.01, 0.99), na.rm=TRUE)),
          fmv_growth_2011_w = DescTools::Winsorize(fmv_growth_2011, quantile(fmv_growth_2011, probs = c(0.01,0.99), na.rm=TRUE)),
-         fmv_2022_2011_diff_w = DescTools::Winsorize(fmv_2022_2011_diff, quantile(fmv_2022_2011_diff, probs = c(0.03,0.97), na.rm=TRUE))) |>
+         fmv_2022_2011_diff_w = DescTools::Winsorize(fmv_2022_2011_diff, quantile(fmv_2022_2011_diff, probs = c(0.01,0.99), na.rm=TRUE))) |>
   ungroup() 
 
 ptax_proj_summs <- ptax_proj_summs %>%
-  mutate(landuse_change2 = ifelse(landuse_change!= "Always Commercial" & landuse_change != "Always Industrial", "Changes", landuse_change),
-         land_use2 = ifelse(!land_use %in% c("Commercial", "Industrial"), "Multi Land Uses", land_use),
-         tif_change2 = ifelse(!tif_change %in% c("Always TIF", "Never TIF"), "Changes", tif_change),
-         incent_change2 = ifelse(!incent_change %in% c("Always Incentive", "Never Incentive"), "Changes", incent_change),
+  mutate(
+    # commented out to make it run faster 
+    # landuse_change2 = ifelse(landuse_change!= "Always Commercial" & landuse_change != "Always Industrial", "Changes", landuse_change),
+         land_use2 = ifelse(!land_use %in% c("Commercial", "Industrial", "Land"), "Multi Land Uses", land_use),
+         # tif_change2 = ifelse(!tif_change %in% c("Always TIF", "Never TIF"), "Changes", tif_change),
+        #  incent_change2 = ifelse(!incent_change %in% c("Always Incentive", "Never Incentive"), "Changes", incent_change),
          in_tif2 = ifelse(in_tif != 0 & in_tif != 1, "Partly in TIF", in_tif)) %>%
   mutate(across(c(fmv, tax_code), round, digits = 0))
 
@@ -325,12 +329,12 @@ became_exempt <- ptax_proj_summs %>%
 became_exempt
 
 exempt_anyyear <- ptax_proj_summs %>%
-  filter(fmv == 0) |> 
-distinct(actual_keypin)
+  filter(fmv == 0) # |> distinct(actual_keypin)
+# 308 unique projects
 
 lowFMV <- ptax_proj_summs %>%
-  filter(fmv < 100) |> 
-distinct(actual_keypin)
+  filter(fmv < 100) # |> distinct(actual_keypin)
+# 427 unique projects 
 
 #write_csv(were_exempt, "./Output/properties_were_exempt.csv")
 
