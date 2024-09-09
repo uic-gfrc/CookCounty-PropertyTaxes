@@ -121,14 +121,6 @@ rm(comm_ind )
 ```
 
 
-```{r}
-#|eval: false # I don't think this table makes sense without more context.
-table(comm_ind_df$year)
-
-table(comm_ind_df$incent_change)
-
-table(comm_ind_df$status)
-```
 
 ```{r}
 comm_ind_df %>% 
@@ -150,106 +142,11 @@ The treatment is having the class of property go from a non-incentive class to a
 
 
 
-> DV for all non-logit regressions: FMV growth since 2011
-
-# Pooled OLS - With and Without Muni and Year Controls
-
-```{r}
-
-ols_models <- list(
-  
-  "POLS (No Muni/Year Dummies)" = lm(fmv_growth_2011_w ~ incent_prop*land_use + year,
-                data = comm_ind_df),
-  
-  "POLS (Year Dummies)" = lm(fmv_growth_2011_w ~ incent_prop*land_use + year,
-                data = comm_ind_df),
-  
-  "POLS (Year & Muni Dummies)" = lm(fmv_growth_2011_w ~ incent_prop*land_use
-             + clean_name + year,
-                data = comm_ind_df))
-
-
-modelsummary(ols_models,
-             stars = TRUE,
-             fmt = function(x) round(x, 2),
-             coef_omit= 'clean_name|year',
-             gof_omit = "AIC|BIC|Log.Lik.", output = "flextable")
-
-
-```
-## OLS w/ Dummy Variables vs. FEs
-
-In a nutshell, we need to eliminate time-invariate features of PINs, which requires PIN fixed effects or PIN dummy variables. PIN dummies are prohibitively computationally expensive, requiring a 3WFE model instead of dummy variables.
-
-```{r}
-#| label: tbl-dummies_vs_3wfe
-#| tbl-cap: "Difference Between Pooled OLS with Dummy Variables and Fixed Effects Model Specifications"
-
-compare_models <- list(
-  
-  "POLS w/ Year & Muni Dummies" = lm(fmv_growth_2011_w ~ incent_prop*land_use
-             + clean_name + year,
-                data = comm_ind_df),
-    
-  "Muni/Year FE" = feols(fmv_growth_2011_w ~ incent_prop*land_use 
-                         | clean_name + year,
-                         data = comm_ind_df), 
-  
-  "PIN/Muni/Year FE" = feols(fmv_growth_2011_w ~ incent_prop*land_use 
-                         | pin + clean_name + year,
-                         data = comm_ind_df)
-)
-
-
-
-compare_models_vcov <- lapply(compare_models, function(model) {
-  list(
-    model = model,
-    vcov = robust_vcov(model)
-  )
-})
-
-models <- lapply(compare_models_vcov, `[[`, "model")
-vcovs <- lapply(compare_models_vcov, `[[`, "vcov")
-
-modelsummary(models,
-             vcov = vcovs,
-             stars = TRUE,
-             fmt = function(x) round(x, 2),
-             coef_omit= 'clean_name|year',
-             gof_omit = "AIC|BIC|Log.Lik.", 
-             output = "flextable")
-
-
-```
-
-```{r} 
-#| label: tbl-reassessinteractwithstatus
-#| tbl-cap: "Interaction between status (pre and post treatment) and assessment year (0 or 1) plus year FE and then year and city FE."
-#| eval: false
-#| include: false
-
-ols_models <- list(
-    "Year Controls" = lm(fmv_growth_2011_w ~  reassessed_year*status + year,
-                data = comm_ind_df),
-  
-  "Year and Muni Controls" = lm(fmv_growth_2011_w ~ reassessed_year*status +
-             + clean_name + year,
-                data = comm_ind_df))
-
-
-modelsummary(ols_models,
-             stars = TRUE,
-             fmt = function(x) round(x, 2),
-             coef_omit= 'clean_name|year',
-             gof_omit = "AIC|BIC|Log.Lik.") #|>  theme_tt("grid")
-
-```
-
 # Logit Models
 
 ```{r}
 #| label: tbl-logitincentDV
+#| tbl-cap-location: margin
 #| tbl-cap: "DV is if a parcel has a incentive property or not or not. 0 = did not have incentive class, 1 = had incentive class"
 #| results: hold
 
@@ -374,128 +271,12 @@ modelsummary(models, stars = TRUE,
 
 # Fixed Effect Models
 
-## Model Notes
-
 **StandardErrors **   
 "For clustering with fixed effects to be necessary (and a good idea), several conditions need to hold. First, there needs to be treatment effect heterogeneity. That is, the treatment effect must be quite different for different individuals.
 
 If that is true, there’s a second condition. Either the fixed effect groups/individuals in your data need to be a non-random sampling of the population. That is, some groups are more likely to be included in your sample than others. or, within fixed effect groups/individuals, your treatment variable is assigned in a clustered way. For example, with city fixed effects, are certain individuals in that city more likely to be treated than others?
 
 So before clustering, think about whether both conditions are likely to be true. If it is, go ahead and cluster! If not, don’t bother, as the clustering will make your standard errors larger than they’re supposed to be." - [The Effect](https://theeffectbook.net/ch-FixedEffects.html) 
-
-**Misc. Defintions**   
-- Conditional Average Treatment Effect. The average treatment effect among those with certain values of certain variables (for example, the average treatment effect among women).   
-- Average Treatment on the Treated. The average treatment effect among those who actually received the treatment in your study.   
-
-
-## PIN-level fixed effects - winsorized
-
-```{r}
-#| label: tbl-pin_fe
-#| tbl-cap: "DV is Indexed Growth since 2011. Excludes tax year 2011. PIN & Year Fixed Effects."
-#| warning: false
-#| message: false
-
-
-comm_ind_df <- comm_ind_df %>% 
-  mutate(land_use = relevel(land_use, ref = "Commercial"))
-
-pin_fe_models <- list(
-  
-      "1" = feols(fmv_growth_2011_w ~ land_use 
-                  | pin + year,
-                       data = comm_ind_df %>% filter(year>2011)
-                       ),
-      
-      "2" = feols(fmv_growth_2011_w ~ incent_prop + land_use 
-                  | pin + year,
-                  data = comm_ind_df %>% filter(year>2011)    
-                  ),
-
-
-      "3" = feols(fmv_growth_2011_w ~ incent_prop*land_use  
-                  | pin + year, 
-data = comm_ind_df %>% filter(year>2011)
-),
-
-          "4" = feols(fmv_growth_2011_w ~ incent_prop*land_use + reassessed_year*incent_prop 
-                  | pin + year, 
-                  data = comm_ind_df %>% filter(year>2011),
-)
-                )
-
-modelsummary(pin_fe_models,
-             
-             stars = TRUE,
-             fmt = function(x) round(x, 2),
-             gof_omit = "AIC|BIC|Log.Lik.", output = "flextable")
-
-```
-
-```{r pin_withtriadreassess_fe}
-#| eval: false
-#| include: false 
-
-pin_fe_models <- list(
-  
-      "1" = feols(fmv_growth_2011_w ~ land_use 
-                  | pin + year + reassessed_year^triad, vcov = "threeway",
-                       data = comm_ind_df
-                       ),
-      
-      "2" = feols(fmv_growth_2011_w ~ incent_prop + land_use 
-                  | pin + year + reassessed_year^triad, vcov = "threeway",
-                       data = comm_ind_df 
-                       ),
-
-
-      "3" = feols(fmv_growth_2011_w ~ incent_prop*land_use  
-                  | pin + year + reassessed_year^triad, vcov = "threeway",
-                       data = comm_ind_df 
-                       )
-                )
-
-modelsummary(pin_fe_models,
-             stars = TRUE,
-             fmt = function(x) round(x, 2),
-             gof_omit = "AIC|BIC|Log.Lik.")
-
-```
-
-
-## Muni-Level Fixed Effects - Don't Use!
-
-
-```{r}
-#| warning: false
-#| results: hold
-
-muni_fe_models <- list(
-  
-      "1" = feols(fmv_growth_2011_w ~ land_use | clean_name + year,
-                   vcov = "twoway",
-                       data = comm_ind_df ),
-      
-      "2" = feols(fmv_growth_2011_w ~ incent_prop + land_use | clean_name + year,
-                                     vcov = "twoway",
-                       data = comm_ind_df 
-                       ),
-
-
-      "3" = feols(fmv_growth_2011_w ~ incent_prop*land_use | clean_name + year,
-                                                       vcov = "twoway",
-
-                       data = comm_ind_df  )
-      
-                        )
-
-modelsummary(muni_fe_models,
-             stars = TRUE,
-             fmt = function(x) round(x, 2),
-             gof_omit = "AIC|BIC|Log.Lik.", 
-             output = "flextable")
-
-```
 
 
 ## Muni and PIN fixed effects
@@ -577,7 +358,120 @@ modelsummary(muni_fe_models,
 ```
 
 
-# Commercial VS Industrial Models
+
+## Other Variations of Fixed Effect Models
+
+### PIN-level fixed effects - winsorized
+
+```{r}
+#| label: tbl-pin_fe
+#| tbl-cap: "DV is Indexed Growth since 2011. Excludes tax year 2011. PIN & Year Fixed Effects."
+#| warning: false
+#| message: false
+
+
+comm_ind_df <- comm_ind_df %>% 
+  mutate(land_use = relevel(land_use, ref = "Commercial"))
+
+pin_fe_models <- list(
+  
+      "1" = feols(fmv_growth_2011_w ~ land_use 
+                  | pin + year,
+                       data = comm_ind_df %>% filter(year>2011)
+                       ),
+      
+      "2" = feols(fmv_growth_2011_w ~ incent_prop + land_use 
+                  | pin + year,
+                  data = comm_ind_df %>% filter(year>2011)    
+                  ),
+
+
+      "3" = feols(fmv_growth_2011_w ~ incent_prop*land_use  
+                  | pin + year, 
+data = comm_ind_df %>% filter(year>2011)
+),
+
+          "4" = feols(fmv_growth_2011_w ~ incent_prop*land_use + reassessed_year*incent_prop 
+                  | pin + year, 
+                  data = comm_ind_df %>% filter(year>2011),
+)
+                )
+
+modelsummary(pin_fe_models,
+             
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+             gof_omit = "AIC|BIC|Log.Lik.", output = "flextable")
+
+```
+
+```{r pin_withtriadreassess_fe}
+#| eval: false
+#| include: false 
+
+pin_fe_models <- list(
+  
+      "1" = feols(fmv_growth_2011_w ~ land_use 
+                  | pin + year + reassessed_year^triad, vcov = "threeway",
+                       data = comm_ind_df
+                       ),
+      
+      "2" = feols(fmv_growth_2011_w ~ incent_prop + land_use 
+                  | pin + year + reassessed_year^triad, vcov = "threeway",
+                       data = comm_ind_df 
+                       ),
+
+
+      "3" = feols(fmv_growth_2011_w ~ incent_prop*land_use  
+                  | pin + year + reassessed_year^triad, vcov = "threeway",
+                       data = comm_ind_df 
+                       )
+                )
+
+modelsummary(pin_fe_models,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+             gof_omit = "AIC|BIC|Log.Lik.")
+
+```
+
+
+### Muni-Level Fixed Effects - Don't Use!
+
+
+```{r}
+#| warning: false
+#| results: hold
+
+muni_fe_models <- list(
+  
+      "1" = feols(fmv_growth_2011_w ~ land_use | clean_name + year,
+                   vcov = "twoway",
+                       data = comm_ind_df ),
+      
+      "2" = feols(fmv_growth_2011_w ~ incent_prop + land_use | clean_name + year,
+                                     vcov = "twoway",
+                       data = comm_ind_df 
+                       ),
+
+
+      "3" = feols(fmv_growth_2011_w ~ incent_prop*land_use | clean_name + year,
+                                                       vcov = "twoway",
+
+                       data = comm_ind_df  )
+      
+                        )
+
+modelsummary(muni_fe_models,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+             gof_omit = "AIC|BIC|Log.Lik.", 
+             output = "flextable")
+
+```
+
+
+### Commercial VS Industrial Models
 
 The industrial subset keeps a property (all years) if they were industrial property at any point in time.
 
@@ -693,6 +587,103 @@ modelsummary(muni_fe_new_vars_mods,
 
 
 ```
+
+> DV for all non-logit regressions: FMV growth since 2011
+
+# Pooled OLS - With and Without Muni and Year Controls
+
+```{r}
+
+ols_models <- list(
+  
+  "POLS (No Muni/Year Dummies)" = lm(fmv_growth_2011_w ~ incent_prop*land_use + year,
+                data = comm_ind_df),
+  
+  "POLS (Year Dummies)" = lm(fmv_growth_2011_w ~ incent_prop*land_use + year,
+                data = comm_ind_df),
+  
+  "POLS (Year & Muni Dummies)" = lm(fmv_growth_2011_w ~ incent_prop*land_use
+             + clean_name + year,
+                data = comm_ind_df))
+
+
+modelsummary(ols_models,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+             coef_omit= 'clean_name|year',
+             gof_omit = "AIC|BIC|Log.Lik.", output = "flextable")
+
+
+```
+## OLS w/ Dummy Variables vs. FEs
+
+In a nutshell, we need to eliminate time-invariate features of PINs, which requires PIN fixed effects or PIN dummy variables. PIN dummies are prohibitively computationally expensive, requiring a 3WFE model instead of dummy variables.
+
+```{r}
+#| label: tbl-dummies_vs_3wfe
+#| tbl-cap: "Difference Between Pooled OLS with Dummy Variables and Fixed Effects Model Specifications"
+
+compare_models <- list(
+  
+  "POLS w/ Year & Muni Dummies" = lm(fmv_growth_2011_w ~ incent_prop*land_use
+             + clean_name + year,
+                data = comm_ind_df),
+    
+  "Muni/Year FE" = feols(fmv_growth_2011_w ~ incent_prop*land_use 
+                         | clean_name + year,
+                         data = comm_ind_df), 
+  
+  "PIN/Muni/Year FE" = feols(fmv_growth_2011_w ~ incent_prop*land_use 
+                         | pin + clean_name + year,
+                         data = comm_ind_df)
+)
+
+
+
+compare_models_vcov <- lapply(compare_models, function(model) {
+  list(
+    model = model,
+    vcov = robust_vcov(model)
+  )
+})
+
+models <- lapply(compare_models_vcov, `[[`, "model")
+vcovs <- lapply(compare_models_vcov, `[[`, "vcov")
+
+modelsummary(models,
+             vcov = vcovs,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+             coef_omit= 'clean_name|year',
+             gof_omit = "AIC|BIC|Log.Lik.", 
+             output = "flextable")
+
+
+```
+
+```{r} 
+#| label: tbl-reassessinteractwithstatus
+#| tbl-cap: "Interaction between status (pre and post treatment) and assessment year (0 or 1) plus year FE and then year and city FE."
+#| eval: false
+#| include: false
+
+ols_models <- list(
+    "Year Controls" = lm(fmv_growth_2011_w ~  reassessed_year*status + year,
+                data = comm_ind_df),
+  
+  "Year and Muni Controls" = lm(fmv_growth_2011_w ~ reassessed_year*status +
+             + clean_name + year,
+                data = comm_ind_df))
+
+
+modelsummary(ols_models,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+             coef_omit= 'clean_name|year',
+             gof_omit = "AIC|BIC|Log.Lik.") #|>  theme_tt("grid")
+
+```
+
 
 # graphs 
 
