@@ -88,6 +88,11 @@ vacant = c(100:199)
 
 
 ```{r}
+#| label: reassessment-timings
+#| include: false
+#| results: hold
+
+
 table(comm_ind$first_incent_year)
 table(comm_ind$next_reassessment)
 table(comm_ind$year, comm_ind$next_reassessment)
@@ -147,7 +152,7 @@ The treatment is having the class of property go from a non-incentive class to a
 ```{r}
 #| label: tbl-logitincentDV
 #| tbl-cap-location: margin
-#| tbl-cap: "DV is if a parcel has a incentive property or not or not. 0 = did not have incentive class, 1 = had incentive class"
+#| tbl-cap: "DV is if a parcel has a incentive property or not or not. 0 = did not have incentive class, 1 = had incentive class. Sample size decreases a lot due to only being able to use observations that experienced a change in the DV. "
 #| results: hold
 
 
@@ -287,6 +292,9 @@ So before clustering, think about whether both conditions are likely to be true.
 #| warning: false
 #| results: hold
 
+
+comm_ind_df <- comm_ind_df %>% 
+  mutate(land_use = relevel(land_use, ref = "Commercial"))
 
 muni_fe_models <- list(
   
@@ -687,7 +695,7 @@ modelsummary(ols_models,
 
 # graphs 
 
-```{r dataexploration, eval=FALSE}
+```{r dataexploration}
 comm_ind_df |>
   filter(year==2022)|>
   ggplot(aes(fmv_growth_2006_w)) +
