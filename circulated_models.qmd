@@ -146,8 +146,142 @@ The treatment is having the class of property go from a non-incentive class to a
 - some kind of difference-in-differences design   
 
 
-
 # Logit Models
+
+## Normal Logit Models
+
+```{r}
+#| label: tbl-logitincentDV-noFE
+#| tbl-cap-location: margin
+#| tbl-cap: "DV is if a parcel has a incentive property or not or not. 0 = did not have incentive class, 1 = had incentive class. Sample size decreases a lot due to only being able to use observations that experienced a change in the DV. "
+#| results: hold
+
+
+comm_ind_df <- comm_ind_df %>% 
+  mutate(incent_indicator = ifelse(incent_prop == "Incentive", 1, 0))
+
+comm_ind_df <- comm_ind_df %>% 
+  mutate(land_use = relevel(land_use, ref = "Land"))
+
+
+logitted_models <- list(
+  
+  "Land Use"  = feglm(incent_indicator ~ land_use | clean_name + year, 
+                              panel.id = c("pin", "year"),   
+                              data = comm_ind_df, 
+                              family = binomial(link = "logit")
+                      ),
+  
+  "Land Use and FMV Growth" =  feglm(incent_indicator ~ land_use 
+                                    + fmv_growth_2011_w | clean_name + year, 
+                                           panel.id = c("pin", "year"),   
+                                           data = comm_ind_df, 
+                                           family = binomial(link = "logit"),
+                                    ),
+  
+  "Land Use Interact FMV" = feglm(incent_indicator ~ land_use*fmv_growth_2011_w | clean_name + year,
+                                    panel.id = c("pin", "year"),   
+                                    data = comm_ind_df, 
+                                    family = binomial(link = "logit"),
+                                  )
+)
+
+# logitted_models_vcov <- lapply(logitted_models, function(model) {
+#   list(
+#     model = model,
+#     vcov = robust_vcov(model)
+#   )
+# })
+
+#logitted_models_1 <- lapply(logitted_models_vcov, `[[`, "model")
+#vcovs <- lapply(logitted_models_vcov, `[[`, "vcov")
+
+modelsummary(#logitted_models_1,
+  logitted_models,
+             #vcov = vcovs,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+             gof_omit = "AIC|BIC|Log.Lik.", 
+             output = "flextable")
+```
+
+```{r}
+#| label: tbl-FE_exponentiated_coeffs-noFE
+#| tbl-cap: "Same Models as Above with Coefficients Exponentiated (i.e., can now be interpreted as odds)"
+#| results: hold
+
+#logitted_models_odds <- lapply(logitted_models, transform_to_odds)
+
+modelsummary(#logitted_models_1,
+  logitted_models,
+             #vcov = vcovs,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+             gof_omit = "AIC|BIC|Log.Lik.",
+             output = "flextable",
+             exponentiate = TRUE
+             )
+
+```
+
+#### Building or not Logit
+
+```{r }
+#| label: tbl-logit-buildingDV-noFE
+#| tbl-cap: "No PIN Fixed Effects. Does have year and Muni Fixed Effects. DV is if a parcel has a building or not. 0 = no building, 1 = building. Does not have robust standard errors like previous logit model. Is not converted to odds."
+#| warning: false
+#| message: false
+
+
+comm_ind_df <- comm_ind_df %>% 
+  mutate(land_use = relevel(land_use, ref = "Land"))
+
+models <- list(
+    "By Incent Prop" = fixest::feglm(building ~ incent_prop | clean_name + year,
+                                   # panel.id = c("pin", "year"),   
+                                    data = comm_ind_df, 
+                                    family = binomial(link = "logit"),
+                                    vcov = ~ pin),
+    
+     "By Incent&Use" = fixest::feglm(building ~ incent_prop + land_use |  clean_name + year,
+                                    panel.id = c("pin", "year"),   
+                                    data = comm_ind_df, 
+                                    family = binomial(link = "logit"),
+                                    vcov = ~ pin),
+    
+  "By Land Use"  = fixest::feglm(building ~ land_use | clean_name + year,
+                              panel.id = c("pin", "year"),   
+                              data = comm_ind_df, 
+                              family = binomial(link = "logit"),
+                              vcov = ~ pin ),
+  
+  "Land Use and\nFMV Growth" = fixest::feglm(building ~ incent_prop + land_use + fmv_growth_2011_w | clean_name + year,
+                                           panel.id = c("pin", "year"),   
+                                           data = comm_ind_df, 
+                                           family = binomial(link = "logit"),
+                                           vcov = ~ pin),
+  
+  "Land Use \nInteract FMV" = fixest::feglm(building ~ land_use*incent_prop | clean_name + year,
+                                    panel.id = c("pin", "year"),   
+                                    data = comm_ind_df, 
+                                    family = binomial(link = "logit"),
+                                    vcov = ~ pin)
+  
+)
+
+#logitted_models_1 <- lapply(logitted_models_vcov, `[[`, "model")
+#vcovs <- lapply(logitted_models_vcov, `[[`, "vcov")
+
+modelsummary(models, stars = TRUE, 
+           #  vcov = vcovs,
+             output = "flextable", 
+             gof_omit = "AIC|BIC",# exponentiate = TRUE,
+                          fmt = function(x) round(x, 2)
+)
+```
+
+
+##  Conditional Logit Models
 
 ```{r}
 #| label: tbl-logitincentDV
