@@ -44,7 +44,8 @@ fit <- list(
   list("raw" = "df", "clean" = "DF", "fmt" = fit_format),
   list("raw" = "adj.r.squared", "clean" = "R2 Adj.", "fmt" = fit_format),
   list("raw" = "F", "clean" = "F-stat.", "fmt" = fit_format),
-  list("raw" = "p.value", "clean" = "p-value", "fmt" = fit_format)
+  list("raw" = "p.value", "clean" = "p-value", "fmt" = fit_format),
+  list("raw" = "RMSE", "clean" = "RMSE", "fmt" = fit_format)
 )
 
 ```
@@ -129,17 +130,6 @@ df_tc <- df_clean |>
 
 ```
 
-# Descriptive Statistics
-
-```{r glimpse_new_vars}
-
-df_tc |>
-  select(-tax_code, -muni) |>
-  group_by(year) |>
-  datasummary_skim()
-
-```
-
 ## Tax Code Visualizations
 
 ```{r n_code_graphs}
@@ -206,22 +196,11 @@ ggplot(summary_data, aes(x = avg_n, y = factor(year, levels = 2022:2012))) +
 
 ```
 
-```{r fmv_tc_muni}
-
-
-```
-
-```{r taxcode_descrip_stats}
-
-```
-
 # Best OLS Model
 
 **DV: FMV in Tax Code w/ Incentive Classification**
 
 ```{r OLS}
-#| tbl-cap: "DV: FMV in Tax Code w/ Incentive Classification<br><i>Results are Robust to Mean and Median</i>"
-#| tbl-cap-location: top
 
 best_ols <- list(
   
@@ -240,13 +219,7 @@ modelsummary(best_ols,
              stars = TRUE,
              fmt = function(x) round(x, 2),
              coef_omit = "Intercept|muni|year",
-             gof_map = fit) |>
-  theme_tt("grid")
-
-```
-
-```{r}
-
+             gof_map = fit)
 
 ```
 
@@ -282,10 +255,8 @@ best_fe <- list(
 modelsummary(best_fe,
              stars = TRUE,
              fmt = function(x) round(x, 2),
-             coef_omit = "Intercept|muni|year",
-             gof_map = fit
-             ) |>
-  theme_tt("grid")
+             coef_omit = "Intercept|muni|year"
+             )
 
 ```
 
