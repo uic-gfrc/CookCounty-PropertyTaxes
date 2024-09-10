@@ -13,7 +13,9 @@ format:
     fig-cap-location: top
     df-print: paged
 ---
+
 # Data Prep
+
 ```{r setup}
 #| output: false
 
@@ -26,9 +28,9 @@ library(glue)
 library(fixest)
 library(modelsummary)
 library(tinytable)
-library(sandwich)
-library(tinytex)
-library(clubSandwich)
+#library(sandwich)
+#library(tinytex)
+#library(clubSandwich)
 ```
 
 
@@ -64,16 +66,7 @@ robust_vcov <- function(model) {
   }
 }
 
-# Exponentiates coefficients
 
-transform_to_odds <- function(model) {
-  if (inherits(model, "feglm")) {
-    coefs <- coef(model)
-    exp(coefs)
-  } else {
-    NULL
-  }
-}
 
 land <- c(100, 180, 190, 192, 193, 500, 550, 637, 650, 651, 700, 742, 800, 850, 900)
 
@@ -161,7 +154,7 @@ comm_ind_df <- comm_ind_df %>%
   mutate(incent_indicator = ifelse(incent_prop == "Incentive", 1, 0))
 
 comm_ind_df <- comm_ind_df %>% 
-  mutate(land_use = relevel(land_use, ref = "Land"))
+  mutate(land_use = relevel(land_use, ref = "Commercial"))
 
 
 logitted_models <- list(
@@ -173,16 +166,22 @@ logitted_models <- list(
                       ),
   
   "Land Use and FMV Growth" =  feglm(incent_indicator ~ land_use 
-                                    + fmv_growth_2011_w | clean_name + year, 
+                                    + nonvacant | clean_name + year, 
                                            panel.id = c("pin", "year"),   
                                            data = comm_ind_df, 
-                                           family = binomial(link = "logit"),
+                                           family = binomial(link = "logit")
                                     ),
   
   "Land Use Interact FMV" = feglm(incent_indicator ~ land_use*fmv_growth_2011_w | clean_name + year,
                                     panel.id = c("pin", "year"),   
                                     data = comm_ind_df, 
-                                    family = binomial(link = "logit"),
+                                    family = binomial(link = "logit")
+                                  ),
+  
+    "Other Variables" = feglm(incent_indicator ~ land_use*fmv_growth_2011_w + building + nonvacant + in_tif | clean_name + year,
+                                    panel.id = c("pin", "year"),   
+                                    data = comm_ind_df, 
+                                    family = binomial(link = "logit")
                                   )
 )
 
@@ -192,13 +191,14 @@ logitted_models <- list(
 #     vcov = robust_vcov(model)
 #   )
 # })
+# 
+# logitted_models_1 <- lapply(logitted_models_vcov, `[[`, "model")
+# vcovs <- lapply(logitted_models_1, `[[`, "vcov")
 
-#logitted_models_1 <- lapply(logitted_models_vcov, `[[`, "model")
-#vcovs <- lapply(logitted_models_vcov, `[[`, "vcov")
-
+library(sandwich)
 modelsummary(#logitted_models_1,
   logitted_models,
-             #vcov = vcovs,
+             vcov = list(vcovHAC, vcovHAC, vcovHAC, vcovHAC),
              stars = TRUE,
              fmt = function(x) round(x, 2),
              gof_omit = "AIC|BIC|Log.Lik.", 
@@ -210,7 +210,6 @@ modelsummary(#logitted_models_1,
 #| tbl-cap: "Same Models as Above with Coefficients Exponentiated (i.e., can now be interpreted as odds)"
 #| results: hold
 
-#logitted_models_odds <- lapply(logitted_models, transform_to_odds)
 
 modelsummary(#logitted_models_1,
   logitted_models,
@@ -232,9 +231,6 @@ modelsummary(#logitted_models_1,
 #| warning: false
 #| message: false
 
-
-comm_ind_df <- comm_ind_df %>% 
-  mutate(land_use = relevel(land_use, ref = "Land"))
 
 models <- list(
     "By Incent Prop" = fixest::feglm(building ~ incent_prop | clean_name + year,
@@ -360,9 +356,6 @@ modelsummary(logitted_models_1,
 #| message: false
 
 
-comm_ind_df <- comm_ind_df %>% 
-  mutate(land_use = relevel(land_use, ref = "Land"))
-
 models <- list(
     "By Incent Prop" = fixest::feglm(building ~ incent_prop | pin + clean_name + year,
                                    # panel.id = c("pin", "year"),   
@@ -434,7 +427,8 @@ muni_fe_models <- list(
   
   "One FE" = feols(fmv_growth_2011_w ~ land_use | pin,
                    panel.id = c("pin", "year"), 
-                   data = comm_ind_df %>% filter(year>2011)                ),
+                   vcov = 
+                   data = comm_ind_df %>% filter(year>2011) ),
   
   "PIN-Muni FE" = feols(fmv_growth_2011_w ~ incent_prop + land_use | pin + clean_name,
                         panel.id = c("pin", "year"),
@@ -442,7 +436,15 @@ muni_fe_models <- list(
   
    "Pin-Year FE" = feols(fmv_growth_2011_w ~ incent_prop+land_use | pin + year ,
                         panel.id = c("pin", "year"),
-                        data = comm_ind_df %>% filter(year>2011)  ),  
+                        data = comm_ind_df %>% filter(year>2011)  ), 
+  
+     "Pin-Year FE" = feols(fmv_growth_2011_w ~ incent_prop*land_use + reassessed_year*incent_prop + in_tif| pin + year ,
+                        panel.id = c("pin", "year"),
+                        data = comm_ind_df %>% filter(year>2011)  ), 
+  
+  "Muni-Year FE" = feols(fmv_growth_2011_w ~ incent_prop+land_use | clean_name + year ,
+                        panel.id = c("pin", "year"),
+                        data = comm_ind_df %>% filter(year>2011)  ), 
   
   "Threeway FE" = feols(fmv_growth_2011_w ~ incent_prop + land_use   | pin  + year + clean_name,
                         panel.id = c("pin", "year"),
@@ -453,9 +455,12 @@ muni_fe_models <- list(
                         data = comm_ind_df %>% filter(year>2011))           
 )
 
+library(sandwich)
+
 modelsummary(muni_fe_models,
              stars = TRUE,
-            # fmt = function(x) round(x, 2),
+             vcov = list(vcovHAC, vcovHAC, vcovHAC, vcovHAC, vcovHAC, vcovHAC, vcovHAC),
+             fmt = function(x) round(x, 2),
              gof_omit = "AIC|BIC|Log.Lik.", 
             output = "flextable")
 
@@ -510,6 +515,7 @@ modelsummary(muni_fe_models,
 #| tbl-cap: "DV is Indexed Growth since 2011. Excludes tax year 2011. PIN & Year Fixed Effects."
 #| warning: false
 #| message: false
+#| eval: false
 
 
 comm_ind_df <- comm_ind_df %>% 
@@ -519,25 +525,25 @@ pin_fe_models <- list(
   
       "1" = feols(fmv_growth_2011_w ~ land_use 
                   | pin + year,
-                       data = comm_ind_df %>% filter(year>2011)
-                       ),
+                  data = comm_ind_df %>% filter(year>2011)
+      ),
       
       "2" = feols(fmv_growth_2011_w ~ incent_prop + land_use 
                   | pin + year,
                   data = comm_ind_df %>% filter(year>2011)    
-                  ),
-
-
+      ),
+      
+      
       "3" = feols(fmv_growth_2011_w ~ incent_prop*land_use  
                   | pin + year, 
-data = comm_ind_df %>% filter(year>2011)
-),
-
-          "4" = feols(fmv_growth_2011_w ~ incent_prop*land_use + reassessed_year*incent_prop 
+                  data = comm_ind_df %>% filter(year>2011)
+      ),
+      
+      "4" = feols(fmv_growth_2011_w ~ incent_prop*land_use + reassessed_year*incent_prop 
                   | pin + year, 
                   data = comm_ind_df %>% filter(year>2011),
+      )
 )
-                )
 
 modelsummary(pin_fe_models,
              
@@ -550,6 +556,8 @@ modelsummary(pin_fe_models,
 ```{r pin_withtriadreassess_fe}
 #| eval: false
 #| include: false 
+#| eval: false
+
 
 pin_fe_models <- list(
   
@@ -584,6 +592,7 @@ modelsummary(pin_fe_models,
 ```{r}
 #| warning: false
 #| results: hold
+#| eval: false
 
 muni_fe_models <- list(
   
@@ -627,6 +636,7 @@ Interaction term  between incent_prop * land_use
 
 ```{r}
 #| results: hold
+#| eval: false
 
 industrial_subset <- comm_ind_df |> 
   group_by(pin) |>
@@ -670,6 +680,7 @@ modelsummary(muni_fe_new_vars_mods,
 
 ```{r industrial_models}
 #| results: hold
+#| eval: false
 
 muni_fe_new_vars_mods <- list(
   
@@ -699,6 +710,7 @@ modelsummary(muni_fe_new_vars_mods,
 
 ```{r commercial_models}
 #| results: hold
+#| eval: false
 
 muni_fe_new_vars_mods <- list(
   
@@ -735,6 +747,7 @@ modelsummary(muni_fe_new_vars_mods,
 # Pooled OLS - With and Without Muni and Year Controls
 
 ```{r}
+#| eval: false
 
 ols_models <- list(
   
@@ -757,6 +770,7 @@ modelsummary(ols_models,
 
 
 ```
+
 ## OLS w/ Dummy Variables vs. FEs
 
 In a nutshell, we need to eliminate time-invariate features of PINs, which requires PIN fixed effects or PIN dummy variables. PIN dummies are prohibitively computationally expensive, requiring a 3WFE model instead of dummy variables.
@@ -829,7 +843,7 @@ modelsummary(ols_models,
 
 # graphs 
 
-```{r dataexploration}
+```{r dataexploration, eval=FALSE}
 comm_ind_df |>
   filter(year==2022)|>
   ggplot(aes(fmv_growth_2006_w)) +
