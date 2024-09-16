@@ -356,6 +356,13 @@ modelsummary(logitted_models_1,
 
 ```{r}
 models <- list(
+       "Pin-Year" = feols(fmv_growth_2011_w ~ incent_prop  
+                  | pin + year, 
+                  panel.id = c("pin", "year"),
+                  vcov = "newey_west",
+                  data = comm_ind_df %>% filter(year>2011)
+        ),
+       
         "Pin-Year" = feols(fmv_growth_2011_w ~ incent_prop*land_use  
                   | pin + year, 
                   panel.id = c("pin", "year"),
@@ -369,12 +376,13 @@ models <- list(
                                  vcov = "newey_west",
                                  data = comm_ind_df %>% filter(year>2011),
         ),
-                "Pin-Year" = feols(fmv_growth_2011_w ~ incent_prop*land_use + reassessed_year*incent_prop 
-                                 | pin + year^triad, 
-                                 panel.id = c("pin", "year"),
-                                 vcov = "newey_west",
-                                 data = comm_ind_df %>% filter(year>2011),
+       
+               "Muni-Year" = feols(fmv_growth_2011_w ~ incent_prop | clean_name + year,
+                                   panel.id = c("pin", "year"),
+                            vcov = "DK",
+                            data = comm_ind_df %>% filter(year>2011),
         ),
+       
         "Muni-Year" = feols(fmv_growth_2011_w ~ incent_prop*land_use | clean_name + year,
                                                              panel.id = c("pin", "year"),
 
@@ -388,18 +396,13 @@ models <- list(
                             data = comm_ind_df %>% filter(year>2011),
                             
                             
-        ),
-        "Muni-Dummies" = feols(fmv_growth_2011_w ~ incent_prop*land_use + incent_prop*reassessed_year + clean_name |  year,
-                            vcov = "DK",
-                                                             panel.id = c("pin", "year"),
+        )                       
+        )
+      
 
-                            data = comm_ind_df %>% filter(year>2011),
-)
-)
 modelsummary(models,
              stars = TRUE,
              fmt = function(x) round(x, 2),
-            # coef_omit = "clean_name",
              gof_omit = "AIC|BIC|Log.Lik.", 
              output = "flextable")
 
@@ -412,7 +415,14 @@ plot(muni_fe$clean_name)
 
 summary(muni_fe$clean_name)
 
-coeftable(models$`Muni-Dummies`)
+## Muni Dummies
+comm_ind_df$clean_name <- relevel(comm_ind_df$clean_name, ref = "Chicago")
+feols(fmv_growth_2011_w ~ incent_prop*land_use + incent_prop*reassessed_year + clean_name |  year,
+                            vcov = "DK",
+                                                             panel.id = c("pin", "year"),
+
+                           data = comm_ind_df %>% filter(year>2011)
+) %>% summary()
 ```
 
 **StandardErrors **   
