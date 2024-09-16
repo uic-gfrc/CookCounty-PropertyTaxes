@@ -1397,7 +1397,7 @@ muni_ratechange %>%
 
 ```{r}
 #| label: fig-ordereddotplot-amountofchange
-#| fig-cap: " Tax burden for properties with incentive classifications. Excludes municipalities that had a rate change less than 1 percentage point. Ordered by amount of change in the composite tax rate."
+#| fig-cap: "Change in Tax Rate from use of Incentives. Ordered by amount of change in the composite tax rate."
 
 # as a dot graph ## 
 # create order of dots
@@ -1445,15 +1445,16 @@ order <- muni_ratechange %>%
 
 # make dot graph
 muni_ratechange %>% 
- filter(change_noInc > .7) %>%
+  filter(change_noInc > .7) %>%
   select(clean_name, rate_current, rate_noInc, rate_neither, rate_vacant, rate_noExe) %>% 
   distinct() %>%
   arrange(rate_current) %>%
   pivot_longer(c("rate_current", 
                  "rate_noInc", 
                  "rate_vacant", 
-                 "rate_noExe",
-                  "rate_neither"), 
+                 "rate_noExe"# ,
+                #  "rate_neither"
+), 
                names_to = "type", values_to = "tax_rate") %>% 
   inner_join(order) %>%
   ggplot(aes(x = tax_rate, y= reorder(clean_name, rate_current)))+
@@ -1462,22 +1463,68 @@ muni_ratechange %>%
   theme_minimal() + 
   theme( 
     legend.title = element_blank(),
-    plot.title.position = "plot",
+legend.position = "bottom",
+plot.title.position = "plot",
     plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
   )+
   scale_fill_brewer(palette = "RdGy",
                     labels = c("Current Rate", 
-                               "No Exemps & LoA is 25%",
-                               "If no Exemptions", 
-                               "If LoA 25%",
-                               "If Vacant"
+                             #  "No Exemps & LoA is 25%",
+                               "No Exemptions", 
+                               "No Incentives:\nLoA 25%",
+                               "Incententive Classification\nLoA = 0%"
                     ), 
-                    direction = 1)+
+                    direction = -1)+
   labs(title = "Composite Tax Rate Scenarios",
        subtitle = "Ordered by Current Composite Tax Rate", 
        x = "Composite Tax Rate (%)", y = "")
 ```
 
+```{r}
+# as a dot graph ## 
+# create order of dots
+order <- muni_ratechange %>%  
+  as_tibble() %>% 
+  filter(change_noInc > 0) %>%
+  arrange(rate_current) %>%
+  select(clean_name, rate_current) %>% distinct()
+
+# make dot graph
+muni_ratechange %>% 
+ filter(change_noInc > .7) %>%
+  select(clean_name, rate_current, rate_noInc, rate_neither, rate_vacant, rate_noExe) %>% 
+  distinct() %>%
+  arrange(rate_current) %>%
+  pivot_longer(c("rate_current", 
+                 "rate_noInc", 
+                 "rate_vacant", 
+               #  "rate_noExe"# ,
+                #  "rate_neither"
+), 
+               names_to = "type", values_to = "tax_rate") %>% 
+  inner_join(order) %>%
+  ggplot(aes(x = tax_rate, y= reorder(clean_name, rate_current)))+
+  geom_line(aes(group = clean_name))+ 
+  geom_point(aes(fill=type), size=3, pch = 21, color = "black" )+
+  theme_minimal() + 
+  theme( 
+    legend.title = element_blank(),
+legend.position = "bottom",
+plot.title.position = "plot",
+    plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
+  )+
+  scale_fill_brewer(palette = "Greys", direction = -1,
+                    labels = c("Current Rate", 
+                             #  "No Exemps & LoA is 25%",
+                             #  "If no Exemptions", 
+                               "No Incentive Classes: \nLoA = 25%",
+                               "Incentive Classification\nLoA = 0%"
+                    )
+)+
+  labs(title = "Composite Tax Rate Scenarios",
+       subtitle = "Ordered by Current Composite Tax Rate", 
+       x = "Composite Tax Rate (%)", y = "")
+```
 
 ```{r}
 library(ggrepel)
