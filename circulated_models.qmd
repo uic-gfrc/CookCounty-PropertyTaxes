@@ -212,26 +212,26 @@ The treatment is having the class of property go from a non-incentive class to a
 logitted_models <- list(
   
   "Land Use"  = feglm(incent_indicator ~ land_use | clean_name + year, 
-                              panel.id = c("clean_name", "year"),   
+                              panel.id = c("pin", "year"),   
                               data = comm_ind_df, 
                               family = binomial(link = "logit")
                       ),
   
   "Land Use and FMV Growth" =  feglm(incent_indicator ~ land_use 
                                     + nonvacant | clean_name + year, 
-                                           panel.id = c("clean_name", "year"),   
+                                           panel.id = c("pin", "year"),   
                                            data = comm_ind_df, 
                                            family = binomial(link = "logit")
                                     ),
   
   "Land Use Interact FMV" = feglm(incent_indicator ~ land_use*fmv_growth_2011_w | clean_name + year,
-                                    panel.id = c("clean_name", "year"),   
+                                    panel.id = c("pin", "year"),   
                                     data = comm_ind_df, 
                                     family = binomial(link = "logit")
                                   ),
   
     "Other Variables" = feglm(incent_indicator ~ land_use*fmv_growth_2011_w + building + nonvacant + in_tif | clean_name + year,
-                                    panel.id = c("clean_name", "year"),   
+                                    panel.id = c("pin", "year"),   
                                     data = comm_ind_df, 
                                     family = binomial(link = "logit")
                                   )
@@ -245,7 +245,6 @@ loggited_statistic_overrides <- lapply(logitted_models, transform_feglm_model)
 
 modelsummary(logitted_models,
              statistic_override = loggited_statistic_overrides,
-            # vcov = list(vcovHAC, vcovHAC, vcovHAC, vcovHAC),
              stars = TRUE,
              fmt = function(x) round(x, 2),
              gof_omit = "AIC|BIC|Log.Lik.", 
@@ -256,7 +255,8 @@ modelsummary(logitted_models,
 #| label: tbl-FE_exponentiated_coeffs-noFE
 #| tbl-cap: "Odds. Has exponentiated coefficients."
 #| results: hold
-
+#| eval: false
+#| include: false
 
 modelsummary(#logitted_models_1,
   logitted_models,
@@ -282,6 +282,7 @@ Not sure how to interpret results though?
 #| tbl-cap-location: margin
 #| tbl-cap: "DV is if a parcel has a incentive property or not or not. 0 = did not have incentive class, 1 = had incentive class. Sample size decreases a lot due to only being able to use observations that experienced a change in the DV. "
 #| results: hold
+#| eval: false
 
 
 comm_ind_df <- comm_ind_df %>% 
@@ -290,7 +291,7 @@ comm_ind_df <- comm_ind_df %>%
 logitted_models <- list(
   
   "Land Use"  = feglm(incent_indicator ~ land_use 
-                      | pin + clean_name + year,
+                      | pin + year,
                               panel.id = c("pin", "year"),   
                               data = comm_ind_df, 
                               family = binomial(link = "logit")
@@ -298,13 +299,13 @@ logitted_models <- list(
   
   "Land Use andFMV Growth" =  feglm(incent_indicator ~ land_use 
                                     + fmv_growth_2011_w 
-                                    | pin + clean_name + year,
+                                    | pin + year,
                                            panel.id = c("pin", "year"),   
                                            data = comm_ind_df, 
                                            family = binomial(link = "logit"),
                                     ),
   
-  "Land Use Interact FMV" = feglm(incent_indicator ~ land_use*fmv_growth_2011_w | pin + clean_name + year,
+  "Land Use Interact FMV" = feglm(incent_indicator ~ land_use*fmv_growth_2011_w | pin + year,
                                     panel.id = c("pin", "year"),   
                                     data = comm_ind_df, 
                                     family = binomial(link = "logit"),
@@ -333,7 +334,7 @@ modelsummary(logitted_models_1,
 #| label: tbl-FE_exponentiated_coeffs
 #| tbl-cap: "Same Models as Above with Coefficients Exponentiated (i.e., can now be interpreted as odds)"
 #| results: hold
-
+#| eval: false
 #logitted_models_odds <- lapply(logitted_models, transform_to_odds)
 
 modelsummary(logitted_models_1,
@@ -362,7 +363,7 @@ So before clustering, think about whether both conditions are likely to be true.
 
 ```{r}
 #| label: tbl-winsorize-muni-pin_fe
-#| tbl-cap: "Comparison of different combinations of Muni, PIN, and Year Fixed Effects. 2012-2022. "
+#| tbl-cap: "Comparison of different combinations of Muni, PIN, and Year Fixed Effects. 2012-2022. Winsorized FMV for growth."
 #| warning: false
 #| results: hold
 
@@ -402,51 +403,11 @@ library(sandwich)
 
 modelsummary(muni_fe_models,
              stars = TRUE,
-          #  vcov = list(vcovHAC, vcovHAC, vcovHAC, vcovHAC, vcovHAC, vcovHAC, vcovHAC),
              fmt = function(x) round(x, 2),
              gof_omit = "AIC|BIC|Log.Lik.", 
             output = "flextable")
 
 ```
-
-```{r muni-pin-triadreassess_fe}
-#| warning: false
-#| eval: false
-#| include: false
-
-muni_fe_models <- list(
-  
-      "1" = feols(fmv_growth_2011_w ~ land_use + triad*reassessed_year + 
-                   triad*l(reassessed_year, 1:2) 
-                  | pin + clean_name  + triad^year^reassessed_year,
-                panel.id = c("pin", "year"), 
-                       data = comm_ind_df ),
-      
-      "2" = feols(fmv_growth_2011_w ~ incent_prop + land_use | pin + triad^year^reassessed_year + clean_name,
-                       vcov = "threeway", 
-                  panel.id = c("pin", "year"),
-                       data = comm_ind_df 
-                       ),
-
-      "3" = feols(fmv_growth_2011_w ~ incent_prop*land_use + reassessed_year + l(reassessed_year, 1) + l(reassessed_year, 2)  | pin  + triad^year^reassessed_year + clean_name,
-                        vcov = "threeway", 
-                  panel.id = c("pin", "year"),
-                       data = comm_ind_df  ),
-      
-          "4" = feols(fmv_growth_2011_w ~ incent_prop*land_use + in_tif | pin + triad^year^reassessed_year + clean_name ,
-                       vcov = "threeway", 
-                      panel.id = c("pin", "year"),
-                       data = comm_ind_df )
-                        )
-
-modelsummary(muni_fe_models,
-             stars = TRUE,
-            # fmt = function(x) round(x, 2),
-             coef_omit= 'pin|year|clean_name',
-             gof_omit = "AIC|BIC|Log.Lik.")
-
-```
-
 
 
 ## Other Variations of Fixed Effect Models
@@ -455,7 +416,7 @@ modelsummary(muni_fe_models,
 
 ```{r}
 #| label: tbl-pin_fe
-#| tbl-cap: "DV is Indexed Growth since 2011. Excludes tax year 2011. PIN & Year Fixed Effects."
+#| tbl-cap: "DV is Indexed Growth since 2011. Excludes tax year 2011. PIN & Year Fixed Effects. FMV is winsorized for each year before FMV Growth calculation"
 #| warning: false
 #| message: false
 
@@ -480,11 +441,15 @@ pin_fe_models <- list(
       "4" = feols(fmv_growth_2011_w ~ incent_prop*land_use + reassessed_year*incent_prop 
                   | pin + year, 
                   data = comm_ind_df %>% filter(year>2011),
-      )
+      ),
+            "NW SE" = feols(fmv_growth_2011_w ~ incent_prop*land_use + reassessed_year*incent_prop 
+                  | pin + year, 
+                  vcov = "newey_west",
+                  data = comm_ind_df %>% filter(year>2011),
+)
 )
 
 modelsummary(pin_fe_models,
-             
              stars = TRUE,
              fmt = function(x) round(x, 2),
              gof_omit = "AIC|BIC|Log.Lik.", output = "flextable")
@@ -545,7 +510,7 @@ muni_fe_models <- list(
                        ),
 
 
-      "3" = feols(fmv_growth_2011_w ~ incent_prop*land_use | clean_name + year,
+      "3" = feols(fmv_growth_2011_w ~ incent_prop*land_use + incent_prop*reassessed_year| clean_name + year,
                                                        vcov = "twoway",
 
                        data = comm_ind_df  )
