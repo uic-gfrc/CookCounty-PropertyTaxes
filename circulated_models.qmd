@@ -369,43 +369,47 @@ So before clustering, think about whether both conditions are likely to be true.
 
 
 muni_fe_models <- list(
+  "PIN-Year" = feols(fmv_growth_2011_w ~ land_use | pin + year,
+                   panel.id = c("pin", "year"),
+                   vcov = "NW",
+                   data = comm_ind_df %>% filter(year>2011)),
   
-  "One FE" = feols(fmv_growth_2011_w ~ land_use | pin,
-                   panel.id = c("pin", "year"), 
-                   data = comm_ind_df %>% filter(year>2011) ),
-  
-  "PIN-Muni FE" = feols(fmv_growth_2011_w ~ incent_prop + land_use | pin + clean_name,
-                        panel.id = c("pin", "year"),
-                        data = comm_ind_df %>% filter(year>2011) ),
-  
-   "Pin-Year FE" = feols(fmv_growth_2011_w ~ incent_prop+land_use | pin + year ,
-                        panel.id = c("pin", "year"),
-                        data = comm_ind_df %>% filter(year>2011)  ), 
-  
-     "Pin-Year FE" = feols(fmv_growth_2011_w ~ incent_prop*land_use + reassessed_year*incent_prop + in_tif| pin + year ,
-                        panel.id = c("pin", "year"),
-                        data = comm_ind_df %>% filter(year>2011)  ), 
-  
-  "Muni-Year FE" = feols(fmv_growth_2011_w ~ incent_prop+land_use | clean_name + year ,
-                        panel.id = c("pin", "year"),
-                        data = comm_ind_df %>% filter(year>2011)  ), 
-  
-  "Threeway FE" = feols(fmv_growth_2011_w ~ incent_prop + land_use   | pin  + year + clean_name,
-                        panel.id = c("pin", "year"),
+  "Muni-Year" = feols(fmv_growth_2011_w ~ incent_prop + land_use 
+                      | clean_name + year,
+                        panel.id = c("clean_name", "year"),
+                        vcov = "NW",
                         data = comm_ind_df %>% filter(year>2011)),
   
-  "Threeway FE - Extra Vars" = feols(fmv_growth_2011_w ~ incent_prop*land_use + reassessed_year*incent_prop + in_tif | pin + year  + clean_name ,
+   "PIN-Year 2" = feols(fmv_growth_2011_w ~ incent_prop*land_use +
+                          reassessed_year*incent_prop + in_tif
+                        | pin + year,
                         panel.id = c("pin", "year"),
+
+                                           vcov = "newey_west",
+
                         data = comm_ind_df %>% filter(year>2011))           
 )
 
-library(sandwich)
+
+modelsummary(muni_fe_models,
+             stars = TRUE,
+                        vcov = "NW",
+                        data = comm_ind_df %>% filter(year>2011)), 
+  
+  "Muni-Year 2" = feols(fmv_growth_2011_w ~ incent_prop*land_use +
+                          reassessed_year*incent_prop + in_tif
+                        | clean_name + year,
+                        panel.id = c("clean_name", "year"),
+                        vcov = "NW",
+                        data = comm_ind_df %>% filter(year>2011))          
+)
+
 
 modelsummary(muni_fe_models,
              stars = TRUE,
              fmt = function(x) round(x, 2),
              gof_omit = "AIC|BIC|Log.Lik.", 
-            output = "flextable")
+             output = "flextable")
 
 ```
 
