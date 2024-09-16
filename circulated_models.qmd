@@ -439,6 +439,7 @@ comm_ind_df <- comm_ind_df %>%
 
 muni_fe_models <- list(
   
+<<<<<<< HEAD
   "One FE" = feols(fmv_growth_2011_w ~ land_use | pin,
                    panel.id = c("pin", "year"), 
                    vcov = "newey_west",
@@ -472,10 +473,24 @@ muni_fe_models <- list(
                                            vcov = "newey_west",
 
                         panel.id = c("pin", "year"),
+=======
+  "PIN-Year" = feols(fmv_growth_2011_w ~ land_use | pin + year,
+                   panel.id = c("pin", "year"),
+                   vcov = "NW",
+                   data = comm_ind_df %>% filter(year>2011)),
+  
+  "Muni-Year" = feols(fmv_growth_2011_w ~ incent_prop + land_use 
+                      | clean_name + year,
+                        panel.id = c("clean_name", "year"),
+                        vcov = "NW",
+>>>>>>> f5e4728 (NW ses)
                         data = comm_ind_df %>% filter(year>2011)),
   
-  "Threeway FE - Extra Vars" = feols(fmv_growth_2011_w ~ incent_prop*land_use + reassessed_year*incent_prop + in_tif | pin + year  + clean_name ,
+   "PIN-Year 2" = feols(fmv_growth_2011_w ~ incent_prop*land_use +
+                          reassessed_year*incent_prop + in_tif
+                        | pin + year,
                         panel.id = c("pin", "year"),
+<<<<<<< HEAD
                                            vcov = "newey_west",
 
                         data = comm_ind_df %>% filter(year>2011))           
@@ -486,9 +501,25 @@ muni_fe_models <- list(
 modelsummary(muni_fe_models,
              stars = TRUE,
             # vcov = list(vcovHAC, vcovHAC, vcovHAC, vcovHAC, vcovHAC, vcovHAC, vcovHAC),
+=======
+                        vcov = "NW",
+                        data = comm_ind_df %>% filter(year>2011)), 
+  
+  "Muni-Year 2" = feols(fmv_growth_2011_w ~ incent_prop*land_use +
+                          reassessed_year*incent_prop + in_tif
+                        | clean_name + year,
+                        panel.id = c("clean_name", "year"),
+                        vcov = "NW",
+                        data = comm_ind_df %>% filter(year>2011))          
+)
+
+
+modelsummary(muni_fe_models,
+             stars = TRUE,
+>>>>>>> f5e4728 (NW ses)
              fmt = function(x) round(x, 2),
              gof_omit = "AIC|BIC|Log.Lik.", 
-            output = "flextable")
+             output = "flextable")
 
 ```
 
