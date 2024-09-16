@@ -208,30 +208,31 @@ The treatment is having the class of property go from a non-incentive class to a
 #| tbl-cap-location: margin
 #| tbl-cap: "DV is if a parcel has a incentive property or not or not. 0 = did not have incentive class, 1 = had incentive class. Only uses Municipality-Year fixed effects. There are no PIN level fixed effects in the logit models."
 #| results: hold
+#| eval: false
 
 logitted_models <- list(
   
   "Land Use"  = feglm(incent_indicator ~ land_use | clean_name + year, 
-                              panel.id = c("pin", "year"),   
+                             # panel.id = c("pin", "year"),   
                               data = comm_ind_df, 
                               family = binomial(link = "logit")
                       ),
   
   "Land Use and FMV Growth" =  feglm(incent_indicator ~ land_use 
                                     + nonvacant | clean_name + year, 
-                                           panel.id = c("pin", "year"),   
+                                         #  panel.id = c("pin", "year"),   
                                            data = comm_ind_df, 
                                            family = binomial(link = "logit")
                                     ),
   
   "Land Use Interact FMV" = feglm(incent_indicator ~ land_use*fmv_growth_2011_w | clean_name + year,
-                                    panel.id = c("pin", "year"),   
+                                  #  panel.id = c("pin", "year"),   
                                     data = comm_ind_df, 
                                     family = binomial(link = "logit")
                                   ),
   
     "Other Variables" = feglm(incent_indicator ~ land_use*fmv_growth_2011_w + building + nonvacant + in_tif | clean_name + year,
-                                    panel.id = c("pin", "year"),   
+                                  #  panel.id = c("pin", "year"),   
                                     data = comm_ind_df, 
                                     family = binomial(link = "logit")
                                   )
@@ -351,6 +352,48 @@ modelsummary(logitted_models_1,
 
 # Fixed Effect Models
 
+## The "Final" Table
+
+```{r}
+models <- list(
+        "Pin-Year" = feols(fmv_growth_2011_w ~ incent_prop*land_use  
+                  | pin + year, 
+                  panel.id = c("pin", "year"),
+                  vcov = "newey_west",
+                  data = comm_ind_df %>% filter(year>2011)
+        ),
+        
+        "Pin-Year" = feols(fmv_growth_2011_w ~ incent_prop*land_use + reassessed_year*incent_prop 
+                                 | pin + year, 
+                                 panel.id = c("pin", "year"),
+                                 vcov = "newey_west",
+                                 data = comm_ind_df %>% filter(year>2011),
+        ),
+        "Muni-Year" = feols(fmv_growth_2011_w ~ incent_prop*land_use | clean_name + year,
+                                                             panel.id = c("pin", "year"),
+
+                            vcov = "DK",
+                            data = comm_ind_df %>% filter(year>2011),
+        ),
+        "Muni-Year" = feols(fmv_growth_2011_w ~ incent_prop*land_use + incent_prop*reassessed_year| clean_name + year,
+                            vcov = "DK",
+                                                             panel.id = c("pin", "year"),
+
+                            data = comm_ind_df %>% filter(year>2011),
+                            
+                            
+        )
+)
+
+modelsummary(models,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+             gof_omit = "AIC|BIC|Log.Lik.", 
+             output = "flextable")
+
+```
+
+
 **StandardErrors **   
 "For clustering with fixed effects to be necessary (and a good idea), several conditions need to hold. First, there needs to be treatment effect heterogeneity. That is, the treatment effect must be quite different for different individuals.
 
@@ -369,39 +412,23 @@ So before clustering, think about whether both conditions are likely to be true.
 
 
 muni_fe_models <- list(
-  "PIN-Year" = feols(fmv_growth_2011_w ~ land_use | pin + year,
+  "PIN-Year" = feols(fmv_growth_2011_w ~ land_use  + incent_prop| pin + year,
                    panel.id = c("pin", "year"),
                    vcov = "NW",
                    data = comm_ind_df %>% filter(year>2011)),
   
   "Muni-Year" = feols(fmv_growth_2011_w ~ incent_prop + land_use 
                       | clean_name + year,
-                        panel.id = c("clean_name", "year"),
-                        vcov = "NW",
-                        data = comm_ind_df %>% filter(year>2011)),
+                     # panel.id = c("pin", "year"),
+                      vcov = "twoway",
+                      data = comm_ind_df %>% filter(year>2011)),
   
-   "PIN-Year 2" = feols(fmv_growth_2011_w ~ incent_prop*land_use +
-                          reassessed_year*incent_prop + in_tif
-                        | pin + year,
-                        panel.id = c("pin", "year"),
-
-                                           vcov = "newey_west",
-
-                        data = comm_ind_df %>% filter(year>2011))           
-)
-
-
-modelsummary(muni_fe_models,
-             stars = TRUE,
-                        vcov = "NW",
-                        data = comm_ind_df %>% filter(year>2011)), 
-  
-  "Muni-Year 2" = feols(fmv_growth_2011_w ~ incent_prop*land_use +
-                          reassessed_year*incent_prop + in_tif
-                        | clean_name + year,
-                        panel.id = c("clean_name", "year"),
-                        vcov = "NW",
-                        data = comm_ind_df %>% filter(year>2011))          
+  "PIN-Year 2" = feols(fmv_growth_2011_w ~ incent_prop*land_use +
+                         reassessed_year*incent_prop + in_tif
+                       | pin + year,
+                       panel.id = c("pin", "year"),
+                       vcov = "newey_west",
+                       data = comm_ind_df %>% filter(year>2011))    
 )
 
 
@@ -448,6 +475,7 @@ pin_fe_models <- list(
       ),
             "NW SE" = feols(fmv_growth_2011_w ~ incent_prop*land_use + reassessed_year*incent_prop 
                   | pin + year, 
+                  panel.id = c("pin", "year"),
                   vcov = "newey_west",
                   data = comm_ind_df %>% filter(year>2011),
 )
