@@ -530,13 +530,11 @@ table_cook %>%
 
 The Taxed Value, when converted to the Fair Market Value (FMV) represents the amount of value that was taxed out of the full FMV available in Cook County.
 
-::: aside
-The Fair Market Value (FMV) is also called the "Market Value for Assessment Purposes" and can be calculated from the `av` / `loa`, or the Assessed Value divided by the Level of Assessment. However, the values used for the level of assessment are an approximation for incentive properties since we do not have the PIN level assessment ratios.
-:::
 
 Untaxable EAV includes homeowner exemptions for 200 level properties, abatements for other property class types, EAV in the TIF increment, and EAV that has been reduced due to incentive classifications.
 
 ```{r}
+#| tbl-cap: "The Fair Market Value (FMV) is also called the Market Value for Assessment Purposes and can be calculated from the `av` / `loa`, or the Assessed Value divided by the Level of Assessment. However, the values used for the level of assessment are an approximation for incentive properties since we do not have the PIN level assessment ratios."
 
 cty_MC_table <- ptax_pins %>%
   group_by(class_group) %>%
@@ -587,6 +585,96 @@ set_header_labels(
     cty_MC_incents_inTIFs = 'FMV with Incent. Class. in TIFs' )
 
 ```
+
+## Descriptive Stats
+
+```{r}
+ptax_pins <- read_csv("./Output/comm_ind_PINs_2006to2022_timeseries.csv") %>% 
+  mutate(class = as.numeric(class)) %>% 
+  filter(year >= 2011)
+
+# pins that had incentive classes in 2022
+incent_pins <- ptax_pins %>% 
+  filter(class >= 600 & class <= 899 & year == 2022)
+
+ptax_pins %>% 
+  filter(pin %in% incent_pins$pin) %>% group_by(year, land_use) %>% summarize(pincount = n()) %>% filter(land_use == "Land") %>%
+  arrange(year)
+
+# use list of incent pins in 2022 to filter out the same pins in 2011 and group by land use or  major class
+ptax_pins %>% filter(pin %in% incent_pins$pin & year == 2011) %>% group_by(major_class_code) %>%
+  summarize(pincount = n())
+
+ptax_pins %>% filter(pin %in% incent_pins$pin & year == 2011) %>% group_by(land_use) %>%
+  summarize(pincount = n())
+
+# how many were from amazon warehouse in Markham?
+ptax_pins %>% filter(pin %in% incent_pins$pin & year == 2011 & clean_name %in% c("Markham", "Harvey")) %>% group_by(land_use) %>%
+  summarize(pincount = n())
+```
+
+
+```{r}
+table(ptax_pins$land_use)
+
+ptax_pins <- ptax_pins %>%
+  group_by(pin) %>%
+  mutate(years_existed = n(),
+         incentive_years = sum(incent_prop == "Incentive"), 
+         
+         landuse_change = ifelse(sum(land_use == "Commercial") == years_existed, "Always Commercial",
+           ifelse(sum(land_use == "Industrial") == years_existed, "Always Industrial",
+                  ifelse(sum(land_use == "Land") == years_existed, "Always Land",
+
+                  "Changes Land Use"
+                  ))) ) %>%
+  ungroup() %>%
+  mutate(incent_change = case_when(
+    incentive_years == years_existed ~ "Always Incentive",
+    incentive_years == 0 ~ "Never Incentive",
+    TRUE ~ "Changes Sometime"))
+  
+ptax_pins %>% filter(year == 2022) %>%
+  group_by(landuse_change, incent_change) %>%
+  summarize(Pin_Count = n())
+```
+
+4,362 PINs began as land (without buildings).
+
+2,721 PINs began as vacant and existed as Land in 2022.
+
+```{r}
+ptax_pins %>% filter()
+
+began_vacant <- ptax_pins %>% 
+  group_by(pin) %>%
+  mutate(years_existed = n(),
+         began_vacant = ifelse(land_use == "Land", 1, 0),
+         always_vacant = ifelse(sum(land_use == "Land") == years_existed, 1, 0)) %>%
+  filter(began_vacant == 1 & year == 2011)
+
+
+vacant_changed <- ptax_pins %>% 
+  group_by(pin) %>%
+  filter(pin %in% began_vacant$pin) %>% # keeps PINs that were Land in the first year of the data
+  mutate(always_vacant = ifelse(sum(land_use == "Land") == years_existed, 1, 0)) %>%
+  filter(always_vacant == 0 & year == 2022)
+
+
+vacant_changed %>% 
+  group_by(`building type`) %>% 
+  summarize(count =n())
+
+vacant_changed %>% 
+  group_by(major_class_code) %>% 
+  summarize(count =n())
+
+vacant_changed %>% 
+  group_by(incent_prop) %>% 
+  summarize(count =n())
+
+```
+
 
 # Municipality Level Stats
 
@@ -664,7 +752,7 @@ pct_fmv_incents_inTIFs = muni_fmv_incents_inTIF / muni_fmv ) %>%
 
 ```
 
-# Slide 5 - Main users of Incentive Classes, Muni Level
+## Intensity of Incentive Class Use
 
 ```{r}
 #| label: tbl-top10industrialincentive-munis
@@ -843,7 +931,7 @@ datatable(table2,
   formatCurrency(c('Taxable AV', 'av_adjusted'), digits = 0)
 ```
 
-# Slide 6
+
 
 ## Share of Commercial & Industrial FMV with Incentive Classification
 
@@ -1017,7 +1105,7 @@ add_footer("There are 27 municipalities that do not have PINs with Industrial In
   set_table_properties( layout = "autofit")
 ```
 
-# Slide 7 - Tax Revenue and Burden Shift
+# Shifted Tax Revenue and Tax Burden
 
 ```{r}
 ccao_loa <- read_csv("./inputs/ccao_loa.csv") %>% 
@@ -1772,7 +1860,7 @@ alt_rates %>%
 
 ## Municipalities' Tax Rates for Scenarios
 
-```{r}
+```{r eval=FALSE}
 rate_table <- muni_ratechange %>% 
   select(clean_name, contains("rate")) %>%
   mutate(across(c(rate_noInc:rate_lowest), round, digits=2)) %>%
@@ -1797,7 +1885,7 @@ datatable(rate_table,
 
 ## All Municipalities' Tax Rate Change Scenarios
 
-```{r}
+```{r eval=FALSE}
 ratechange_table <- muni_ratechange %>% 
   select(clean_name, starts_with("change")
          
