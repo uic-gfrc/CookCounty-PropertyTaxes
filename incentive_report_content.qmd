@@ -653,7 +653,23 @@ began_vacant <- ptax_pins %>%
          always_vacant = ifelse(sum(land_use == "Land") == years_existed, 1, 0)) %>%
   filter(began_vacant == 1 & year == 2011)
 
+vacant_ever <- ptax_pins %>% filter(land_use == "Land")
 
+# number of years that a pin was vacant
+# and then number of pins that were vacant a certain number of years
+ptax_pins %>% 
+  filter(pin %in% vacant_ever$pin) %>% 
+  group_by(pin) %>%
+  summarize(years_vacant = sum(ifelse(land_use == "Land",1,0) )) %>% 
+  arrange(desc(years_vacant)) %>%
+  ungroup() %>%
+  group_by(years_vacant) %>%
+  summarize(pincount = n())
+```
+
+
+```{r}
+# pins that started as vacant and changed use
 vacant_changed <- ptax_pins %>% 
   group_by(pin) %>%
   filter(pin %in% began_vacant$pin) %>% # keeps PINs that were Land in the first year of the data
@@ -662,7 +678,7 @@ vacant_changed <- ptax_pins %>%
 
 
 vacant_changed %>% 
-  group_by(`building type`) %>% 
+  group_by(land_use, incent_prop) %>% 
   summarize(count =n())
 
 vacant_changed %>% 
