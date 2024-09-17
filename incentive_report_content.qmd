@@ -693,9 +693,12 @@ vacant_changed %>%
 
 ```{r mvh_email_stats}
 
+# NOTE: THIS TABLE USES THE ptax_pins DF FROM LINE 134
+
 ptax_pins_mvh <- ptax_pins |>
  mutate(land_use = as.factor(land_use),
        incent_prop = as.factor(incent_prop)) |>
+  mutate(year = as.factor(year)) |>
   arrange(year) |>
   group_by(pin) |>
   mutate(lag_land = ifelse(lag(land_use) == "Land", 1, 0),
@@ -720,8 +723,8 @@ ptax_pins_mvh <- ptax_pins |>
          build_incent_lag = ifelse(gain_incent_lag == "1" & build_land == "1", 1, 0)
          ) |>
   mutate(build_incent = as.factor(build_incent),
-         build_incent_lag = as.factor(build_incent_lag)) #|>
-  #filter(year > 2011)
+         build_incent_lag = as.factor(build_incent_lag)) |>
+  filter(year > 2012)
 
 table(ptax_pins_mvh$build_land)
 table(ptax_pins_mvh$gain_incent_lag)
@@ -733,11 +736,12 @@ table(ptax_pins_mvh$build_incent_lag)
 ptax_pins_mvh_final <- ptax_pins_mvh |>
   select(year, build_land, gain_incent, gain_incent_lag, build_incent, build_incent_lag) |>
   group_by(year) |>
-  summarize("New Construction" = sum(build_land == "1", na.rm = T), 
+  summarize("New Construction w/ Incentive" = sum(build_incent == "1", na.rm = T), 
+            "New Construction w/ Lagged Incentive" = sum(build_incent_lag == "1", na.rm = T),
+            "New Construction" = sum(build_land == "1", na.rm = T), 
             "Gained Incentive" = sum(gain_incent == "1", na.rm = T), 
             "Lagged gained incentive" = sum(gain_incent_lag == "1", na.rm = T), 
-            "New Construction w/ Incentive" = sum(build_incent == "1", na.rm = T), 
-            "New Construction w/ Lagged Incentive" = sum(build_incent_lag == "1", na.rm = T))
+            )
 
 ptax_pins_mvh_final
 
