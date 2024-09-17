@@ -691,6 +691,44 @@ vacant_changed %>%
 
 ```
 
+```{r mvh_email_stats}
+
+ptax_pins_mvh <- ptax_pins |>
+  mutate(land_use = as.factor(land_use),
+         incent_prop = as.factor(incent_prop)) |>
+  arrange(year) |>
+  group_by(pin) |>
+  mutate(lag_land = (ifelse(lag(land_use) == "Land", 1, 0)),
+         lag_incent = ifelse(lag(incent_prop) == "Incentive", 1, 0),
+         lag_lag_incent = lag(lag_incent)) |>
+  ungroup() |>
+  mutate(lag_land = as.factor(lag_land),
+         lag_incent = as.factor(lag_incent),
+         lag_lag_incent = as.factor(lag_lag_incent)) |>
+  # This line checks for flips!
+  mutate(build_land = ifelse(lag_land == "1" & land_use != "Land", 1, 0),
+         gain_incent = ifelse(lag_incent == "0" & incent_prop == "Incentive", 1, 0),
+         gain_incent_lag = ifelse(lag_lag_incent == "1" & incent_prop == "1", 1, 0)) |>
+    # change to factors
+  mutate(build_land = as.factor(build_land),
+         gain_incent = as.factor(gain_incent),
+         gain_incent_lag = as.factor(gain_incent_lag)) |>
+  #Condense Variables
+  mutate(build_incent = ifelse((gain_incent == "1" & build_land == "1"), 1, 0),
+         build_incent_lag = ifelse(gain_incent_lag == "1" & 
+                                   build_land == "1", 1, 0)) |>
+  mutate(build_incent = as.factor(build_incent),
+         build_incent_lag = as.factor(build_incent_lag)) |>
+  filter(year > 2012)
+
+ptax_pins_mvh_final <- ptax_pins_mvh |>
+  select(year, build_land, gain_incent, gain_incent_lag, build_incent, build_incent_lag) |>
+  group_by(year) |>
+  summarize("New Construction" = sum(build_land == "1", na.rm = T), "Gained Incentive" = sum(gain_incent == "1", na.rm = T), "Lagged gained incentive" = sum(gain_incent_lag == "1", na.rm = T), "New Construction w/ Incentive" = sum(build_incent == "1", na.rm = T), "New Construction w/ Lagged Incentive" = sum(build_incent_lag == "1", na.rm = T))
+
+ptax_pins_mvh_final
+
+```
 
 # Municipality Level Stats
 
