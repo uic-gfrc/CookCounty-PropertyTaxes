@@ -119,36 +119,58 @@ ptax_pins_mvh <- ptax_pins |>
        incent_prop = as.factor(incent_prop)) |>
   arrange(year) |>
   group_by(pin) |>
-  mutate(lag_land = ifelse(lag(land_use) == "Land", 1, 0),
-         lag_incent = ifelse(lag(incent_prop) == "Incentive", 1, 0), # lagged incent_prop
-         lag_lag_incent = lag(lag_incent) # two year lagged incent_prop
+  mutate(
+    # lag land use
+    lag_land = ifelse(lag(land_use) == "Land", 1, 0),
+    # lag and lead incentive
+    lead_build = ifelse(land_use == "Land" & lead(land_use) != "Land", 1, 0),
+   lag_incent = ifelse(lag(incent_prop) == "Incentive", 1, 0), # lagged incent_prop
+   lag_lag_incent = lag(lag_incent), # two year lagged incent_prop
+   lag_3_incent = lag(lag_lag_incent) # three year lagged incent_prop
          ) |>
   ungroup() |>
+  # Change to factors
+        # land
   mutate(lag_land = as.factor(lag_land),
+         # incents
+        #
+        lead_build = as.factor(lead_build),
          lag_incent = as.factor(lag_incent),
-         lag_lag_incent = as.factor(lag_lag_incent)) |>
+         lag_lag_incent = as.factor(lag_lag_incent),
+         lag_3_incent = as.factor(lag_3_incent)) |>
   # This line checks for flips!
   mutate(build_land = ifelse(lag_land == "1" & land_use != "Land", 1, 0),
          gain_incent = ifelse(lag_incent == "0" & incent_prop == "Incentive", 1, 0),
-         gain_incent_lag = ifelse(lag_lag_incent == "0" & lag_incent == "1", 1, 0) ## Changed this line
+         gain_incent_lag = ifelse(lag_lag_incent == "0" & lag_incent == "1", 1, 0), ## Changed this line
+         gain_incent_lag_2 = ifelse(lag_3_incent == "0" & lag_lag_incent == "1" , 1, 0),
          ) |>
   # change to factors
   mutate(build_land = as.factor(build_land),
          gain_incent = as.factor(gain_incent),
-         gain_incent_lag = as.factor(gain_incent_lag)) |>
+         gain_incent_lag = as.factor(gain_incent_lag),
+         gain_incent_lag_2 = as.factor(gain_incent_lag_2),
+         ) |>
   # Condense Variables
   mutate(build_incent = ifelse((gain_incent == "1" & build_land == "1"), 1, 0),
-         build_incent_lag = ifelse(gain_incent_lag == "1" & build_land == "1", 1, 0)
+         build_incent_lag = ifelse(gain_incent_lag == "1" & build_land == "1", 1, 0),
+         build_incent_lag_2 = ifelse(gain_incent_lag_2 == "1" & lag(land_use) == "Land" & land_use != "Land", 1, 0),
+        build_incent_lead = ifelse((incent_prop == "1" & land_use == "Land") & lead_build == "1", 1, 0)
          ) |>
+  # Change condensed variables to factors
   mutate(build_incent = as.factor(build_incent),
-         build_incent_lag = as.factor(build_incent_lag))
-#|
-#  filter(year > 2012)
+         build_incent_lag = as.factor(build_incent_lag),
+         build_incent_lag_2 = as.factor(gain_incent_lag_2),
+         build_incent_lead = as.factor(build_incent_lead)
+         )
 
 table(ptax_pins_mvh$build_land)
+table(ptax_pins_mvh$lead_build)
+
 table(ptax_pins_mvh$gain_incent_lag)
 table(ptax_pins_mvh$build_incent)
 table(ptax_pins_mvh$build_incent_lag)
+table(ptax_pins_mvh$build_incent_lag_2)
+table(ptax_pins_mvh$build_incent_lead)
 ```
 
 
@@ -158,14 +180,19 @@ table(ptax_pins_mvh$build_incent_lag)
 
 
 ptax_pins_mvh_final <- ptax_pins_mvh |>
-  filter(year > 2011) |>
-  select(year, build_land, gain_incent, gain_incent_lag, build_incent, build_incent_lag) |>
+  mutate(year = as.numeric(year)) |>
+  filter(year > 2012) |>
+  select(year, build_land, gain_incent, gain_incent_lag, gain_incent_lag_2,  build_incent, build_incent_lag, build_incent_lag_2, build_incent_lead) |>
   group_by(year) |>
   summarize("New Construction w/ Incentive" = sum(build_incent == "1", na.rm = T), 
             "New Construction w/ Lagged Incentive" = sum(build_incent_lag == "1", na.rm = T),
+            "New Construction W/ 2 Lagged Incent." = sum(build_incent_lag_2 == "1", na.rm = T),
+            "Gained Incent. w/ Lead New Construction" = sum(build_incent_lead=="1", na.rm = T),
             "New Construction" = sum(build_land == "1", na.rm = T), 
             "Gained Incentive" = sum(gain_incent == "1", na.rm = T), 
-            "Lagged gained incentive" = sum(gain_incent_lag == "1", na.rm = T), 
+            "Lagged gained incentive" = sum(gain_incent_lag == "1", na.rm = T),
+            "2 Lagged gained incentive" = sum(gain_incent_lag_2 == "1", na.rm = T),
+           # "Lead gained incentive" = sum(gain_incent_lead == "1", na.rm = T)
             )
 
 ptax_pins_mvh_final %>% flextable::flextable()
