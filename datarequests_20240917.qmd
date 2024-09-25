@@ -141,7 +141,10 @@ ptax_pins_mvh <- ptax_pins |>
   # This line checks for flips!
   mutate(build_land = ifelse(lag_land == "1" & land_use != "Land", 1, 0),
          gain_incent = ifelse(lag_incent == "0" & incent_prop == "Incentive", 1, 0),
+         lose_incent = ifelse(lag_incent == "1" & incent_prop == "Non-Incentive", 1, 0),
          gain_incent_lag = ifelse(lag_lag_incent == "0" & lag_incent == "1", 1, 0), ## Changed this line
+         lose_incent_lag = ifelse(lag_lag_incent == "1" & lag_incent == "0", 1, 0), ## Changed this line
+
          gain_incent_lag_2 = ifelse(lag_3_incent == "0" & lag_lag_incent == "1" , 1, 0),
          ) |>
   # change to factors
@@ -171,6 +174,9 @@ table(ptax_pins_mvh$build_incent)
 table(ptax_pins_mvh$build_incent_lag)
 table(ptax_pins_mvh$build_incent_lag_2)
 table(ptax_pins_mvh$build_incent_lead)
+table(ptax_pins_mvh$lose_incent)
+table(ptax_pins_mvh$lose_incent_lag)
+
 ```
 
 
@@ -182,7 +188,7 @@ table(ptax_pins_mvh$build_incent_lead)
 ptax_pins_mvh_final <- ptax_pins_mvh |>
   mutate(year = as.numeric(year)) |>
   filter(year > 2012) |>
-  select(year, build_land, gain_incent, gain_incent_lag, gain_incent_lag_2,  build_incent, build_incent_lag, build_incent_lag_2, build_incent_lead) |>
+  select(year, build_land, gain_incent, lose_incent, gain_incent_lag, lose_incent_lag, gain_incent_lag_2,  build_incent, build_incent_lag, build_incent_lag_2, build_incent_lead) |>
   group_by(year) |>
   summarize("New Construction w/ Incentive" = sum(build_incent == "1", na.rm = T), 
             "New Construction w/ Lagged Incentive" = sum(build_incent_lag == "1", na.rm = T),
@@ -190,7 +196,9 @@ ptax_pins_mvh_final <- ptax_pins_mvh |>
             "Gained Incent. w/ Lead New Construction" = sum(build_incent_lead=="1", na.rm = T),
             "New Construction" = sum(build_land == "1", na.rm = T), 
             "Gained Incentive" = sum(gain_incent == "1", na.rm = T), 
+            "Incentive Ends" = sum(lose_incent == "1", na.rm = T), 
             "Lagged gained incentive" = sum(gain_incent_lag == "1", na.rm = T),
+            "Lagged Incentive End" = sum(lose_incent_lag == "1", na.rm = T), 
             "2 Lagged gained incentive" = sum(gain_incent_lag_2 == "1", na.rm = T),
            # "Lead gained incentive" = sum(gain_incent_lead == "1", na.rm = T)
             )
@@ -203,11 +211,30 @@ ptax_pins_mvh_final %>% flextable::flextable()
 ## More Years of Data
 
 ```{r}
+simpletable_nolags <- ptax_pins_mvh |>
+  mutate(year = as.character(year)) |>
+  select(year, build_land, gain_incent, lose_incent, 
+       #  gain_incent_lag, lose_incent_lag, gain_incent_lag_2,  
+         build_incent#, build_incent_lag, build_incent_lag_2, build_incent_lead
+       ) |>
+  group_by(year) |>
+  summarize("New Construction w/ Incentive" = sum(build_incent == "1", na.rm = T), 
+            "New Construction" = sum(build_land == "1", na.rm = T), 
+            "Gained Incentive" = sum(gain_incent == "1", na.rm = T), 
+            "Incentive Ends" = sum(lose_incent == "1", na.rm = T)
+            )
+
+simpletable_nolags %>% flextable::flextable()
+```
+
+
+```{r}
 #| label: tbl-allyears
 #| tbl-cap: Has all years of data. 
 
 
 ptax_pins_mvh |>
+  mutate(year = as.character(year)) %>%
   select(year, build_land, gain_incent, gain_incent_lag, build_incent, build_incent_lag) |>
   group_by(year) |>
   summarize("New Construction w/ Incentive" = sum(build_incent == "1", na.rm = T), 
