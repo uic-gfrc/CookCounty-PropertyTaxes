@@ -33,7 +33,7 @@ ccao_loa <- read_csv("./inputs/ccao_loa.csv") %>%
   filter(year > 2005) %>%
   select(-class_code) %>%
   mutate(loa = as.numeric(loa)) %>%
-  mutate(loa = ifelse(loa == 0, NA, loa) # avoid dividing by zero errora
+  mutate(loa = ifelse(loa == 0, NA, loa) # avoid dividing by zero errors
          )
 
 # Cook County agency number is 010010000
@@ -208,7 +208,20 @@ comm_ind_pins_ever <- comm_ind_pins_ever  %>%
       tif_years == 0 ~ "Never TIF",
       TRUE ~ "Changes")
   ) |> 
-  ungroup()
+  arrange(year) %>%
+  mutate(incent = ifelse(class >= 600 & class <= 899, 1, 0)) %>%
+  mutate(
+    gain_incent = ifelse(incent == 1 & lag(incent) == 0, 1, 0),
+    lose_incent = ifelse(incent == 0 & lag(incent) == 1, 1, 0)
+  ) %>%
+  mutate(incent_status = 
+           case_when(
+             sum(gain_incent, na.rm=TRUE)  > 0 ~ "Gained Incentive",
+             sum(lose_incent, na.rm=TRUE)  > 0 ~ "Had Incentive", 
+             sum(incent, na.rm=TRUE) == 0 ~ "Never had Incentive",
+             sum(incent, na.rm=TRUE)== timespan  ~ "Always had  Incentive"
+           )) %>%
+ungroup()
 
 comm_ind_pins_ever <- comm_ind_pins_ever |> 
   filter(
