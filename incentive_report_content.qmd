@@ -1015,32 +1015,34 @@ muni_rate <- read_csv("./Output/ptaxsim_muni_level_2006-2022.csv") %>%
 ```{r calculate-cook-altrates-fromPINlevel}
 cook_ratechange <- ptax_pins %>%
   # left_join(muni_rate) %>%
-  filter(!clean_name  %in% c("Frankfort", "Homer Glen",  "Oak Brook", "East Dundee", "University Park",  "Bensenville", "Hinsdale", "Roselle", "Deer Park", "Deerfield")) %>% 
-filter(!agency_num %in% cross_county_lines & !is.na(clean_name) & clean_name!="Unincorporated" )  %>%
-#group_by(class_group) %>%
+  filter(!clean_name  %in% c("Frankfort", "Homer Glen",  "Oak Brook", "East Dundee",
+                             "University Park",  "Bensenville", "Hinsdale", "Roselle",
+                             "Deer Park", "Deerfield")) %>% 
+  filter(!agency_num %in% cross_county_lines & !is.na(clean_name) & clean_name!="Unincorporated" )  %>%
+  #group_by(class_group) %>%
   summarize(
-mostnaive_forgone_tax_amt_exe = sum(tax_amt_exe),
-
-# forgonerev_from_exemptions  = sum(ifelse(class >= 200 & class < 300,
-#       (((av*eq2022) - (taxed_av*eq2022))) * tax_code_rate/100, 0), na.rm=TRUE),
-
-# amount of EAV from taxing an additional 15% of the AV if incentive properties didn't exist
-# forgonerev_from_comind_incents  = sum(ifelse(class >= 600 & class < 900,
-#       (((taxed_av*eq2022)*0.25 - (taxed_av*eq2022))) * tax_code_rate/100, 0), na.rm=TRUE),
-# 
-# forgonerev_commerc_incents  = sum(ifelse(class >= 600 & class < 900 & class %in% commercial_classes,
-#       (((taxed_av*eq2022)*0.25 - (taxed_av*eq2022))) * tax_code_rate/100, 0), na.rm=TRUE),
-# 
-# forgonerev_indust_incents  = sum(ifelse(class >= 600 & class < 900 & class %in% industrial_classes,
-#      (((taxed_av*eq2022)*0.25 - (taxed_av*eq2022))) * tax_code_rate/100, 0), na.rm=TRUE),
-
-## New Tax Base Calculations
-   new_TEAV_noIncents = sum(ifelse(class >= 600 & class < 900,
-      (taxed_av*eq2022/loa)*0.25, taxed_av*eq2022), na.rm=TRUE),
-
-## NewTax Base Calculations
-   new_TEAV_noCommercIncents = sum(ifelse(class >= 600 & class < 900 & class %in% commercial_classes,
-      (taxed_av*eq2022/loa)*0.25, taxed_av*eq2022), na.rm=TRUE),
+    mostnaive_forgone_tax_amt_exe = sum(tax_amt_exe),
+    
+    # forgonerev_from_exemptions  = sum(ifelse(class >= 200 & class < 300,
+    #       (((av*eq2022) - (taxed_av*eq2022))) * tax_code_rate/100, 0), na.rm=TRUE),
+    
+    # amount of EAV from taxing an additional 15% of the AV if incentive properties didn't exist
+    # forgonerev_from_comind_incents  = sum(ifelse(class >= 600 & class < 900,
+    #       (((taxed_av*eq2022)*0.25 - (taxed_av*eq2022))) * tax_code_rate/100, 0), na.rm=TRUE),
+    # 
+    # forgonerev_commerc_incents  = sum(ifelse(class >= 600 & class < 900 & class %in% commercial_classes,
+    #       (((taxed_av*eq2022)*0.25 - (taxed_av*eq2022))) * tax_code_rate/100, 0), na.rm=TRUE),
+    # 
+    # forgonerev_indust_incents  = sum(ifelse(class >= 600 & class < 900 & class %in% industrial_classes,
+    #      (((taxed_av*eq2022)*0.25 - (taxed_av*eq2022))) * tax_code_rate/100, 0), na.rm=TRUE),
+    
+    ## New Tax Base Calculations
+    new_TEAV_noIncents = sum(ifelse(class >= 600 & class < 900,
+                                    (taxed_av*eq2022/loa)*0.25, taxed_av*eq2022), na.rm=TRUE),
+    
+    ## NewTax Base Calculations
+    new_TEAV_noCommercIncents = sum(ifelse(class >= 600 & class < 900 & class %in% commercial_classes,
+                                           (taxed_av*eq2022/loa)*0.25, taxed_av*eq2022), na.rm=TRUE),
 
    new_TEAV_noIndustIncents = sum(ifelse(class >= 600 & class < 900 & class %in% industrial_classes,
       (taxed_av*eq2022/loa)*0.25, taxed_av*eq2022), na.rm=TRUE),
@@ -1154,39 +1156,66 @@ select(reducedEAV_commerc_incents, reducedEAV_indust_incents, reducedEAV_comind_
 
 $15 Billion EAV is tax exempt due to homeowners exemptions. All incentive properties combined only have \$4 billion EAV that is tax exempt (due to the decreased level of assessment which results in less AV, and therefore, EAV)
 
-### Non-Naive Revenue Estimates
+### Estimates for Revenue Shifted to Non-Incentive Class Properties
 
-Take new tax rate and apply it to new taxbase.
+> Take new tax rate and apply it to new taxbase.
 
 ```{r}
 
 cook_ratechange %>% 
-select(contains("forgonerev") )
+select(contains("forgonerev") ) %>% kableExtra::kable_classic()
 ```
 
 ### Naive Revenue Shift
 
+Uses old current tax rate and multiplies it by the new taxbase.
+
+
 ```{r}
-cook_ratechange %>%
-  mutate(
-    forgonerev_noExe = rate_current/100 * all_exemptions,
-    forgonerev_noAbate = rate_current/100 * (new_TEAV_noAbates - eav_taxed),
-    forgonerev_noIncents = rate_current/100 * (new_TEAV_noIncents - eav_taxed),
-    forgonerev_noCommercIncents = rate_current/100 * (new_TEAV_noCommercIncents - eav_taxed),
 
-    forgonerev_noIndustIncents = rate_current/100 * (new_TEAV_noIndustIncents - eav_taxed),
+ptax_pins %>%
+  # left_join(muni_rate) %>%
+  filter(!clean_name  %in% c("Frankfort", "Homer Glen",  "Oak Brook", "East Dundee",
+                             "University Park",  "Bensenville", "Hinsdale", "Roselle",
+                             "Deer Park", "Deerfield")) %>% 
+  filter(!agency_num %in% cross_county_lines & 
+           !is.na(clean_name) & clean_name!="Unincorporated" )  %>%
+  summarize(
+    # for homestead exemptions
+    mostnaive_forgone_tax_amt_exe = sum(tax_amt_exe),    
+  
+    # more accurate but still uses current tax rate instead of recalculated tax rate:
+    forgonerev_from_exemptions  = sum(ifelse(class >= 200 & class < 300,
+          (((av*eq2022) - (taxed_av*eq2022))) * tax_code_rate/100, 0), na.rm=TRUE),
+
+   # amount of EAV from taxing an additional 15% of the AV if incentive properties didn't exist
+   # using current tax rate for each property at the tax code level
+    forgonerev_from_comind_incents  = sum(ifelse(class >= 600 & class < 900,
+          (((taxed_av*eq2022)*0.25 - (taxed_av*eq2022))) * tax_code_rate/100, 0), na.rm=TRUE),
+
+    forgonerev_commerc_incents  = sum(ifelse(class >= 600 & class < 900 & class %in% commercial_classes,
+          (((taxed_av*eq2022)*0.25 - (taxed_av*eq2022))) * tax_code_rate/100, 0), na.rm=TRUE),
+
+    forgonerev_indust_incents  = sum(ifelse(class >= 600 & class < 900 & class %in% industrial_classes,
+         (((taxed_av*eq2022)*0.25 - (taxed_av*eq2022))) * tax_code_rate/100, 0), na.rm=TRUE),
+   
+    #  forgonerev_noTIFs = rate_current/100 * ,
+       # TIF increment above the frozen EAV
+    forgonerev_TIFs = sum(fmv_tif_increment * loa * eq2022*tax_code_rate/100, na.rm=TRUE),
+   
+   # if incentive properties had no tax value (i.e. owners left, or fully tax exempt)
+   # also equal to the current amount collected from incentive properties
+     forgonerev_vacant = sum(ifelse(class >= 600 & class < 900,  taxed_av*eq2022 * tax_code_rate/100, 0), na.rm = TRUE)
+   )
+         
 
 
-    forgone_noExe_or_Inc = rate_current/100 * (TEAV_neither - eav_taxed),
-    forgonerev_noTIFs = rate_current/100 * forgone_TIF_EAV,
-    forgonerev_vacant = rate_current/100 * (new_TEAV_vacant_props - eav_taxed),
-    forgonerev_maxTEAV = rate_current/100 * (TEAV_max - eav_taxed)
-) %>% 
-  select(contains("forgonerev") )
 ```
 
 
-# Slide 8 Tax Rate Calculations
+# The Costs of Incentives
+
+## Change in Composite Property Tax Rate Due to Incentives and other Policy Scenarios
 
 ```{r}
 muni_ratechange <- ptax_pins %>%
@@ -1283,7 +1312,7 @@ forgone_TIF_EAV = fmv_tif_increment * loa * eq2022) %>%
      mutate(across(contains("rate_"), round, digits = 2))
 ```
 
-## Slide 8 - Difference in Composite Tax Rates
+## Tables - Difference in Composite Tax Rates
 
 ```{r}
 #| label: tbl-munialtrates-frompinlevel
@@ -1589,7 +1618,7 @@ scale_fill_manual(
 ```
 
 
-## Slide 8B - With TIFs!
+### Policy Scenario - Recaptured TIF EAV
 
 ```{r eval=FALSE, include = FALSE}
 alt_rates %>% 
@@ -2149,7 +2178,7 @@ df_2011_bal %>%
   theme_bw()  +  
   facet_wrap(~incent_status, nrow = 1) +
   scale_x_discrete(breaks = c(2012, 2022)) + 
-  scale_y_continuous(breaks = c(1, 2, 3, 4), labels = scales::percent) +
+  scale_y_continuous(breaks = c(-0.5, 1, 2, 3, 4), labels = scales::percent,) +
   labs(title= "Growth from 2011 to 2022", 
        subtitle = "Incentive Classification Status by Land Use Change",
        y = "FMV Growth since 2011", x = NULL,
@@ -2163,148 +2192,23 @@ df_2011_bal %>%
 ```{r}
 #| label: fig-growth-facetby-Aleacat-2011
 #| fig-cap: "**Growth from 2011 to 2022.** Faceted by land use category."
+#| layout-ncol: 2
 
 df_2011_bal %>%   
   ungroup() |>
   ggplot() + 
   geom_line(aes(x=year, y=fmv_group_growth, group = incent_status, color = incent_status)) + theme_bw() + 
   facet_wrap(~landuse_change, nrow=1) + 
-  theme(legend.position = "bottom")
+  theme(legend.position = "bottom", legend.title = element_blank())
 
 df_2011 %>%   
   ungroup() |>
   ggplot() + 
   geom_line(aes(x=year, y=fmv_group_growth, group = incent_status, color = incent_status)) + theme_bw() + 
   facet_wrap(~landuse_change, nrow=1) + 
-  theme(legend.position = "bottom")
+  theme(legend.position = "bottom", legend.title = element_blank())
 ```
 
-
-# Balanced 2006-2022 Panel Descriptive Tables - FMV Growth
-
-
-```{r}
-#| label: tbl-growthcalculations-commindfile-balanced2006
-#| tbl-cap: "Growth from 2006 to 2022. Uses pins that exist all years between 2011 and 2022."
-
-ptax_pins <- read_csv("./Output/comm_ind_PINs_2006to2022_balanced.csv")
-
-df_2006 <- ptax_pins |>
-  
-  group_by(year, land_use, incent_prop) |>
-  summarize(
-    group_pin_count = n(),
-    group_year_fmv = sum(fmv, na.rm=TRUE),
-
- ) |> ungroup() |>
-group_by(land_use,incent_prop) %>%
-  mutate(
-    base_year_fmv = group_year_fmv[year == min(year)],
-    
-    base_year_n = group_pin_count[year == min(year)],
-    n_group_growth = group_pin_count/base_year_n,
-    fmv_group_growth = group_year_fmv / base_year_fmv) 
-
-
-df_2006 %>% select(year, land_use, incent_prop, fmv_group_growth, everything()) %>% 
-filter(year == 2022) %>% select(-year)
-
-```
-
-```{r}
-#| label: tbl-growth-incentchange-balanced2006
-#| tbl-cap: "Growth from 2006 to 2022. Uses pins that exist all years between 2006 and 2022."
-
-
-df_2006_incentchange <- ptax_pins |>
-  
-  group_by(year, incent_change) |>
-  summarize(
-    group_pin_count = n(),
-    group_year_fmv = sum(fmv, na.rm=TRUE),
- ) |> ungroup() |>
-group_by( incent_change) %>%
-  mutate(
-    base_year_fmv = group_year_fmv[year == min(year)],
-    
-    base_year_n = group_pin_count[year == min(year)],
-    n_group_growth = group_pin_count/base_year_n,
-    fmv_group_growth = group_year_fmv / base_year_fmv) 
-
-
-df_2006_incentchange %>% select(year, incent_change, fmv_group_growth, base_year_fmv, group_year_fmv, everything()) %>% 
-filter(year == 2022) %>% select(-year)
-
-```
-
-```{r}
-#| label: tbl-growth-landusechange-balanced2006
-#| tbl-cap: "Growth from 2006 to 2022. Uses pins that exist all years between 2006 and 2022."
-
-
-df_2006_incentchange <- ptax_pins |>
-  
-  group_by(year, landuse_change) |>
-  summarize(
-    group_pin_count = n(),
-    group_year_fmv = sum(fmv, na.rm=TRUE),
- ) |> ungroup() |>
-group_by( landuse_change) %>%
-  mutate(
-    base_year_fmv = group_year_fmv[year == min(year)],
-    
-    base_year_n = group_pin_count[year == min(year)],
-    n_group_growth = group_pin_count/base_year_n,
-    fmv_group_growth = group_year_fmv / base_year_fmv) 
-
-
-df_2006_incentchange %>% select(year, landuse_change, fmv_group_growth, base_year_fmv, group_year_fmv, everything()) %>% 
-filter(year == 2022) %>% select(-year)
-
-```
-
-```{r}
-#| label: tbl-growth-landuseandincentchange-balanced2006
-#| tbl-cap: "Growth from 2006 to 2022. Uses pins that exist all years between 2006 and 2022."
-
-
-df_2006_incentchange <- ptax_pins |>
-  
-  group_by(year, landuse_change, incent_change) |>
-  summarize(
-    group_pin_count = n(),
-    group_year_fmv = sum(fmv, na.rm=TRUE),
- ) |> ungroup() |>
-group_by( landuse_change, incent_change) %>%
-  mutate(
-    base_year_fmv = group_year_fmv[year == min(year)],
-    
-    base_year_n = group_pin_count[year == min(year)],
-    n_group_growth = group_pin_count/base_year_n,
-    fmv_group_growth = group_year_fmv / base_year_fmv) 
-
-
-df_2006_incentchange %>% select(year, landuse_change, incent_change, fmv_group_growth, base_year_fmv, group_year_fmv, everything()) %>% 
-filter(year == 2022) %>% select(-year)
-
-```
-
-```{r}
-#| label: fig-growth-facetby-incentprop-balanced-2006
-#| fig-cap: "**Growth from 2006 to 2022.** Faceted by if a PIN changed landuse during the sample period. Indexed to fair market value during 2006."
-
-
-#df_2011_v2 %>%  
-df_2006_incentchange %>%  
-ggplot() + geom_line(aes(x=year, y=fmv_group_growth, group = landuse_change, color = landuse_change)) +
-  theme_classic()  + facet_wrap(~incent_change) +
-scale_x_continuous(#limits = c(2011, 2022), 
-breaks = c(2006, 2016, 2022)) + 
-labs(title= "Growth from 2006 to 2022", 
-subtitle = "Change in Incentive Use by Land Use Change", 
-caption = "Indexed to 2006 FMV", 
-x = "", y = "FMV Growth from 2006") 
-```
 
 # Export Tables
 
