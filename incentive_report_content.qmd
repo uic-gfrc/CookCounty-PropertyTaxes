@@ -777,8 +777,12 @@ set_table_properties( layout = "autofit")
 library(sf)
 library(ggpattern)
 
-
 muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/politicalBoundary/MapServer/2/query?outFields=*&where=1%3D1&f=geojson")
+#muni_shp  %>% write_sf("./inputs/muni_shp.shp")
+
+#muni_shp <- read_sf("./inputs/muni_shp.shp")
+
+
 
 no_incentives <-  ptax_pins %>% 
  # filter(between(class, 600, 899)) %>%
@@ -952,6 +956,9 @@ filter(clean_name != "Unincorporated") %>%
 ## Share of Industrial
 
 ```{r}
+#| label: tbl-industrialsharewithincentive
+#| tbl-cap: "Percent of Industrial FMV within each Municipality that has incentive classification."
+
 munilevel  %>%
 ungroup() %>%
 #filter(!agency_num %in% cross_county_lines) %>%
@@ -975,6 +982,9 @@ add_footer("There are 27 municipalities that do not have PINs with Industrial In
 ## Share of Commercial
 
 ```{r}
+#| label: tbl-commercialsharewithincentive
+#| tbl-cap: "Percent of Commercial FMV within each Municipality that has incentive classification."
+#| 
 munilevel  %>%
 ungroup() %>%
 #filter(!agency_num %in% cross_county_lines) %>%
@@ -994,8 +1004,9 @@ bold(i = 8) %>%
 add_footer("There are 27 municipalities that do not have PINs with Industrial Incentive classification", top = FALSE) %>%
   set_table_properties( layout = "autofit")
 ```
+# The Costs of Incentives
 
-# Shifted Tax Revenue and Tax Burden
+## Shifted Tax Revenue and Tax Burden
 
 ```{r}
 ccao_loa <- read_csv("./inputs/ccao_loa.csv") %>% 
@@ -1010,7 +1021,7 @@ muni_rate <- read_csv("./Output/ptaxsim_muni_level_2006-2022.csv") %>%
   rename(cur_munilevel_rate = muni_current_rate_avg)
 ```
 
-## Not Taxed FMV - PIN aggregated to County Level
+## Not Taxed Value - PIN aggregated to County Level
 
 ```{r calculate-cook-altrates-fromPINlevel}
 cook_ratechange <- ptax_pins %>%
@@ -1021,21 +1032,6 @@ cook_ratechange <- ptax_pins %>%
   filter(!agency_num %in% cross_county_lines & !is.na(clean_name) & clean_name!="Unincorporated" )  %>%
   #group_by(class_group) %>%
   summarize(
-    mostnaive_forgone_tax_amt_exe = sum(tax_amt_exe),
-    
-    # forgonerev_from_exemptions  = sum(ifelse(class >= 200 & class < 300,
-    #       (((av*eq2022) - (taxed_av*eq2022))) * tax_code_rate/100, 0), na.rm=TRUE),
-    
-    # amount of EAV from taxing an additional 15% of the AV if incentive properties didn't exist
-    # forgonerev_from_comind_incents  = sum(ifelse(class >= 600 & class < 900,
-    #       (((taxed_av*eq2022)*0.25 - (taxed_av*eq2022))) * tax_code_rate/100, 0), na.rm=TRUE),
-    # 
-    # forgonerev_commerc_incents  = sum(ifelse(class >= 600 & class < 900 & class %in% commercial_classes,
-    #       (((taxed_av*eq2022)*0.25 - (taxed_av*eq2022))) * tax_code_rate/100, 0), na.rm=TRUE),
-    # 
-    # forgonerev_indust_incents  = sum(ifelse(class >= 600 & class < 900 & class %in% industrial_classes,
-    #      (((taxed_av*eq2022)*0.25 - (taxed_av*eq2022))) * tax_code_rate/100, 0), na.rm=TRUE),
-    
     ## New Tax Base Calculations
     new_TEAV_noIncents = sum(ifelse(class >= 600 & class < 900,
                                     (taxed_av*eq2022/loa)*0.25, taxed_av*eq2022), na.rm=TRUE),
@@ -1163,7 +1159,7 @@ $15 Billion EAV is tax exempt due to homeowners exemptions. All incentive proper
 ```{r}
 
 cook_ratechange %>% 
-select(contains("forgonerev") ) %>% kableExtra::kable_classic()
+select(contains("forgonerev") )
 ```
 
 ### Naive Revenue Shift
@@ -1174,7 +1170,6 @@ Uses old current tax rate and multiplies it by the new taxbase.
 ```{r}
 
 ptax_pins %>%
-  # left_join(muni_rate) %>%
   filter(!clean_name  %in% c("Frankfort", "Homer Glen",  "Oak Brook", "East Dundee",
                              "University Park",  "Bensenville", "Hinsdale", "Roselle",
                              "Deer Park", "Deerfield")) %>% 
@@ -1213,7 +1208,6 @@ ptax_pins %>%
 ```
 
 
-# The Costs of Incentives
 
 ## Change in Composite Property Tax Rate Due to Incentives and other Policy Scenarios
 
@@ -1618,188 +1612,10 @@ scale_fill_manual(
 ```
 
 
-### Policy Scenario - Recaptured TIF EAV
-
-```{r eval=FALSE, include = FALSE}
-alt_rates %>% 
-arrange(desc(change_noTIFs) ) %>%
-select(clean_name, muni_current_rate, muni_rate_noTIFs, change_noTIFs) %>%
-mutate(change_noTIFs = abs(round(change_noTIFs, digits = 3))) %>% 
-
-slice(c(1:5, 69:73, 121:125)) %>%
-flextable() %>% 
-border_remove() %>%
-hline_top() %>%
-hline(i = c(5,10)) %>%
-  set_header_labels(clean_name = "Municipality", muni_current_rate = "Current Comp.\nTax Rate", muni_rate_noTIFs = "Tax Rate\nIf No TIFs",
-                    change_noTIFs = "Tax Rate Difference") %>%  set_table_properties( layout = "autofit")
-
-```
-
-```{r eval=FALSE, include = FALSE}
-#| label: fig-comptaxratechange-fromtif
-#| fig-cap: "Hypothetical change in composite tax rate if municipalities could tax value in TIF increment."
-
-
-alt_rates %>% 
-  select(clean_name, change_noTIFs) %>% 
-  filter(clean_name != "Unincorporated") %>%
-  left_join(nicknames) %>%
-  full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
-
-  ggplot(aes(fill = change_noTIFs)) +
-  geom_sf(aes(geometry = geometry), color = "black") +
-  theme_void() + 
-  theme(axis.ticks = element_blank(), axis.text = element_blank())+
-  scale_fill_steps2(
-    low = "lightblue", high = "darkblue",
-    show.limits=TRUE,
-    nice.breaks=FALSE,
-na.value = "gray50",
-    n =4,
-    name = "Tax Rate Change\nin Percentage Pts") +
-   geom_sf_pattern(data = no_incentives, aes(geometry = geometry), pattern = 'crosshatch', pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray40')
-```
-
-```{r eval=FALSE, include = FALSE}
-#| column: page
-
-tbl1 <- alt_rates %>% 
-  select(clean_name, muni_PC, muni_current_rate, muni_rate_noExe, muni_rate_noInc, muni_rate_neither,  muni_rate_noTIFs, muni_rate_noAbate,
-         muni_rate_lowest, muni_rate_vacant) %>% 
-  distinct() %>% 
-  mutate(across(muni_current_rate:muni_rate_vacant, round, digits = 2)) %>% 
-  as.data.frame()
-
-datatable(tbl1,
-          rownames= FALSE,
-          colnames = c('Municipality' = 'clean_name', 
-                       'PIN Count' = 'muni_PC', 
-'Current Composite Rate' = 'muni_current_rate', 
-                       'Rate if No Exemptions' = 'muni_rate_noExe', 
-                       'Rate if No Incentive Classes' = 'muni_rate_noInc', 
-                         'Rate if No Inc. or Exe.' = 'muni_rate_neither',
-                       'Rate if No TIF Increments' = 'muni_rate_noTIFs',
-                        'Rate: No Abatements' = 'muni_rate_noAbate',
-                       'Rate: Incent. Prop. Lose All Value' = 'muni_rate_vacant',
-                      'Lowest Rate Possible' = 'muni_rate_lowest'
-                      ))
-```
-
-```{r eval=FALSE, include = FALSE}
-#| label: tbl-adjustedratechange
-#| column: page
-
-
-alt_rates %>%
-
-select(clean_name, starts_with("change")) %>%
-select(-change_error_dif) %>%
-datatable(
-          rownames= FALSE,
-          colnames = c('Municipality' = 'clean_name',   
-                       'Rate Change from Taxing GHE Exempt EAV' = 'change_noExe', 
-                       'Rate Change: No Abatements' = 'change_noAbate',
-                       'Rate Change from Additional Commerc & Indust. Value' = 'change_noInc', 
-                       'Rate Change: Incent. Prop. Lose All Value' = 'change_vacants',
-                       'Rate Change: No C6 AV Reduction' = 'change_noC6',
-                       'Rate Change: No C7 AV Reduction' = 'change_noC7',
-                       'Rate Change: No C8 AV Reduction' = 'change_noC8',
-
-                       'Rate if No Incentive Classes & No Exemptions' = 'change_neither',
-                       'Rate if No TIF Increments' = 'change_noTIFs',
-                       'Maxiumum Rate Change' = 'change_max')
-)
-
-
-```
-
-```{r}
-#| label: fig-dotplot-bycurrentrate
-#| fig-cap: "Change in tax rate if incentive properties were assessed at 25% of their FMV instead of their reduced level of assessment."
-#| eval: false 
-#| include: false
 
 
 
-# as a dot graph ## 
-# create order of dots
-order <- alt_rates %>%  
-  as_tibble() %>% 
- filter(change_noInc >0) %>%
-  arrange(muni_current_rate) %>%
-  select(clean_name, muni_current_rate)
-
-# make dot graph
-alt_rates %>% 
- filter(change_noInc > .7) %>%
-
-  select(clean_name, muni_current_rate, muni_rate_noInc) %>% 
-  distinct() %>%
-  arrange(muni_current_rate) %>%
-  pivot_longer(c("muni_current_rate", "muni_rate_noInc"), 
-               names_to = "type", values_to = "tax_rate") %>% 
-  inner_join(order) %>%
-  ggplot(aes(x = tax_rate, y= reorder(clean_name, muni_current_rate)))+
-  geom_line(aes(group = clean_name))+ 
-  geom_point(aes(color=type), size=3 )+
-  theme_minimal() + 
-  theme( 
-    legend.title = element_blank(),
-    plot.title.position = "plot",
-    plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
-  )+
-  scale_color_manual(#palette="Blues", 
-                     labels = c("Current Rate", "No Incentives"),  
-                     values = c("#A6CEE3", "#1F78B4" ))+
-  
-  labs(title = "Difference in Composite Tax Rate if Assessed at 25%",
-       subtitle = "Ordered by Current Composite Tax Rate", x = "Composite Tax Rate (%)", y = "")
-```
-
-
-```{r}
-#| label: fig-dotplot-byratechange
-#| fig-cap: "Change in tax rate if incentive properties were assessed at 25% of their FMV instead of their reduced level of assessment. Ordered by amount of change in composite tax rate."
-#| eval: false
-#| include: false
-#| 
-
-
-# as a dot graph ## 
-# create order of dots
-order <- alt_rates %>%  
-  as_tibble() %>% 
- filter(change_noInc >0) %>%
-  arrange(desc(change_noInc)) %>%
-  select(clean_name, change_noInc)
-
-# make dot graph
-alt_rates %>% 
- filter(change_noInc > .7) %>%
-
-  select(clean_name, muni_current_rate, muni_rate_noInc) %>% 
-  distinct() %>%
-  arrange(muni_current_rate) %>%
-  pivot_longer(c("muni_current_rate", "muni_rate_noInc"), 
-               names_to = "type", values_to = "tax_rate") %>% 
-  inner_join(order) %>%
-  ggplot(aes(x = tax_rate, y= reorder(clean_name, change_noInc)))+
-  geom_line(aes(group = clean_name))+ 
-  geom_point(aes(color=type), size=3 )+
-  theme_minimal() + 
-  theme( 
-    legend.title = element_blank(),
-    plot.title.position = "plot",
-    plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
-  )+
-  scale_color_manual(#palette="Blues", 
-                     labels = c("Current Rate", "No Incentives"),  
-                     values = c("#A6CEE3", "#1F78B4" ))+
-  
-  labs(title = "Difference in Composite Tax Rate if Assessed at 25%",
-       subtitle = "Ordered by Amount of Change", x = "Composite Tax Rate (%)", y = "")
-```
+# Yearly Trends
 
 ```{r}
 comm_ind_pins <- read_csv("./Output/comm_ind_PINs_2006to2022_timeseries.csv")
@@ -1849,9 +1665,6 @@ df_2011_incentchange %>% select(year, incent_change, fmv_group_growth, base_year
 filter(year == 2022) %>% select(-year)
 ```
 
-
-# Yearly Trends
-
 The file ~~`comm_ind_inmunis_timeseries_2006to2022.csv`~~ `comm_ind_PINs_2006to2022_timeseries.csv` contains all PINs that had an incentive property class for at least 1 year. It includes all observations for a property during the years that it existed, even if it is not an incentive class property in that year.
 
 Only includes PINs in incorporated areas.  
@@ -1891,7 +1704,8 @@ ptax_pins %>%
 
 df_2011_bal <- ptax_pins %>%
   filter(year >= 2011) %>%
-  group_by(pin) %>% mutate(n=n()) %>%
+  group_by(pin) %>% 
+  mutate(n=n()) %>%
   filter(years_existed == year_count ) %>%
   ungroup() %>%
   group_by(year, land_use, incent_prop) |>
@@ -1924,7 +1738,9 @@ filter(year >= 2011) %>%
   group_by(year, land_use, incent_prop) |>
   summarize(
     group_pin_count = n(),
-    group_year_fmv = sum(fmv, na.rm=TRUE)) |> 
+    group_year_fmv = sum(fmv, na.rm=TRUE),
+    group_year_wins_fmv = sum()
+    ) |> 
   ungroup() |>
   group_by(land_use, incent_prop) %>%
   mutate(
@@ -1935,12 +1751,13 @@ filter(year >= 2011) %>%
 
 df_2011 %>% 
   select(year, land_use, incent_prop, fmv_group_growth, n_group_growth) %>% 
-  filter(year == 2022) 
+  filter(year == 2022)  %>% 
+  select(-year)
 
 ```
+
 ```{r}
 df_2011 %>% 
-  #filter(land_use == "Commercial" | land_use == "Industrial") %>% 
   ggplot() + 
   geom_line(aes(x=year, y=fmv_group_growth, group = incent_prop, color = incent_prop)) + 
   #scale_y_continuous(limits = c(0.8,2.5)) + 
@@ -1948,12 +1765,82 @@ df_2011 %>%
   theme_bw()  +  facet_wrap(~land_use)
 
 df_2011_bal %>% 
-#  filter(land_use == "Commercial" | land_use == "Industrial") %>% 
   ggplot() + 
   geom_line(aes(x=year, y=fmv_group_growth, group = incent_prop, color = incent_prop)) + 
   #scale_y_continuous(limits = c(0.8,2.5)) + 
   labs( title = "Commercial v Industrial FMV Growth-Balanced PINs",) + 
   theme_bw()  +  facet_wrap(~land_use)
+
+```
+
+```{r}
+ptax_pins %>% filter(is.na(incent_status))
+
+ptax_pins %>%
+  filter(year >= 2011) %>%
+  group_by(pin) %>% mutate(years_existed = n()) |>
+  filter(years_existed == year_count ) %>%
+  ungroup() %>%
+  group_by(year, landuse_change) |>
+  summarize(
+    group_pin_count = n(),
+    group_year_fmv = sum(fmv, na.rm=TRUE)) |> 
+  ungroup() |>
+  group_by(landuse_change) %>%
+  mutate(
+    base_year_fmv = group_year_fmv[year == min(year)],
+    base_year_n = group_pin_count[year == min(year)],
+    n_group_growth = group_pin_count/base_year_n,
+    fmv_group_growth = group_year_fmv / base_year_fmv) %>%
+    filter(year == 2022) %>%   
+  select(landuse_change, fmv_group_growth, group_pin_count)
+
+ptax_pins %>%
+  filter(year >= 2011) %>%
+  group_by(pin) %>% mutate(years_existed = n()) |>
+  filter(years_existed == year_count ) %>%
+  ungroup() %>%
+  group_by(year, incent_status) |>
+  summarize(
+    group_pin_count = n(),
+    group_year_fmv = sum(fmv, na.rm=TRUE)) |> 
+  ungroup() |>
+  group_by(incent_status) %>%
+  mutate(
+    base_year_fmv = group_year_fmv[year == min(year)],
+    base_year_n = group_pin_count[year == min(year)],
+    n_group_growth = group_pin_count/base_year_n,
+    fmv_group_growth = group_year_fmv / base_year_fmv) %>%
+    filter(year == 2022) %>%   
+  select(incent_status, fmv_group_growth, group_pin_count)
+```
+
+```{r}
+#| label: tbl-growthcalculations-landusechange-incentstatus-balanced
+#| tbl-cap: "Growth from 2011 to 2022 - Change in Land Use by Incentive Class Status using balanced data for 2011 to 2022. Not winsorized."
+
+df_2011_bal <- ptax_pins %>%
+  filter(year >= 2011) %>%
+  group_by(pin) %>% mutate(years_existed = n()) |>
+  filter(years_existed == year_count ) %>%
+  ungroup() %>%
+  group_by(year, landuse_change, incent_status) |>
+  summarize(
+    group_pin_count = n(),
+    group_year_fmv = sum(fmv, na.rm=TRUE)) |> 
+  ungroup() |>
+  group_by(landuse_change, incent_status) %>%
+  mutate(
+    base_year_fmv = group_year_fmv[year == min(year)],
+    base_year_n = group_pin_count[year == min(year)],
+    n_group_growth = group_pin_count/base_year_n,
+    fmv_group_growth = group_year_fmv / base_year_fmv) 
+
+df_2011_bal %>% 
+  select(year, landuse_change, incent_status, fmv_group_growth, group_pin_count) %>% 
+  filter(year == 2022) %>%   
+  select(-year)
+
 
 ```
 
@@ -1964,7 +1851,7 @@ df_2011_bal %>%
 df_2011_bal <- ptax_pins %>%
   filter(year >= 2011) %>%
   group_by(pin) %>% mutate(years_existed = n()) |>
-  filter(years_existed >= 11 ) %>%
+  filter(years_existed == year_count ) %>%
   ungroup() %>%
   group_by(year, land_use, incent_status) |>
   summarize(
@@ -1978,8 +1865,11 @@ df_2011_bal <- ptax_pins %>%
     n_group_growth = group_pin_count/base_year_n,
     fmv_group_growth = group_year_fmv / base_year_fmv) 
 
-df_2011_bal %>% select(year, land_use, incent_status, fmv_group_growth, n_group_growth) %>% 
-filter(year == 2022) 
+df_2011_bal %>% 
+  select(year, land_use, incent_status, fmv_group_growth, group_pin_count) %>% 
+  filter(year == 2022) %>%   
+  select(-year)
+
 
 ```
 
@@ -2003,8 +1893,9 @@ df_2011 <- ptax_pins %>%
     n_group_growth = group_pin_count/base_year_n,
     fmv_group_growth = group_year_fmv / base_year_fmv) 
 
-df_2011 %>% select(year, land_use, incent_status, fmv_group_growth, n_group_growth) %>% 
-filter(year == 2022) 
+df_2011 %>% 
+  select(year, land_use, incent_status, fmv_group_growth, n_group_growth) %>% 
+  filter(year == 2022) %>% select(-year)
 
 ```
 
@@ -2022,7 +1913,7 @@ df_2011_bal %>%
   theme_bw()  +  facet_wrap(~land_use)
 
 df_2011 %>% 
- # filter(land_use == "Commercial" | land_use == "Industrial") %>%
+  # filter(land_use == "Commercial" | land_use == "Industrial") %>%
   ggplot() + 
   geom_line(aes(x=year, y=fmv_group_growth, group = incent_status, color = incent_status)) + #scale_y_continuous(limits = c(0.8,2.5)) +
   labs( title = "Commercial v Industrial FMV Growth") +
@@ -2041,41 +1932,41 @@ df_2011_bal %>%
 #| tbl-cap: "Growth from 2011 to 2022. grouped by new categorical variables. Includes all commercial and industrial PINs even if they did not exist for all years. Unbalanced."
 
 df_2011_v2 <- ptax_pins %>%
-filter(year >= 2011) %>%
-
- group_by(year, landuse_change, incent_change ) |>
+  filter(year >= 2011) %>%
+  
+  group_by(year, landuse_change, incent_change ) |>
   summarize(n = n(), 
             group_year_fmv = sum(fmv, na.rm=TRUE),
   ) |>
-ungroup() |>
-group_by(landuse_change, incent_change, ) |>
+  ungroup() |>
+  group_by(landuse_change, incent_change, ) |>
   mutate(            
-        base_year_fmv = group_year_fmv[year == min(year)],
-            base_year_n = n[year == min(year)],
-            fmv_growth = group_year_fmv/base_year_fmv,
-         n_growth = n/base_year_n
-       ) 
+    base_year_fmv = group_year_fmv[year == min(year)],
+    base_year_n = n[year == min(year)],
+    fmv_growth = group_year_fmv/base_year_fmv,
+    n_growth = n/base_year_n
+  ) 
 
 df_2011_v2_bal <- ptax_pins %>%
-filter(year >= 2011) %>%
+  filter(year >= 2011) %>%
   group_by(pin)%>% mutate(years_existed=n()) %>%
   filter(years_existed == year_count) %>%
-
- group_by(year, landuse_change, incent_change ) |>
+  
+  group_by(year, landuse_change, incent_change ) |>
   summarize(n = n(), 
             group_year_fmv = sum(fmv, na.rm=TRUE),
   ) |>
-ungroup() |>
-group_by(landuse_change, incent_change, ) |>
+  ungroup() |>
+  group_by(landuse_change, incent_change, ) |>
   mutate(            
-        base_year_fmv = group_year_fmv[year == min(year)],
-            base_year_n = n[year == min(year)],
-            fmv_growth = group_year_fmv/base_year_fmv,
-         n_growth = n/base_year_n
+    base_year_fmv = group_year_fmv[year == min(year)],
+    base_year_n = n[year == min(year)],
+    fmv_growth = group_year_fmv/base_year_fmv,
+    n_growth = n/base_year_n
   )
 df_2011_v2 %>% 
   select(year, landuse_change, incent_change, fmv_growth) %>% 
-filter(year == 2022) 
+  filter(year == 2022) 
 
 ```
 
@@ -2212,20 +2103,19 @@ df_2011 %>%
 
 # Export Tables
 
-```{r eval=FALSE}
+```{r}
 library(readxl)
 
 tablelist <- list(
-  "Muni Sums" = munilevel,
-  "Muni Class Summaries" = muni_mc_table, 
-  "Muni Class Percentages" = table_muni_mc_percentages, 
-  "Muni Tax Rate Hypotheticals" = alt_rates,
-  "Muni Adjusted Tax Rates" = table4_adjusted,
+  "Muni Stats" = munilevel,
+  "Muni Rate Change" = muni_ratechange,
+  
   "Cook Sums" = table_cook,
-  "Cook Class Sums" = cty_MC_table
+  "Cook Class Sums" = cty_MC_table,
+  "Cook Rate Change" = cook_ratechange
 )
 
 
-writexl::write_xlsx(tablelist, "Output/calculation_output_preliminary.xlsx")
+writexl::write_xlsx(tablelist, "Output/calculations_report_content_20240927.xlsx")
 ```
 
