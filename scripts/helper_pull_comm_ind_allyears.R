@@ -178,7 +178,7 @@ comm_ind_pins_ever <- comm_ind_pins_ever %>%
 
 timespan = 17
 
-comm_ind_pins_ever <- comm_ind_pins_ever  %>%
+comm_ind_pins <- comm_ind_pins_ever  %>%
   group_by(pin) |>
   arrange(desc(year)) |>
   mutate(multi_muni = n_distinct(clean_name),
@@ -196,13 +196,16 @@ comm_ind_pins_ever <- comm_ind_pins_ever  %>%
       ifelse(
         sum(land_use == "Commercial") == timespan, "Always Commercial",
         ifelse(sum(land_use == "Industrial") == timespan, "Always Industrial",
+               
                # some properties had an incentive class before 2011 and then were tax exempt. Dropped from panel.
-               ifelse(sum(land_use == "Exempt") == timespan, "Drop Me",   # created to remove PINs if they were tax exempt every year between 2011 and 2022. 
-                      "Changes Land Use" ))),
-    incent_change = case_when(
-      incentive_years == timespan ~ "Always Incentive",
-      incentive_years == 0 ~ "Never Incentive",
-      TRUE ~ "Changes Sometime"),
+               # created to remove PINs if they were tax exempt every year between 2011 and 2022. 
+               ifelse(sum(land_use == "Exempt") == timespan, "Drop Me",  
+                      ifelse(sum(land_use == "Exempt") > 0, "Exempt Sometime",
+                             "Changes Land Use")))),
+        incent_change = case_when(
+          incentive_years == timespan ~ "Always Incentive",
+          incentive_years == 0 ~ "Never Incentive",
+          TRUE ~ "Changes Sometime"),
     tif_change = case_when(
       tif_years == timespan ~ "Always TIF",
       tif_years == 0 ~ "Never TIF",
@@ -212,25 +215,34 @@ comm_ind_pins_ever <- comm_ind_pins_ever  %>%
   mutate(incent = ifelse(class >= 600 & class <= 899, 1, 0)) %>%
   mutate(
     gain_incent = ifelse(incent == 1 & lag(incent) == 0, 1, 0),
-    lose_incent = ifelse(incent == 0 & lag(incent) == 1, 1, 0)
+    lose_incent = ifelse(incent == 0 & lag(incent) == 1, 1, 0),
+    years_exempt = sum(ifelse(land_use == "Exempt", 1, 0))
   ) %>%
   mutate(incent_status = 
            case_when(
              sum(gain_incent, na.rm=TRUE)  > 0 ~ "Gained Incentive",
-             sum(lose_incent, na.rm=TRUE)  > 0 ~ "Had Incentive", 
+             sum(lose_incent, na.rm=TRUE)  > 0 ~ "Incentive Ended", 
              sum(incent, na.rm=TRUE) == 0 ~ "Never had Incentive",
              sum(incent, na.rm=TRUE)== timespan  ~ "Always had  Incentive"
            )) %>%
 ungroup()
 
-comm_ind_pins_ever <- comm_ind_pins_ever |> 
+table(comm_ind_pins$years_exempt)
+table(comm_ind_pins$landuse_change )
+
+comm_ind_pins %>% 
+  filter(year == 2022) %>% 
+  reframe(n=n(), .by = landuse_change)
+
+
+comm_ind_pins <- comm_ind_pins |> 
   filter(
     !is.na(clean_name) & 
       !agency_num %in% cross_county_lines &
       landuse_change != "Drop Me"
   )
 
-comm_ind_pins_ever <- comm_ind_pins_ever |>
+comm_ind_pins <- comm_ind_pins |>
   mutate(exempt_flag = ifelse(land_use == "Exempt", 1, 0)) |>
   group_by(pin) |>
   mutate(
@@ -251,12 +263,12 @@ reassessments_long <- reassessment_years %>%
 
 
 
-comm_ind_pins_ever <- comm_ind_pins_ever |>
+comm_ind_pins <- comm_ind_pins |>
   
   ## set variable types 
   mutate(across(c(class, improvement_ind, has_AB_exemp, fmv_NA_flag, in_tif), as.character))
 
-comm_ind_pins_ever <- comm_ind_pins_ever |>
+comm_ind_pins <- comm_ind_pins |>
   mutate(year = as.character(year)) |> 
   left_join(reassessments_long, by = c("year", "Triad")) |>
   
@@ -304,14 +316,14 @@ comm_ind_pins_ever <- comm_ind_pins_ever |>
 ### How many properties LOSE their incentives? ####
   
 # unique PINs that no longer had an incentive class within the data time frame
-lose_incent_pins <- comm_ind_pins_ever |> 
+lose_incent_pins <- comm_ind_pins |> 
   group_by(pin) |> 
   filter(incent_prop == "Incentive" & lead(incent_prop) == "Non-Incentive") %>% 
   select(pin, year) %>%
   mutate(type = "Loses Incentive")
 
 # unique PINs that received an incentive class within the data time frame
-gains_incent_pins <- comm_ind_pins_ever |> 
+gains_incent_pins <- comm_ind_pins |> 
   group_by(pin) |> 
   filter(incent_prop == "Incentive" & lag(incent_prop) == "Non-Incentive") %>% 
   select(pin, year) %>%
@@ -325,10 +337,10 @@ gain_lose_pins <- rbind(gains_incent_pins, lose_incent_pins) |>
             type = first(type) )
             
 
-comm_ind_pins_ever <- comm_ind_pins_ever %>%
+comm_ind_pins <- comm_ind_pins %>%
   left_join(gain_lose_pins, by = "pin")
 
-comm_ind_pins_ever <- comm_ind_pins_ever |>
+comm_ind_pins <- comm_ind_pins |>
   mutate(status = ifelse(treatment_year < year & incent_change == "Changes Sometime",
                          "Pre Treatment", 
                          ifelse(treatment_year > year & incent_change == "Changes Sometime", 
@@ -343,6 +355,175 @@ write_csv(comm_ind_pins_ever, "./Output/comm_ind_PINs_2006to2022_timeseries.csv"
 
 # write_csv(comm_ind_pins_ever, "./Output/comm_ind_inmunis_timeseries_2006to2022.csv")
 
+
+# Create 2011-2022 timeseries --------------------------------------------
+
+timespan = 12
+
+comm_ind_pins <- comm_ind_pins_ever  %>%
+  filter(year>=2011) |>
+  group_by(pin) |>
+  arrange(desc(year)) |>
+  mutate(multi_muni = n_distinct(clean_name),
+         multimuni_flag = ifelse(sum(multi_muni) > 1, 1, 0)) |>  
+  
+  ## fill in muni names for the 700+ PINs that had multiple muni names or did not have a muni name for all years
+  ## 471 were the Harvey/Markham Amazon PINs.
+  mutate(clean_name = first(clean_name, na_rm = TRUE)) %>% 
+  
+  mutate(
+    tif_years = sum(in_tif==1),
+    years_existed = n(),  
+    incentive_years = sum(incent_prop == "Incentive"),
+    landuse_change =
+      ifelse(
+        sum(land_use == "Commercial") == timespan, "Always Commercial",
+        ifelse(sum(land_use == "Industrial") == timespan, "Always Industrial",
+               
+               # some properties had an incentive class before 2011 and then were tax exempt. Dropped from panel.
+               # created to remove PINs if they were tax exempt every year between 2011 and 2022. 
+               ifelse(sum(land_use == "Exempt") == timespan, "Drop Me",  
+                      ifelse(sum(land_use == "Exempt") > 0, "Exempt Sometime",
+                             "Changes Land Use")))),
+    incent_change = case_when(
+      incentive_years == timespan ~ "Always Incentive",
+      incentive_years == 0 ~ "Never Incentive",
+      TRUE ~ "Changes Sometime"),
+    tif_change = case_when(
+      tif_years == timespan ~ "Always TIF",
+      tif_years == 0 ~ "Never TIF",
+      TRUE ~ "Changes")
+  ) |> 
+  arrange(year) %>%
+  mutate(incent = ifelse(class >= 600 & class <= 899, 1, 0)) %>%
+  mutate(
+    gain_incent = ifelse(incent == 1 & lag(incent) == 0, 1, 0),
+    lose_incent = ifelse(incent == 0 & lag(incent) == 1, 1, 0),
+    years_exempt = sum(ifelse(land_use == "Exempt", 1, 0))
+  ) %>%
+  mutate(incent_status = 
+           case_when(
+             sum(gain_incent, na.rm=TRUE)  > 0 ~ "Gained Incentive",
+             sum(lose_incent, na.rm=TRUE)  > 0 ~ "Had Incentive", 
+             sum(incent, na.rm=TRUE) == 0 ~ "Never had Incentive",
+             sum(incent, na.rm=TRUE)== timespan  ~ "Always had  Incentive"
+           )) %>%
+  ungroup()
+
+table(comm_ind_pins$years_exempt)
+table(comm_ind_pins$landuse_change )
+
+comm_ind_pins %>% 
+  filter(year == 2022) %>% 
+  reframe(n=n(), .by = landuse_change)
+
+
+comm_ind_pins <- comm_ind_pins |> 
+  filter(
+    !is.na(clean_name) & 
+      !agency_num %in% cross_county_lines &
+      landuse_change != "Drop Me"
+  )
+
+comm_ind_pins <- comm_ind_pins |>
+  mutate(exempt_flag = ifelse(land_use == "Exempt", 1, 0)) |>
+  group_by(pin) |>
+  mutate(
+    base_year_fmv_2011 = ifelse( sum(exempt_flag) > 0, NA, fmv[year == 2011]),
+    fmv_growth_2011 = fmv/base_year_fmv_2011) |>
+  ungroup()
+
+
+
+reassessment_years <- read_csv("./Necessary_Files/Triad_reassessment_years.csv")
+
+
+reassessments_long <- reassessment_years %>% 
+  pivot_longer(cols = c(`2011`:`2022`), names_to = "year", values_to = "reassessed_year")
+
+
+
+
+comm_ind_pins <- comm_ind_pins |>
+  
+  ## set variable types 
+  mutate(across(c(class, improvement_ind, has_AB_exemp, fmv_NA_flag, in_tif), as.character))
+
+comm_ind_pins <- comm_ind_pins |>
+  mutate(year = as.character(year)) |> 
+  left_join(reassessments_long, by = c("year", "Triad")) |>
+  
+  # Change to factors; set reference levels in next steps
+  mutate(land_use = ifelse(!land_use %in% c("Commercial", "Industrial", "Land","Exempt"), "Other Land Use", land_use),
+         fmv_growth_2011 = round(fmv_growth_2011, digits = 4) ) |>
+  # percent change from previous years 
+  group_by(pin) |> 
+  arrange(year) |> 
+  mutate(fmv_pct_change = (fmv - lag(fmv))/ lag(fmv),
+         av_clerk_pct_change = (av_clerk - lag(av_clerk)) / lag(av_clerk),
+         av_mailed_pct_change = (av_mailed - lag(av_mailed)) / lag(av_mailed),
+         
+         # lagged categorical variables
+         class_lag = lag(class),
+         improvement_lag = lag(improvement_ind),
+         reassess_lag = lag(reassessed_year),
+         reassessed_taxyear = lead(reassessed_year),
+         first_incent_year = ifelse(incent_prop != lag(incent_prop), year, NA),
+         next_reassessment = ifelse(!is.na(first_incent_year) & reassessed_year == 1, "Same Year",
+                                    ifelse(!is.na(first_incent_year) & reassessed_year == 0, "Next Assessment", NA))
+  ) |>
+  ungroup() |>
+  group_by(year) |>
+  
+  # Winsorize FMV values observed. Remove extreme values from each year of observations
+  mutate(
+    base_year_fmv_2011_w = 
+      DescTools::Winsorize(base_year_fmv_2011,
+                           quantile(base_year_fmv_2011, probs = c(0.01,0.99), na.rm=TRUE)), 
+    fmv_growth_2011_w = 
+      DescTools::Winsorize(fmv_growth_2011, 
+                           quantile(fmv_growth_2011, probs = c(0.01,0.99), na.rm=TRUE))) |>
+  ungroup() |>
+  arrange(pin, year) 
+
+### How many properties LOSE their incentives? ####
+
+# unique PINs that no longer had an incentive class within the data time frame
+lose_incent_pins <- comm_ind_pins |> 
+  group_by(pin) |> 
+  filter(incent_prop == "Incentive" & lead(incent_prop) == "Non-Incentive") %>% 
+  select(pin, year) %>%
+  mutate(type = "Loses Incentive")
+
+# unique PINs that received an incentive class within the data time frame
+gains_incent_pins <- comm_ind_pins |> 
+  group_by(pin) |> 
+  filter(incent_prop == "Incentive" & lag(incent_prop) == "Non-Incentive") %>% 
+  select(pin, year) %>%
+  mutate(type = "Gains Incentive")
+
+gain_lose_pins <- rbind(gains_incent_pins, lose_incent_pins) |>
+  mutate(treatment_year = year) |>
+  select(-year) |>
+  group_by(pin) |>
+  summarize(treatment_year = first(treatment_year),
+            type = first(type) )
+
+
+comm_ind_pins <- comm_ind_pins %>%
+  left_join(gain_lose_pins, by = "pin")
+
+comm_ind_pins <- comm_ind_pins |>
+  mutate(status = ifelse(treatment_year < year & incent_change == "Changes Sometime",
+                         "Pre Treatment", 
+                         ifelse(treatment_year > year & incent_change == "Changes Sometime", 
+                                "Post Treatment", 
+                                ifelse(treatment_year == year & incent_change == "Changes Sometime", 
+                                       "Treatment year",
+                                       "Control")))         )
+
+
+write_csv(comm_ind_pins, "./Output/comm_ind_PINs_2011to2022_timeseries.csv")
 
 
 # Create 2006 PIN level Panel Data ----------------------------------------
