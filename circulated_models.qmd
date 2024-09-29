@@ -72,7 +72,7 @@ comm_ind <- read_csv("./Output/comm_ind_PINs_2011to2022_timeseries.csv") |>
 
   select(pin, class, year, clean_name, 
          treatment_year, status,
-         incent_prop, incent_indicator, base_year_fmv_2011, 
+         incent_prop, incent_indicator, gain_incent, incent_status, base_year_fmv_2011, 
          #base_year_fmv_2006, 
          #base_year_fmv_2006_w,fmv_growth_2006_w,
          land_use, major_class_code, landuse_change, incent_change, triad, 
@@ -92,13 +92,15 @@ comm_ind_models <- comm_ind |>
   mutate(land_use = relevel(land_use, ref = "Other Land Use"))
 
 name_map <- c(
-  "incent_propIncentive" = "Incentive",
+  "incent_propIncentive" = "Incentive Property",
+  "gain_incent" = "Gains Incentive",
   "land_useCommercial" = "Commercial",
   "land_useIndustrial" = "Industrial",
   "land_useLand" = "Land",
   "land_useCommercial:incent_changeChanges Sometime" = "Commercial (Changes Incentive)",
   "land_useIndustrial:incent_changeChanges Sometime" = "Industrial (Changes Incentive)",
-  "incent_propIncentive:landuse_changeChanges Land Use" = "Incentive (Changes Land Use)"
+  "incent_propIncentive:landuse_changeChanges Land Use" = "Incentive (Changes Land Use)",
+  "gain_incent:landuse_changeChanges Land Use" = "Changes Land Use and Incentive Status"
 )
 
 incent_paper_models <- list(
@@ -116,8 +118,8 @@ incent_paper_models <- list(
   
   "II" = 
     
-    feols(fmv_growth_2011_w ~ incent_prop + land_use +
-            landuse_change*incent_prop
+    feols(fmv_growth_2011_w ~ gain_incent + land_use +
+            landuse_change*gain_incent
                            | pin + year,
                            panel.id = c("pin", "year"),
                            vcov = "NW",
@@ -135,8 +137,8 @@ incent_paper_models <- list(
   
    "II" = 
     
-    feols(fmv_growth_2011_w ~ incent_prop + land_use +
-            landuse_change*incent_prop
+    feols(fmv_growth_2011_w ~ gain_incent + land_use +
+            landuse_change*gain_incent
                            | clean_name + year,
                            panel.id = c("clean_name", "year"),
                            vcov = "DK",
