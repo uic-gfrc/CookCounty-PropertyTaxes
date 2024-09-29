@@ -85,45 +85,69 @@ comm_ind <- read_csv("./Output/comm_ind_PINs_2011to2022_timeseries.csv") |>
 
 # Models
 
-```{r models_A_and_B}
+```{r incent_final_models}
+
+comm_ind_models <- comm_ind |>
+  # Compare against all other land uses
+  mutate(land_use = relevel(land_use, ref = "Other Land Use"))
+
+name_map <- c(
+  "incent_propIncentive" = "Incentive",
+  "land_useCommercial" = "Commercial",
+  "land_useIndustrial" = "Industrial",
+  "land_useLand" = "Land",
+  "land_useCommercial:incent_changeChanges Sometime" = "Commercial (Changes Incentive)",
+  "land_useIndustrial:incent_changeChanges Sometime" = "Industrial (Changes Incentive)",
+  "incent_propIncentive:landuse_changeChanges Land Use" = "Incentive (Changes Land Use)"
+)
 
 incent_paper_models <- list(
   
-  "Model A (PINs)" = feols(fmv_growth_2011_w ~ incent_prop + land_use +
+  "PIN-Level" = list(
+  
+  "I" = 
+    
+    feols(fmv_growth_2011_w ~ incent_prop + land_use +
             land_use*incent_change
                            | pin + year,
-                           panel.id = ~pin + year,
+                           panel.id = c("pin", "year"),
                            vcov = "NW",
-                           data = comm_ind),
+                           data = comm_ind_models),
   
-  "Model B (PINs)" = feols(fmv_growth_2011_w ~ incent_prop + land_use +
-            land_use*incent_prop
+  "II" = 
+    
+    feols(fmv_growth_2011_w ~ incent_prop + land_use +
+            landuse_change*incent_prop
                            | pin + year,
-                           panel.id = ~pin + year,
+                           panel.id = c("pin", "year"),
                            vcov = "NW",
-                           data = comm_ind),
+                           data = comm_ind_models)
+  ),
                            
-  "Model A (Municipalities)" = 
+  "Municipality-Level" = list(
     
-    feols(fmv_growth_2011_w ~ incent_prop + land_use +
+    "I" = feols(fmv_growth_2011_w ~ incent_prop + land_use +
             land_use*incent_change
                            | clean_name + year,
-                           panel.id = ~clean_name + year,
+                           panel.id = c("clean_name", "year"),
                            vcov = "DK",
-                           data = comm_ind),
+                           data = comm_ind_models),
   
-   "Model B (Municipalities)" = 
+   "II" = 
     
     feols(fmv_growth_2011_w ~ incent_prop + land_use +
-            land_use*incent_prop
+            landuse_change*incent_prop
                            | clean_name + year,
-                           panel.id = ~clean_name + year,
+                           panel.id = c("clean_name", "year"),
                            vcov = "DK",
-                           data = comm_ind)
+                           data = comm_ind_models)
     
-  ) 
+  )
+)
 
 modelsummary(incent_paper_models,
+             shape = "cbind",
+             coef_map = name_map,
              stars = TRUE)
 
 ```
