@@ -42,7 +42,7 @@ building <- c(201: 221, 225:236, 278:299, 301:399,401, 417:499, 501:549, 551:599
 
 vacant = c(100:199)
 
-comm_ind <- read_csv("./Output/comm_ind_PINs_2006to2022_timeseries.csv") |>
+comm_ind <- read_csv("./Output/comm_ind_PINs_2011to2022_timeseries.csv") |>
   filter(year >= 2011) |>
       
   # set reference levels
@@ -66,16 +66,15 @@ comm_ind <- read_csv("./Output/comm_ind_PINs_2006to2022_timeseries.csv") |>
   group_by(pin) %>% 
   arrange(year) %>%
   mutate(building_lag = lag(building),
-         nonvacant_lag = lag(nonvacant))
+         nonvacant_lag = lag(nonvacant)) |>
 
-# create final dataframe used in models
-
-comm_ind_df <- comm_ind |> 
+# select variables
 
   select(pin, class, year, clean_name, 
          treatment_year, status,
-         incent_prop, incent_indicator, base_year_fmv_2011, base_year_fmv_2006, 
-         base_year_fmv_2006_w,fmv_growth_2006_w,
+         incent_prop, incent_indicator, base_year_fmv_2011, 
+         #base_year_fmv_2006, 
+         #base_year_fmv_2006_w,fmv_growth_2006_w,
          land_use, major_class_code, landuse_change, incent_change, triad, 
          reassess_lag, reassessed_year, building, building_lag, nonvacant, 
          nonvacant_lag, fmv_growth_2011_w, base_year_fmv_2011_w,
@@ -83,67 +82,68 @@ comm_ind_df <- comm_ind |>
 
 # Uses sandwich to calculate HC3 SEs
 
-robust_vcov <- function(model) {
-  if (inherits(model, "lm")) {
-    vcovHC(model, type = "HC3")
-  } else if (inherits(model, "feols")) {
-    vcovHC(model, type = "HC3")
-  } else {
-    NULL
-  }
-}
+# robust_vcov <- function(model) {
+#   if (inherits(model, "lm")) {
+#     vcovHC(model, type = "HC3")
+#   } else if (inherits(model, "feols")) {
+#     vcovHC(model, type = "HC3")
+#   } else {
+#     NULL
+#   }
+# }
 
 # Create functions to pass through modelsummary for logit models.
 # Converts logged-odds into probabilities for both coefficients AND
 # standard errors
 
-logit_to_prob <- function(beta) {
-  prob <- exp(beta) / (1 + exp(beta))
-  return(prob)
-}
-
-logit_se_to_prob_se <- function(beta, se) {
-  # Calculate the derivative of the logit function
-  derivative <- exp(beta) / (1 + exp(beta))^2
-  # Transform the standard error
-  se_prob <- se * abs(derivative)
-  return(se_prob)
-}
-
-# More probability conversion stuff
-transform_model <- function(model) {
- # Extract pertinent output
-  coefs <- coef(summary(model))
-  betas <- coefs[, "Estimate"]
-  ses <- coefs[, "Std. Error"]
-    # Transform the coefficients and standard errors
-  prob_betas <- logit_to_prob(betas)
-  prob_ses <- mapply(logit_se_to_prob_se, betas, ses)
-  
-  # Return a list of transformed values
-  list(estimate = prob_betas, std.error = prob_ses)
-}
-
-transform_feglm_model <- function(model) {
-  # Extract coefficients
-  betas <- coef(model)
-  
-  # Extract standard errors
-  ses <- sqrt(diag(vcov(model)))
-  
-  # Transform the coefficients and standard errors
-  prob_betas <- logit_to_prob(betas)
-  prob_ses <- mapply(logit_se_to_prob_se, betas, ses)
-  
-  # Return the transformed values
-  list(estimate = prob_betas, std.error = prob_ses)
-}
+# logit_to_prob <- function(beta) {
+#   prob <- exp(beta) / (1 + exp(beta))
+#   return(prob)
+# }
+# 
+# logit_se_to_prob_se <- function(beta, se) {
+#   # Calculate the derivative of the logit function
+#   derivative <- exp(beta) / (1 + exp(beta))^2
+#   # Transform the standard error
+#   se_prob <- se * abs(derivative)
+#   return(se_prob)
+# }
+# 
+# # More probability conversion stuff
+# transform_model <- function(model) {
+#  # Extract pertinent output
+#   coefs <- coef(summary(model))
+#   betas <- coefs[, "Estimate"]
+#   ses <- coefs[, "Std. Error"]
+#     # Transform the coefficients and standard errors
+#   prob_betas <- logit_to_prob(betas)
+#   prob_ses <- mapply(logit_se_to_prob_se, betas, ses)
+#   
+#   # Return a list of transformed values
+#   list(estimate = prob_betas, std.error = prob_ses)
+# }
+# 
+# transform_feglm_model <- function(model) {
+#   # Extract coefficients
+#   betas <- coef(model)
+#   
+#   # Extract standard errors
+#   ses <- sqrt(diag(vcov(model)))
+#   
+#   # Transform the coefficients and standard errors
+#   prob_betas <- logit_to_prob(betas)
+#   prob_ses <- mapply(logit_se_to_prob_se, betas, ses)
+#   
+#   # Return the transformed values
+#   list(estimate = prob_betas, std.error = prob_ses)
+# }
 
 
 ```
 
 > Check that vcovHC() works with "HC3" as a robust standard error type. I didn't think hc3 was an option in that package but maybe I'm mixing the packages up. 
 
+> Never mind: we're using NW SEs
 
 
 ```{r}
@@ -155,26 +155,6 @@ transform_feglm_model <- function(model) {
 table(comm_ind$first_incent_year)
 table(comm_ind$next_reassessment)
 table(comm_ind$year, comm_ind$next_reassessment)
-```
-
-
-```{r}
-
-comm_ind_df <- comm_ind |> 
-
-  select(pin, class, year, clean_name, 
-         treatment_year, status,
-         incent_prop, incent_indicator, base_year_fmv_2011, base_year_fmv_2006, 
-         base_year_fmv_2006_w,fmv_growth_2006_w,
-         land_use, major_class_code, landuse_change, incent_change, triad, 
-         reassess_lag, reassessed_year, building, nonvacant,
-         fmv_growth_2011_w, base_year_fmv_2011_w, first_incent_year,
-         in_tif)
-
-# clear the object clutter
-
-rm(comm_ind)
-
 ```
 
 
