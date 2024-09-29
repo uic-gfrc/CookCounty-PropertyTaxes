@@ -80,66 +80,55 @@ comm_ind <- read_csv("./Output/comm_ind_PINs_2011to2022_timeseries.csv") |>
          nonvacant_lag, fmv_growth_2011_w, base_year_fmv_2011_w,
          first_incent_year, in_tif)
 
-# Uses sandwich to calculate HC3 SEs
-
-# robust_vcov <- function(model) {
-#   if (inherits(model, "lm")) {
-#     vcovHC(model, type = "HC3")
-#   } else if (inherits(model, "feols")) {
-#     vcovHC(model, type = "HC3")
-#   } else {
-#     NULL
-#   }
-# }
-
-# Create functions to pass through modelsummary for logit models.
-# Converts logged-odds into probabilities for both coefficients AND
-# standard errors
-
-# logit_to_prob <- function(beta) {
-#   prob <- exp(beta) / (1 + exp(beta))
-#   return(prob)
-# }
-# 
-# logit_se_to_prob_se <- function(beta, se) {
-#   # Calculate the derivative of the logit function
-#   derivative <- exp(beta) / (1 + exp(beta))^2
-#   # Transform the standard error
-#   se_prob <- se * abs(derivative)
-#   return(se_prob)
-# }
-# 
-# # More probability conversion stuff
-# transform_model <- function(model) {
-#  # Extract pertinent output
-#   coefs <- coef(summary(model))
-#   betas <- coefs[, "Estimate"]
-#   ses <- coefs[, "Std. Error"]
-#     # Transform the coefficients and standard errors
-#   prob_betas <- logit_to_prob(betas)
-#   prob_ses <- mapply(logit_se_to_prob_se, betas, ses)
-#   
-#   # Return a list of transformed values
-#   list(estimate = prob_betas, std.error = prob_ses)
-# }
-# 
-# transform_feglm_model <- function(model) {
-#   # Extract coefficients
-#   betas <- coef(model)
-#   
-#   # Extract standard errors
-#   ses <- sqrt(diag(vcov(model)))
-#   
-#   # Transform the coefficients and standard errors
-#   prob_betas <- logit_to_prob(betas)
-#   prob_ses <- mapply(logit_se_to_prob_se, betas, ses)
-#   
-#   # Return the transformed values
-#   list(estimate = prob_betas, std.error = prob_ses)
-# }
-
 
 ```
+
+# Models
+
+```{r models_A_and_B}
+
+incent_paper_models <- list(
+  
+  "Model A (PINs)" = feols(fmv_growth_2011_w ~ incent_prop + land_use +
+            land_use*incent_change
+                           | pin + year,
+                           panel.id = ~pin + year,
+                           vcov = "NW",
+                           data = comm_ind),
+  
+  "Model B (PINs)" = feols(fmv_growth_2011_w ~ incent_prop + land_use +
+            land_use*incent_prop
+                           | pin + year,
+                           panel.id = ~pin + year,
+                           vcov = "NW",
+                           data = comm_ind),
+                           
+  "Model A (Municipalities)" = 
+    
+    feols(fmv_growth_2011_w ~ incent_prop + land_use +
+            land_use*incent_change
+                           | clean_name + year,
+                           panel.id = ~clean_name + year,
+                           vcov = "DK",
+                           data = comm_ind),
+  
+   "Model B (Municipalities)" = 
+    
+    feols(fmv_growth_2011_w ~ incent_prop + land_use +
+            land_use*incent_prop
+                           | clean_name + year,
+                           panel.id = ~clean_name + year,
+                           vcov = "DK",
+                           data = comm_ind)
+    
+  ) 
+
+modelsummary(incent_paper_models,
+             stars = TRUE)
+
+```
+
+# Scratwork to Delete w/ Alea
 
 > Check that vcovHC() works with "HC3" as a robust standard error type. I didn't think hc3 was an option in that package but maybe I'm mixing the packages up. 
 
@@ -178,11 +167,11 @@ The treatment is having the class of property go from a non-incentive class to a
 - some kind of difference-in-differences design   
 
 
-# Logit Models
+## Logit Models
 
-## Normal Logit Models
+### Normal Logit Models
 
-### Transformed Logit Model:
+#### Transformed Logit Model:
 ```{r}
 #| label: tbl-logitincentDV-noFE
 #| tbl-cap-location: margin
@@ -251,7 +240,7 @@ modelsummary(#logitted_models_1,
 
 ```
 
-##  Conditional Logit Models
+###  Conditional Logit Models
 
 
 Only includes PINs that that change incent_prop status during the time frame. Any PIN that was never an incentive or always an incentive property are dropped from these models.
@@ -340,40 +329,40 @@ models <- list(
                   | pin + year, 
                   panel.id = c("pin", "year"),
                   vcov = "newey_west",
-                  data = comm_ind_df %>% filter(year>2011)
+                  data = comm_ind %>% filter(year>2011)
         ),
        
         "Pin-Year" = feols(fmv_growth_2011_w ~ incent_prop*land_use  
                   | pin + year, 
                   panel.id = c("pin", "year"),
                   vcov = "newey_west",
-                  data = comm_ind_df %>% filter(year>2011)
+                  data = comm_ind %>% filter(year>2011)
         ),
         
         "Pin-Year" = feols(fmv_growth_2011_w ~ incent_prop*land_use + reassessed_year*incent_prop 
                                  | pin + year, 
                                  panel.id = c("pin", "year"),
                                  vcov = "newey_west",
-                                 data = comm_ind_df %>% filter(year>2011),
+                                 data = comm_ind %>% filter(year>2011),
         ),
        
                "Muni-Year" = feols(fmv_growth_2011_w ~ incent_prop | clean_name + year,
                                    panel.id = c("pin", "year"),
                             vcov = "DK",
-                            data = comm_ind_df %>% filter(year>2011),
+                            data = comm_ind %>% filter(year>2011),
         ),
        
         "Muni-Year" = feols(fmv_growth_2011_w ~ incent_prop*land_use | clean_name + year,
                                                              panel.id = c("pin", "year"),
 
                             vcov = "DK",
-                            data = comm_ind_df %>% filter(year>2011),
+                            data = comm_ind %>% filter(year>2011),
         ),
         "Muni-Year" = feols(fmv_growth_2011_w ~ incent_prop*land_use + incent_prop*reassessed_year| clean_name + year,
                             vcov = "DK",
                                                              panel.id = c("pin", "year"),
 
-                            data = comm_ind_df %>% filter(year>2011),
+                            data = comm_ind %>% filter(year>2011),
                             
                             
         )                       
@@ -691,7 +680,7 @@ modelsummary(muni_fe_new_vars_mods,
 
 > DV for all non-logit regressions: FMV growth since 2011
 
-# Pooled OLS - With and Without Muni and Year Controls
+## Pooled OLS - With and Without Muni and Year Controls
 
 ```{r}
 #| eval: false
@@ -718,7 +707,7 @@ modelsummary(ols_models,
 
 ```
 
-## OLS w/ Dummy Variables vs. FEs
+### OLS w/ Dummy Variables vs. FEs
 
 In a nutshell, we need to eliminate time-invariate features of PINs, which requires PIN fixed effects or PIN dummy variables. PIN dummies are prohibitively computationally expensive, requiring a 3WFE model instead of dummy variables.
 
@@ -788,8 +777,7 @@ modelsummary(ols_models,
 
 ```
 
-
-# graphs 
+I'm not sure why this document has graphs.
 
 ```{r dataexploration, eval=FALSE}
 comm_ind_df |>
