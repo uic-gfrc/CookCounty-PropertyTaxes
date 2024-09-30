@@ -30,6 +30,8 @@ library(modelsummary)
 library(tinytable)
 library(sandwich)
 library(clubSandwich)
+library(tinytable)
+
 ```
 
 
@@ -71,14 +73,15 @@ comm_ind <- read_csv("./Output/comm_ind_PINs_2011to2022_timeseries.csv") |>
 # select variables
 
   select(pin, class, year, clean_name, 
-         treatment_year, status,
-         incent_prop, incent_indicator, incent_prop, incent_status, base_year_fmv_2011, 
+         #treatment_year, status,
+         #incent_indicator, 
+         incent_prop, incent_status, base_year_fmv_2011, 
          #base_year_fmv_2006, 
          #base_year_fmv_2006_w,fmv_growth_2006_w,
          land_use, major_class_code, landuse_change, incent_change, triad, 
          reassess_lag, reassessed_year, building, building_lag, nonvacant, 
          nonvacant_lag, fmv_growth_2011_w, base_year_fmv_2011_w,
-         first_incent_year, in_tif)
+         incent_change_year, in_tif)
 
 
 ```
@@ -86,16 +89,34 @@ comm_ind <- read_csv("./Output/comm_ind_PINs_2011to2022_timeseries.csv") |>
 # Models
 
 ```{r incent_final_models}
+table(comm_ind$land_use)
+table(comm_ind$incent_status)
+table(comm_ind$incent_prop)
+table(comm_ind$landuse_change)
 
 name_map <- c(
   "incent_propIncentive" = "Incentive Property",
   "gain_incent" = "Gains Incentive",
   "land_useCommercial" = "Commercial",
   "land_useIndustrial" = "Industrial",
+  "land_useOther Land Use" = "Other Land Uses",
   "land_useLand" = "Land",
+  
+  "land_useCommercial:incent_statusGained Incentive" = "Commercial (Gains Incentive)",
+  "land_useCommercial:incent_statusLost Incentive" = "Commercial (Lost Incentive)",
+  "land_useCommercial:incent_statusGains & Loses Incent" = "Commercial (Multi Incent Change)",
+  
+  "land_useIndustrial:incent_statusGained Incentive" = "Industrial (Gains Incentive)",
+  "land_useIndustrial:incent_statusLost Incentive" = "Industrial (Lost Incentive)",
+  "land_useIndustrial:incent_statusGains & Loses Incent" = "Industrial (Multi Incent Change)",
+  
   "land_useCommercial:incent_changeChanges Sometime" = "Commercial (Changes Incentive)",
   "land_useIndustrial:incent_changeChanges Sometime" = "Industrial (Changes Incentive)",
-  "incent_propIncentive:landuse_changeChanges Land Use" = "Incentive (Changes Land Use)",
+ 
+     "incent_propIncentive:landuse_changeAlwaysIndustrial" = "Incentive (Always Industrial)",
+
+   "incent_propIncentive:landuse_changeChanges Land Use" = "Incentive (Changes Land Use)",
+  
   "gain_incent:landuse_changeChanges Land Use" = "Changes Land Use and Gains Incentive"
 )
 
@@ -103,7 +124,7 @@ gof_format_fun <- function(x) format(round(x, 3), big.mark=",")
 
 
 
-gof_map <- 
+# gof_map <- 
 
 incent_paper_models <- list(
   
@@ -112,7 +133,7 @@ incent_paper_models <- list(
   "I" = 
     
     feols(fmv_growth_2011_w ~ incent_prop + land_use +
-            land_use*incent_change
+            land_use*incent_prop
                            | pin + year,
                            panel.id = c("pin", "year"),
                            vcov = "NW",
@@ -121,7 +142,7 @@ incent_paper_models <- list(
   "II" = 
     
     feols(fmv_growth_2011_w ~ incent_prop + land_use +
-            landuse_change*incent_prop
+            landuse_change*incent_status
                            | pin + year,
                            panel.id = c("pin", "year"),
                            vcov = "NW",
@@ -130,8 +151,9 @@ incent_paper_models <- list(
                            
   "Municipality-Level" = list(
     
+    # model wouldn't let me do land_use*incent_status so changed it back to incent_prop
     "I" = feols(fmv_growth_2011_w ~ incent_prop + land_use +
-            land_use*incent_change
+            land_use*incent_prop
                            | clean_name + year,
                            panel.id = c("clean_name", "year"),
                            vcov = "DK",
@@ -140,7 +162,7 @@ incent_paper_models <- list(
    "II" = 
     
     feols(fmv_growth_2011_w ~ incent_prop + land_use +
-            landuse_change*incent_prop
+            landuse_change*incent_status
                            | clean_name + year,
                            panel.id = c("clean_name", "year"),
                            vcov = "DK",
@@ -151,12 +173,13 @@ incent_paper_models <- list(
 
 modelsummary(incent_paper_models,
              shape = "cbind",
-           #  coef_map = name_map,
-             stars = TRUE)
+             #coef_map = name_map,
+             stars = TRUE#, output = "flextable"
+             )
 
 ```
 
-# Scratwork to Delete w/ Alea
+# Scrathwork to Delete w/ Alea
 
 > Check that vcovHC() works with "HC3" as a robust standard error type. I didn't think hc3 was an option in that package but maybe I'm mixing the packages up. 
 
@@ -171,12 +194,12 @@ modelsummary(incent_paper_models,
 
 table(comm_ind$first_incent_year)
 table(comm_ind$next_reassessment)
-table(comm_ind$year, comm_ind$next_reassessment)
 ```
 
 
 
 ```{r}
+comm_ind_df <- comm_ind
 comm_ind_df %>% 
   filter(year == 2022) %>% 
   group_by(building) %>% 
