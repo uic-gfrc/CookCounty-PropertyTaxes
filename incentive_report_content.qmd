@@ -1851,6 +1851,7 @@ df_2011_bal %>%
 
 
 ```
+
 ```{r}
 df_2011_bal %>% 
   select(year, landuse_change, incent_status, fmv_group_growth, group_pin_count) %>% 
@@ -1867,12 +1868,12 @@ df_2011_bal <- comm_ind_pins %>%
   group_by(pin) %>% mutate(years_existed = n()) |>
   filter(years_existed == year_count ) %>%
   ungroup() %>%
-  group_by(year, land_use, incent_status) |>
+  group_by(year, landuse_change, incent_status) |>
   summarize(
     group_pin_count = n(),
     group_year_fmv = sum(fmv, na.rm=TRUE)) |> 
   ungroup() |>
-  group_by(land_use, incent_status) %>%
+  group_by(landuse_change, incent_status) %>%
   mutate(
     base_year_fmv = group_year_fmv[year == min(year)],
     base_year_n = group_pin_count[year == min(year)],
@@ -1880,7 +1881,7 @@ df_2011_bal <- comm_ind_pins %>%
     fmv_group_growth = (group_year_fmv / base_year_fmv) -1) 
 
 df_2011_bal %>% 
-  select(year, land_use, incent_status, fmv_group_growth, group_pin_count) %>% 
+  select(year, landuse_change, incent_status, fmv_group_growth, group_pin_count) %>% 
   filter(year == 2022) %>%   
   select(-year)
 
@@ -1911,8 +1912,6 @@ df_2011 <- comm_ind_pins %>%
 df_2011 %>% 
   select(year, landuse_change, incent_status, fmv_group_growth, n_group_growth) %>% 
   filter(year == 2022) %>% select(-year)
-
-df_2011 %>% filter(is.na(incent_status))
 ```
 
 ```{r}
@@ -1934,13 +1933,12 @@ df_2011 %>%
   geom_line(aes(x=year, y=fmv_group_growth, group = incent_status, color = incent_status)) + #scale_y_continuous(limits = c(0.8,2.5)) +
   labs( title = "Commercial v Industrial FMV Growth") +
   theme_bw()  +
-  facet_wrap(~land_use)
+  facet_wrap(~landuse_change)
 
 df_2011_bal %>%
-  filter(land_use == "Commercial" | land_use == "Industrial") %>%
   ggplot() + geom_line(aes(x=year, y=fmv_group_growth, group = incent_status, color = incent_status)) +# scale_y_continuous(limits = c(0.8,2.5)) +
   labs( title = "Commercial v Industrial FMV Growth-Balanced PINs",) +
-  theme_bw()  +  facet_wrap(~land_use)
+  theme_bw()  +  facet_wrap(~landuse_change)
 
 ```
 ```{r}
@@ -1956,8 +1954,6 @@ df_2011_v2 <- comm_ind_pins %>%
   group_by(landuse_change, incent_change, ) |>
   mutate(            
     base_year_fmv = group_year_fmv[year == min(year)],
-    base_year_n = n[year == min(year)],
-    n_group_growth = group_pin_count/base_year_n -1,
     fmv_group_growth = (group_year_fmv / base_year_fmv) -1) 
 
 
@@ -1974,8 +1970,6 @@ df_2011_v2_bal <- comm_ind_pins %>%
   group_by(landuse_change, incent_change, ) |>
   mutate(            
     base_year_fmv = group_year_fmv[year == min(year)],
-    base_year_n = n[year == min(year)],
-    n_group_growth = group_pin_count/base_year_n -1,
     fmv_group_growth = (group_year_fmv / base_year_fmv) -1) 
 
 df_2011_v2 %>% 
@@ -2038,8 +2032,6 @@ df_2011_bal <- comm_ind_pins %>%
   group_by(landuse_change, incent_status ) |>
   mutate(            
     base_year_fmv = group_year_fmv[year == min(year)],
-    base_year_n = n[year == min(year)],
-    n_group_growth = group_pin_count/base_year_n -1,
     fmv_group_growth = (group_year_fmv / base_year_fmv) -1) 
 
 
@@ -2057,8 +2049,6 @@ df_2011 <- comm_ind_pins %>%
   group_by(landuse_change, incent_status ) |>
   mutate(            
     base_year_fmv = group_year_fmv[year == min(year)],
-    base_year_n = n[year == min(year)],
-    n_group_growth = group_pin_count/base_year_n -1,
     fmv_group_growth = (group_year_fmv / base_year_fmv) -1) 
 
 df_2011 %>%  
@@ -2129,6 +2119,6 @@ tablelist <- list(
 )
 
 
-#writexl::write_xlsx(tablelist, "Output/calculations_report_content_20240927.xlsx")
+writexl::write_xlsx(tablelist, "Output/calculations_report_content_20240927.xlsx")
 ```
 
