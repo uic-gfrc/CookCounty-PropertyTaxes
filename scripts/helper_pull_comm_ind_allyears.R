@@ -91,8 +91,7 @@ tax_codes_muni <- tax_codes_muni %>%
   left_join(nicknames, by = c("agency_num" = "agency_number"))
 
 
-# 119k distinct pins in COOK were a commercial or industrial property for at least 1 year
-# 119,030 distinct PINs in Cook Municipalities were comm or ind. property for at least 1 year
+# 119,030 distinct PINs in  Municipalities were comm or ind. property for at least 1 year
 distinct_pins <- muni_pins |>
   select(pin) |>
   distinct(pin)
@@ -133,7 +132,7 @@ tif_distrib <- DBI::dbGetQuery(
   )
 
 
-# Create additional variables ---------------------------------------------
+## Add additional variables ---------------------------------------------
 
 cross_county_lines <- c("030440000", "030585000", "030890000", "030320000", "031280000",
                         "030080000", "030560000", "031120000", "030280000", "030340000",
@@ -156,7 +155,7 @@ industrial_classes <- c(480:489,493,
 comm_ind_pins_ever <- comm_ind_pins_ever %>%
   rename(land_use = Alea_cat) |>
   arrange(pin) %>%
-  left_join(tax_codes_muni, by = c("year", "tax_code_num")) %>%
+  left_join(tax_codes_muni, by = c("year", "tax_code_num")) %>%  # has muni clean_name  in it
   left_join(tif_distrib) %>%
   mutate(
     has_AB_exemp = as.character(ifelse(exe_abate > 0, 1, 0)),
@@ -175,7 +174,7 @@ comm_ind_pins_ever <- comm_ind_pins_ever %>%
       TRUE ~ as.character(class_group))
 )
 
-
+#  Create 2006 to 2011 Timeseries ############################
 timespan = 17
 
 comm_ind_pins <- comm_ind_pins_ever  %>%
@@ -247,9 +246,9 @@ comm_ind_pins <- comm_ind_pins |>
   group_by(pin) |>
   mutate(
     base_year_fmv_2006 = ifelse( sum(exempt_flag) > 0, NA, fmv[year == 2006]),
-    fmv_growth_2006 = fmv/base_year_fmv_2006,
+    fmv_growth_2006 = (fmv/base_year_fmv_2006) - 1,
     base_year_fmv_2011 = ifelse( sum(exempt_flag) > 0, NA, fmv[year == 2011]),
-    fmv_growth_2011 = fmv/base_year_fmv_2011) |>
+    fmv_growth_2011 = (fmv/base_year_fmv_2011)-1) |>
   ungroup()
 
 
@@ -273,7 +272,7 @@ comm_ind_pins <- comm_ind_pins |>
   left_join(reassessments_long, by = c("year", "Triad")) |>
   
   # Change to factors; set reference levels in next steps
-  mutate(land_use = ifelse(!land_use %in% c("Commercial", "Industrial", "Land"), "Other Land Use", land_use),
+  mutate(land_use = ifelse(!land_use %in% c("Commercial", "Industrial", "Land", "Exempt"), "Other Land Use", land_use),
          fmv_growth_2006 = round(fmv_growth_2006, digits = 4),
          fmv_growth_2011 = round(fmv_growth_2011, digits = 4) ) |>
   # percent change from previous years 
@@ -283,14 +282,14 @@ comm_ind_pins <- comm_ind_pins |>
          av_clerk_pct_change = (av_clerk - lag(av_clerk)) / lag(av_clerk),
          av_mailed_pct_change = (av_mailed - lag(av_mailed)) / lag(av_mailed),
          
-         # lagged categorical variables
+        ## lagged categorical variables #
          class_lag = lag(class),
          improvement_lag = lag(improvement_ind),
          reassess_lag = lag(reassessed_year),
          reassessed_taxyear = lead(reassessed_year),
-         first_incent_year = ifelse(incent_prop != lag(incent_prop), year, NA),
-         next_reassessment = ifelse(!is.na(first_incent_year) & reassessed_year == 1, "Same Year",
-                                    ifelse(!is.na(first_incent_year) & reassessed_year == 0, "Next Assessment", NA))
+         incent_change_year = ifelse(incent_prop != lag(incent_prop), year, NA),
+         next_reassessment = ifelse(!is.na(incent_change_year) & reassessed_year == 1, "Same Year",
+                                    ifelse(!is.na(incent_change_year) & reassessed_year == 0, "Next Assessment", NA))
   ) |>
   ungroup() |>
   group_by(year) |>
@@ -331,10 +330,11 @@ gains_incent_pins <- comm_ind_pins |>
 
 gain_lose_pins <- rbind(gains_incent_pins, lose_incent_pins) |>
   mutate(treatment_year = year) |>
-  select(-year) |>
   group_by(pin) |>
   summarize(treatment_year = first(treatment_year),
-            type = first(type) )
+            type = first(type) )  |>  
+  select(-year)
+
             
 
 comm_ind_pins <- comm_ind_pins %>%
@@ -385,7 +385,9 @@ comm_ind_pins <- comm_ind_pins_ever  %>%
                ifelse(sum(land_use == "Exempt") == timespan, "Drop Me",  
                       ifelse(sum(land_use == "Exempt") > 0, "Exempt Sometime",
                              "Changes Land Use")))),
-    incent_change = case_when(
+    
+    # incent_change = original variable used before incent_status! 
+     incent_change = case_when(
       incentive_years == timespan ~ "Always Incentive",
       incentive_years == 0 ~ "Never Incentive",
       TRUE ~ "Changes Sometime"),
@@ -395,20 +397,25 @@ comm_ind_pins <- comm_ind_pins_ever  %>%
       TRUE ~ "Changes")
   ) |> 
   arrange(year) %>%
-  mutate(incent = ifelse(class >= 600 & class <= 899, 1, 0)) %>%
+  mutate(incent = ifelse(class >= 600 & class <= 899, 1, 0),
+         exempt = ifelse(class == 0, 1, 0)) %>%
   mutate(
     gain_incent = ifelse(incent == 1 & lag(incent) == 0, 1, 0),
     lose_incent = ifelse(incent == 0 & lag(incent) == 1, 1, 0),
-    became_exempt = ifelse(exempt == 1 & lag(incent) == 1, 1,0),
+    became_exempt = ifelse(exempt == 1 & lag(incent) == 1, 1, 0),
     became_taxed = ifelse(exempt == 0 & lag(incent) == 1, 1, 0),
+    leave_tif = ifelse(in_tif == 0 & lag(in_tif) == 1, 1, 0),
+    enter_tif = ifelse(in_tif == 1 & lag(in_tif) == 0, 1, 0),
+    
     years_exempt = sum(ifelse(land_use == "Exempt", 1, 0))
   ) %>%
   mutate(incent_status = 
            case_when(
+             sum(gain_incent, na.rm=TRUE) > 0 & sum(lose_incent, na.rm=TRUE) > 0 ~ "Gains & Loses Incent",
              sum(gain_incent, na.rm=TRUE)  > 0 ~ "Gained Incentive",
-             sum(lose_incent, na.rm=TRUE)  > 0 ~ "Had Incentive", 
+             sum(lose_incent, na.rm=TRUE)  > 0 ~ "Lost Incentive", 
              sum(incent, na.rm=TRUE) == 0 ~ "Never had Incentive",
-             sum(incent, na.rm=TRUE)== timespan  ~ "Always had  Incentive"
+             sum(incent, na.rm=TRUE)== timespan  ~ "Always had Incentive"
            )) %>%
   ungroup()
 
@@ -432,7 +439,7 @@ comm_ind_pins <- comm_ind_pins |>
   group_by(pin) |>
   mutate(
     base_year_fmv_2011 = ifelse( sum(exempt_flag) > 0, NA, fmv[year == 2011]),
-    fmv_growth_2011 = fmv/base_year_fmv_2011) |>
+    fmv_growth_2011 = (fmv/base_year_fmv_2011)-1) |>
   ungroup()
 
 
@@ -470,9 +477,11 @@ comm_ind_pins <- comm_ind_pins |>
          improvement_lag = lag(improvement_ind),
          reassess_lag = lag(reassessed_year),
          reassessed_taxyear = lead(reassessed_year),
-         first_incent_year = ifelse(incent_prop != lag(incent_prop), year, NA),
-         next_reassessment = ifelse(!is.na(first_incent_year) & reassessed_year == 1, "Same Year",
-                                    ifelse(!is.na(first_incent_year) & reassessed_year == 0, "Next Assessment", NA))
+         
+         # can be any incentive change, gain or lost, based on current coding
+         incent_change_year = ifelse(incent_prop != lag(incent_prop), year, NA),
+         next_reassessment = ifelse(!is.na(incent_change_year) & reassessed_year == 1, "Same Year",
+                                    ifelse(!is.na(incent_change_year) & reassessed_year == 0, "Next Assessment", NA))
   ) |>
   ungroup() |>
   group_by(year) |>
@@ -491,24 +500,30 @@ comm_ind_pins <- comm_ind_pins |>
 ### How many properties LOSE their incentives? ####
 
 # unique PINs that no longer had an incentive class within the data time frame
+# 1024 lose based on 2022 data
 lose_incent_pins <- comm_ind_pins |> 
   group_by(pin) |> 
   filter(incent_prop == "Incentive" & lead(incent_prop) == "Non-Incentive") %>% 
   select(pin, year) %>%
-  mutate(type = "Loses Incentive")
+  mutate(type = "Loses Incentive") |>
+  mutate(treatment_year = year)
+
 
 # unique PINs that received an incentive class within the data time frame
+# 3138 gain based on 2022 data
 gains_incent_pins <- comm_ind_pins |> 
   group_by(pin) |> 
   filter(incent_prop == "Incentive" & lag(incent_prop) == "Non-Incentive") %>% 
   select(pin, year) %>%
-  mutate(type = "Gains Incentive")
+  mutate(type = "Gains Incentive") |>
+  mutate(treatment_year = year)
 
 gain_lose_pins <- rbind(gains_incent_pins, lose_incent_pins) |>
   mutate(treatment_year = year) |>
   select(-year) |>
   group_by(pin) |>
   summarize(treatment_year = first(treatment_year),
+            times_changed = n(),
             type = first(type) )
 
 
@@ -516,13 +531,11 @@ comm_ind_pins <- comm_ind_pins %>%
   left_join(gain_lose_pins, by = "pin")
 
 comm_ind_pins <- comm_ind_pins |>
-  mutate(status = ifelse(treatment_year < year & incent_change == "Changes Sometime",
+  mutate(status = ifelse(treatment_year < year & incent_status == "Gains Incent",
                          "Pre Treatment", 
-                         ifelse(treatment_year > year & incent_change == "Changes Sometime", 
+                         ifelse(treatment_year >= year & incent_change == "Gains Incent", 
                                 "Post Treatment", 
-                                ifelse(treatment_year == year & incent_change == "Changes Sometime", 
-                                       "Treatment year",
-                                       "Control")))         )
+                                       "Control"))         )
 
 
 write_csv(comm_ind_pins, "./Output/comm_ind_PINs_2011to2022_timeseries.csv")
