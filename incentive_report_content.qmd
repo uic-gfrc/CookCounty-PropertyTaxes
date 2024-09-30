@@ -1620,18 +1620,22 @@ scale_fill_manual(
 ```{r}
 comm_ind_pins <- read_csv("./Output/comm_ind_PINs_2011to2022_timeseries.csv")
 
- 
+comm_ind_pins <- comm_ind_pins %>%
+    mutate(incent_change = ifelse(years_existed < year_count, "Excluded", incent_change),
+           incent_status = ifelse(years_existed < year_count, "Excluded", incent_status),
+           incent_status = ifelse(incent_status == "Gains & Loses Incent", "Excluded", incent_status)
+           landuse_change = ifelse(years_existed < year_count, "Excluded", landuse_change))
+
 ```
 
 ```{r}
 df_2011_incentchange <- comm_ind_pins|>
-  filter(year >= 2011) |>
-  group_by(year, incent_change) |>
+group_by(year, incent_change) |>
   summarize(
     group_pin_count = n(),
     group_year_fmv = sum(fmv, na.rm=TRUE),
- ) |> ungroup() |>
-group_by( incent_change) %>%
+  ) |> ungroup() |>
+  group_by( incent_change) %>%
   mutate(
     base_year_fmv = group_year_fmv[year == min(year)],
     
@@ -1641,8 +1645,9 @@ group_by( incent_change) %>%
 
 
 
-df_2011_incentchange %>% select(year, incent_change, fmv_group_growth, base_year_fmv, group_year_fmv, everything()) %>% 
-filter(year == 2022) %>% select(-year)
+df_2011_incentchange %>% 
+  filter(year == 2022)
+  select(incent_change, fmv_group_growth, base_year_fmv, group_year_fmv, everything(), -year)
 ```
 
 The file ~~`comm_ind_inmunis_timeseries_2006to2022.csv`~~ `comm_ind_PINs_2006to2022_timeseries.csv` contains all PINs that had an incentive property class for at least 1 year. It includes all observations for a property during the years that it existed, even if it is not an incentive class property in that year.
@@ -1658,9 +1663,24 @@ year_count <- 12
 
 comm_ind_pins %>%
   ungroup() %>% 
-  filter(year == 2022 & years_existed == 12) %>%
+  filter(year == 2022) %>%
   group_by(year, incent_status) %>%
   summarize(PinCount = n())
+
+comm_ind_pins %>%
+  ungroup() %>% 
+  group_by(year, incent_status) |>
+  summarize(
+    group_pin_count = n(),
+    group_year_fmv = sum(fmv, na.rm=TRUE),
+ ) |> 
+  ungroup() |>
+group_by( incent_status) %>%
+  mutate(
+    base_year_fmv = group_year_fmv[year == min(year)],
+    fmv_group_growth = (group_year_fmv / base_year_fmv) -1) |> filter(year == 2022)  %>%
+  select(incent_status, fmv_group_growth, group_pin_count, everything(), -year)
+
 ```
 
 
@@ -1675,7 +1695,7 @@ comm_ind_pins %>%
             "Loses Incent" = sum(lose_incent, na.rm=TRUE),
             "PINs with Incent. Class." = sum(incent_prop=="Incentive"),
             "PINs in Sample" = n(),
-            becameexempt = sum())
+            "Became Exempt" = sum(became_exempt, na.rm=TRUE))
 
 ```
 
@@ -1762,20 +1782,19 @@ df_2011_bal %>%
 
 ```
 
-ones with missing incent_status appear to have not existed for many years.
 
-```{r}
-comm_ind_pins %>% ungroup() %>% filter(is.na(incent_status)) %>% arrange(pin, year)
+```{r include=FALSE, eval=FALSE}
+
+#  ones with missing incent_status appear to have not existed for many years.
+
+comm_ind_pins %>%   mutate(incent_status = ifelse(years_existed < year_count, "Excluded", incent_status)) %>%
+ungroup() %>% filter(is.na(incent_status)) %>% arrange(pin, year)
 
 ```
 
 
 ```{r}
 comm_ind_pins %>%
-  filter(year >= 2011) %>%
-  group_by(pin) %>% mutate(years_existed = n()) |>
-  filter(years_existed == year_count ) %>%
-  ungroup() %>%
   group_by(year, landuse_change) |>
   summarize(
     group_pin_count = n(),
@@ -1791,10 +1810,6 @@ comm_ind_pins %>%
   select(landuse_change, fmv_group_growth, group_pin_count)
 
 comm_ind_pins %>%
-  filter(year >= 2011) %>%
-  group_by(pin) %>% mutate(years_existed = n()) |>
-  filter(years_existed == year_count ) %>%
-  ungroup() %>%
   group_by(year, incent_status) |>
   summarize(
     group_pin_count = n(),
