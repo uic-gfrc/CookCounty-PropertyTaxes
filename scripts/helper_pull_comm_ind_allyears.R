@@ -399,6 +399,8 @@ comm_ind_pins <- comm_ind_pins_ever  %>%
   mutate(
     gain_incent = ifelse(incent == 1 & lag(incent) == 0, 1, 0),
     lose_incent = ifelse(incent == 0 & lag(incent) == 1, 1, 0),
+    became_exempt = ifelse(exempt == 1 & lag(incent) == 1, 1,0),
+    became_taxed = ifelse(exempt == 0 & lag(incent) == 1, 1, 0),
     years_exempt = sum(ifelse(land_use == "Exempt", 1, 0))
   ) %>%
   mutate(incent_status = 
@@ -454,7 +456,7 @@ comm_ind_pins <- comm_ind_pins |>
   left_join(reassessments_long, by = c("year", "Triad")) |>
   
   # Change to factors; set reference levels in next steps
-  mutate(land_use = ifelse(!land_use %in% c("Commercial", "Industrial", "Land","Exempt"), "Other Land Use", land_use),
+  mutate(land_use = ifelse(!land_use %in% c("Commercial", "Industrial", "Land", "Exempt"), "Other Land Use", land_use),
          fmv_growth_2011 = round(fmv_growth_2011, digits = 4) ) |>
   # percent change from previous years 
   group_by(pin) |> 
