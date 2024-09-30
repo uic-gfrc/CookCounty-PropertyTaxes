@@ -1615,14 +1615,12 @@ scale_fill_manual(
 
 
 
-# Yearly Trends
+# Yearly Trends - FMV Growth since 2011
 
 ```{r}
 comm_ind_pins <- read_csv("./Output/comm_ind_PINs_2011to2022_timeseries.csv")
 
 df_2011 <- comm_ind_pins |>
-  filter(year > 2010) %>%
-  
   group_by(year, land_use, incent_prop) |>
   summarize(
     group_pin_count = n(),
@@ -1633,14 +1631,8 @@ group_by(land_use, incent_prop) %>%
     base_year_fmv = group_year_fmv[year == min(year)],
     
     base_year_n = group_pin_count[year == min(year)],
-    n_group_growth = group_pin_count/base_year_n,
-    fmv_group_growth = group_year_fmv / base_year_fmv) 
-
-
-df_2011 %>% 
-  select(year, land_use, incent_prop, fmv_group_growth, everything()) %>% 
-  filter(year == 2022) %>% 
-  select(-year)
+    n_group_growth = group_pin_count/base_year_n -1,
+    fmv_group_growth = (group_year_fmv / base_year_fmv) -1) 
 ```
 
 ```{r}
@@ -1656,8 +1648,8 @@ group_by( incent_change) %>%
     base_year_fmv = group_year_fmv[year == min(year)],
     
     base_year_n = group_pin_count[year == min(year)],
-    n_group_growth = group_pin_count/base_year_n,
-    fmv_group_growth = group_year_fmv / base_year_fmv) 
+    n_group_growth = group_pin_count/base_year_n -1,
+    fmv_group_growth = (group_year_fmv / base_year_fmv) -1)  
 
 
 
@@ -1670,39 +1662,42 @@ The file ~~`comm_ind_inmunis_timeseries_2006to2022.csv`~~ `comm_ind_PINs_2006to2
 Only includes PINs in incorporated areas.  
 
 
-## 2011 to 2022 Growth
-
-
 ```{r}
 #| label: tbl-growthcalculations-commindfile3
 #| tbl-cap: "Growth from 2011 to 2022. Grouped by year, land_use, incent_prop."
 
 year_count <- 12
 
-
-ptax_pins <-  read_csv("./Output/comm_ind_PINs_2011to2022_timeseries.csv")
-
-ptax_pins %>%
+comm_ind_pins %>%
   ungroup() %>% 
-  filter(year == 2022) %>%
+  filter(year == 2022 & years_existed == 12) %>%
   group_by(year, incent_status) %>%
   summarize(PinCount = n())
+```
 
-ptax_pins %>% 
+
+```{r include = FALSE}
+#| label: tbl-categorycountsforcomparison
+#| tbl-cap: "Tables with \"Always Incent\" or \"Always Industrial\" Pin Counts and FMV Growth"
+
+
+comm_ind_pins %>% 
   group_by(year) %>%
   summarize("Gains Incent" = sum(gain_incent, na.rm=TRUE),
             "Loses Incent" = sum(lose_incent, na.rm=TRUE),
             "PINs with Incent. Class." = sum(incent_prop=="Incentive"),
-            "PINs in Sample" = n())
+            "PINs in Sample" = n(),
+            becameexempt = sum())
 
 ```
 
 
 ```{r}
+#| include: false
 #| label: tbl-growthcalculations-balanced
-#| tbl-cap: "Growth from 2011 to 2022. Includes all commercial and industrial PINs  if they exist for all years in sample timespan. (Balanced data for 2011 to 2022)"
+#| tbl-cap: "Unintuitive Table! Sums FMV for each combination of cateogories, but has a constnatly changing denominator depending due to pinschanging their land use or incentive type. This mostly shows just that more properties got incentives over time! Growth from 2011 to 2022 for all commercial and industrial PINs  if they exist for all years in sample timespan. (Balanced data for 2011 to 2022)"
 
-df_2011_bal <- ptax_pins %>%
+df_2011_bal <- comm_ind_pins %>%
   filter(year >= 2011) %>%
   group_by(pin) %>% 
   mutate(n=n()) %>%
@@ -1717,8 +1712,8 @@ df_2011_bal <- ptax_pins %>%
   mutate(
     base_year_fmv = group_year_fmv[year == min(year)],
     base_year_n = group_pin_count[year == min(year)],
-    n_group_growth = group_pin_count/base_year_n,
-    fmv_group_growth = group_year_fmv / base_year_fmv) 
+    n_group_growth = group_pin_count/base_year_n -1,
+    fmv_group_growth = (group_year_fmv / base_year_fmv) -1) 
 
 
 df_2011_bal %>% 
@@ -1729,10 +1724,11 @@ df_2011_bal %>%
 ```
 
 ```{r}
+#| include: false
 #| label: tbl-growthcalculations-unbalanced
-#| tbl-cap: "Growth from 2011 to 2022. Includes all commercial and industrial PINs even if they did not exist for all years. (Unbalanced data for 2011 to 2022)"
+#| tbl-cap: "Unintuitive Table! Sums FMV for each combination of cateogories, but has a constnatly changing denominator depending due to pinschanging their land use or incentive type. This mostly shows just that more properties got incentives over time! Growth from 2011 to 2022. Includes all commercial and industrial PINs even if they did not exist for all years. (Unbalanced data for 2011 to 2022)"
 
-df_2011 <- ptax_pins %>%
+df_2011 <- comm_ind_pins %>%
 filter(year >= 2011) %>%
   ungroup() %>%
   group_by(year, land_use, incent_prop) |>
@@ -1746,8 +1742,8 @@ filter(year >= 2011) %>%
   mutate(
     base_year_fmv = group_year_fmv[year == min(year)],
     base_year_n = group_pin_count[year == min(year)],
-    n_group_growth = group_pin_count/base_year_n,
-    fmv_group_growth = group_year_fmv / base_year_fmv) 
+    n_group_growth = group_pin_count/base_year_n -1,
+    fmv_group_growth = (group_year_fmv / base_year_fmv) -1) 
 
 df_2011 %>% 
   select(year, land_use, incent_prop, fmv_group_growth, n_group_growth) %>% 
@@ -1757,6 +1753,11 @@ df_2011 %>%
 ```
 
 ```{r}
+#| include: false
+#| label: fig-indexedfmvgrowthbylanduse
+#| fig-cap: "Unintuitive Figure! Use Always Commercial or Always Industrial if trying to make comparisons. Has same changing denominator problem."
+
+
 df_2011 %>% 
   ggplot() + 
   geom_line(aes(x=year, y=fmv_group_growth, group = incent_prop, color = incent_prop)) + 
@@ -1774,9 +1775,16 @@ df_2011_bal %>%
 ```
 
 ```{r}
-ptax_pins %>% filter(is.na(incent_status))
+comm_ind_pins %>% ungroup() %>% filter(is.na(incent_status)) %>% arrange(pin, year)
 
-ptax_pins %>%
+
+comm_ind_pins %>% ungroup() %>% filter(years_existed < 10) %>% arrange(pin, year)
+
+```
+
+
+```{r}
+comm_ind_pins %>%
   filter(year >= 2011) %>%
   group_by(pin) %>% mutate(years_existed = n()) |>
   filter(years_existed == year_count ) %>%
@@ -1790,12 +1798,12 @@ ptax_pins %>%
   mutate(
     base_year_fmv = group_year_fmv[year == min(year)],
     base_year_n = group_pin_count[year == min(year)],
-    n_group_growth = group_pin_count/base_year_n,
-    fmv_group_growth = group_year_fmv / base_year_fmv) %>%
+    n_group_growth = group_pin_count/base_year_n -1,
+    fmv_group_growth = (group_year_fmv / base_year_fmv) -1) %>%
     filter(year == 2022) %>%   
   select(landuse_change, fmv_group_growth, group_pin_count)
 
-ptax_pins %>%
+comm_ind_pins %>%
   filter(year >= 2011) %>%
   group_by(pin) %>% mutate(years_existed = n()) |>
   filter(years_existed == year_count ) %>%
@@ -1809,17 +1817,17 @@ ptax_pins %>%
   mutate(
     base_year_fmv = group_year_fmv[year == min(year)],
     base_year_n = group_pin_count[year == min(year)],
-    n_group_growth = group_pin_count/base_year_n,
-    fmv_group_growth = group_year_fmv / base_year_fmv) %>%
+     n_group_growth = group_pin_count/base_year_n -1,
+    fmv_group_growth = (group_year_fmv / base_year_fmv) -1) %>%
     filter(year == 2022) %>%   
   select(incent_status, fmv_group_growth, group_pin_count)
 ```
 
 ```{r}
 #| label: tbl-growthcalculations-landusechange-incentstatus-balanced
-#| tbl-cap: "Growth from 2011 to 2022 - Change in Land Use by Incentive Class Status using balanced data for 2011 to 2022. Not winsorized."
+#| tbl-cap: "Growth from 2011 to 2022 - Change in Land Use by Incentive Class Status using balanced data for 2011 to 2022. Not winsorized version of best table."
 
-df_2011_bal <- ptax_pins %>%
+df_2011_bal <- comm_ind_pins %>%
   filter(year >= 2011) %>%
   group_by(pin) %>% mutate(years_existed = n()) |>
   filter(years_existed == year_count ) %>%
@@ -1833,8 +1841,8 @@ df_2011_bal <- ptax_pins %>%
   mutate(
     base_year_fmv = group_year_fmv[year == min(year)],
     base_year_n = group_pin_count[year == min(year)],
-    n_group_growth = group_pin_count/base_year_n,
-    fmv_group_growth = group_year_fmv / base_year_fmv) 
+    n_group_growth = group_pin_count/base_year_n -1,
+    fmv_group_growth = (group_year_fmv / base_year_fmv) -1) 
 
 df_2011_bal %>% 
   select(year, landuse_change, incent_status, fmv_group_growth, group_pin_count) %>% 
@@ -1843,12 +1851,18 @@ df_2011_bal %>%
 
 
 ```
+```{r}
+df_2011_bal %>% 
+  select(year, landuse_change, incent_status, fmv_group_growth, group_pin_count) %>% 
+  filter(year == 2022) %>%   
+  select(-year)
+```
 
 ```{r}
 #| label: tbl-growthcalculations-incentstatus-balanced
 #| tbl-cap: "Growth from 2011 to 2022. Includes all commercial and industrial PINs even if they did not exist for all years. (Balanced data for 2011 to 2022)"
 
-df_2011_bal <- ptax_pins %>%
+df_2011_bal <- comm_ind_pins %>%
   filter(year >= 2011) %>%
   group_by(pin) %>% mutate(years_existed = n()) |>
   filter(years_existed == year_count ) %>%
@@ -1862,8 +1876,8 @@ df_2011_bal <- ptax_pins %>%
   mutate(
     base_year_fmv = group_year_fmv[year == min(year)],
     base_year_n = group_pin_count[year == min(year)],
-    n_group_growth = group_pin_count/base_year_n,
-    fmv_group_growth = group_year_fmv / base_year_fmv) 
+    n_group_growth = group_pin_count/base_year_n -1,
+    fmv_group_growth = (group_year_fmv / base_year_fmv) -1) 
 
 df_2011_bal %>% 
   select(year, land_use, incent_status, fmv_group_growth, group_pin_count) %>% 
@@ -1875,42 +1889,44 @@ df_2011_bal %>%
 
 
 ```{r}
+#| include: false
 #| label: tbl-growthcalculations-incentstatus-unbalanced
-#| tbl-cap: "Growth from 2011 to 2022. Includes all commercial and industrial PINs even if they did not exist for all years. (Unbalanced data for 2011 to 2022)"
+#| tbl-cap: "Unintuitive Table! Different numbers of PINs in different years. Doesn't actually show growth. Growth from 2011 to 2022. Includes all commercial and industrial PINs even if they did not exist for all years. (Unbalanced data for 2011 to 2022)"
 
-df_2011 <- ptax_pins %>%
+df_2011 <- comm_ind_pins %>%
   filter(year >= 2011) %>%
   ungroup() %>%
-  group_by(year, land_use, incent_status) |>
+  group_by(year, landuse_change, incent_status) |>
   summarize(
     group_pin_count = n(),
     group_year_fmv = sum(fmv, na.rm=TRUE)) |> 
   ungroup() |>
-  group_by(land_use, incent_status) %>%
+  group_by(landuse_change, incent_status) %>%
   mutate(
     base_year_fmv = group_year_fmv[year == min(year)],
     base_year_n = group_pin_count[year == min(year)],
-    n_group_growth = group_pin_count/base_year_n,
-    fmv_group_growth = group_year_fmv / base_year_fmv) 
+    n_group_growth = group_pin_count/base_year_n -1,
+    fmv_group_growth = (group_year_fmv / base_year_fmv) -1) 
 
 df_2011 %>% 
-  select(year, land_use, incent_status, fmv_group_growth, n_group_growth) %>% 
+  select(year, landuse_change, incent_status, fmv_group_growth, n_group_growth) %>% 
   filter(year == 2022) %>% select(-year)
 
+df_2011 %>% filter(is.na(incent_status))
 ```
 
 ```{r}
 df_2011 %>% 
-  filter(land_use == "Commercial" | land_use == "Industrial") %>% 
-  ggplot() + geom_line(aes(x=year, y=fmv_group_growth, group = incent_status, color = incent_status)) + #scale_y_continuous(limits = c(0.8,2.5)) + 
+
+  ggplot() + 
+  geom_line(aes(x=year, y=fmv_group_growth, group = incent_status, color = incent_status)) + #scale_y_continuous(limits = c(0.8,2.5)) + 
   labs( title = "Commercial v Industrial FMV Growth") + 
-  theme_bw()  +  facet_wrap(~land_use)
+  theme_bw()  +  facet_wrap(~landuse_change)
 
 df_2011_bal %>% 
-  filter(land_use == "Commercial" | land_use == "Industrial") %>% 
-  ggplot() + geom_line(aes(x=year, fmv_group_growth, group = incent_status, color = incent_status)) + #scale_y_continuous(limits = c(0.8,2.5)) + 
+  ggplot() + geom_line(aes(x=year, fmv_group_growth, group = incent_status, color = incent_status)) + 
   labs( title = "Commercial v Industrial FMV Growth-Balanced PINs",) + 
-  theme_bw()  +  facet_wrap(~land_use)
+  theme_bw()  +  facet_wrap(~landuse_change)
 
 df_2011 %>% 
   # filter(land_use == "Commercial" | land_use == "Industrial") %>%
@@ -1931,9 +1947,7 @@ df_2011_bal %>%
 #| label: tbl-growthcalculations3
 #| tbl-cap: "Growth from 2011 to 2022. grouped by new categorical variables. Includes all commercial and industrial PINs even if they did not exist for all years. Unbalanced."
 
-df_2011_v2 <- ptax_pins %>%
-  filter(year >= 2011) %>%
-  
+df_2011_v2 <- comm_ind_pins %>%
   group_by(year, landuse_change, incent_change ) |>
   summarize(n = n(), 
             group_year_fmv = sum(fmv, na.rm=TRUE),
@@ -1943,11 +1957,11 @@ df_2011_v2 <- ptax_pins %>%
   mutate(            
     base_year_fmv = group_year_fmv[year == min(year)],
     base_year_n = n[year == min(year)],
-    fmv_growth = group_year_fmv/base_year_fmv,
-    n_growth = n/base_year_n
-  ) 
+    n_group_growth = group_pin_count/base_year_n -1,
+    fmv_group_growth = (group_year_fmv / base_year_fmv) -1) 
 
-df_2011_v2_bal <- ptax_pins %>%
+
+df_2011_v2_bal <- comm_ind_pins %>%
   filter(year >= 2011) %>%
   group_by(pin)%>% mutate(years_existed=n()) %>%
   filter(years_existed == year_count) %>%
@@ -1961,11 +1975,11 @@ df_2011_v2_bal <- ptax_pins %>%
   mutate(            
     base_year_fmv = group_year_fmv[year == min(year)],
     base_year_n = n[year == min(year)],
-    fmv_growth = group_year_fmv/base_year_fmv,
-    n_growth = n/base_year_n
-  )
+    n_group_growth = group_pin_count/base_year_n -1,
+    fmv_group_growth = (group_year_fmv / base_year_fmv) -1) 
+
 df_2011_v2 %>% 
-  select(year, landuse_change, incent_change, fmv_growth) %>% 
+  select(year, landuse_change, incent_change, fmv_group_growth) %>% 
   filter(year == 2022) 
 
 ```
@@ -1979,7 +1993,7 @@ df_2011_v2 %>%
 df_2011_v2 %>%  
   mutate(year = as.factor(year)) %>%
   ggplot() + 
-  geom_line(aes(x=year, y=fmv_growth, group = landuse_change, color = landuse_change)) +
+  geom_line(aes(x=year, y=fmv_group_growth, group = landuse_change, color = landuse_change)) +
   theme_bw()  +  
   facet_wrap(~incent_change) +
   scale_x_discrete(breaks = c(2012, 2022)) + 
@@ -1993,7 +2007,7 @@ df_2011_v2 %>%
 df_2011_v2_bal %>%  
   mutate(year = as.factor(year)) %>%
   ggplot() + 
-  geom_line(aes(x=year, y=fmv_growth, group = landuse_change, color = landuse_change)) +
+  geom_line(aes(x=year, y=fmv_group_growth, group = landuse_change, color = landuse_change)) +
   theme_bw()  +  
   facet_wrap(~incent_change) +
   scale_x_discrete(breaks = c(2012, 2022)) + 
@@ -2011,8 +2025,7 @@ df_2011_v2_bal %>%
 #| label: fig-growth-facetby-incentstatus
 #| fig-cap: "**Growth from 2011 to 2022.** Faceted by if a PIN changed landuse during the sample period. Indexed to fair market value during 2011. Balanced data!"
 
-df_2011_bal <- ptax_pins %>%
-  filter(year >= 2011) %>%
+df_2011_bal <- comm_ind_pins %>%
   group_by(pin) %>% 
   mutate(years_existed = n()) |> 
   filter(years_existed == year_count) |> 
@@ -2021,16 +2034,16 @@ df_2011_bal <- ptax_pins %>%
   summarize(n = n(), 
             group_year_fmv = sum(fmv, na.rm=TRUE),
   ) |>
-ungroup() |>
-group_by(landuse_change, incent_status ) |>
+  ungroup() |>
+  group_by(landuse_change, incent_status ) |>
   mutate(            
-        base_year_fmv = group_year_fmv[year == min(year)],
-            base_year_n = n[year == min(year)],
-            fmv_group_growth = group_year_fmv/base_year_fmv,
-         n_group_growth = n/base_year_n
-       )
+    base_year_fmv = group_year_fmv[year == min(year)],
+    base_year_n = n[year == min(year)],
+    n_group_growth = group_pin_count/base_year_n -1,
+    fmv_group_growth = (group_year_fmv / base_year_fmv) -1) 
 
-df_2011 <- ptax_pins %>%
+
+df_2011 <- comm_ind_pins %>%
   filter(year >= 2011) %>%
   group_by(pin) %>% 
   mutate(years_existed = n()) |> 
@@ -2040,13 +2053,13 @@ df_2011 <- ptax_pins %>%
   summarize(n = n(), 
             group_year_fmv = sum(fmv, na.rm=TRUE),
   ) |>
-ungroup() |>
-group_by(landuse_change, incent_status ) |>
+  ungroup() |>
+  group_by(landuse_change, incent_status ) |>
   mutate(            
-        base_year_fmv = group_year_fmv[year == min(year)],
-            base_year_n = n[year == min(year)],
-            fmv_group_growth = group_year_fmv/base_year_fmv,
-         n_group_growth = n/base_year_n)
+    base_year_fmv = group_year_fmv[year == min(year)],
+    base_year_n = n[year == min(year)],
+    n_group_growth = group_pin_count/base_year_n -1,
+    fmv_group_growth = (group_year_fmv / base_year_fmv) -1) 
 
 df_2011 %>%  
   mutate(year = as.factor(year)) %>%
