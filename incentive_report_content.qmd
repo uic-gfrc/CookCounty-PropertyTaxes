@@ -1620,19 +1620,7 @@ scale_fill_manual(
 ```{r}
 comm_ind_pins <- read_csv("./Output/comm_ind_PINs_2011to2022_timeseries.csv")
 
-df_2011 <- comm_ind_pins |>
-  group_by(year, land_use, incent_prop) |>
-  summarize(
-    group_pin_count = n(),
-    group_year_fmv = sum(fmv, na.rm=TRUE),
- ) |> ungroup() |>
-group_by(land_use, incent_prop) %>%
-  mutate(
-    base_year_fmv = group_year_fmv[year == min(year)],
-    
-    base_year_n = group_pin_count[year == min(year)],
-    n_group_growth = group_pin_count/base_year_n -1,
-    fmv_group_growth = (group_year_fmv / base_year_fmv) -1) 
+ 
 ```
 
 ```{r}
@@ -1676,7 +1664,7 @@ comm_ind_pins %>%
 ```
 
 
-```{r include = FALSE}
+```{r}
 #| label: tbl-categorycountsforcomparison
 #| tbl-cap: "Tables with \"Always Incent\" or \"Always Industrial\" Pin Counts and FMV Growth"
 
@@ -1774,11 +1762,10 @@ df_2011_bal %>%
 
 ```
 
+ones with missing incent_status appear to have not existed for many years.
+
 ```{r}
 comm_ind_pins %>% ungroup() %>% filter(is.na(incent_status)) %>% arrange(pin, year)
-
-
-comm_ind_pins %>% ungroup() %>% filter(years_existed < 10) %>% arrange(pin, year)
 
 ```
 
@@ -1852,47 +1839,11 @@ df_2011_bal %>%
 
 ```
 
-```{r}
-df_2011_bal %>% 
-  select(year, landuse_change, incent_status, fmv_group_growth, group_pin_count) %>% 
-  filter(year == 2022) %>%   
-  select(-year)
-```
-
-```{r}
-#| label: tbl-growthcalculations-incentstatus-balanced
-#| tbl-cap: "Growth from 2011 to 2022. Includes all commercial and industrial PINs even if they did not exist for all years. (Balanced data for 2011 to 2022)"
-
-df_2011_bal <- comm_ind_pins %>%
-  filter(year >= 2011) %>%
-  group_by(pin) %>% mutate(years_existed = n()) |>
-  filter(years_existed == year_count ) %>%
-  ungroup() %>%
-  group_by(year, landuse_change, incent_status) |>
-  summarize(
-    group_pin_count = n(),
-    group_year_fmv = sum(fmv, na.rm=TRUE)) |> 
-  ungroup() |>
-  group_by(landuse_change, incent_status) %>%
-  mutate(
-    base_year_fmv = group_year_fmv[year == min(year)],
-    base_year_n = group_pin_count[year == min(year)],
-    n_group_growth = group_pin_count/base_year_n -1,
-    fmv_group_growth = (group_year_fmv / base_year_fmv) -1) 
-
-df_2011_bal %>% 
-  select(year, landuse_change, incent_status, fmv_group_growth, group_pin_count) %>% 
-  filter(year == 2022) %>%   
-  select(-year)
-
-
-```
 
 
 ```{r}
-#| include: false
 #| label: tbl-growthcalculations-incentstatus-unbalanced
-#| tbl-cap: "Unintuitive Table! Different numbers of PINs in different years. Doesn't actually show growth. Growth from 2011 to 2022. Includes all commercial and industrial PINs even if they did not exist for all years. (Unbalanced data for 2011 to 2022)"
+#| tbl-cap: "Includes all commercial and industrial PINs even if they did not exist for all years. (Unbalanced data for 2011 to 2022)"
 
 df_2011 <- comm_ind_pins %>%
   filter(year >= 2011) %>%
@@ -1915,29 +1866,17 @@ df_2011 %>%
 ```
 
 ```{r}
+#| 
 df_2011 %>% 
 
   ggplot() + 
   geom_line(aes(x=year, y=fmv_group_growth, group = incent_status, color = incent_status)) + #scale_y_continuous(limits = c(0.8,2.5)) + 
-  labs( title = "Commercial v Industrial FMV Growth") + 
+  labs( title = "Commercial v Industrial FMV Growth - Not Balanced") + 
   theme_bw()  +  facet_wrap(~landuse_change)
 
 df_2011_bal %>% 
   ggplot() + geom_line(aes(x=year, fmv_group_growth, group = incent_status, color = incent_status)) + 
   labs( title = "Commercial v Industrial FMV Growth-Balanced PINs",) + 
-  theme_bw()  +  facet_wrap(~landuse_change)
-
-df_2011 %>% 
-  # filter(land_use == "Commercial" | land_use == "Industrial") %>%
-  ggplot() + 
-  geom_line(aes(x=year, y=fmv_group_growth, group = incent_status, color = incent_status)) + #scale_y_continuous(limits = c(0.8,2.5)) +
-  labs( title = "Commercial v Industrial FMV Growth") +
-  theme_bw()  +
-  facet_wrap(~landuse_change)
-
-df_2011_bal %>%
-  ggplot() + geom_line(aes(x=year, y=fmv_group_growth, group = incent_status, color = incent_status)) +# scale_y_continuous(limits = c(0.8,2.5)) +
-  labs( title = "Commercial v Industrial FMV Growth-Balanced PINs",) +
   theme_bw()  +  facet_wrap(~landuse_change)
 
 ```
@@ -1992,7 +1931,7 @@ df_2011_v2 %>%
   facet_wrap(~incent_change) +
   scale_x_discrete(breaks = c(2012, 2022)) + 
   scale_y_continuous(breaks = c(1, 2, 3, 4), labels = scales::percent) +
-  labs(title= "Growth from 2011 to 2022", 
+  labs(title= "Growth from 2011 to 2022 - Unbalanced", 
        subtitle = "Incentive Classification Status by Land Use Change",
        y = "FMV Growth since 2011", x = NULL,
        caption =  "Values are indexed to 2011 FMV") +
@@ -2006,7 +1945,7 @@ df_2011_v2_bal %>%
   facet_wrap(~incent_change) +
   scale_x_discrete(breaks = c(2012, 2022)) + 
   scale_y_continuous(breaks = c(1, 2, 3, 4), labels = scales::percent) +
-  labs(title= "Growth from 2011 to 2022", 
+  labs(title= "Growth from 2011 to 2022 - Balanced", 
        subtitle = "Incentive Classification Status by Land Use Change",
        y = "FMV Growth since 2011", x = NULL,
        caption =  "Values are indexed to 2011 FMV. Only uses PINs that existed all years of the sample. (Balanced Panel Data)") +
@@ -2038,8 +1977,6 @@ df_2011_bal <- comm_ind_pins %>%
 df_2011 <- comm_ind_pins %>%
   filter(year >= 2011) %>%
   group_by(pin) %>% 
-  mutate(years_existed = n()) |> 
-  filter(years_existed == year_count) |> 
   ungroup() |>
   group_by(year, landuse_change, incent_status) |>
   summarize(n = n(), 
@@ -2058,8 +1995,8 @@ df_2011 %>%
   theme_bw()  +  
   facet_wrap(~incent_status, nrow = 1) +
   scale_x_discrete(breaks = c(2012, 2022)) + 
-  scale_y_continuous(breaks = c(1, 2, 3, 4), labels = scales::percent) +
-  labs(title= "Growth from 2011 to 2022", 
+  scale_y_continuous(breaks = c(-1, 0, 1, 2, 3, 4, 10), labels = scales::percent) +
+  labs(title= "Growth from 2011 to 2022 - unbalanced", 
        subtitle = "Incentive Classification Status by Land Use Change",
        y = "FMV Growth since 2011", x = NULL,
        caption =  "Values are indexed to 2011 FMV") +
@@ -2072,37 +2009,14 @@ df_2011_bal %>%
   theme_bw()  +  
   facet_wrap(~incent_status, nrow = 1) +
   scale_x_discrete(breaks = c(2012, 2022)) + 
-  scale_y_continuous(breaks = c(-0.5, 1, 2, 3, 4), labels = scales::percent,) +
-  labs(title= "Growth from 2011 to 2022", 
+  scale_y_continuous(breaks = c(-1, 0, 1, 2, 3, 4, 10), labels = scales::percent,) +
+  labs(title= "Growth from 2011 to 2022 - Balanced", 
        subtitle = "Incentive Classification Status by Land Use Change",
        y = "FMV Growth since 2011", x = NULL,
        caption =  "Values are indexed to 2011 FMV") +
   theme(legend.title = element_blank(), legend.position = "bottom")
 
 ```
-
-
-
-```{r}
-#| label: fig-growth-facetby-Aleacat-2011
-#| fig-cap: "**Growth from 2011 to 2022.** Faceted by land use category."
-#| layout-ncol: 2
-
-df_2011_bal %>%   
-  ungroup() |>
-  ggplot() + 
-  geom_line(aes(x=year, y=fmv_group_growth, group = incent_status, color = incent_status)) + theme_bw() + 
-  facet_wrap(~landuse_change, nrow=1) + 
-  theme(legend.position = "bottom", legend.title = element_blank())
-
-df_2011 %>%   
-  ungroup() |>
-  ggplot() + 
-  geom_line(aes(x=year, y=fmv_group_growth, group = incent_status, color = incent_status)) + theme_bw() + 
-  facet_wrap(~landuse_change, nrow=1) + 
-  theme(legend.position = "bottom", legend.title = element_blank())
-```
-
 
 # Export Tables
 
@@ -2119,6 +2033,6 @@ tablelist <- list(
 )
 
 
-writexl::write_xlsx(tablelist, "Output/calculations_report_content_20240927.xlsx")
+#writexl::write_xlsx(tablelist, "Output/calculations_report_content_20240927.xlsx")
 ```
 
