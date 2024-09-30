@@ -1623,7 +1623,7 @@ comm_ind_pins <- read_csv("./Output/comm_ind_PINs_2011to2022_timeseries.csv")
 comm_ind_pins <- comm_ind_pins %>%
     mutate(incent_change = ifelse(years_existed < year_count, "Excluded", incent_change),
            incent_status = ifelse(years_existed < year_count, "Excluded", incent_status),
-           incent_status = ifelse(incent_status == "Gains & Loses Incent", "Excluded", incent_status)
+           incent_status = ifelse(incent_status == "Gains & Loses Incent", "Excluded", incent_status),
            landuse_change = ifelse(years_existed < year_count, "Excluded", landuse_change))
 
 ```
@@ -1818,8 +1818,6 @@ comm_ind_pins %>%
   group_by(incent_status) %>%
   mutate(
     base_year_fmv = group_year_fmv[year == min(year)],
-    base_year_n = group_pin_count[year == min(year)],
-     n_group_growth = group_pin_count/base_year_n -1,
     fmv_group_growth = (group_year_fmv / base_year_fmv) -1) %>%
     filter(year == 2022) %>%   
   select(incent_status, fmv_group_growth, group_pin_count)
@@ -1830,10 +1828,6 @@ comm_ind_pins %>%
 #| tbl-cap: "Growth from 2011 to 2022 - Change in Land Use by Incentive Class Status using balanced data for 2011 to 2022. Not winsorized version of best table."
 
 df_2011_bal <- comm_ind_pins %>%
-  filter(year >= 2011) %>%
-  group_by(pin) %>% mutate(years_existed = n()) |>
-  filter(years_existed == year_count ) %>%
-  ungroup() %>%
   group_by(year, landuse_change, incent_status) |>
   summarize(
     group_pin_count = n(),
@@ -1857,65 +1851,26 @@ df_2011_bal %>%
 
 
 ```{r}
-#| label: tbl-growthcalculations-incentstatus-unbalanced
-#| tbl-cap: "Includes all commercial and industrial PINs even if they did not exist for all years. (Unbalanced data for 2011 to 2022)"
-
-df_2011 <- comm_ind_pins %>%
-  filter(year >= 2011) %>%
-  ungroup() %>%
-  group_by(year, landuse_change, incent_status) |>
-  summarize(
-    group_pin_count = n(),
-    group_year_fmv = sum(fmv, na.rm=TRUE)) |> 
-  ungroup() |>
-  group_by(landuse_change, incent_status) %>%
-  mutate(
-    base_year_fmv = group_year_fmv[year == min(year)],
-    base_year_n = group_pin_count[year == min(year)],
-    n_group_growth = group_pin_count/base_year_n -1,
-    fmv_group_growth = (group_year_fmv / base_year_fmv) -1) 
-
-df_2011 %>% 
-  select(year, landuse_change, incent_status, fmv_group_growth, n_group_growth) %>% 
-  filter(year == 2022) %>% select(-year)
-```
-
-```{r}
-#| 
-df_2011 %>% 
-
-  ggplot() + 
-  geom_line(aes(x=year, y=fmv_group_growth, group = incent_status, color = incent_status)) + #scale_y_continuous(limits = c(0.8,2.5)) + 
-  labs( title = "Commercial v Industrial FMV Growth - Not Balanced") + 
-  theme_bw()  +  facet_wrap(~landuse_change)
-
 df_2011_bal %>% 
   ggplot() + geom_line(aes(x=year, fmv_group_growth, group = incent_status, color = incent_status)) + 
-  labs( title = "Commercial v Industrial FMV Growth-Balanced PINs",) + 
-  theme_bw()  +  facet_wrap(~landuse_change)
+  labs( title = "Commercial v Industrial FMV Growth",) + 
+  theme_bw()  +  
+  facet_wrap(~landuse_change)
+
+df_2011_bal %>% 
+  filter(incent_status != "Excluded" ) %>%
+  ggplot() + geom_line(aes(x=year, fmv_group_growth, group = incent_status, color = incent_status)) + 
+  labs( title = "Commercial v Industrial FMV Growth",) + 
+  theme_bw()  +  
+  facet_wrap(~landuse_change)
 
 ```
 ```{r}
 #| label: tbl-growthcalculations3
 #| tbl-cap: "Growth from 2011 to 2022. grouped by new categorical variables. Includes all commercial and industrial PINs even if they did not exist for all years. Unbalanced."
 
-df_2011_v2 <- comm_ind_pins %>%
-  group_by(year, landuse_change, incent_change ) |>
-  summarize(n = n(), 
-            group_year_fmv = sum(fmv, na.rm=TRUE),
-  ) |>
-  ungroup() |>
-  group_by(landuse_change, incent_change, ) |>
-  mutate(            
-    base_year_fmv = group_year_fmv[year == min(year)],
-    fmv_group_growth = (group_year_fmv / base_year_fmv) -1) 
-
 
 df_2011_v2_bal <- comm_ind_pins %>%
-  filter(year >= 2011) %>%
-  group_by(pin)%>% mutate(years_existed=n()) %>%
-  filter(years_existed == year_count) %>%
-  
   group_by(year, landuse_change, incent_change ) |>
   summarize(n = n(), 
             group_year_fmv = sum(fmv, na.rm=TRUE),
@@ -1925,20 +1880,16 @@ df_2011_v2_bal <- comm_ind_pins %>%
   mutate(            
     base_year_fmv = group_year_fmv[year == min(year)],
     fmv_group_growth = (group_year_fmv / base_year_fmv) -1) 
-
-df_2011_v2 %>% 
-  select(year, landuse_change, incent_change, fmv_group_growth) %>% 
-  filter(year == 2022) 
+df_2011_v2_bal %>% filter(year == 2022)
 
 ```
 
 ```{r}
 #| label: fig-growth-facetby-incentprop4
-#| fig-cap: "**Growth from 2011 to 2022.** Faceted by if a PIN changed landuse during the sample period. Indexed to fair market value during 2011. Unbalanced and Balanced Charts."
+#| fig-cap: "**Growth from 2011 to 2022.** Faceted by if a PIN changed landuse during the sample period. Indexed to fair market value during 2011."
 #| layout-ncol: 2
 
-
-df_2011_v2 %>%  
+df_2011_v2_bal %>%  
   mutate(year = as.factor(year)) %>%
   ggplot() + 
   geom_line(aes(x=year, y=fmv_group_growth, group = landuse_change, color = landuse_change)) +
@@ -1946,13 +1897,14 @@ df_2011_v2 %>%
   facet_wrap(~incent_change) +
   scale_x_discrete(breaks = c(2012, 2022)) + 
   scale_y_continuous(breaks = c(1, 2, 3, 4), labels = scales::percent) +
-  labs(title= "Growth from 2011 to 2022 - Unbalanced", 
+  labs(title= "Growth from 2011 to 2022 - Balanced", 
        subtitle = "Incentive Classification Status by Land Use Change",
        y = "FMV Growth since 2011", x = NULL,
-       caption =  "Values are indexed to 2011 FMV") +
+       caption =  "Values are indexed to 2011 FMV.") +
   theme(legend.title = element_blank(), legend.position = "bottom")
 
 df_2011_v2_bal %>%  
+  filter(landuse_change != "Excluded") %>%
   mutate(year = as.factor(year)) %>%
   ggplot() + 
   geom_line(aes(x=year, y=fmv_group_growth, group = landuse_change, color = landuse_change)) +
@@ -1971,13 +1923,9 @@ df_2011_v2_bal %>%
 
 ```{r}
 #| label: fig-growth-facetby-incentstatus
-#| fig-cap: "**Growth from 2011 to 2022.** Faceted by if a PIN changed landuse during the sample period. Indexed to fair market value during 2011. Balanced data!"
+#| fig-cap: "**Growth from 2011 to 2022.** Faceted by if a PIN changed landuse during the sample period. Indexed to fair market value during 2011"
 
 df_2011_bal <- comm_ind_pins %>%
-  group_by(pin) %>% 
-  mutate(years_existed = n()) |> 
-  filter(years_existed == year_count) |> 
-  ungroup() |>
   group_by(year, landuse_change, incent_status) |>
   summarize(n = n(), 
             group_year_fmv = sum(fmv, na.rm=TRUE),
@@ -1988,36 +1936,22 @@ df_2011_bal <- comm_ind_pins %>%
     base_year_fmv = group_year_fmv[year == min(year)],
     fmv_group_growth = (group_year_fmv / base_year_fmv) -1) 
 
-
-df_2011 <- comm_ind_pins %>%
-  filter(year >= 2011) %>%
-  group_by(pin) %>% 
-  ungroup() |>
-  group_by(year, landuse_change, incent_status) |>
-  summarize(n = n(), 
-            group_year_fmv = sum(fmv, na.rm=TRUE),
-  ) |>
-  ungroup() |>
-  group_by(landuse_change, incent_status ) |>
-  mutate(            
-    base_year_fmv = group_year_fmv[year == min(year)],
-    fmv_group_growth = (group_year_fmv / base_year_fmv) -1) 
-
-df_2011 %>%  
+df_2011_bal %>%  
   mutate(year = as.factor(year)) %>%
   ggplot() + 
   geom_line(aes(x=year, y=fmv_group_growth, group = landuse_change, color = landuse_change)) +
   theme_bw()  +  
   facet_wrap(~incent_status, nrow = 1) +
   scale_x_discrete(breaks = c(2012, 2022)) + 
-  scale_y_continuous(breaks = c(-1, 0, 1, 2, 3, 4, 10), labels = scales::percent) +
-  labs(title= "Growth from 2011 to 2022 - unbalanced", 
+  scale_y_continuous(breaks = c(-1, 0, 1, 2, 3, 4, 10), labels = scales::percent,) +
+  labs(title= "Growth from 2011 to 2022 - Balanced", 
        subtitle = "Incentive Classification Status by Land Use Change",
        y = "FMV Growth since 2011", x = NULL,
        caption =  "Values are indexed to 2011 FMV") +
   theme(legend.title = element_blank(), legend.position = "bottom")
 
 df_2011_bal %>%  
+  filter(landuse_change != "Excluded") %>%
   mutate(year = as.factor(year)) %>%
   ggplot() + 
   geom_line(aes(x=year, y=fmv_group_growth, group = landuse_change, color = landuse_change)) +
