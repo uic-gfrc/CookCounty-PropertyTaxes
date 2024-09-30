@@ -219,10 +219,11 @@ comm_ind_pins <- comm_ind_pins_ever  %>%
   ) %>%
   mutate(incent_status = 
            case_when(
+             sum(gain_incent, na.rm=TRUE) > 0 & sum(lose_incent, na.rm=TRUE) > 0 ~ "Gains & Loses Incent",
              sum(gain_incent, na.rm=TRUE)  > 0 ~ "Gained Incentive",
-             sum(lose_incent, na.rm=TRUE)  > 0 ~ "Incentive Ended", 
+             sum(lose_incent, na.rm=TRUE)  > 0 ~ "Had Incentive", 
              sum(incent, na.rm=TRUE) == 0 ~ "Never had Incentive",
-             sum(incent, na.rm=TRUE)== timespan  ~ "Always had  Incentive"
+             sum(incent, na.rm=TRUE)== timespan  ~ "Always had Incentive"
            )) %>%
 ungroup()
 
@@ -332,8 +333,7 @@ gain_lose_pins <- rbind(gains_incent_pins, lose_incent_pins) |>
   mutate(treatment_year = year) |>
   group_by(pin) |>
   summarize(treatment_year = first(treatment_year),
-            type = first(type) )  |>  
-  select(-year)
+            type = first(type) )
 
             
 
@@ -343,11 +343,9 @@ comm_ind_pins <- comm_ind_pins %>%
 comm_ind_pins <- comm_ind_pins |>
   mutate(status = ifelse(treatment_year < year & incent_change == "Changes Sometime",
                          "Pre Treatment", 
-                         ifelse(treatment_year > year & incent_change == "Changes Sometime", 
+                         ifelse(treatment_year >= year & incent_change == "Changes Sometime", 
                                 "Post Treatment", 
-                                ifelse(treatment_year == year & incent_change == "Changes Sometime", 
-                                       "Treatment year",
-                                       "Control")))         )
+                                       "Control")))
 
 
 write_csv(comm_ind_pins_ever, "./Output/comm_ind_PINs_2006to2022_timeseries.csv")
