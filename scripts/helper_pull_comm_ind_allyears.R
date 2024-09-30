@@ -442,7 +442,8 @@ comm_ind_pins <- comm_ind_pins |>
 
 
 
-reassessment_years <- read_csv("./Necessary_Files/Triad_reassessment_years.csv")
+reassessment_years <- read_csv("./Necessary_Files/Triad_reassessment_years.csv") %>% 
+  select(-c(`2006`:`2010`))
 
 
 reassessments_long <- reassessment_years %>% 
