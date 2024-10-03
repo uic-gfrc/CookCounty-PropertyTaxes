@@ -1,5 +1,5 @@
 ---
-title: "Whitepaper Figures and Supporting Tables"
+title: "The Use and Effects of Homestead Exemptions in Cook County"
 ---
 
 ```{r setup, warning=FALSE, message=FALSE}
@@ -31,17 +31,18 @@ nicknames <- readxl::read_excel("../Necessary_Files/muni_shortnames.xlsx")
 #| code-fold: true
 
 
-muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006-2021.csv") %>% filter(year == 2021) %>% left_join(nicknames)
+muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006-2021.csv") %>% 
+  filter(year == 2021) %>% left_join(nicknames)
 
 MuniLevel_CompRates <- muni_sums %>% 
   select(clean_name, cur_comp_muni_rate, new_comp_muni_rate, tif_share, zero_bills, final_tax_to_dist) %>%
-  mutate(cur_comp_muni_rate = cur_comp_muni_rate/100,
+  mutate(current_rate_avg = cur_comp_muni_rate/100,
 new_comp_muni_rate = new_comp_muni_rate / 100 ,
-rate_change = cur_comp_muni_rate - new_comp_muni_rate) %>%
-  select(clean_name, rate_change, cur_comp_muni_rate, new_comp_muni_rate, final_tax_to_dist) %>% arrange(desc(rate_change))
+rate_change = current_rate_avg - new_comp_muni_rate) %>%
+  select(clean_name, rate_change, current_rate_avg, new_comp_muni_rate, final_tax_to_dist) %>% arrange(desc(rate_change))
 
 datatable(MuniLevel_CompRates, rownames = FALSE,
-          colnames = c('Municipality' = 'clean_name', 'Composite Tax Rate Change'='rate_change', 'Current Comp. Rate' = 'cur_comp_muni_rate', 'Hypothetical Rate' = 'new_comp_muni_rate', 
+          colnames = c('Municipality' = 'clean_name', 'Composite Tax Rate Change'='rate_change', 'Current Comp. Rate' = 'current_rate_avg', 'Hypothetical Rate' = 'new_comp_muni_rate', 
                        #'%Rev to TIF' = 'tif_share', 'Count of $0 Tax Bills' = 'zero_bills', 
                        'Composite Levy' = 'final_tax_to_dist'),
           caption = "Table 1: Current and Hypothetical Composite Tax Rates if GHE $0") %>%
@@ -62,7 +63,8 @@ datatable(MuniLevel_CompRates, rownames = FALSE,
 
 
 MC_sums <- read_csv("../Output/ptaxsim_muni_MC_2006-2021.csv") %>% 
-  filter(year == 2021) %>% 
+ # rename_all(~str_replace_all(., "muni_mc_","")) %>%
+  filter(year == 2021)  %>% 
   left_join(nicknames)
 
 MC_burden <- MC_sums %>% 
@@ -72,7 +74,7 @@ MC_burden <- MC_sums %>%
   group_by(clean_name) %>%
   mutate(muni_eav = sum(eav),
          muni_levy = sum(final_tax_to_dist),
-         hyp_muni_taxableEAV = sum(hyp_taxable_eav)
+       hyp_muni_taxableEAV = sum(new_taxable_eav)
   ) %>%
   ungroup() %>%
   mutate(new_comp_rate = muni_levy / hyp_muni_taxableEAV,
@@ -100,41 +102,6 @@ datatable(current_burden_c2, rownames = FALSE,
 
 ```
 
-```{r}
-MC_burden <- MC_sums %>% 
-  mutate(hyp_taxable_eav = current_taxable_eav + all_exemptions,
-         class_taxes_current = current_taxable_eav * (cur_comp_muni_rate/100)
-     ) %>%
-  group_by(clean_name) %>%
-  mutate(muni_eav = sum(eav),
-         muni_levy = sum(final_tax_to_dist),
-         hyp_muni_taxableEAV = sum(hyp_taxable_eav)
-  ) %>%
-  ungroup() %>%
-  mutate(new_comp_rate = muni_levy / hyp_muni_taxableEAV,
-         class_taxes_hyp = hyp_taxable_eav * (new_comp_rate),
-         pct_eav = eav / muni_eav,
-         # pct_taxburden_current = total_bill_current / muni_levy,
-         # pct_taxburden_ghe0 = new_taxable_eav / muni_levy,
-         pct_taxburden_current = class_taxes_current / muni_levy,
-         pct_taxburden_noexemps = class_taxes_hyp / muni_levy,
-         burden_shift = (pct_taxburden_current - pct_taxburden_noexemps)*100)
-
-
-current_burden_c2 <- MC_burden %>% 
-  filter(major_class_code == 2) %>% 
-  select(clean_name, pct_eav, burden_shift, pct_taxburden_current, pct_taxburden_noexemps) %>%
-  arrange(pct_eav)
-
-
-datatable(current_burden_c2, rownames = FALSE,
-          colnames = c('Municipality' = 'clean_name', "C2 EAV/Muni EAV" = 'pct_eav','Burden Shift, Pct Pt Change' = 'burden_shift',  'Current Tax Burden\nC2 Tax Collected / Muni Levy' = 'pct_taxburden_current', "Hypothetical Tax Burden\nHyp. C2 Tax Collected / Muni Levy" = 'pct_taxburden_noexemps'),
-          caption = "Table 3: Tax Burden Shifted by Residential Exemptions
-          \n(All Exemption types except abatements)."
-           ) %>%
-  formatPercentage(c(2,4,5), digits = 2) %>%
-  formatRound(c(3), digits = 2)
-```
 
 ```{r}
 #| code-fold: true
