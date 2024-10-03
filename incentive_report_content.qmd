@@ -730,7 +730,11 @@ commerc_top10 %>%
   set_table_properties( layout = "autofit", width = .75)
 ```
 
-### Share of Muni Industrial and Commercial FMV with incentive class
+### Share of Total FMV with Incentive Classification
+
+Combined Industrial and Commercial FMV with incentive classification  divided by total FMV in municipality. Not included in a table in the report.
+
+One way of showing areas that have reduced their tax base significantly through the use of incentive classifications. 
 
 ```{r}
 table_muni_percentages <- munilevel %>%   
@@ -739,32 +743,30 @@ filter(!clean_name  %in% c("Frankfort", "Homer Glen",  "Oak Brook", "East Dundee
 cross_county_line <- c("Frankfort", "Homer Glen",  "Oak Brook", "East Dundee", "University Park",  "Bensenville", "Hinsdale", "Roselle", "Deer Park", "Deerfield")
 ```
 
-#### Tables
 
 ```{r}
 #| label: tbl-muni-percentages
 #| tbl-cap: "Municipalities with the largest share of FMV property with incentive classification. Uses 2022 data."
-#| layout-ncol: 2
 
 
-table_muni_percentages %>%
-  select(clean_name, pct_fmv_w_incentclass) |> 
-  arrange(desc(pct_fmv_w_incentclass)) %>%
-    slice(c(1:10, 56:65, 110:119)) %>%
-
-  #slice(c(1:10, 67:76, 116:125)) %>%
-  mutate(pct_fmv_w_incentclass = scales::percent(pct_fmv_w_incentclass, digits =1)) %>%
-  
-  flextable() %>% 
-  border_remove() %>%
-  hline_top() %>%
-  hline(i = c(10,20)) %>%
-  
-  set_header_labels(clean_name = "Municipality", pct_fmv_w_incentclass = "% FMV with\nIncent. Class.") %>%
-add_header_row(values = c("County Wide", "3.22%"), top = FALSE) %>%
-  align(j = 2, align = "right") %>%
-
-  set_table_properties( layout = "autofit")
+# table_muni_percentages %>%
+#   select(clean_name, pct_fmv_w_incentclass) |> 
+#   arrange(desc(pct_fmv_w_incentclass)) %>%
+#     slice(c(1:10, 56:65, 110:119)) %>%
+# 
+#   #slice(c(1:10, 67:76, 116:125)) %>%
+#   mutate(pct_fmv_w_incentclass = scales::percent(pct_fmv_w_incentclass, digits =1)) %>%
+#   
+#   flextable() %>% 
+#   border_remove() %>%
+#   hline_top() %>%
+#   hline(i = c(10,20)) %>%
+#   
+#   set_header_labels(clean_name = "Municipality", pct_fmv_w_incentclass = "% FMV with\nIncent. Class.") %>%
+# add_header_row(values = c("County Wide", "3.22%"), top = FALSE) %>%
+#   align(j = 2, align = "right") %>%
+# 
+#   set_table_properties( layout = "autofit")
 
 
 
@@ -781,7 +783,6 @@ table_muni_percentages %>%
   hline(i = c(5,10)) %>%
 
   set_header_labels(clean_name = "Municipality", pct_fmv_w_incentclass = "% FMV") %>%
-add_header_row(values = c("County Wide", "3.22%"), top = FALSE) %>%
   align(j = 2, align = "right") %>%
 align(j=2, align = "right", part = "header") %>%
 set_table_properties( layout = "autofit")
@@ -868,8 +869,7 @@ datatable(table2,
 
 ```{r}
 #| label: tbl-muni-comind-shareofFMV
-#| tbl-cap: "Municipalities with the largest share of Commercial and Industrial property with incentive classification. Uses tax year 2022 values obtained from PTAXSIM, and levels of assessment from CCAO's Github."
-#| layout-ncol: 2
+#| tbl-cap: "Municipalities with the largest share of Commercial and Industrial property with incentive classification. Uses tax year 2022 values obtained from PTAXSIM, and levels of assessment from CCAO's Github. There are 27 municipalities that do not use incentives and have a majority of their taxable EAV within Cook County."
 
 
 muni_incent_share <- ptax_pins %>% 
@@ -893,31 +893,29 @@ filter(!agency_num %in% cross_county_line & !is.na(clean_name) ) %>%
 
 ) 
 
-muni_incentshare_slice <- muni_incent_share %>%
-ungroup() %>%
-  mutate(pct_fmv_w_incentclass = fmv_w_incent/comind_fmv,
-    pct_fmv_w_incentclass = ifelse(is.na(pct_fmv_w_incentclass), 0, pct_fmv_w_incentclass)) %>%
-  select(clean_name, pct_fmv_w_incentclass) |> 
-  arrange(desc(pct_fmv_w_incentclass)) %>%
-  mutate(pct_fmv_w_incentclass = scales::percent(pct_fmv_w_incentclass, accuracy = 0.01) ) %>%
-    slice(c(1:10, 56:65, 110:119)) 
-
-muni_incentshare_slice %>%
-  flextable() %>% 
-  border_remove() %>%
-  hline_top() %>%
-  hline(i = c(10,20)) %>%
-
-  set_header_labels(clean_name = "Municipality", pct_fmv_w_incentclass = "% FMV with\nIncent. Class.") %>%
-add_header_row(values = c("County Wide", "3.25%"), top = FALSE) %>%
-    align(j = 2, align = "right", part = "all") %>%
-
-add_footer("There are 27 municipalities that do not use incentives and have a majority of their taxable EAV within Cook County.", top = FALSE) %>%
-
-  set_table_properties( layout = "autofit")
+# muni_incentshare_slice <- muni_incent_share %>%
+#   ungroup() %>%
+#   mutate(pct_fmv_w_incentclass = fmv_w_incent/comind_fmv,
+#          pct_fmv_w_incentclass = ifelse(is.na(pct_fmv_w_incentclass), 0, pct_fmv_w_incentclass)) %>%
+#   select(clean_name, pct_fmv_w_incentclass) |> 
+#   arrange(desc(pct_fmv_w_incentclass)) %>%
+#   mutate(pct_fmv_w_incentclass = scales::percent(pct_fmv_w_incentclass, accuracy = 0.01) ) %>%
+#   slice(c(1:10, 56:65, 110:119)) 
+# 
+# muni_incentshare_slice %>%
+#   flextable() %>% 
+#   border_remove() %>%
+#   hline_top() %>%
+#   hline(i = c(10,20)) %>%
+#   set_header_labels(clean_name = "Municipality", pct_fmv_w_incentclass = "% FMV with\nIncent. Class.") %>%
+# add_header_row(values = c("County Wide", "3.25%"), top = FALSE) %>%
+#     align(j = 2, align = "right", part = "all") %>%
+# 
+# add_footer("There are 27 municipalities that do not use incentives and have a majority of their taxable EAV within Cook County.", top = FALSE) %>%
+#   set_table_properties( layout = "autofit")
 
 
-muni_incent_share  %>%
+muni_incentshare_slice <- muni_incent_share  %>%
 ungroup() %>%
 filter(!agency_num %in% cross_county_lines) %>%
   mutate(pct_fmv_w_incentclass = fmv_w_incent/comind_fmv,
@@ -925,7 +923,9 @@ filter(!agency_num %in% cross_county_lines) %>%
   select(clean_name, pct_fmv_w_incentclass) |> 
   arrange(desc(pct_fmv_w_incentclass)) %>%
   mutate(pct_fmv_w_incentclass = scales::percent(pct_fmv_w_incentclass, accuracy = 0.01 ) ) %>%
-  slice(c(1:5, 58:62, 115:119)) %>%
+  slice(c(1:5, 58:62, 115:119))
+  
+muni_incentshare_slice %>%
   flextable() %>% 
   border_remove() %>%
   align(j = 2, align = "right", part = "all") %>%
@@ -934,7 +934,6 @@ filter(!agency_num %in% cross_county_lines) %>%
   set_header_labels(clean_name = "Municipality", pct_fmv_w_incentclass = "% FMV with\nIncent. Class.") %>%
 #add_header_row(values = c("County Wide", "3.25%"), top = FALSE) %>%   align(j = 2, align = "right" ) %>%
 bold(i = 8) %>%
-add_footer("There are 27 municipalities that do not use incentives and have a majority of their taxable EAV within Cook County.", top = FALSE) %>%
   set_table_properties( layout = "autofit")
 ```
 
@@ -1054,6 +1053,7 @@ cook_ratechange <- ptax_pins %>%
   filter(!agency_num %in% cross_county_lines & !is.na(clean_name) & clean_name!="Unincorporated" )  %>%
   #group_by(class_group) %>%
   summarize(
+    
     ## New Tax Base Calculations
     new_TEAV_noIncents = sum(ifelse(class >= 600 & class < 900,
                                     (taxed_av*eq2022/loa)*0.25, taxed_av*eq2022), na.rm=TRUE),
@@ -1164,10 +1164,15 @@ cook_ratechange <- ptax_pins %>%
 
 ```{r}
 cook_ratechange %>% 
-select(rate_current, rate_noInc, change_noInc)
+select("Current Composite Rate" = rate_current, "Rate if Incentive Props LoA is 25%" = rate_noInc, "Tax Rate Change" =  change_noInc) %>% flextable()
+```
 
+
+```{r}
 cook_ratechange %>% 
-select(reducedEAV_commerc_incents, reducedEAV_indust_incents, reducedEAV_comind_incents, all_exemptions)
+select("Commerc. EAV w/Incent" = reducedEAV_commerc_incents, "Indust EAV w/ Incent" = reducedEAV_indust_incents,
+       "CommInd EAV w/ Incent" = reducedEAV_comind_incents,
+       "Homeowner Exemption Exempt EAV" = all_exemptions) %>% flextable() %>% flextable()
 
 
 ```
@@ -1181,7 +1186,7 @@ $15 Billion EAV is tax exempt due to homeowners exemptions. All incentive proper
 ```{r}
 
 cook_ratechange %>% 
-select(contains("forgonerev") )
+select(contains("forgonerev") ) %>% flextable()
 ```
 
 ### Naive Revenue Shift
