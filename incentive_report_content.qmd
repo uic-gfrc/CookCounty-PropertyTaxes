@@ -1240,18 +1240,21 @@ ptax_pins %>%
 
 ```{r}
 muni_ratechange <- ptax_pins %>%
+  ungroup() |>
   # left_join(muni_rate) %>%
   filter(!clean_name  %in% c("Frankfort", "Homer Glen",  "Oak Brook", "East Dundee", "University Park",  "Bensenville", "Hinsdale", "Roselle", "Deer Park", "Deerfield")) %>% 
-filter(!agency_num %in% cross_county_lines) %>%
-group_by(clean_name) %>%
+  filter(!agency_num %in% cross_county_lines) %>%
+
+  group_by(clean_name) %>%
   summarize(
-classgroup_PC = n(),
+    classgroup_PC = n(),
     # projects = n_distinct(both_ids), # mostly for industrial and commercial properties
     pins_withincents = sum(ifelse(class >= 600 & class < 900, 1,0)),
     fmv_incentive = sum(ifelse(class >=600 & class <900, fmv, 0), na.rm = TRUE),
     #fmv_taxed =  sum(taxed_fmv, na.rm=TRUE),
     fmv_incents_inTIFs = sum(ifelse(class >=600 & class <900 & final_tax_to_tif > 0, fmv, 0), na.rm = TRUE),
     fmv_inTIF = sum(fmv_inTIF, na.rm=TRUE),
+    eav_tif_increment = sum(final_tax_to_tif/tax_code_rate, na.rm=TRUE),
     fmv_tif_increment = sum(fmv_tif_increment, na.rm=TRUE),
     fmv_untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
     fmv_exemptions = sum(all_exemptions/eq2022/loa, na.rm=TRUE),
@@ -1269,7 +1272,7 @@ classgroup_PC = n(),
     av_taxed = sum(taxed_av, na.rm = TRUE),
     untaxable_value_av = sum(untaxable_value_av, na.rm=TRUE),
     av = sum(av),
-    eav_taxed = sum(taxed_av*eq2022), 
+    eav_taxed = sum(taxed_av*eq2022, na.rm=TRUE), 
     eav_untaxable = sum(untaxable_value_eav, na.rm=TRUE),
     eav_max = sum(fmv*loa*eq2022, na.rm=TRUE),
     fmv = sum(fmv, na.rm=TRUE),
@@ -1277,37 +1280,39 @@ classgroup_PC = n(),
     all_exemptions = sum(all_exemptions),   # in EAV
     abatements = sum(exe_abate),            # in EAV
     eav_incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, eav, 0), na.rm = TRUE),
-    loa = mean((loa*classgroup_PC ) / sum(classgroup_PC), na.rm=TRUE),
+    #  loa = mean((loa*classgroup_PC ) / sum(classgroup_PC), na.rm=TRUE),
     final_tax_to_dist = sum(final_tax_to_dist),
     final_tax_to_tif = sum(final_tax_to_tif),
     eav = sum(eav),
     new_TEAV_noIncents = sum(ifelse(class >=600 & class <900,
-      (taxed_av*eq2022/loa)*0.25, taxed_av*eq2022), na.rm=TRUE),
-
+                                    (taxed_av*eq2022/loa)*0.25, taxed_av*eq2022), na.rm=TRUE),
+    
     new_TEAV_noC6 = sum(ifelse( class >=600 & class <700, 
-(taxed_av*eq2022/loa)*0.25 , taxed_av*eq2022)),
+                                (taxed_av*eq2022/loa)*0.25 , taxed_av*eq2022)),
     new_TEAV_noC7 = sum(ifelse(class >=700 & class <800,
-(taxed_av*eq2022/loa)*0.25, taxed_av*eq2022)),
+                               (taxed_av*eq2022/loa)*0.25, taxed_av*eq2022)),
     new_TEAV_noC8 = sum(ifelse(class >=800 & class <900, (taxed_av*eq2022/loa)*0.25, taxed_av*eq2022)),
     
     new_TEAV_vacant_noIncents = sum(ifelse(class >=600 & class <900,
-                                       0, taxed_av*eq2022)),
-
-new_TEAV_noExemps = eav_taxed + all_exemptions, # does not include abatements
-new_TEAV_noAbates = eav_taxed + abatements, # include only abatements, not other exemption types
-
-# amount of EAV from taxing an additional 15% of the AV if incentive properties didn't exist
-forgone_EAV_incent = #class_group %in% incentive_majorclasses,
-  #incent_prop == "Incentive", 
-  new_TEAV_noIncents - eav_taxed,
-
-# TIF increment above the frozen EAV
-forgone_TIF_EAV = fmv_tif_increment * loa * eq2022) %>%
+                                           0, taxed_av*eq2022), na.rm=TRUE)) |> 
+  mutate(
+    
+    new_TEAV_noExemps = eav_taxed + all_exemptions, # does not include abatements
+    new_TEAV_noAbates = eav_taxed + abatements, # include only abatements, not other exemption types
+    
+    # amount of EAV from taxing an additional 15% of the AV if incentive properties didn't exist
+    forgone_EAV_incent = #class_group %in% incentive_majorclasses,
+      #incent_prop == "Incentive", 
+      new_TEAV_noIncents - eav_taxed,
+    
+    # TIF increment above the frozen EAV
+  #  forgone_TIF_EAV = fmv_tif_increment * loa * eq2022
+    ) %>%
   #cbind(table_cook) %>%
   mutate(
     # Absolute maximum TEAV: No Exemptions, no abatements, no TIFS, no Incentive properties
     # Commercial and industrial assessed at 25%
-    TEAV_max = eav_taxed + all_exemptions + abatements + forgone_TIF_EAV + forgone_EAV_incent,
+    TEAV_max = eav_taxed + all_exemptions + abatements + eav_tif_increment + forgone_EAV_incent,
     
     # no exemptions or incentive classifications:
     TEAV_neither = eav_taxed + all_exemptions + forgone_EAV_incent,
@@ -1316,7 +1321,7 @@ forgone_TIF_EAV = fmv_tif_increment * loa * eq2022) %>%
     rate_noAbate = final_tax_to_dist / new_TEAV_noAbates * 100,
     rate_noInc = final_tax_to_dist / new_TEAV_noIncents * 100,
     rate_neither = final_tax_to_dist / TEAV_neither * 100, 
-    rate_noTIFs = final_tax_to_dist / (eav_taxed + forgone_TIF_EAV) * 100,
+    rate_noTIFs = final_tax_to_dist / (eav_taxed + eav_tif_increment) * 100,
     rate_vacant = final_tax_to_dist / new_TEAV_vacant_noIncents* 100,
     rate_lowest = final_tax_to_dist / TEAV_max * 100,
     # rate_noC6 = levy / new_TEAV_noC6 * 100,
@@ -1435,16 +1440,20 @@ muni_ratechange %>%
   inner_join(order) %>%
   ggplot(aes(x = tax_rate, y= reorder(clean_name, rate_current)))+
   geom_line(aes(group = clean_name))+ 
-  geom_point(aes(color=type), size=3, pch = 21, color = "black" )+
+  geom_point(aes(fill=type), size=3, pch = 21, color = "black" 
+             )+
+    # scale_color_manual(palette="Blues", 
+    #                  labels = c("Current Rate", "No Incentives")#,  
+    #               #   values = c("#A6CEE3", "#1F78B4" )
+    #                  )+
   theme_minimal() + 
   theme( 
     legend.title = element_blank(),
     plot.title.position = "plot",
     plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
   )+
-  scale_color_manual(#palette="Blues", 
-                     labels = c("Current Rate", "No Incentives"),  
-                     values = c("#A6CEE3", "#1F78B4" ))+
+  scale_fill_brewer(palette="Paired", labels = c("Incentives", "No Incentives"), direction = 1)+
+
   
   labs(title = "Difference in Composite Tax Rate if Assessed at 25%",
        subtitle = "Ordered by Current Composite Tax Rate", x = "Composite Tax Rate (%)", y = "")
@@ -1452,7 +1461,9 @@ muni_ratechange %>%
 
 ```{r}
 #| label: fig-ordereddotplot-amountofchange
-#| fig-cap: "Change in Tax Rate from use of Incentives. Ordered by amount of change in the composite tax rate."
+#| fig-cap: "Change in Tax Rate from use of Incentives. Ordered by amount of change in the composite tax rate. Only shows municipalities that had more than 1/2 percentage point change in tax rate."
+#| fig-height: 6
+#| fig-width: 6
 
 # as a dot graph ## 
 # create order of dots
@@ -1466,13 +1477,16 @@ order <- muni_ratechange %>%
 
 # make dot graph
 muni_ratechange %>% 
-filter(change_noInc > .7) %>%
+  filter(change_noInc > .5) %>%
+  filter(change_noInc > 0) %>%
+
   select(clean_name, rate_current, rate_noInc, change_noInc) %>% 
   distinct() %>%
   pivot_longer(c("rate_current", "rate_noInc"), 
                names_to = "type", values_to = "tax_rate") %>% 
   left_join(order) %>%
     filter(change_noInc > 0 ) %>%
+  mutate(clean_name = if_else(clean_name == "Mc Cook", "McCook", clean_name)) %>%
   ggplot(aes(x = tax_rate, y= reorder(clean_name, change_noInc)))+
   geom_line(aes(group = clean_name))+ 
   geom_point(aes(fill=type), size=3, pch = 21, color = "black" )+
@@ -1490,6 +1504,10 @@ filter(change_noInc > .7) %>%
 
 
 ```{r}
+#| label: fig-dotplot4dots
+#| fig-cap: "Only shows municipalities that had more than 1/2 percentage point change in tax rate."
+#| fig-height: 6
+#| fig-width: 6
 # as a dot graph ## 
 # create order of dots
 order <- muni_ratechange %>%  
@@ -1500,8 +1518,9 @@ order <- muni_ratechange %>%
 
 # make dot graph
 muni_ratechange %>% 
-  filter(change_noInc > .7) %>%
-  select(clean_name, rate_current, rate_noInc, rate_neither, rate_vacant, rate_noExe) %>% 
+  filter(change_noInc > .5) %>%
+  select(clean_name, rate_current, rate_noInc, #rate_neither, 
+         rate_vacant, rate_noExe) %>% 
   distinct() %>%
   arrange(rate_current) %>%
   pivot_longer(c("rate_current", 
@@ -1536,6 +1555,10 @@ plot.title.position = "plot",
 ```
 
 ```{r}
+#| label: fig-dotplot4dots-allmunis
+#| fig-cap: "Same as figure above but includes all municipalities that had a taxrate change from altering the level of assessment for incentive class properties."
+#| fig-height: 10
+#| fig-width: 6
 # as a dot graph ## 
 # create order of dots
 order <- muni_ratechange %>%  
@@ -1546,16 +1569,67 @@ order <- muni_ratechange %>%
 
 # make dot graph
 muni_ratechange %>% 
- filter(change_noInc > .7) %>%
-  select(clean_name, rate_current, rate_noInc, rate_neither, rate_vacant, rate_noExe) %>% 
+  filter(change_noInc > 0) %>%
+  select(clean_name, rate_current, rate_noInc, #rate_neither, 
+         rate_vacant, rate_noExe) %>% 
   distinct() %>%
   arrange(rate_current) %>%
   pivot_longer(c("rate_current", 
                  "rate_noInc", 
                  "rate_vacant", 
-               #  "rate_noExe"# ,
+                 "rate_noExe"# ,
                 #  "rate_neither"
 ), 
+               names_to = "type", values_to = "tax_rate") %>% 
+  inner_join(order) %>%
+  ggplot(aes(x = tax_rate, y= reorder(clean_name, rate_current)))+
+  geom_line(aes(group = clean_name))+ 
+  geom_point(aes(fill=type), size=3, pch = 21, color = "black" )+
+  theme_minimal() + 
+  theme( 
+    legend.title = element_blank(),
+legend.position = "bottom",
+plot.title.position = "plot",
+    plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
+  )+
+  scale_fill_brewer(palette = "RdGy",
+                    labels = c("Current Rate", 
+                             #  "No Exemps & LoA is 25%",
+                               "No Exemptions", 
+                               "No Incentives:\nLoA 25%",
+                               "Incententive Classification\nLoA = 0%"
+                    ), 
+                    direction = -1)+
+  labs(title = "Composite Tax Rate Scenarios",
+       subtitle = "Ordered by Current Composite Tax Rate", 
+       x = "Composite Tax Rate (%)", y = "")
+```
+
+```{r}
+#| label: fig-dotplot3dots
+#| fig-cap: "Only shows municipalities that had more than 1/2 percentage point change in tax rate."
+#| fig-height: 6
+#| fig-width: 6
+
+
+# as a dot graph ## 
+# create order of dots
+order <- muni_ratechange %>%  
+  as_tibble() %>% 
+  filter(change_noInc > .5) %>%
+  arrange(rate_current) %>%
+  select(clean_name, rate_current) %>% distinct()
+
+# make dot graph
+muni_ratechange %>% 
+ filter(change_noInc > .5) %>%
+  select(clean_name, rate_current, rate_noInc, rate_vacant) %>% 
+  distinct() %>%
+  arrange(rate_current) %>%
+  pivot_longer(c("rate_current", 
+                 "rate_noInc", 
+                 "rate_vacant"
+                 ), 
                names_to = "type", values_to = "tax_rate") %>% 
   inner_join(order) %>%
   ggplot(aes(x = tax_rate, y= reorder(clean_name, rate_current)))+
@@ -1591,50 +1665,36 @@ muni_ratechange %>%
   distinct() %>%
   arrange(rate_current) %>%
   pivot_longer(c("rate_current", "rate_noInc", 
-               
-                 "rate_vacant", "rate_noExe",
+                  "rate_vacant", "rate_noExe",
                   "rate_neither"), 
                names_to = "type", values_to = "tax_rate") %>% 
   inner_join(order) %>%
   ggplot(aes(x = tax_rate, y= reorder(clean_name, rate_current)))+
   geom_line(aes(group = clean_name))+ 
   geom_point(aes(fill=type), size=3, pch = 21, color = "black" )+
- 
   geom_text_repel(aes(x=tax_rate),
-            hjust = 0,
-           vjust = -1,
-            min.segment.length = Inf,
-          #  vjust = -1,
-         #  nudge_y = .3,
-         # nudge_x = 3,
-          size = 3,
-                angle = 30,
-               label = c("Current Rate", "If LoA 25%" ,
-                           "If Vacant" , "If no Exemps",
-                                "No Exemps & LoA is 25%") )+
+                  hjust = 0,
+                  vjust = -1,
+                  min.segment.length = Inf,
+                  size = 3,
+                  angle = 30,
+                  label = c("Current Rate", "If LoA 25%" ,
+                            "If Vacant" , "If no Exemps",
+                            "No Exemps & LoA is 25%") )+
   theme_minimal() + 
   theme( 
     legend.title = element_blank(),
     plot.title.position = "plot",
-   plot.background = element_rect(fill='transparent', color=NA),
-      legend.position = "none"  )+
-scale_fill_manual(
-                          values = c("#BDD7E7", "#6BAED6", "#3182BD", "#EFF3FF",  "#08519C")) +
-  # 
-  # 
-  # scale_fill_brewer(#palette = "Paired",
-  #                   # labels = c("Current Rate",
-  #                   #             "If no GHE",
-  #                   #             "No GHE & LoA is 25%",
-  #                   #             "If LoA 25%" ,
-  #                   #            "If Vacant"  ),
-  #                    direction = 1)+
+    plot.background = element_rect(fill='transparent', color=NA),
+    legend.position = "none"  )+
+  scale_fill_manual(
+    values = c("#BDD7E7", "#6BAED6", "#3182BD", "#EFF3FF",  "#08519C")) +
   scale_x_continuous(limits = c(17, 35)) + 
   scale_y_discrete(
-   expand = expand_scale(mult = c(.1, 1)) ,
+    expand = expand_scale(mult = c(.1, 1)) ,
            #        limits = c("Markham")#, breaks = "Markham"
                    )  + 
-  labs(# title = "Composite Tax Rate Scenarios", 
+  labs(
     x = "Composite Tax Rate (%)", 
     y = "")
 ```
@@ -1678,6 +1738,112 @@ pins_per_year <- comm_ind_pins %>%
             "Became Exempt" = sum(became_exempt, na.rm=TRUE))
 pins_per_year
 ```
+
+
+```{r}
+df_2011_class8change <- comm_ind_pins|>
+  group_by(pin) |>
+      mutate(class8years = sum(class_1dig == 8)) |>
+
+  mutate(class8_change = case_when(
+      class8years == year_count ~ "Always Class 8",
+      class8years == 0 ~ "Never Class 8",
+      TRUE ~ "Changes to C8")
+  ) |> 
+  ungroup() |>
+group_by(year, class8_change) |>
+  summarize(
+    group_pin_count = n(),
+    group_year_fmv = sum(fmv, na.rm=TRUE),
+  ) |> ungroup() |>
+  group_by( class8_change) %>%
+  mutate(
+    base_year_fmv = group_year_fmv[year == min(year)],
+    fmv_group_growth = (group_year_fmv / base_year_fmv) -1)  
+
+
+
+df_2011_class8change %>% 
+  filter(year == 2022) %>%
+  select(class8_change, fmv_group_growth, base_year_fmv, group_year_fmv, everything(), -year)
+
+
+comm_ind_pins <- comm_ind_pins %>% 
+    group_by(pin) |>
+      mutate(class8years = sum(class_1dig == 8),
+    class8_change = case_when(
+      class8years == year_count ~ "Always Class 8",
+      class8years == 0 ~ "Never Class 8",
+      sum(lag(class_1dig) != 8 & class_1dig == 8) > 0 ~ "Becomes Class 8",
+    sum(class_1dig != 8 & lag(class_1dig) == 8 ) > 0 ~ "Leaves Class 8",
+      TRUE ~ "Other"),
+    becomes8 = ifelse(lag(class_1dig) != 8 & class_1dig == 8, 1, 0),
+    becomes7 = ifelse(lag(class_1dig) != 7 & class_1dig == 7, 1, 0),
+    becomes6 = ifelse(lag(class_1dig) != 6 & class_1dig == 6, 1, 0),
+    switches_to8 = ifelse(sum(incent_prop == "Incentive")> 1 & becomes8 ==1, 1, 0),
+   # is_exempt = ifelse(class %in% c("0", "EX"), 1, 0),
+  #  was_exempt = ifelse(lag(class) %in% c("0","EX"), 1, 0)
+  ) %>%
+        ungroup()
+
+ classpins_per_year <- comm_ind_pins |>
+   group_by(year) %>%
+  summarize("Becomes 8" = sum(becomes8==1, na.rm=TRUE),
+            "Total 8" = sum(class_1dig == 8),
+
+            "6 or 7 to 8" = sum(switches_to8, na.rm=TRUE),
+            "6 or 7 to 8lag" = sum(switchto8lag, na.rm=TRUE),
+
+            "Becomes 7" = sum(becomes7 == 1, na.rm=TRUE),
+            "Total 7" = sum(class_1dig == 7),
+
+            "Becomes 6" = sum(becomes6 == 1, na.rm=TRUE),
+            "Total 6" = sum(class_1dig == 6),
+            "PINs with Incent. Class." = sum(incent_prop=="Incentive"),
+          #  "Tax Exempt" = sum(is_exempt),
+            "PINs in Sample" = n(),
+            #"Became Exempt" = sum(became_exempt, na.rm=TRUE)
+          )
+classpins_per_year
+
+comm_ind_pins %>% 
+  filter(class8_change == "Becomes Class 8") %>% 
+   left_join(bor, by = c("pin", "year" = "tax_year")) %>%
+    filter(!is.na(appellant)) %>%
+
+  arrange(pin) %>%
+  select(year, appellant, project_id, class.x, everything())
+
+# example of PIN that was class 8 and then became un-incentivized in 2017
+# comm_ind_pins %>% filter(pin == "16271000330000")
+
+
+comm_ind_pins %>% 
+  filter(class8_change == "Becomes Class 8" & Triad == "South") %>% 
+  arrange(pin) %>%
+  select(year, class, everything())
+```
+
+
+```{r}
+comm_ind_pins %>% 
+  filter(becomes8 == 1 & Triad == "South") %>% 
+  arrange(pin) %>%
+  select(year, class, everything())
+comm_ind_pins %>% 
+  filter(becomes7== 1& Triad == "South") %>% 
+  arrange(pin) %>%
+  select(year, class, everything())
+
+comm_ind_pins %>% 
+  filter(becomes6 == 1 & Triad == "South") %>% 
+  arrange(pin) %>%
+  select(year, class, everything())
+```
+
+> note to self: status is coded incorrectly. There are 'Gains Incentive' PINs that are also Controls if they existed less than 12 years. 
+
+> Became_taxed is wrong too
 
 ```{r}
 #| label: tbl-incentchange-2022indexed
