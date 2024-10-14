@@ -11,8 +11,7 @@ library(httr)
 library(ptaxsim)
 library(glue)
 
-# Create the DB connection with the default name expected by PTAXSIM functions
-# ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
+# Create the DB connection (MVH Note: We can just call it "db" since we don't use the package...)
 
 ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2023.0.0.db")
 
