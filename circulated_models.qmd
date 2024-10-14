@@ -44,11 +44,22 @@ building <- c(201: 221, 225:236, 278:299, 301:399,401, 417:499, 501:549, 551:599
 
 vacant = c(100:199)
 
-comm_ind <- read_csv("./Output/comm_ind_PINs_2011to2022_timeseries.csv") |>
-  filter(year >= 2011) |>
-      
+comm_ind <- read_csv("./Output/comm_ind_PINs_2011to2022_timeseries.csv") 
+
+year_count <- 12
+
+comm_ind <- comm_ind %>%
+    mutate(incent_change = ifelse(years_existed < year_count, "Excluded", incent_change),
+           incent_status = ifelse(years_existed < year_count, "Excluded", incent_status),
+           incent_status = ifelse(incent_status == "Gains & Loses Incent", "Excluded", incent_status),
+           landuse_change = ifelse(years_existed < year_count, "Excluded", landuse_change),
+           landuse_change = ifelse(landuse_change == "Exempt Sometime", "Excluded", landuse_change))
+
+comm_ind <- comm_ind |>
+
   # set reference levels
   mutate(incent_change = as.factor(incent_change),
+         incent_status = as.factor(incent_status),
          landuse_change = as.factor(landuse_change),
          triad = as.factor(Triad),
          in_tif = as.factor(in_tif),
@@ -58,6 +69,7 @@ comm_ind <- read_csv("./Output/comm_ind_PINs_2011to2022_timeseries.csv") |>
          incent_indicator = ifelse(incent_prop == "Incentive", 1, 0),
          incent_change = relevel(incent_change, ref = "Never Incentive"),
         landuse_change = relevel(landuse_change, ref = "Always Commercial"),
+        incent_status = relevel(incent_status, ref = "Never had Incentive"),
          incent_prop = relevel(incent_prop, ref = "Non-Incentive"),
          triad = relevel(triad, ref = "City"),
          land_use = relevel(land_use, ref = "Commercial"))|> 
@@ -90,6 +102,7 @@ comm_ind <- read_csv("./Output/comm_ind_PINs_2011to2022_timeseries.csv") |>
 
 ```{r incent_final_models}
 table(comm_ind$land_use)
+
 table(comm_ind$incent_status)
 table(comm_ind$incent_prop)
 table(comm_ind$landuse_change)
@@ -197,6 +210,19 @@ formatted_regression_models
 
 ```
 
+# Hierarchical Linear Models
+
+```{r}
+# library(lme4)
+# comm_ind$clean_name = as.factor(comm_ind$clean_name)
+# 
+# intercept.only.model <- lmer(fmv_growth_2011_w ~ incent_prop + land_use + year + (1 | clean_name), data = comm_ind)
+#  
+# comm_ind$intercept.only.preds <- predict(intercept.only.model)
+
+```
+
+
 # Scratchwork to Delete w/ Alea
 
 > Check that vcovHC() works with "HC3" as a robust standard error type. I didn't think hc3 was an option in that package but maybe I'm mixing the packages up. 
@@ -234,159 +260,6 @@ The treatment is having the class of property go from a non-incentive class to a
 - After a property gets its class changed to an incentive class, how does its fair market value change in the **next assessment cycle** compared to properties that did not get an incentive class?  
 
 - some kind of difference-in-differences design   
-
-
-## Logit Models
-
-### Normal Logit Models
-
-#### Transformed Logit Model:
-```{r}
-#| label: tbl-logitincentDV-noFE
-#| tbl-cap-location: margin
-#| tbl-cap: "DV is if a parcel has a incentive property or not or not. 0 = did not have incentive class, 1 = had incentive class. Only uses Municipality-Year fixed effects. There are no PIN level fixed effects in the logit models."
-#| results: hold
-#| eval: false
-
-logitted_models <- list(
-  
-  "Land Use"  = feglm(incent_indicator ~ land_use | clean_name + year, 
-                             # panel.id = c("pin", "year"),   
-                              data = comm_ind_df, 
-                              family = binomial(link = "logit")
-                      ),
-  
-  "Land Use and FMV Growth" =  feglm(incent_indicator ~ land_use 
-                                    + nonvacant | clean_name + year, 
-                                         #  panel.id = c("pin", "year"),   
-                                           data = comm_ind_df, 
-                                           family = binomial(link = "logit")
-                                    ),
-  
-  "Land Use Interact FMV" = feglm(incent_indicator ~ land_use*fmv_growth_2011_w | clean_name + year,
-                                  #  panel.id = c("pin", "year"),   
-                                    data = comm_ind_df, 
-                                    family = binomial(link = "logit")
-                                  ),
-  
-    "Other Variables" = feglm(incent_indicator ~ land_use*fmv_growth_2011_w + building + nonvacant + in_tif | clean_name + year,
-                                  #  panel.id = c("pin", "year"),   
-                                    data = comm_ind_df, 
-                                    family = binomial(link = "logit")
-                                  )
-)
-
-loggited_statistic_overrides <- lapply(logitted_models, transform_feglm_model)
-
-#ov_override <- transform_feglm_model(ov)
-
-#loggited_statistic_overrides <- lapply(ov, transform_feglm_model)
-
-modelsummary(logitted_models,
-             statistic_override = loggited_statistic_overrides,
-             stars = TRUE,
-             fmt = function(x) round(x, 2),
-             gof_omit = "AIC|BIC|Log.Lik.", 
-             output = "flextable")
-```
-
-```{r}
-#| label: tbl-FE_exponentiated_coeffs-noFE
-#| tbl-cap: "Odds. Has exponentiated coefficients."
-#| results: hold
-#| eval: false
-#| include: false
-
-modelsummary(#logitted_models_1,
-  logitted_models,
-             #vcov = vcovs,
-             stars = TRUE,
-             fmt = function(x) round(x, 2),
-             gof_omit = "AIC|BIC|Log.Lik.",
-             output = "flextable",
-             exponentiate = TRUE
-             )
-
-```
-
-###  Conditional Logit Models
-
-
-Only includes PINs that that change incent_prop status during the time frame. Any PIN that was never an incentive or always an incentive property are dropped from these models.
-
-Not sure how to interpret results though?
-
-```{r}
-#| label: tbl-logitincentDV
-#| tbl-cap-location: margin
-#| tbl-cap: "DV is if a parcel has a incentive property or not or not. 0 = did not have incentive class, 1 = had incentive class. Sample size decreases a lot due to only being able to use observations that experienced a change in the DV. "
-#| results: hold
-#| eval: false
-
-
-comm_ind_df <- comm_ind_df %>% 
-  mutate(incent_indicator = ifelse(incent_prop == "Incentive", 1, 0))
-
-logitted_models <- list(
-  
-  "Land Use"  = feglm(incent_indicator ~ land_use 
-                      | pin + year,
-                              panel.id = c("pin", "year"),   
-                              data = comm_ind_df, 
-                              family = binomial(link = "logit")
-                      ),
-  
-  "Land Use andFMV Growth" =  feglm(incent_indicator ~ land_use 
-                                    + fmv_growth_2011_w 
-                                    | pin + year,
-                                           panel.id = c("pin", "year"),   
-                                           data = comm_ind_df, 
-                                           family = binomial(link = "logit"),
-                                    ),
-  
-  "Land Use Interact FMV" = feglm(incent_indicator ~ land_use*fmv_growth_2011_w | pin + year,
-                                    panel.id = c("pin", "year"),   
-                                    data = comm_ind_df, 
-                                    family = binomial(link = "logit"),
-                                  )
-)
-
-logitted_models_vcov <- lapply(logitted_models, function(model) {
-  list(
-    model = model,
-    vcov = robust_vcov(model)
-  )
-})
-
-logitted_models_1 <- lapply(logitted_models_vcov, `[[`, "model")
-vcovs <- lapply(logitted_models_vcov, `[[`, "vcov")
-
-modelsummary(logitted_models_1,
-             vcov = vcovs,
-             stars = TRUE,
-             fmt = function(x) round(x, 2),
-             gof_omit = "AIC|BIC|Log.Lik.", 
-             output = "flextable")
-```
-
-```{r}
-#| label: tbl-FE_exponentiated_coeffs
-#| tbl-cap: "Same Models as Above with Coefficients Exponentiated (i.e., can now be interpreted as odds)"
-#| results: hold
-#| eval: false
-#logitted_models_odds <- lapply(logitted_models, transform_to_odds)
-
-modelsummary(logitted_models_1,
-             vcov = vcovs,
-             stars = TRUE,
-             fmt = function(x) round(x, 2),
-             gof_omit = "AIC|BIC|Log.Lik.",
-             output = "flextable",
-             exponentiate = TRUE
-             )
-
-```
-
 
 # Fixed Effect Models
 
