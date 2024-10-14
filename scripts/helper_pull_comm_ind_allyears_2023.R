@@ -131,6 +131,8 @@ tif_distrib <- DBI::dbGetQuery(
     .con = ptaxsim_db_conn)
   )
 
+dbDisconnect(ptaxsim_db_conn) # Closed the connection so DBI stops complaining
+
 
 ## Add additional variables ---------------------------------------------
 
@@ -172,9 +174,13 @@ comm_ind_pins_ever <- comm_ind_pins_ever %>%
       (class_group == 8 & class %in% commercial_classes ) ~ "8A",
       (class_group == 8 & class %in% industrial_classes ) ~ "8B",
       TRUE ~ as.character(class_group))
-)
+) |>
 
-#  Create 2006 to 2011 Timeseries ############################
+  # HEY THIS IS THE LINE WE WANT TO LOOK AT SINCE WE DID THE UPDATE!!!!
+
+  filter(year != "2023")
+
+#  Create 2006 to 2022 Timeseries ############################
 timespan = 17
 
 comm_ind_pins <- comm_ind_pins_ever  %>%
@@ -540,64 +546,64 @@ comm_ind_pins <- comm_ind_pins |>
 write_csv(comm_ind_pins, "./Output/comm_ind_PINs_2011to2022_timeseries.csv")
 
 
-# Create 2006 PIN level Panel Data ----------------------------------------
-#
-# comm_ind_pins_2006 <- comm_ind_pins_ever |>
-#   group_by(pin) |>
-#   mutate(
-#     tif_years = sum(in_tif==1),
-#     years_existed = n(),
-#     incentive_years = sum(incent_prop == "Incentive"),
-#     landuse_change =
-#       ifelse(sum(land_use == "Commercial") == 17, "Always Commercial",
-#              ifelse(sum(land_use == "Industrial") == 17, "Always Industrial",
-#                     "Changes Land Use" )),
-#     base_year_fmv_2006 = ifelse(min(year)==2006, fmv[year == 2006], NA),
-#     fmv_growth_2006 = fmv/base_year_fmv_2006,
-#   )  %>%
-#   ungroup() %>%
-#   mutate(incent_change = case_when(
-#     incentive_years == 17 ~ "Always Incentive",
-#     incentive_years == 0 ~ "Never Incentive",
-#     TRUE ~ "Changes Sometime")
-#   )
-#
-## Examine dropped PINs from 2006 to 2022 panel data -----------------------
-#
-#
-# ## View the PINs that will be dropped in future step
-# ## 219,187 PINs are will be dropped from the 2006-2022 panel data
-# dropped_pins1 <- comm_ind_pins_2006 %>%
-#   filter(
-#     years_existed < 17  |      ## 196,780 PINs do not exist all 17 years
-#       is.na(clean_name)  |       ## 6,837 PINs do not have municipality names
-#       agency_num %in% cross_county_lines   ## 19,554 PINs located in Municipalities that have a majority of their EAV in other counties
-#   )
-#
-# write_csv(dropped_pins1, "dropped_frompanel_2006to2022.csv")
-#
-#### Drop PINs and export File -----------------------------------------------
-#
-#
-# ## This step "balances the panel" - all PINs left in the sample exist during every year.
-# ## Also drops PINs in unincorporated areas of Cook County
-# comm_ind_pins_2006 <- comm_ind_pins_2006 %>%
-#   filter(
-#     years_existed == 17  &
-#       !is.na(clean_name)  &
-#       !agency_num %in% cross_county_lines
-#   )
-# ## 1,598,968 obs remain July 12 2024 - AWM
-#
-#
-# ## 96,193 PINs exist every year - old
-# ## 95,355 PINs as of July 11 2024
-# ## 94,243 PINs as of July 12
-# comm_ind_pins_2006 %>%
-#   select(year, land_use, incent_prop, fmv_growth_2006) %>%
-#   filter(year == 2022)
-#
-# write_csv(comm_ind_pins_2006, "./Output/comm_ind_PINs_2006to2022_balanced.csv")
+#Create 2006 PIN level Panel Data ----------------------------------------
+
+comm_ind_pins_2006 <- comm_ind_pins_ever |>
+  group_by(pin) |>
+  mutate(
+    tif_years = sum(in_tif==1),
+    years_existed = n(),
+    incentive_years = sum(incent_prop == "Incentive"),
+    landuse_change =
+      ifelse(sum(land_use == "Commercial") == 17, "Always Commercial",
+             ifelse(sum(land_use == "Industrial") == 17, "Always Industrial",
+                    "Changes Land Use" )),
+    base_year_fmv_2006 = ifelse(min(year)==2006, fmv[year == 2006], NA),
+    fmv_growth_2006 = fmv/base_year_fmv_2006,
+  )  %>%
+  ungroup() %>%
+  mutate(incent_change = case_when(
+    incentive_years == 17 ~ "Always Incentive",
+    incentive_years == 0 ~ "Never Incentive",
+    TRUE ~ "Changes Sometime")
+  )
+
+# Examine dropped PINs from 2006 to 2022 panel data -----------------------
+
+
+## View the PINs that will be dropped in future step
+## 219,187 PINs are will be dropped from the 2006-2022 panel data
+dropped_pins1 <- comm_ind_pins_2006 %>%
+  filter(
+    years_existed < 17  |      ## 196,780 PINs do not exist all 17 years
+      is.na(clean_name)  |       ## 6,837 PINs do not have municipality names
+      agency_num %in% cross_county_lines   ## 19,554 PINs located in Municipalities that have a majority of their EAV in other counties
+  )
+
+write_csv(dropped_pins1, "dropped_frompanel_2006to2022.csv")
+
+### Drop PINs and export File -----------------------------------------------
+
+
+## This step "balances the panel" - all PINs left in the sample exist during every year.
+## Also drops PINs in unincorporated areas of Cook County
+comm_ind_pins_2006 <- comm_ind_pins_2006 %>%
+  filter(
+    years_existed == 17  &
+      !is.na(clean_name)  &
+      !agency_num %in% cross_county_lines
+  )
+## 1,598,968 obs remain July 12 2024 - AWM
+
+
+## 96,193 PINs exist every year - old
+## 95,355 PINs as of July 11 2024
+## 94,243 PINs as of July 12
+comm_ind_pins_2006 %>%
+  select(year, land_use, incent_prop, fmv_growth_2006) %>%
+  filter(year == 2022)
+
+write_csv(comm_ind_pins_2006, "./Output/comm_ind_PINs_2006to2022_balanced.csv")
 #
 
 
