@@ -34,6 +34,7 @@ library(tinytable)
 
 ```
 
+PINs are excluded from models if they existed for less than 12 years (2011 to 2022) or if they Gained and Lost Incentives in the time span. PINs can also be excluded if they were tax exempt any year between 2011 and 2022.
 
 ```{r recodedata}
 
@@ -98,10 +99,10 @@ comm_ind <- comm_ind |>
 # Models
 
 ```{r incent_final_models}
-table(comm_ind$land_use)
+table(comm_ind$land_use, comm_ind$incent_status)
 
 table(comm_ind$incent_status)
-table(comm_ind$incent_prop)
+table(comm_ind$incent_prop, comm_ind$landuse_change)
 table(comm_ind$landuse_change)
 
 name_map <- c(
@@ -134,12 +135,21 @@ gof_format_fun <- function(x) format(round(x, 3), big.mark=",")
 
 
 
-# gof_map <- 
+# gof_map <-
+```
+
+
+```{r}
+#| label: tbl-pinandmunimodels-notfiltered
+#| tbl-cap: "PIN and Year FE compared with Municipality and Year FE models."
 
 incent_paper_models <- list(
   
   "PIN-Level" = list(
-  
+    # landuse_change would be dropped (coded to be constant every year)
+    # incent_status would be dropped (ditto)
+    # landuse_change*incent_status dropped
+    # land_use & incent_prop can change each year
   "I" = 
     
     feols(fmv_growth_2011_w ~ incent_prop + land_use +
@@ -150,9 +160,8 @@ incent_paper_models <- list(
                            data = comm_ind),
   
   "II" = 
-    
-    feols(fmv_growth_2011_w ~ incent_prop + land_use +
-            landuse_change*incent_status + land_use*incent_status+ landuse_change*incent_prop
+
+    feols(fmv_growth_2011_w ~ incent_prop + land_use + land_use*incent_status + landuse_change*incent_prop
                            | pin + year,
                            panel.id = c("pin", "year"),
                            vcov = "NW",
@@ -161,7 +170,6 @@ incent_paper_models <- list(
                            
   "Municipality-Level" = list(
     
-    # model wouldn't let me do land_use*incent_status so changed it back to incent_prop
     "I" = feols(fmv_growth_2011_w ~ incent_prop + land_use +
             land_use*incent_prop
                            | clean_name + year,
@@ -172,7 +180,7 @@ incent_paper_models <- list(
    "II" = 
     
     feols(fmv_growth_2011_w ~ incent_prop + land_use +
-            landuse_change*incent_status
+            incent_prop*landuse_change
                            | clean_name + year,
                            panel.id = c("clean_name", "year"),
                            vcov = "DK",
@@ -208,6 +216,171 @@ formatted_regression_models
 ```
 
 ```{r}
+#| label: tbl-pinandmunimodels-filtered
+#| tbl-cap: "PIN and Year FE compared with Municipality and Year FE models. Drop observations with Excluded category in incent_status or landuse_change.  Winsorized."
+
+incent_paper_models <- list(
+  
+  "PIN-Level" = list(
+    
+  "I" = 
+    
+    feols(fmv_growth_2011_w ~ incent_prop + land_use +
+            land_use*incent_prop
+                           | pin + year,
+                           panel.id = c("pin", "year"),
+                           vcov = "NW",
+                           data = comm_ind |> filter(incent_status != "Excluded" & landuse_change !="Excluded")),
+  
+  "II" = 
+
+    feols(fmv_growth_2011_w ~ incent_prop + land_use + land_use*incent_status + landuse_change*incent_prop
+                           | pin + year,
+                           panel.id = c("pin", "year"),
+                           vcov = "NW",
+                           data = comm_ind |> filter(incent_status != "Excluded" & landuse_change !="Excluded"))  ),
+                           
+  "Municipality-Level" = list(
+    
+    "I" = feols(fmv_growth_2011_w ~ incent_prop + land_use +
+            land_use*incent_prop
+                           | clean_name + year,
+                           panel.id = c("clean_name", "year"),
+                           vcov = "DK",
+                           data = comm_ind |> filter(incent_status != "Excluded" & landuse_change !="Excluded")),
+  
+   "II" = 
+    
+    feols(fmv_growth_2011_w ~ incent_prop + land_use +
+            incent_prop*landuse_change
+                           | clean_name + year,
+                           panel.id = c("clean_name", "year"),
+                           vcov = "DK",
+                           data = comm_ind |> filter(incent_status != "Excluded" & landuse_change !="Excluded"))
+    
+  )
+)
+
+gof_mm <- tibble::tribble(
+  ~raw,        ~clean,        ~fmt,
+  "nobs",      "N",             0,#fmt_significant(3),
+  "adj.r.squared", "R2 Adj.", 2,
+  "vcov.type", "Std. Errors", 0
+  #"se_type", "Standard Errors:", 3,
+  #"p.value", "p-value", 2
+  )
+
+formatted_regression_models <- modelsummary(incent_paper_models,
+             shape = "cbind",
+             fmt = function(x) round(x, 2),
+             gof_map = gof_mm,
+             stars = TRUE)
+
+formatted_regression_models
+
+```
+
+
+```{r}
+#| label: tbl-PINmodels
+#| tbl-cap: "PIN and year fixed effects."
+#| 
+incent_paper_models <- list(
+  
+  "PIN-Level" = list(
+    # landuse_change would be dropped (coded to be constant every year)
+    # incent_status would be dropped (ditto)
+    # landuse_change*incent_status dropped
+    # land_use & incent_prop can change each year
+  "I" = 
+    
+    feols(fmv_growth_2011_w ~ incent_prop + land_use +
+            land_use*incent_prop
+                           | pin + year,
+                           panel.id = c("pin", "year"),
+                           vcov = "NW",
+                           data = comm_ind),
+  
+  "II" = 
+
+    feols(fmv_growth_2011_w ~ incent_prop + land_use + land_use*incent_status + landuse_change*incent_prop
+                           | pin + year,
+                           panel.id = c("pin", "year"),
+                           vcov = "NW",
+                           data = comm_ind)
+  ))
+
+gof_mm <- tibble::tribble(
+  ~raw,        ~clean,        ~fmt,
+  "nobs",      "N",             0,#fmt_significant(3),
+  "adj.r.squared", "R2 Adj.", 2,
+  "vcov.type", "Std. Errors", 0
+  #"se_type", "Standard Errors:", 3,
+  #"p.value", "p-value", 2
+  )
+
+formatted_regression_models <- modelsummary(incent_paper_models,
+             shape = "cbind",
+             fmt = function(x) round(x, 2),
+           #  coef_map = name_map,
+             gof_map = gof_mm,
+             stars = TRUE)
+
+formatted_regression_models
+```
+
+
+```{r}
+#| label: tbl-munimodels
+#| tbl-cap: "Municipality and year fixed effects."
+#| 
+incent_paper_models <- list(
+  
+  "Municipality-Level" = list(
+    
+    "I" = feols(fmv_growth_2011_w ~ incent_prop + land_use +
+            land_use*incent_prop
+                           | clean_name + year,
+                           panel.id = c("clean_name", "year"),
+                           vcov = "DK",
+                           data = comm_ind),
+  
+   "II" = 
+    
+    feols(fmv_growth_2011_w ~ incent_status + landuse_change +
+          incent_prop*landuse_change + in_tif
+                           | clean_name + year,
+                           panel.id = c("clean_name", "year"),
+                           vcov = "DK",
+                           data = comm_ind)
+    
+  )
+)
+
+gof_mm <- tibble::tribble(
+  ~raw,        ~clean,        ~fmt,
+  "nobs",      "N",             0,#fmt_significant(3),
+  "adj.r.squared", "R2 Adj.", 2,
+  "vcov.type", "Std. Errors", 0
+  #"se_type", "Standard Errors:", 3,
+  #"p.value", "p-value", 2
+  )
+
+formatted_regression_models <- modelsummary(incent_paper_models,
+             shape = "cbind",
+             fmt = function(x) round(x, 2),
+           #  coef_map = name_map,
+             gof_map = gof_mm,
+             stars = TRUE)
+
+formatted_regression_models
+```
+
+
+```{r}
+#| label: tbl-bothmodels-notwinsorized
+#| tbl-cap: "Comparison of PIN-year vs Muni-year FE for values that were not winsorized."
+
 incent_paper_models <- list(
   
   "PIN-Level" = list(
@@ -224,7 +397,7 @@ incent_paper_models <- list(
   "II" = 
     
     feols(fmv_growth_2011 ~ incent_prop + land_use +
-            landuse_change*incent_status + land_use*incent_status + incent_prop*landuse_change
+           + land_use*incent_status + incent_prop*landuse_change
                            | pin + year,
                            panel.id = c("pin", "year"),
                            vcov = "NW",
@@ -233,7 +406,6 @@ incent_paper_models <- list(
                            
   "Municipality-Level" = list(
     
-    # model wouldn't let me do land_use*incent_status so changed it back to incent_prop
     "I" = feols(fmv_growth_2011 ~ incent_prop + land_use +
             land_use*incent_prop
                            | clean_name + year,
@@ -269,8 +441,6 @@ formatted_regression_models <- modelsummary(incent_paper_models,
              gof_map = gof_mm,
              stars = TRUE)
 
-#class(formatted_regression_models) Yea it's a tinytable!
-
 save_tt(formatted_regression_models,
         "reg_models_notwinsorized.docx",
         overwrite = TRUE)
@@ -278,9 +448,75 @@ save_tt(formatted_regression_models,
 formatted_regression_models
 ```
 
-# Hierarchical Linear Models
+```{r}
+#| label: tbl-bothmodels-notwinsorized-filtered
+#| tbl-cap: "Comparison of PIN-year vs Muni-year FE for values that were not winsorized. Drops Excluded Categories from analysis and output."
+
+incent_paper_models <- list(
+  
+  "PIN-Level" = list(
+  
+  "I" = 
+    
+    feols(fmv_growth_2011 ~ incent_prop + land_use +
+            land_use*incent_prop
+                           | pin + year,
+                           panel.id = c("pin", "year"),
+                           vcov = "NW",
+                           data = comm_ind |> filter(incent_status != "Excluded" & landuse_change !="Excluded")),
+  
+  "II" = 
+    
+    feols(fmv_growth_2011 ~ incent_prop + land_use +
+           + land_use*incent_status + incent_prop*landuse_change
+                           | pin + year,
+                           panel.id = c("pin", "year"),
+                           vcov = "NW",
+      data = comm_ind |> filter(incent_status != "Excluded" & landuse_change !="Excluded"))  ),
+                           
+  "Municipality-Level" = list(
+    
+    "I" = feols(fmv_growth_2011 ~ incent_prop + land_use +
+            land_use*incent_prop
+                           | clean_name + year,
+                           panel.id = c("clean_name", "year"),
+                           vcov = "DK",
+      data = comm_ind |> filter(incent_status != "Excluded" & landuse_change !="Excluded")),  
+    
+   "II" = 
+    
+    feols(fmv_growth_2011 ~ incent_prop + land_use +
+            landuse_change*incent_prop
+                           | clean_name + year,
+                           panel.id = c("clean_name", "year"),
+                           vcov = "DK",
+      data = comm_ind |> filter(incent_status != "Excluded" & landuse_change !="Excluded"))    
+  )
+)
+
+gof_mm <- tibble::tribble(
+  ~raw,        ~clean,        ~fmt,
+  "nobs",      "N",             0,#fmt_significant(3),
+  "adj.r.squared", "R2 Adj.", 2,
+  "vcov.type", "Std. Errors", 0
+  #"se_type", "Standard Errors:", 3,
+  #"p.value", "p-value", 2
+  )
+
+formatted_regression_models <- modelsummary(incent_paper_models,
+             shape = "cbind",
+             fmt = function(x) round(x, 2),
+           #  coef_map = name_map,
+             gof_map = gof_mm,
+             stars = TRUE)
+
+
+formatted_regression_models
+```
 
 ```{r}
+# Hierarchical Linear Models
+
 # library(lme4)
 # comm_ind$clean_name = as.factor(comm_ind$clean_name)
 # 
