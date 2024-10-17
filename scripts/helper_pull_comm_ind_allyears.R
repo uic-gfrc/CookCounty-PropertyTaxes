@@ -6,7 +6,7 @@
 library(tidyverse)
 library(ptaxsim)
 library(DBI)
-library(glue)
+library(glue) 
 
 
 # Pull and Prep Data ------------------------------------------------------
@@ -46,7 +46,7 @@ muni_agency_names <- DBI::dbGetQuery(
     FROM agency_info 
     WHERE minor_type = 'MUNI'
     OR agency_num = '020060000'
-    "
+  "
 )
 
 ## PINS in UNINCORPORATED AREAS ARE NOT included in this data pull!!!
@@ -174,7 +174,7 @@ comm_ind_pins_ever <- comm_ind_pins_ever %>%
       TRUE ~ as.character(class_group))
 )
 
-#  Create 2006 to 2011 Timeseries ############################
+#  Create 2006 to 2022 Timeseries ############################
 timespan = 17
 
 comm_ind_pins <- comm_ind_pins_ever  %>%
@@ -211,11 +211,11 @@ comm_ind_pins <- comm_ind_pins_ever  %>%
       TRUE ~ "Changes")
   ) |> 
   arrange(year) %>%
-  mutate(incent = ifelse(class >= 600 & class <= 899, 1, 0)) %>%
+  mutate(incent = ifelse(class >= 600 & class <= 899, 1, 0)) %>%  # numeric version of incent_prop
   mutate(
     gain_incent = ifelse(incent == 1 & lag(incent) == 0, 1, 0),
     lose_incent = ifelse(incent == 0 & lag(incent) == 1, 1, 0),
-    years_exempt = sum(ifelse(land_use == "Exempt", 1, 0))
+    years_exempt = sum(land_use == "Exempt", na.rm=TRUE)
   ) %>%
   mutate(incent_status = 
            case_when(
@@ -340,18 +340,23 @@ gain_lose_pins <- rbind(gains_incent_pins, lose_incent_pins) |>
 comm_ind_pins <- comm_ind_pins %>%
   left_join(gain_lose_pins, by = "pin")
 
-comm_ind_pins <- comm_ind_pins |>
-  mutate(status = ifelse(treatment_year < year & incent_change == "Changes Sometime",
-                         "Pre Treatment", 
-                         ifelse(treatment_year >= year & incent_change == "Changes Sometime", 
-                                "Post Treatment", 
-                                       "Control")))
+# comm_ind_pins <- comm_ind_pins |>
+#   mutate(status = ifelse(treatment_year < year & incent_change == "Changes Sometime",
+#                          "Pre Treatment", 
+#                          ifelse(treatment_year >= year & incent_change == "Changes Sometime", 
+#                                 "Post Treatment", 
+#                                        "Control")))
+
+comm_ind_pins <- comm_ind_pins %>%
+  mutate(incent_change = ifelse(years_existed < timespan, "Excluded", incent_change),
+         incent_status = ifelse(years_existed < timespan, "Excluded", incent_status),
+         incent_status = ifelse(incent_status == "Gains & Loses Incent", "Excluded", incent_status),
+         landuse_change = ifelse(years_existed < timespan, "Excluded", landuse_change),
+         landuse_change = ifelse(landuse_change == "Exempt Sometime", "Excluded", landuse_change))
+
+write_csv(comm_ind_pins, "./Output/comm_ind_PINs_2006to2022_timeseries.csv")
 
 
-write_csv(comm_ind_pins_ever, "./Output/comm_ind_PINs_2006to2022_timeseries.csv")
-
-
-# write_csv(comm_ind_pins_ever, "./Output/comm_ind_inmunis_timeseries_2006to2022.csv")
 
 
 # Create 2011-2022 timeseries --------------------------------------------
@@ -529,12 +534,18 @@ gain_lose_pins <- rbind(gains_incent_pins, lose_incent_pins) |>
 comm_ind_pins <- comm_ind_pins %>%
   left_join(gain_lose_pins, by = "pin")
 
-comm_ind_pins <- comm_ind_pins |>
-  mutate(status = ifelse(treatment_year < year & incent_status == "Gains Incent",
-                         "Pre Treatment", 
-                         ifelse(treatment_year >= year & incent_change == "Gains Incent", 
-                                "Post Treatment", 
-                                       "Control"))         )
+# comm_ind_pins <- comm_ind_pins |>
+#   mutate(status = ifelse(treatment_year < year & incent_status == "Gains Incent",
+#                          "Pre Treatment", 
+#                          ifelse(treatment_year >= year & incent_change == "Gains Incent", 
+#                                 "Post Treatment", 
+#                                        "Control"))         )
+comm_ind_pins <- comm_ind_pins %>%
+  mutate(incent_change = ifelse(years_existed < timespan, "Excluded", incent_change),
+         incent_status = ifelse(years_existed < timespan, "Excluded", incent_status),
+         incent_status = ifelse(incent_status == "Gains & Loses Incent", "Excluded", incent_status),
+         landuse_change = ifelse(years_existed < timespan, "Excluded", landuse_change),
+         landuse_change = ifelse(landuse_change == "Exempt Sometime", "Excluded", landuse_change))
 
 
 write_csv(comm_ind_pins, "./Output/comm_ind_PINs_2011to2022_timeseries.csv")
@@ -602,152 +613,152 @@ write_csv(comm_ind_pins, "./Output/comm_ind_PINs_2011to2022_timeseries.csv")
 
 
 ## Unique PINs and their property classes over time ------------------------------------
-
-pin_classes <- comm_ind_pins_ever %>%
-  group_by(clean_name, pin, class) %>%
-  summarize(count = n(),
-            first_year = first(year),
-            last_year = last(year)) %>%
-  ungroup() %>%
-  arrange(pin, first_year)
-
-
-unique_ptax_w_class <- pin_classes %>% group_by(pin) %>%
-  mutate(var2 = cumsum(row_number() == 1 | (class != dplyr::lag(class))))
-
-
-unique_ptax_wide <- unique_ptax_w_class %>%
-  pivot_wider(id_cols = c("pin", "clean_name"),
-              names_from = var2,
-              values_from = c(class, count, first_year, last_year))
-
-## 119,993 Unique PINs and any class change they experienced:
-write_csv(unique_ptax_wide, "./Output/pin_class_changes.csv")
-
-
-# Create 2011-2022 PIN level Panel Data -----------------------------------
-
-timespan = 12
-
-
-comm_ind_2011to2022 <- comm_ind_pins_ever  %>%
-  filter(year >= 2011 ) %>%
-  group_by(pin) |>
-  arrange(desc(year)) |>
-  mutate(multi_muni = n_distinct(clean_name),
-         multimuni_flag = ifelse(sum(multi_muni) > 1, 1, 0)) |>  
-  
-  ## fill in muni names for the 700+ PINs that had multiple muni names or did not have a muni name for all years
-  ## 471 were the Harvey/Markham Amazon PINs.
-  mutate(clean_name = first(clean_name, na_rm = TRUE)) %>% 
-  
-  mutate(
-    tif_years = sum(in_tif==1),
-    years_existed = n(),  
-    incentive_years = sum(incent_prop == "Incentive"),
-    landuse_change =
-      ifelse(
-        sum(land_use == "Commercial") == timespan, "Always Commercial",
-        ifelse(sum(land_use == "Industrial") == timespan, "Always Industrial",
-               # some properties had an incentive class before 2011 and then were tax exempt. Dropped from panel.
-               ifelse(sum(land_use == "Exempt") == timespan, "Drop Me",   # created to remove PINs if they were tax exempt every year between 2011 and 2022. 
-                      "Changes Land Use" ))),
-    incent_change = case_when(
-      incentive_years == timespan ~ "Always Incentive",
-      incentive_years == 0 ~ "Never Incentive",
-      TRUE ~ "Changes Sometime"),
-    tif_change = case_when(
-      tif_years == timespan ~ "Always TIF",
-      tif_years == 0 ~ "Never TIF",
-      TRUE ~ "Changes")
-  ) |> 
-  ungroup()
-# 1,284,971 obs before dropping PINs
-
-## Examine PINs dropped from 2011-2022 panel data --------------------------
-
-
-# only keep PINs that existed all years and if they are from a municipality
-# assumes that clean_name and agency_number correctly merged to tax codes from municipalities and their agency number
-# 97,521 PINs will be dropped from the 2011-2022 panel data if including years_existed in filter.
-
-# drops 27,644 PINs when using clean_name, cross_county_lines, and landuse_change
-dropped_pins2 <-  comm_ind_2011to2022 %>% 
-  filter(
-      is.na(clean_name)  |       ## 4,370 PINs do not have municipality names
-      agency_num %in% cross_county_lines |  ## 13,915 PINs located in Municipalities that have a majority of their EAV in other counties
-      landuse_change == "Drop Me"     ## 12,048 PINs were tax exempt for all 12 years
-  ) 
-#  years_existed < 12  |      ##  69,491 PINs do not exist all 12 years
-
-
-### Drop PINs and Export File -----------------------------------------------
-
-
-
-
-weirdpins <- comm_ind_2011to2022 |> 
-  filter(
-    years_existed == 12 &
-      !is.na(clean_name) & 
-      !agency_num %in% cross_county_lines &
-      landuse_change != "Drop Me"
-  )  %>%
-  group_by(pin) |>
-  mutate(years_existed2 = n()) |>
-  ungroup() |>
-  filter(years_existed2 !=12)
-
-# drop the 27,644 PINs from not having a muni name, being 50% in cook, and being taxable
-comm_ind_2011to2022 <- comm_ind_2022to2022 |> 
-  filter(
- #   years_existed == 12 &
-      !is.na(clean_name) & 
-      !agency_num %in% cross_county_lines &
-      landuse_change != "Drop Me"
-    )   
-## 1,257,327 remain - July 16 AWM
-## 1,187,450 obs remain
-
-
-# another 70,203 observations do not exist every year. 
-dropped_pins3 <- comm_ind_2011to2022 %>% 
-  group_by(pin) %>% 
-  mutate(years_existed2 = n()) %>%
-  filter(years_existed2 < 12)
-
-
-# Drop those PINs that didn't exist every year
-comm_ind_2011to2022 <- comm_ind_2011to2022 %>% 
-  group_by(pin) %>% 
-  mutate(years_existed2 = n()) %>%
-  filter(years_existed2 == 12)
-# 1,187,124 obs remain
-
-comm_ind_2011to2022 <- comm_ind_2011to2022 |>
-  mutate(exempt_flag = ifelse(land_use == "Exempt", 1, 0)) |>
- group_by(pin) |>
-  mutate(
-    base_year_fmv_2011 = ifelse( sum(exempt_flag) > 0, NA, fmv[year == 2011]),
-    fmv_growth_2011 = fmv/base_year_fmv_2011) |>
-  ungroup()
-
-## 100,900 PINs existed since 2011 (and did not become tax exempt)
-## 102,717 PINs if not filtering for NA fmv growth
-## 99,088 PINs as of July 11 - AWM (1.12 obs. - MVH)
-## BUT some are exempt and will have 0 or errors for the fmv growth!!
-
-
-
-comm_ind_2011to2022 %>%
- reframe(pincount = n(), .by = year) 
-
-comm_ind_2011to2022 %>%
-  #select(year, land_use, incent_prop, fmv_growth_2011) %>%
-  filter(year == 2022) %>% reframe(pincount = n(), .by = clean_name) %>% arrange()
-
-
-## Write CSV to Output Folder
-write_csv(comm_ind_2011to2022, "./Output/comm_ind_PINs_2011-2022_balanced.csv")
-
+# 
+# pin_classes <- comm_ind_pins_ever %>%
+#   group_by(clean_name, pin, class) %>%
+#   summarize(count = n(),
+#             first_year = first(year),
+#             last_year = last(year)) %>%
+#   ungroup() %>%
+#   arrange(pin, first_year)
+# 
+# 
+# unique_ptax_w_class <- pin_classes %>% group_by(pin) %>%
+#   mutate(var2 = cumsum(row_number() == 1 | (class != dplyr::lag(class))))
+# 
+# 
+# unique_ptax_wide <- unique_ptax_w_class %>%
+#   pivot_wider(id_cols = c("pin", "clean_name"),
+#               names_from = var2,
+#               values_from = c(class, count, first_year, last_year))
+# 
+# ## 119,993 Unique PINs and any class change they experienced:
+# write_csv(unique_ptax_wide, "./Output/pin_class_changes.csv")
+# 
+# 
+# # Create 2011-2022 PIN level Panel Data -----------------------------------
+# 
+# timespan = 12
+# 
+# 
+# comm_ind_2011to2022 <- comm_ind_pins_ever  %>%
+#   filter(year >= 2011 ) %>%
+#   group_by(pin) |>
+#   arrange(desc(year)) |>
+#   mutate(multi_muni = n_distinct(clean_name),
+#          multimuni_flag = ifelse(sum(multi_muni) > 1, 1, 0)) |>  
+#   
+#   ## fill in muni names for the 700+ PINs that had multiple muni names or did not have a muni name for all years
+#   ## 471 were the Harvey/Markham Amazon PINs.
+#   mutate(clean_name = first(clean_name, na_rm = TRUE)) %>% 
+#   
+#   mutate(
+#     tif_years = sum(in_tif==1),
+#     years_existed = n(),  
+#     incentive_years = sum(incent_prop == "Incentive"),
+#     landuse_change =
+#       ifelse(
+#         sum(land_use == "Commercial") == timespan, "Always Commercial",
+#         ifelse(sum(land_use == "Industrial") == timespan, "Always Industrial",
+#                # some properties had an incentive class before 2011 and then were tax exempt. Dropped from panel.
+#                ifelse(sum(land_use == "Exempt") == timespan, "Drop Me",   # created to remove PINs if they were tax exempt every year between 2011 and 2022. 
+#                       "Changes Land Use" ))),
+#     incent_change = case_when(
+#       incentive_years == timespan ~ "Always Incentive",
+#       incentive_years == 0 ~ "Never Incentive",
+#       TRUE ~ "Changes Sometime"),
+#     tif_change = case_when(
+#       tif_years == timespan ~ "Always TIF",
+#       tif_years == 0 ~ "Never TIF",
+#       TRUE ~ "Changes")
+#   ) |> 
+#   ungroup()
+# # 1,284,971 obs before dropping PINs
+# 
+# ## Examine PINs dropped from 2011-2022 panel data --------------------------
+# 
+# 
+# # only keep PINs that existed all years and if they are from a municipality
+# # assumes that clean_name and agency_number correctly merged to tax codes from municipalities and their agency number
+# # 97,521 PINs will be dropped from the 2011-2022 panel data if including years_existed in filter.
+# 
+# # drops 27,644 PINs when using clean_name, cross_county_lines, and landuse_change
+# dropped_pins2 <-  comm_ind_2011to2022 %>% 
+#   filter(
+#       is.na(clean_name)  |       ## 4,370 PINs do not have municipality names
+#       agency_num %in% cross_county_lines |  ## 13,915 PINs located in Municipalities that have a majority of their EAV in other counties
+#       landuse_change == "Drop Me"     ## 12,048 PINs were tax exempt for all 12 years
+#   ) 
+# #  years_existed < 12  |      ##  69,491 PINs do not exist all 12 years
+# 
+# 
+# ### Drop PINs and Export File -----------------------------------------------
+# 
+# 
+# 
+# 
+# weirdpins <- comm_ind_2011to2022 |> 
+#   filter(
+#     years_existed == 12 &
+#       !is.na(clean_name) & 
+#       !agency_num %in% cross_county_lines &
+#       landuse_change != "Drop Me"
+#   )  %>%
+#   group_by(pin) |>
+#   mutate(years_existed2 = n()) |>
+#   ungroup() |>
+#   filter(years_existed2 !=12)
+# 
+# # drop the 27,644 PINs from not having a muni name, being 50% in cook, and being taxable
+# comm_ind_2011to2022 <- comm_ind_2022to2022 |> 
+#   filter(
+#  #   years_existed == 12 &
+#       !is.na(clean_name) & 
+#       !agency_num %in% cross_county_lines &
+#       landuse_change != "Drop Me"
+#     )   
+# ## 1,257,327 remain - July 16 AWM
+# ## 1,187,450 obs remain
+# 
+# 
+# # another 70,203 observations do not exist every year. 
+# dropped_pins3 <- comm_ind_2011to2022 %>% 
+#   group_by(pin) %>% 
+#   mutate(years_existed2 = n()) %>%
+#   filter(years_existed2 < 12)
+# 
+# 
+# # Drop those PINs that didn't exist every year
+# comm_ind_2011to2022 <- comm_ind_2011to2022 %>% 
+#   group_by(pin) %>% 
+#   mutate(years_existed2 = n()) %>%
+#   filter(years_existed2 == 12)
+# # 1,187,124 obs remain
+# 
+# comm_ind_2011to2022 <- comm_ind_2011to2022 |>
+#   mutate(exempt_flag = ifelse(land_use == "Exempt", 1, 0)) |>
+#  group_by(pin) |>
+#   mutate(
+#     base_year_fmv_2011 = ifelse( sum(exempt_flag) > 0, NA, fmv[year == 2011]),
+#     fmv_growth_2011 = fmv/base_year_fmv_2011) |>
+#   ungroup()
+# 
+# ## 100,900 PINs existed since 2011 (and did not become tax exempt)
+# ## 102,717 PINs if not filtering for NA fmv growth
+# ## 99,088 PINs as of July 11 - AWM (1.12 obs. - MVH)
+# ## BUT some are exempt and will have 0 or errors for the fmv growth!!
+# 
+# 
+# 
+# comm_ind_2011to2022 %>%
+#  reframe(pincount = n(), .by = year) 
+# 
+# comm_ind_2011to2022 %>%
+#   #select(year, land_use, incent_prop, fmv_growth_2011) %>%
+#   filter(year == 2022) %>% reframe(pincount = n(), .by = clean_name) %>% arrange()
+# 
+# 
+# ## Write CSV to Output Folder
+# write_csv(comm_ind_2011to2022, "./Output/comm_ind_PINs_2011-2022_balanced.csv")
+# 
 
