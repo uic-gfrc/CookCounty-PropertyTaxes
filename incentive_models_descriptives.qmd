@@ -47,11 +47,11 @@ FitFlextableToPage <- function(ft, pgwidth = 6){
   return(ft_out)
 }
 
-comm_ind <- read_csv("./Output/comm_ind_PINs_2011-2022_balanced.csv") 
+comm_ind <- read_csv("./Output/comm_ind_PINs_2011to2022_timeseries.csv") 
 
 ## set variable types 
 comm_ind <- comm_ind %>%
-  mutate(across(c(class, improvement_ind, has_AB_exemp,fmv_NA_indicator, in_tif), as.character) ) 
+  mutate(across(c(class, improvement_ind, comparable_props, class_1dig, has_AB_exemp, fmv_NA_flag, in_tif, incent:leave_tif, exempt_flag), as.character) ) 
 
 ```
 
@@ -113,43 +113,9 @@ comm_ind |> filter(year==2022) |> reframe(pincount= n(), fmv = sum(fmv), .by = c
 
 - Drop unnecessary variables from dataframe. Helps with speed of `pdata.frame()` command.    
 - Set index of panel data forthe PIN and year (unit of observation and time) 
-- Fixed effects will drop anything that doesn't change: Municipalty, Triad, distance to Indiana, etc.   
+- Fixed effects will drop anything that doesn't change: Municipality, Triad, distance to Indiana, etc.   
    
 - DV: FMV Growth since 2011? 
 
 - 5760 PINs were exempt at least 1 year in the dataframe...
-
-```{r eval=FALSE}
-library(dplyr)
-
-
-# # 5760 PINs were exempt at least 1 year in the dataframe...
-# comm_ind %>% 
-#   group_by(pin) %>% 
-#   mutate(exempt_sum = sum(exempt_indicator)) %>%  # was a PIN tax exempt ever?
-#   ungroup() %>%
-#   filter(exempt_sum > 0) %>% distinct(pin)
-
-data <- comm_ind %>% 
-  group_by(pin) %>% 
-  mutate(exempt_sum = sum(exempt_indicator),
-         years_existed2 = n()) %>%  # was a PIN tax exempt ever?
-  ungroup() %>%
-  filter(exempt_sum == 0 & years_existed2 == 12) %>%
-  filter(year >= 2012) %>%        ## Drop first year of panel data
-
-  select(pin, year, av_clerk, has_AB_exemp, land_use, incent_prop) 
-# %>% mutate_at(c(pin, year, has_AB_exemp), as.character)
-
-library(plm)
-
-df_panel <- pdata.frame(data, index = c("pin", "year"))   
-is.pbalanced(df_panel)
-plm::is.pseries(df_panel)
-plm::pdim(df_panel)
-plm::make.pbalanced(df_panel)
-
-
-plm::pdata.frame(data = comm_ind, )
-```
 
