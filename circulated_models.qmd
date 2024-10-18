@@ -98,12 +98,36 @@ comm_ind <- comm_ind |>
 
 # Models
 
+## Random Tables I Didn't Want to Delete
+
 ```{r incent_final_models}
 table(comm_ind$land_use, comm_ind$incent_status)
 
 table(comm_ind$incent_status)
 table(comm_ind$incent_prop, comm_ind$landuse_change)
 table(comm_ind$landuse_change)
+
+```
+## Setup
+
+### Data
+
+```{r model_data_setup}
+
+# 1379358 obs.
+
+model_df <- comm_ind |>
+  filter(incent_status != "Excluded" & landuse_change !="Excluded")
+
+model_df_ind_relev <- model_df |>
+  mutate(land_use = fct_relevel(land_use, "Industrial"),
+         landuse_change = fct_relevel(landuse_change, "Always Industrial"))
+
+
+```
+
+### Output formatting
+```{r summary_formats}
 
 name_map <- c(
   "incent_propIncentive" = "Incentive Property",
@@ -133,86 +157,6 @@ name_map <- c(
 
 gof_format_fun <- function(x) format(round(x, 3), big.mark=",")
 
-
-
-# gof_map <-
-```
-
-
-```{r}
-#| label: tbl-pinandmunimodels-notfiltered
-#| tbl-cap: "PIN and Year FE compared with Municipality and Year FE models."
-
-incent_paper_models <- list(
-  
-  "PIN-Level" = list(
-    # landuse_change would be dropped (coded to be constant every year)
-    # incent_status would be dropped (ditto)
-    # landuse_change*incent_status dropped
-    # land_use & incent_prop can change each year
-  "I" = 
-    
-    feols(fmv_growth_2011_w ~ incent_prop + land_use +
-            land_use*incent_prop
-                           | pin + year,
-                           panel.id = c("pin", "year"),
-                           vcov = "NW",
-                           data = comm_ind),
-  
-  "II" = 
-
-    feols(fmv_growth_2011_w ~ incent_prop + land_use + land_use*incent_status + landuse_change*incent_prop
-                           | pin + year,
-                           panel.id = c("pin", "year"),
-                           vcov = "NW",
-                           data = comm_ind)
-  ),
-                           
-  "Municipality-Level" = list(
-    
-    "I" = feols(fmv_growth_2011_w ~ incent_prop + land_use +
-            land_use*incent_prop
-                           | clean_name + year,
-                           panel.id = c("clean_name", "year"),
-                           vcov = "DK",
-                           data = comm_ind),
-  
-   "II" = 
-    
-    feols(fmv_growth_2011_w ~ incent_prop + land_use +
-            incent_prop*landuse_change
-                           | clean_name + year,
-                           panel.id = c("clean_name", "year"),
-                           vcov = "DK",
-                           data = comm_ind)
-    
-  )
-)
-
-gof_mm <- tibble::tribble(
-  ~raw,        ~clean,        ~fmt,
-  "nobs",      "N",             0,#fmt_significant(3),
-  "adj.r.squared", "R2 Adj.", 2,
-  "vcov.type", "Std. Errors", 0
-  #"se_type", "Standard Errors:", 3,
-  #"p.value", "p-value", 2
-  )
-
-formatted_regression_models <- modelsummary(incent_paper_models,
-             shape = "cbind",
-             fmt = function(x) round(x, 2),
-           #  coef_map = name_map,
-             gof_map = gof_mm,
-             stars = TRUE)
-
-#class(formatted_regression_models) Yea it's a tinytable!
-
-save_tt(formatted_regression_models,
-        "reg_models.docx",
-        overwrite = TRUE)
-
-formatted_regression_models
-
 ```
 
 **USE ME**
@@ -231,8 +175,7 @@ incent_paper_models <- list(
                            | pin + year,
                            panel.id = c("pin", "year"),
                            vcov = "NW",
-                           data = comm_ind |> 
-            filter(incent_status != "Excluded" & landuse_change !="Excluded")),
+                           data = model_df),
     
   "II" = 
     
@@ -241,7 +184,7 @@ incent_paper_models <- list(
                            | pin + year,
                            panel.id = c("pin", "year"),
                            vcov = "NW",
-                           data = comm_ind |> filter(incent_status != "Excluded" & landuse_change !="Excluded")),
+                           data = model_df),
   
   "III" = 
 
@@ -250,7 +193,7 @@ incent_paper_models <- list(
                            | pin + year,
                            panel.id = c("pin", "year"),
                            vcov = "NW",
-                           data = comm_ind |> filter(incent_status != "Excluded" & landuse_change !="Excluded"))  
+                           data = model_df)  
   ),
                            
   "Municipality-Level" = list(
@@ -260,7 +203,7 @@ incent_paper_models <- list(
                            | clean_name + year,
                            panel.id = c("clean_name", "year"),
                            vcov = "DK",
-                           data = comm_ind |> filter(incent_status != "Excluded" & landuse_change !="Excluded")),
+                           data = model_df),
   
    "II" = 
     
@@ -269,7 +212,7 @@ incent_paper_models <- list(
                            | clean_name + year,
                            panel.id = c("clean_name", "year"),
                            vcov = "DK",
-                           data = comm_ind |> filter(incent_status != "Excluded" & landuse_change !="Excluded")),
+                           data = model_df),
   
   "III" = 
 
@@ -278,8 +221,7 @@ incent_paper_models <- list(
                            | pin + year,
                            panel.id = c("clean_name", "year"),
                            vcov = "DK",
-                           data = comm_ind |> 
-            filter(incent_status != "Excluded" & landuse_change !="Excluded"))  
+                           data = model_df)  
     
   )
 )
@@ -305,51 +247,77 @@ formatted_regression_models
 
 
 ```{r}
-#| label: tbl-PINmodels
-#| tbl-cap: "PIN and year fixed effects."
-#| 
-incent_paper_models <- list(
+#| label: tbl-IndRef
+#| tbl-cap: "Industrial Property as Reference Category"
+
+incent_paper_models_ind_ref <- list(
   
   "PIN-Level" = list(
-    # landuse_change would be dropped (coded to be constant every year)
-    # incent_status would be dropped (ditto)
-    # landuse_change*incent_status dropped
-    # land_use & incent_prop can change each year
-  "I" = 
+    
+    "I" = 
+    
+    feols(fmv_growth_2011_w ~ incent_prop + land_use
+                           | pin + year,
+                           panel.id = c("pin", "year"),
+                           vcov = "NW",
+                           data = model_df_ind_relev),
+    
+  "II" = 
     
     feols(fmv_growth_2011_w ~ incent_prop + land_use +
             land_use*incent_prop
                            | pin + year,
                            panel.id = c("pin", "year"),
                            vcov = "NW",
-                           data = comm_ind),
+                           data = model_df_ind_relev),
   
-  "II" = 
+  "III" = 
 
-    feols(fmv_growth_2011_w ~ incent_prop + land_use + land_use*incent_status + landuse_change*incent_prop
+    feols(fmv_growth_2011_w ~ incent_prop + land_use + 
+            landuse_change*incent_prop
                            | pin + year,
                            panel.id = c("pin", "year"),
                            vcov = "NW",
-                           data = comm_ind)
-  ))
+                           data = model_df_ind_relev)  
+  ),
+                           
+  "Municipality-Level" = list(
+    
+    "I" = feols(fmv_growth_2011_w ~ incent_prop + land_use +
+            land_use*incent_prop
+                           | clean_name + year,
+                           panel.id = c("clean_name", "year"),
+                           vcov = "DK",
+                           data = model_df_ind_relev),
+  
+   "II" = 
+    
+    feols(fmv_growth_2011_w ~ incent_prop + land_use +
+            land_use*incent_prop
+                           | clean_name + year,
+                           panel.id = c("clean_name", "year"),
+                           vcov = "DK",
+                           data = model_df_ind_relev),
+  
+  "III" = 
 
-gof_mm <- tibble::tribble(
-  ~raw,        ~clean,        ~fmt,
-  "nobs",      "N",             0,#fmt_significant(3),
-  "adj.r.squared", "R2 Adj.", 2,
-  "vcov.type", "Std. Errors", 0
-  #"se_type", "Standard Errors:", 3,
-  #"p.value", "p-value", 2
+    feols(fmv_growth_2011_w ~ incent_prop + land_use + 
+            landuse_change*incent_prop
+                           | pin + year,
+                           panel.id = c("clean_name", "year"),
+                           vcov = "DK",
+                           data = model_df_ind_relev)  
+    
   )
+)
 
-formatted_regression_models <- modelsummary(incent_paper_models,
+formatted_ind_ref_incent_models <- modelsummary(incent_paper_models_ind_ref,
              shape = "cbind",
              fmt = function(x) round(x, 2),
-           #  coef_map = name_map,
-             gof_map = gof_mm,
+            # gof_map = gof_mm,
              stars = TRUE)
 
-formatted_regression_models
+formatted_ind_ref_incent_models
 ```
 
 
