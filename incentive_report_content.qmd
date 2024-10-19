@@ -77,6 +77,8 @@ ptax_pins <- ptax_pins %>%
 class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv") %>%
   select(class_code, comparable_props, Alea_cat, incent_prop)
 
+# "Frankfort", "Homer Glen",  "Oak Brook", "East Dundee", "University Park",  "Bensenville", "Hinsdale", "Roselle", "Deer Park", "Deerfield"
+
 cross_county_lines <- c("030440000", "030585000", "030890000", "030320000", "031280000",
                         "030080000", "030560000", "031120000", "030280000", "030340000",
                         "030150000","030050000", "030180000","030500000", "031210000")
@@ -189,7 +191,7 @@ ptax_pins <- ptax_pins %>%
 
 ```{r}
 #| label: tbl-incentivePINs2022-revshifted
-#| tbl-cap: "Shifted tax burden from PINs with incentive classification in 2022."
+#| tbl-cap: "PIN level tax savings due to incentive classification. Also can be viewed as the shifted tax burden from PINs with incentive classification in 2022 to all other non-incentive PINs. Sorted from largest tax bill savings to smallest bill reduction."
 
 ptax_pins %>% filter(naive_rev_forgone > 0) %>% select(pin, class, fmv, naive_rev_forgone, untaxable_incent_eav, taxed_eav, everything())
 ```
@@ -247,7 +249,7 @@ $$\mbox{Taxed EAV} = {\frac{\sum{final\_tax\_to\_dist}}{\mbox{tax code rate}} + 
 $$\mbox{Taxed AV} = {\frac{\frac{\sum{final\_tax\_to\_dist}}{\mbox{tax code rate}} + \mbox{Exemptions + Abatements}}{\mbox{county equalizer}}}$$
 
 
-```{r ptax2022-codebook, eval=FALSE}
+```{r ptax2022-codebook, eval=FALSE, include = FALSE}
 library(dataReporter)
 check(ptax_pins$fmv)  # Individual check of events
 check(ptax_pins$both_ids)  # Individual check of events
@@ -901,7 +903,90 @@ pct_fmv_incents_inTIFs = muni_fmv_incents_inTIF / muni_fmv ) %>%
 
 ```
 
-## Intensity of Incentive Class Use
+## Frequency of Incentives 
+
+### Pin Counts
+
+```{r}
+ptax_pins <-  read_csv("./Output/comm_ind_PINs_2006to2022_timeseries.csv") %>% 
+  mutate(class = as.numeric(class))
+
+commind_together <- ptax_pins %>%
+  filter(land_use %in% c("Industrial", "Commercial")) |>
+  group_by(year) %>%
+  summarize(
+    proptype_pincount = n(),
+            n_incent = sum(ifelse(incent_prop == "Incentive", 1, 0)),
+            n_nonincent = sum(ifelse(incent_prop == "Non-Incentive", 1, 0)))  %>% mutate(pct_incent = n_incent / proptype_pincount)
+
+  
+
+table <- ptax_pins %>% 
+    filter(land_use %in% c("Industrial", "Commercial")) |>
+
+  group_by(year, land_use) %>%
+  summarize(
+    proptype_pincount = n(),
+            n_incent = sum(ifelse(incent_prop == "Incentive", 1, 0)),
+            n_nonincent = sum(ifelse(incent_prop == "Non-Incentive", 1, 0))) %>%
+  mutate(pct_incent = n_incent / proptype_pincount) %>%
+  arrange(year) %>%
+  mutate(year = as.character(year)) %>%
+filter(!land_use %in% c("Exempt", "Other Residential", "Owner Occupied", "Rental") ) %>% 
+  select(year, land_use, n_incent, pct_incent) |>
+  pivot_wider(id_cols = year, names_from = land_use, 
+             values_from = c(n_incent,pct_incent)) %>% ungroup() |>
+  select(-year)
+
+cbind(commind_together, table) %>% 
+  select(Year = year, "C&I Incentive Parcels" = n_incent, "Share of C&I" = pct_incent,
+                  "Commercial Pin Count" = n_incent_Commercial, "Share of Commercial" = pct_incent_Commercial,
+
+         "Industrial Pin Count" = n_incent_Industrial, "Share of Industrial" = pct_incent_Commercial,
+         "C&I PIN Count" = proptype_pincount) %>% 
+  flextable() %>%
+  add_header_row(values = c(" ", "Incent C&I", "Commercial", "Industrial","All C&I"), colwidths = c(1,2,2,2, 1))
+
+```
+
+```{r}
+commind_together_fmv <- ptax_pins %>%
+  filter(land_use %in% c("Industrial", "Commercial")) |>
+  group_by(year) %>%
+  summarize(
+    fmv_CI = sum(fmv, na.rm=TRUE),
+            fmv_incent = sum(ifelse(incent_prop == "Incentive", fmv, 0))
+          )  %>% 
+  mutate(pct_incent = fmv_incent / fmv_CI)
+
+  
+
+table_fmv <- ptax_pins %>% 
+    filter(land_use %in% c("Industrial", "Commercial")) |>
+
+  group_by(year, land_use) %>%
+  summarize(
+    fmv = sum(fmv, na.rm=TRUE),
+            fmv_incent = sum(ifelse(incent_prop == "Incentive", fmv, 0), na.rm=TRUE)
+          )  %>% 
+  mutate(pct_incent = fmv_incent / fmv) %>%
+  arrange(year) %>%
+  mutate(year = as.character(year)) %>%
+  select(year, land_use, fmv_incent, pct_incent) |>
+  pivot_wider(id_cols = year, names_from = land_use, 
+             values_from = c(fmv_incent, pct_incent)) %>% ungroup() |>
+  select(-year)
+
+cbind(commind_together_fmv, table_fmv) %>% 
+  select(Year = year, "C&I Incentive FMV" = fmv_incent, "Share of C&I" = pct_incent,
+                  "Commercial Incent. FMV" = fmv_incent_Commercial, "Share of Commercial" = pct_incent_Commercial,
+
+         "Industrial Incent. FMV" = fmv_incent_Industrial, "Share of Industrial" = pct_incent_Industrial, fmv_CI) %>% 
+  flextable() %>%
+  add_header_row(values = c(" ", "Commercial & Industrial", "Commercial", "Industrial","All C&I"), colwidths = c(1,2,2,2, 1))
+```
+
+### Fair Market Value of Incentive PINs
 
 ```{r}
 #| label: tbl-top10industrialincentive-munis
@@ -1048,7 +1133,11 @@ munilevel <- munilevel %>% left_join(nicknames, by = c("clean_name" = "shpfile_n
 # unincorp_areas2 <- muni_shp %>% filter(!MUNICIPALITY %in% munilevel$shpfile_name)
 ```
 
-```{r eval=FALSE, include = FALSE}
+```{r}
+#| label: fig-percentFMVinMunis
+#| fig-cap: "**Percent of Municipality FMV with Incentive Classification** % = FMV from Incentive Class properties / Muni FMV"
+#| column: margin
+
 table_muni_percentages %>%
   select(clean_name, pct_fmv_w_incentclass) %>%
   left_join(nicknames) %>%
@@ -1258,6 +1347,8 @@ bold(i = 8) %>%
 # The Costs of Incentives
 
 ## Shifted Tax Revenue and Tax Burden
+
+Read in CCAO level of assessment rates for each property class. Read in Summary file for Municipalities from 2006 to 2022.
 
 ```{r}
 ccao_loa <- read_csv("./inputs/ccao_loa.csv") %>% 
@@ -1959,7 +2050,11 @@ pins_per_year <- comm_ind_pins %>%
             "PINs with Incent. Class." = sum(incent_prop=="Incentive"),
             "PINs in Sample" = n(),
             "Became Exempt" = sum(became_exempt, na.rm=TRUE))
+
 pins_per_year
+```
+
+```{r}
 ```
 
 
@@ -1993,6 +2088,9 @@ df_2011_class8change %>%
 
 
 ```{r}
+#| label: tbl-class8eachyear
+#| tbl-cap: "Number of PINs that became each major class type each year."
+
 comm_ind_pins <- comm_ind_pins %>% 
   group_by(pin) |>
   mutate(class8years = sum(class_1dig == 8),
@@ -2028,11 +2126,15 @@ comm_ind_pins <- comm_ind_pins %>%
             "PINs in Sample" = n(),
             #"Became Exempt" = sum(became_exempt, na.rm=TRUE)
           )
-classpins_per_year
+classpins_per_year %>%  flextable::flextable()
 ```
 
 ### Explore PINs that became Class 8 or Other Incentive in South Triad
+
 ```{r}
+#| label: tbl-class8eachyearsouthtriad
+#| tbl-cap: "Number of PINs that became each major class 8 in the South triad."
+#| 
 comm_ind_pins %>% 
   filter(class8_change == "Becomes Class 8") %>% 
   left_join(bor, by = c("pin", "year" = "tax_year")) %>%
@@ -2053,6 +2155,10 @@ comm_ind_pins %>%
 
 
 ```{r}
+#| label: tbl-southtriadpins
+#| tbl-cap: "South Triad Number of PINs that became each major class type each year."
+#| layout-ncol: 3
+
 comm_ind_pins %>% 
   filter(becomes8 == 1 & Triad == "South") %>% 
   arrange(pin) %>%
@@ -2069,9 +2175,7 @@ comm_ind_pins %>%
   select(year, class, everything())
 ```
 
-> note to self: status is coded incorrectly. There are 'Gains Incentive' PINs that are also Controls if they existed less than 12 years. 
-
-> Became_taxed is wrong too
+> note to self: status is coded incorrectly. There are 'Gains Incentive' PINs that are also Controls if they existed less than 12 years. Became_taxed is wrong too
 
 ```{r}
 #| label: tbl-incentchange-2022indexed
@@ -2259,8 +2363,22 @@ tablelist <- list(
 
 #writexl::write_xlsx(tablelist, "Output/calculations_report_content_20240927.xlsx")
 
+readme <- c(
+  "Pin Change: Count of PINs gaining or losing an incentive class each year.",
+  "Major Class Change: Counts of PINs becoming major class types each year.",
+  "Top 10 Commercial Incents is based on summed FMV from properties that have commercial incentive classes.",
+  "Top 10 Industrial Incents is based on summed FMV from properties that have industrial incentive classes.",
+  
+  "Muni Shares shows the top 5, middle 5, and bottom 5 munis based on the share of FMV that has an incentive property out of all FMV in the municipality. Note: Municipalities without commercial or industrial property are excluded from this list.",
+  "Commerc_Share shows the top 5, middle 5, and bottom 5 municipalities based on share of commercial incentive FMV out of the commercial FMV within the municipality.Note: There are at least 50 municipalities that do not have commercial incentive properties. The bottom 5 displayed are alphabetically last, but there are 50 tied at 0%.",
+            "Indust_Share shows the top 5, middle 5, and bottom 5 municipalities based on the share of industrial incentive FMV out of the industrial FMV within the municipality. Note: There are at least 38 municipalities that do not have industrial incentive properties. The bottom 5 displayed are alphabetically last, but there are 38 tied at 0%.",
+  
+  "Muni Share_all includes all municipalities and their share of FMV with incentives out of all FMV in the municipality.",
+  "IndustShare_all is same as Indust_share but includes all munis.",
+  "CommercShare_all is same as Commerc_share but includes all munis.") %>% as.data.frame()
 
 paper_tables <- list(
+  "README"= readme,
   
   "Pin Change per Year" = pins_per_year,
   "Top 10 Commercial Incents" = commerc_top10,
