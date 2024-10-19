@@ -905,117 +905,6 @@ pct_fmv_incents_inTIFs = muni_fmv_incents_inTIF / muni_fmv ) %>%
 
 ## Frequency of Incentives 
 
-### Pin Counts
-
-```{r}
-ptax_pins <-  read_csv("./Output/comm_ind_PINs_2006to2022_timeseries.csv") %>% 
-  mutate(class = as.numeric(class))
-
-commind_together <- ptax_pins %>%
-  filter(land_use %in% c("Industrial", "Commercial")) |>
-  group_by(year) %>%
-  summarize(
-    proptype_pincount = n(),
-            n_incent = sum(ifelse(incent_prop == "Incentive", 1, 0)),
-            n_nonincent = sum(ifelse(incent_prop == "Non-Incentive", 1, 0)))  %>% mutate(pct_incent = n_incent / proptype_pincount)
-
-  
-
-table <- ptax_pins %>% 
-    filter(land_use %in% c("Industrial", "Commercial")) |>
-
-  group_by(year, land_use) %>%
-  summarize(
-    proptype_pincount = n(),
-            n_incent = sum(ifelse(incent_prop == "Incentive", 1, 0)),
-            n_nonincent = sum(ifelse(incent_prop == "Non-Incentive", 1, 0))) %>%
-  mutate(pct_incent = n_incent / proptype_pincount) %>%
-  arrange(year) %>%
-  mutate(year = as.character(year)) %>%
-filter(!land_use %in% c("Exempt", "Other Residential", "Owner Occupied", "Rental") ) %>% 
-  select(year, land_use, n_incent, pct_incent) |>
-  pivot_wider(id_cols = year, names_from = land_use, 
-             values_from = c(n_incent,pct_incent)) %>% ungroup() |>
-  select(-year)
-
-cbind(commind_together, table) %>% 
-  select(Year = year, "C&I Incentive Parcels" = n_incent, "Share of C&I" = pct_incent,
-                  "Commercial Pin Count" = n_incent_Commercial, "Share of Commercial" = pct_incent_Commercial,
-
-         "Industrial Pin Count" = n_incent_Industrial, "Share of Industrial" = pct_incent_Commercial,
-         "C&I PIN Count" = proptype_pincount) %>% 
-  flextable() %>%
-  add_header_row(values = c(" ", "Incent C&I", "Commercial", "Industrial","All C&I"), colwidths = c(1,2,2,2, 1))
-
-```
-```{r}
-ptax_pins %>% 
-  filter(land_use %in% c("Commercial", "Industrial")) %>%
- group_by(year, land_use) %>%
-  summarize(
-  PC = sum(incent_prop=="Incentive") )%>%
-  ggplot() + 
-  geom_col(aes(x=year, y = PC, fill = land_use)) + 
-  scale_x_continuous(#limits = c(2006, 2022), 
-                                                                      breaks = c(2006, 2010, 2015, 2020, 2022)) + 
-  theme_classic() + theme(legend.position =  "bottom", legend.title = element_blank(), 
-                          axis.title.x =   element_blank())
-```
-
-
-```{r}
-commind_together_fmv <- ptax_pins %>%
-  filter(land_use %in% c("Industrial", "Commercial")) |>
-  group_by(year) %>%
-  summarize(
-    fmv_CI = sum(fmv, na.rm=TRUE),
-            fmv_incent = sum(ifelse(incent_prop == "Incentive", fmv, 0))
-          )  %>% 
-  mutate(pct_incent = fmv_incent / fmv_CI)
-
-  
-
-table_fmv <- ptax_pins %>% 
-    filter(land_use %in% c("Industrial", "Commercial")) |>
-
-  group_by(year, land_use) %>%
-  summarize(
-    fmv = sum(fmv, na.rm=TRUE),
-            fmv_incent = sum(ifelse(incent_prop == "Incentive", fmv, 0), na.rm=TRUE)
-          )  %>% 
-  mutate(pct_incent = fmv_incent / fmv) %>%
-  arrange(year) %>%
-  mutate(year = as.character(year)) %>%
-  select(year, land_use, fmv_incent, pct_incent) |>
-  pivot_wider(id_cols = year, names_from = land_use, 
-             values_from = c(fmv_incent, pct_incent)) %>% ungroup() |>
-  select(-year)
-
-cbind(commind_together_fmv, table_fmv) %>% 
-  select(Year = year, "C&I Incentive FMV" = fmv_incent, "Share of C&I" = pct_incent,
-                  "Commercial Incent. FMV" = fmv_incent_Commercial, "Share of Commercial" = pct_incent_Commercial,
-
-         "Industrial Incent. FMV" = fmv_incent_Industrial, "Share of Industrial" = pct_incent_Industrial, fmv_CI) %>% 
-  flextable() %>%
-  add_header_row(values = c(" ", "Commercial & Industrial", "Commercial", "Industrial","All C&I"), colwidths = c(1,2,2,2, 1))
-```
-
-```{r}
-ptax_pins %>% 
-  filter(land_use %in% c("Commercial", "Industrial")) %>%
- group_by(year, land_use) %>%
-  summarize(
-  fmv = sum(ifelse(incent_prop=="Incentive", fmv/1000000000, 0) ))%>%
-  ggplot() + 
-  geom_col(aes(x=year, y = fmv, fill = land_use)) + 
-  scale_x_continuous(limits = c(min(ptax_pins$year), max(ptax_pins$year)), 
-                                                                      breaks = c(2006, 2009, 2012, 2015, 2018, 2022)) + 
-  theme_classic() +
-  labs(y = "FMV ($ Billions)")+
-  theme(legend.position =  "bottom", legend.title = element_blank(), 
-                          axis.title.x =   element_blank())
-```
-
 ### Fair Market Value of Incentive PINs
 
 ```{r}
@@ -2055,6 +1944,117 @@ muni_ratechange %>%
 
 
 # Yearly Trends - FMV Growth since 2011
+### Pin Counts
+
+```{r}
+ptax_pins <-  read_csv("./Output/comm_ind_PINs_2006to2022_timeseries.csv") %>% 
+  mutate(class = as.numeric(class))
+
+commind_together <- ptax_pins %>%
+  filter(land_use %in% c("Industrial", "Commercial")) |>
+  group_by(year) %>%
+  summarize(
+    proptype_pincount = n(),
+            n_incent = sum(ifelse(incent_prop == "Incentive", 1, 0)),
+            n_nonincent = sum(ifelse(incent_prop == "Non-Incentive", 1, 0)))  %>% mutate(pct_incent = n_incent / proptype_pincount)
+
+  
+
+table <- ptax_pins %>% 
+    filter(land_use %in% c("Industrial", "Commercial")) |>
+
+  group_by(year, land_use) %>%
+  summarize(
+    proptype_pincount = n(),
+            n_incent = sum(ifelse(incent_prop == "Incentive", 1, 0)),
+            n_nonincent = sum(ifelse(incent_prop == "Non-Incentive", 1, 0))) %>%
+  mutate(pct_incent = n_incent / proptype_pincount) %>%
+  arrange(year) %>%
+  mutate(year = as.character(year)) %>%
+filter(!land_use %in% c("Exempt", "Other Residential", "Owner Occupied", "Rental") ) %>% 
+  select(year, land_use, n_incent, pct_incent) |>
+  pivot_wider(id_cols = year, names_from = land_use, 
+             values_from = c(n_incent,pct_incent)) %>% ungroup() |>
+  select(-year)
+
+cbind(commind_together, table) %>% 
+  select(Year = year, "C&I Incentive Parcels" = n_incent, "Share of C&I" = pct_incent,
+                  "Commercial Pin Count" = n_incent_Commercial, "Share of Commercial" = pct_incent_Commercial,
+
+         "Industrial Pin Count" = n_incent_Industrial, "Share of Industrial" = pct_incent_Commercial,
+         "C&I PIN Count" = proptype_pincount) %>% 
+  flextable() %>%
+  add_header_row(values = c(" ", "Incent C&I", "Commercial", "Industrial","All C&I"), colwidths = c(1,2,2,2, 1))
+
+```
+```{r}
+ptax_pins %>% 
+  filter(land_use %in% c("Commercial", "Industrial")) %>%
+ group_by(year, land_use) %>%
+  summarize(
+  PC = sum(incent_prop=="Incentive") )%>%
+  ggplot() + 
+  geom_col(aes(x=year, y = PC, fill = land_use)) + 
+  scale_x_continuous(#limits = c(2006, 2022), 
+                                                                      breaks = c(2006, 2010, 2015, 2020, 2022)) + 
+  theme_classic() + theme(legend.position =  "bottom", legend.title = element_blank(), 
+                          axis.title.x =   element_blank())
+```
+
+
+```{r}
+commind_together_fmv <- ptax_pins %>%
+  filter(land_use %in% c("Industrial", "Commercial")) |>
+  group_by(year) %>%
+  summarize(
+    fmv_CI = sum(fmv, na.rm=TRUE),
+            fmv_incent = sum(ifelse(incent_prop == "Incentive", fmv, 0))
+          )  %>% 
+  mutate(pct_incent = fmv_incent / fmv_CI)
+
+  
+
+table_fmv <- ptax_pins %>% 
+    filter(land_use %in% c("Industrial", "Commercial")) |>
+
+  group_by(year, land_use) %>%
+  summarize(
+    fmv = sum(fmv, na.rm=TRUE),
+            fmv_incent = sum(ifelse(incent_prop == "Incentive", fmv, 0), na.rm=TRUE)
+          )  %>% 
+  mutate(pct_incent = fmv_incent / fmv) %>%
+  arrange(year) %>%
+  mutate(year = as.character(year)) %>%
+  select(year, land_use, fmv_incent, pct_incent) |>
+  pivot_wider(id_cols = year, names_from = land_use, 
+             values_from = c(fmv_incent, pct_incent)) %>% ungroup() |>
+  select(-year)
+
+cbind(commind_together_fmv, table_fmv) %>% 
+  select(Year = year, "C&I Incentive FMV" = fmv_incent, "Share of C&I" = pct_incent,
+                  "Commercial Incent. FMV" = fmv_incent_Commercial, "Share of Commercial" = pct_incent_Commercial,
+
+         "Industrial Incent. FMV" = fmv_incent_Industrial, "Share of Industrial" = pct_incent_Industrial, fmv_CI) %>% 
+  flextable() %>%
+  add_header_row(values = c(" ", "Commercial & Industrial", "Commercial", "Industrial","All C&I"), colwidths = c(1,2,2,2, 1))
+```
+
+```{r}
+ptax_pins %>% 
+  filter(land_use %in% c("Commercial", "Industrial")) %>%
+ group_by(year, land_use) %>%
+  summarize(
+  fmv = sum(ifelse(incent_prop=="Incentive", fmv/1000000000, 0) ))%>%
+  ggplot() + 
+  geom_col(aes(x=year, y = fmv, fill = land_use)) + 
+  scale_x_continuous(limits = c(min(ptax_pins$year), max(ptax_pins$year)), 
+                                                                      breaks = c(2006, 2009, 2012, 2015, 2018, 2022)) + 
+  theme_classic() +
+  labs(y = "FMV ($ Billions)")+
+  theme(legend.position =  "bottom", legend.title = element_blank(), 
+                          axis.title.x =   element_blank())
+```
+
 
 The file ~~`comm_ind_inmunis_timeseries_2006to2022.csv`~~ `comm_ind_PINs_2011to2022_timeseries.csv` contains all PINs that had an incentive property class for at least 1 year. It includes all observations for a property during the years that it existed, even if it is not an incentive class property in that year.
 
@@ -2066,6 +2066,42 @@ year_count <- 12
 comm_ind_pins <- read_csv("./Output/comm_ind_PINs_2011to2022_timeseries.csv")
 
 ```
+
+```{r}
+comm_ind_pins %>%
+  filter(incent_prop == "Incentive") %>%
+  # group_by(year, land_use) %>%
+  reframe(PC=n(), .by= c(year, land_use)) %>%
+  distinct() %>%
+   reframe(land_use, PC,
+     both_PC = sum(PC), .by=year) %>% distinct() %>% 
+  arrange(year) %>%
+  group_by(land_use) %>%
+  mutate(ratio_2011 = PC/ PC[year==2011],
+         ratio_both_2011 = both_PC/both_PC[year==2011]) %>% 
+  ggplot() +
+  geom_line(aes(x=year, y = ratio_2011, group = land_use, color = land_use)) + 
+  geom_line(aes(x=year, y =ratio_both_2011), lty = 1) + theme_bw()
+```
+
+
+```{r}
+comm_ind_pins %>%
+  filter(incent_prop == "Incentive") %>%
+   reframe(fmv,
+           type_fmv = sum(fmv, na.rm=TRUE), .by = c(year,land_use)
+          ) %>%
+   reframe(land_use, type_fmv,
+          fmv_incent = sum(fmv, na.rm=TRUE), .by=year) %>% distinct() %>% 
+  arrange(year) %>%
+  group_by(land_use) %>%
+  mutate(ratio_2011 = type_fmv/ type_fmv[year==2011],
+         ratio_both_2011 = fmv_incent/fmv_incent[year==2011]) %>% 
+  ggplot() +
+  geom_line(aes(x=year, y = ratio_2011, group = land_use, color = land_use)) + 
+  geom_line(aes(x=year, y =ratio_both_2011), lty = 1) + theme_classic()
+```
+
 
 
 ```{r}
@@ -2084,8 +2120,6 @@ pins_per_year <- comm_ind_pins %>%
 pins_per_year
 ```
 
-```{r}
-```
 
 
 ```{r}
