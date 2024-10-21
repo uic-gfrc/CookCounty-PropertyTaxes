@@ -61,6 +61,7 @@ tax_codes_muni <- DBI::dbGetQuery(
   SELECT DISTINCT year, agency_num, tax_code_num, tax_code_rate
   FROM tax_code
   WHERE agency_num IN ({muni_agency_names$agency_num*})
+  AND year <= 2022
   ",
            .con = ptaxsim_db_conn
   ))
@@ -74,6 +75,8 @@ muni_pins <- DBI::dbGetQuery(
   FROM pin
   WHERE class > 399 AND class < 900
   AND tax_code_num IN ({tax_codes_muni$tax_code_num*})
+  AND year <= 2022
+
   ",
     .con = ptaxsim_db_conn
   ))
@@ -134,6 +137,9 @@ tif_distrib <- DBI::dbGetQuery(
 
 ## Add additional variables ---------------------------------------------
 
+
+# "Frankfort", "Homer Glen",  "Oak Brook", "East Dundee", "University Park", 
+# "Bensenville", "Hinsdale", "Roselle", "Deer Park", "Deerfield"
 cross_county_lines <- c("030440000", "030585000", "030890000", "030320000", "031280000",
                         "030080000", "030560000", "031120000", "030280000", "030340000",
                         "030150000","030050000", "030180000","030500000", "031210000")
