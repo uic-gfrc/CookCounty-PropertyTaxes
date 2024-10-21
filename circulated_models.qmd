@@ -45,19 +45,12 @@ building <- c(201: 221, 225:236, 278:299, 301:399,401, 417:499, 501:549, 551:599
 
 vacant = c(100:199)
 
-# NOTE: MADE USING THE 2023 PTAXSIM.DB AND THUS 2023 OBS MUST BE FILTERED OUT.
+# NOTE: MADE USING THE 2023 PTAXSIM.DB 2023 - MUST FILTER 2023 OBS OUT.
 
 comm_ind <- read_csv("./Output/comm_ind_PINs_2011to2022_timeseries.csv") |>
   filter(year != 2023)
 
 year_count <- 12
-
-comm_ind <- comm_ind %>%
-    mutate(incent_change = ifelse(years_existed < year_count, "Excluded", incent_change),
-           incent_status = ifelse(years_existed < year_count, "Excluded", incent_status),
-           incent_status = ifelse(incent_status == "Gains & Loses Incent", "Excluded", incent_status),
-           landuse_change = ifelse(years_existed < year_count, "Excluded", landuse_change),
-           landuse_change = ifelse(landuse_change == "Exempt Sometime", "Excluded", landuse_change))
 
 comm_ind <- comm_ind |>
 
@@ -111,6 +104,7 @@ table(comm_ind$incent_prop, comm_ind$landuse_change)
 table(comm_ind$landuse_change)
 
 ```
+
 ## Setup
 
 ### Data
@@ -176,7 +170,7 @@ gof_format_fun <- function(x) format(round(x, 3), big.mark=",")
 
 ```{r}
 #| label: tbl-pinandmunimodels-filtered
-#| tbl-cap: "PIN and Year FE compared with Municipality and Year FE models. Drop observations with Excluded category in incent_status or landuse_change.  Winsorized."
+#| tbl-cap: "PIN and Year FE compared with Municipality and Year FE models. Drops observations with Excluded category in incent_status or landuse_change.  Winsorized."
 
 incent_paper_models <- list(
   
