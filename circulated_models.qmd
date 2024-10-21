@@ -1153,90 +1153,29 @@ modelsummary(ols_models,
 
 ```
 
-I'm not sure why this document has graphs.
+```{r}
+#| label: tbl-twoyearsofdata
+#| tbl-cap: "2011 and 2022 observations only."
 
-```{r dataexploration, eval=FALSE}
-comm_ind_df |>
-  filter(year==2022)|>
-  ggplot(aes(fmv_growth_2006_w)) +
-  geom_histogram(bins = 100) +
-  theme_classic()
+model_df <- comm_ind %>% filter( year == 2022)
 
-comm_ind_df |>
-  filter(year==2022)|>
-  ggplot(aes(fmv_growth_2011_w)) +
-  geom_histogram(bins = 100) +
-  theme_classic()
-
-comm_ind_df |>
-  select(fmv_growth_2011_w) |>
-  ungroup() |>
-  summarize(max = max(fmv_growth_2011_w, na.rm = TRUE), 
-            min = min(fmv_growth_2011_w, na.rm=TRUE), 
-            mean = mean(fmv_growth_2011_w, na.rm = TRUE),
-            median = median(fmv_growth_2011_w, na.rm = TRUE), 
-            sd= sd(fmv_growth_2011_w, na.rm=TRUE))
+ols_models <- list(
+    "1" = lm(fmv_growth_2011_w ~  incent_status,
+                data = model_df),
+  
+  "2" = lm(fmv_growth_2011_w ~ landuse_change,
+                data = model_df),
+  
+    "3" = lm(fmv_growth_2011_w ~ landuse_change*incent_status,
+                data = model_df)
+  )
 
 
-# Look at FMV growth
-comm_ind_df |> ungroup() |>
-      filter(year == 2022)|>
-  summarize(min_growth = min(fmv_growth_2011_w, na.rm=TRUE), 
-            max_growth = max(fmv_growth_2011_w, na.rm=TRUE), 
-            mean_growth = mean(fmv_growth_2011_w, na.rm=TRUE), 
-            med_growth = median(fmv_growth_2011_w, na.rm=TRUE),
-            sd_growth = sd(fmv_growth_2011_w, na.rm=TRUE))
-
-
-# Look at base_year_fmv_2011_2
-comm_ind_df |> ungroup() |>
-    filter(year == 2022)|>
-  summarize(min_fmv = min(base_year_fmv_2011_w, na.rm=TRUE), 
-            max_fmv = max(base_year_fmv_2011_w, na.rm=TRUE), 
-            mean_fmv = mean(base_year_fmv_2011_w, na.rm=TRUE), 
-            med_fmv = median(base_year_fmv_2011_w, na.rm=TRUE),
-            sd_fmv = sd(base_year_fmv_2011_w, na.rm=TRUE))
-
-comm_ind_df |>
-      filter(year == 2021)|>
-  ggplot() +
-  geom_freqpoly(aes(base_year_fmv_2011_w, color = "FMV in 2011")) +
-  labs(
-    title = "Distribution of 2011 FMV Values",
-    x = "FMV",   y = "n", color = "Legend") +
-  theme_classic()
-
-comm_ind_df |>
-      filter(year == 2021)|>
-  ggplot() +
-  geom_freqpoly(aes(fmv_growth_2011_w, color = "FMV Growth since 2011")) +
-  labs(
-    title = "Distribution of Growth Rates since 2011 (2021 Data)",
-    x = "Growth since 2011",   y = "n",
-    color = "Legend") +
-  theme_classic()
-
-comm_ind_df |>
-      filter(year == 2022)|>
-  ggplot() +
-  geom_point(aes(x = base_year_fmv_2011_w, y = fmv_growth_2011_w, alpha = 0.3, color = land_use)) +
-    labs(
-    title = "Relationship between 2011 FMV Values and Growth Rates (2022 Data)",
-    x = "2011 FMV",    y = "FMV Growth",
-    color = "Land Use") +
-  theme_classic()
-
-
-comm_ind_df |>
-  filter(year == 2021)|>
-  filter(land_use %in% c("Industrial", "Commercial")) |>
-  ggplot() +
-  geom_point(aes(x = base_year_fmv_2011_w, y = fmv_growth_2011_w, color = land_use, alpha = 0.3)) +
-    labs(
-    title = "Relationship between 2011 FMV Values and Growth Rates (2022 Data)",
-    x = "2011 FMV",
-    y = "FMV Growth",
-    color = "Land Use") +
-  theme_classic()
+modelsummary(ols_models,
+             stars = TRUE,
+             fmt = function(x) round(x, 2),
+             coef_omit= 'clean_name|year',
+             gof_omit = "AIC|BIC|Log.Lik.") #|>  theme_tt("grid")
 
 ```
+
