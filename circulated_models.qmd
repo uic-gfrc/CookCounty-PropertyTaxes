@@ -209,7 +209,7 @@ incent_paper_models <- list(
     
     "I" = feols(fmv_growth_2011_w ~ incent_prop + land_use
                            | clean_name + year,
-                           panel.id = c("clean_name", "year"),
+                           panel.id = c("pin", "year"),
                            vcov = "DK",
                            data = model_df),
   
@@ -218,7 +218,7 @@ incent_paper_models <- list(
     feols(fmv_growth_2011_w ~ incent_prop + land_use +
             land_use*incent_prop
                            | clean_name + year,
-                           panel.id = c("clean_name", "year"),
+                           panel.id = c("pin", "year"),
                            vcov = "DK",
                            data = model_df),
   
@@ -227,7 +227,7 @@ incent_paper_models <- list(
     feols(fmv_growth_2011_w ~ incent_prop + land_use + 
             landuse_change*incent_prop
                            | clean_name + year,
-                           panel.id = c("clean_name", "year"),
+                           panel.id = c("pin", "year"),
                            vcov = "DK",
                            data = model_df)  
     
@@ -245,153 +245,6 @@ formatted_regression_models
 save_tt(formatted_regression_models,
         "models_2024_10_21.docx",
         overwrite = TRUE)
-
-```
-```{r ind_ref_group}
-
-#| label: tbl-pinandmunimodels-filtered
-#| tbl-cap: "PIN and Year FE compared with Municipality and Year FE models. Drops observations with Excluded category in incent_status or landuse_change.  Winsorized."
-
-incent_paper_models <- list(
-  
-  "PIN-Level" = list(
-    
-    "I" = 
-    
-    feols(fmv_growth_2011_w ~ incent_prop + land_use
-                           | pin + year,
-                           panel.id = c("pin", "year"),
-                           vcov = "NW",
-                           data = model_df),
-    
-  "II" = 
-    
-    feols(fmv_growth_2011_w ~ incent_prop + land_use +
-            land_use*incent_prop
-                           | pin + year,
-                           panel.id = c("pin", "year"),
-                           vcov = "NW",
-                           data = model_df),
-  
-  "III" = 
-
-    feols(fmv_growth_2011_w ~ incent_prop + land_use + 
-            landuse_change*incent_prop
-                           | pin + year,
-                           panel.id = c("pin", "year"),
-                           vcov = "NW",
-                           data = model_df)  
-  ),
-                           
-  "Municipality-Level" = list(
-    
-    "I" = feols(fmv_growth_2011_w ~ incent_prop + land_use
-                           | clean_name + year,
-                           panel.id = c("clean_name", "year"),
-                           vcov = "DK",
-                           data = model_df),
-  
-   "II" = 
-    
-    feols(fmv_growth_2011_w ~ incent_prop + land_use +
-            land_use*incent_prop
-                           | clean_name + year,
-                           panel.id = c("clean_name", "year"),
-                           vcov = "DK",
-                           data = model_df),
-  
-  "III" = 
-
-    feols(fmv_growth_2011_w ~ incent_prop + land_use + 
-            landuse_change*incent_prop
-                           | clean_name + year,
-                           panel.id = c("clean_name", "year"),
-                           vcov = "DK",
-                           data = model_df)  
-    
-  )
-)
-
-formatted_regression_models <- modelsummary(incent_paper_models,
-             shape = "cbind",
-             fmt = function(x) round(x, 2),
-            # gof_map = gof_mm,
-             stars = TRUE)
-
-formatted_regression_models
-
-```
-
-
-```{r panel_id_test}
-
-panel_id_test <- list(
-  
-  "PIN ID" = list(
-    
-    "I" = 
-    
-    feols(fmv_growth_2011_w ~ incent_prop + land_use
-                           | clean_name + year,
-                           panel.id = c("pin", "year"),
-                           vcov = "DK",
-                           data = model_df),
-    
-  "II" = 
-    
-    feols(fmv_growth_2011_w ~ incent_prop + land_use +
-            land_use*incent_prop
-                           | clean_name + year,
-                           panel.id = c("pin", "year"),
-                           vcov = "DK",
-                           data = model_df),
-  
-  "III" = 
-
-    feols(fmv_growth_2011_w ~ incent_prop + land_use + 
-            landuse_change*incent_prop
-                           | clean_name + year,
-                           panel.id = c("pin", "year"),
-                           vcov = "DK",
-                           data = model_df)  
-  ),
-                           
-  "Muni ID" = list(
-    
-    "I" = feols(fmv_growth_2011_w ~ incent_prop + land_use
-                           | clean_name + year,
-                           panel.id = c("clean_name", "year"),
-                           vcov = "DK",
-                           data = model_df),
-  
-   "II" = 
-    
-    feols(fmv_growth_2011_w ~ incent_prop + land_use +
-            land_use*incent_prop
-                           | clean_name + year,
-                           panel.id = c("clean_name", "year"),
-                           vcov = "DK",
-                           data = model_df),
-  
-  "III" = 
-
-    feols(fmv_growth_2011_w ~ incent_prop + land_use + 
-            landuse_change*incent_prop
-                           | clean_name + year,
-                           panel.id = c("clean_name", "year"),
-                           vcov = "DK",
-                           data = model_df)  
-    
-  )
-)
-
-formatted_id_test <- modelsummary(panel_id_test,
-             shape = "cbind",
-             fmt = function(x) round(x, 2),
-            # gof_map = gof_mm,
-             stars = TRUE)
-
-formatted_id_test
 
 ```
 
@@ -1244,18 +1097,18 @@ modelsummary(ols_models,
 
 ```{r}
 #| label: tbl-twoyearsofdata
-#| tbl-cap: "2011 and 2022 observations only."
+#| tbl-cap: "2022 observations only - Growth from 2011"
 
 model_df <- comm_ind %>% filter( year == 2022)
 
 ols_models <- list(
-    "1" = lm(fmv_growth_2011_w ~  incent_status,
+    "1" = lm(fmv_growth_2011_w ~  incent_status + clean_name,
                 data = model_df),
   
-  "2" = lm(fmv_growth_2011_w ~ landuse_change,
+  "2" = lm(fmv_growth_2011_w ~ landuse_change + clean_name,
                 data = model_df),
   
-    "3" = lm(fmv_growth_2011_w ~ landuse_change*incent_status,
+    "3" = lm(fmv_growth_2011_w ~ landuse_change*incent_status + clean_name,
                 data = model_df)
   )
 
