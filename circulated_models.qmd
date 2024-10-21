@@ -75,9 +75,7 @@ comm_ind <- comm_ind |>
   mutate(building = ifelse(class %in% building, 1, 0),
          nonvacant = ifelse(class %in% vacant, 0, 1)) %>%
   group_by(pin) %>% 
-  arrange(year) %>%
-  mutate(building_lag = lag(building),
-         nonvacant_lag = lag(nonvacant)) |>
+  arrange(year) |>
 
 # select variables
 
@@ -94,11 +92,11 @@ comm_ind <- comm_ind |>
 
 # Models
 
-## Random Tables I Didn't Want to Delete
 
-```{r incent_final_models}
+```{r }
+#| label: tbl-incent_final_models
+#| layout-ncol: 2
 table(comm_ind$land_use, comm_ind$incent_status)
-
 table(comm_ind$incent_status)
 table(comm_ind$incent_prop, comm_ind$landuse_change)
 table(comm_ind$landuse_change)
@@ -127,7 +125,9 @@ model_df_ind_relev <- model_df |>
 ```
 
 ### Output formatting
-```{r summary_formats}
+```{r }
+#| label: summary_formats
+#| include: false
 
 name_map <- c(
   "incent_propIncentive" = "Incentive Property",
@@ -248,7 +248,10 @@ save_tt(formatted_regression_models,
 
 ```
 
-```{r SE_test}
+```{r }
+#| label: tbl-SE_test
+#| tbl-cap: "Compares DK SEs with Clustered by municipality SEs for the Municipality level models."
+
 
 panel_se_test <- list(
   
@@ -285,7 +288,7 @@ panel_se_test <- list(
     
     "I" = feols(fmv_growth_2011_w ~ incent_prop + land_use
                            | clean_name + year,
-                           panel.id = c("clean_name", "year"),
+                           panel.id = c("pin", "year"),
                            vcov = ~clean_name,
                            data = model_df),
   
@@ -294,7 +297,7 @@ panel_se_test <- list(
     feols(fmv_growth_2011_w ~ incent_prop + land_use +
             land_use*incent_prop
                            | clean_name + year,
-                           panel.id = c("clean_name", "year"),
+                           panel.id = c("pin", "year"),
                            vcov = ~clean_name,
                            data = model_df),
   
@@ -303,7 +306,7 @@ panel_se_test <- list(
     feols(fmv_growth_2011_w ~ incent_prop + land_use + 
             landuse_change*incent_prop
                            | clean_name + year,
-                           panel.id = c("clean_name", "year"),
+                           panel.id = c("pin", "year"),
                            vcov = ~clean_name,
                            data = model_df)  
     
@@ -361,7 +364,7 @@ incent_paper_models_ind_ref <- list(
     
     "I" = feols(fmv_growth_2011_w ~ incent_prop + land_use
                            | clean_name + year,
-                           panel.id = c("clean_name", "year"),
+                           panel.id = c("pin", "year"),
                            vcov = "DK",
                            data = model_df_ind_relev),
   
@@ -370,7 +373,7 @@ incent_paper_models_ind_ref <- list(
     feols(fmv_growth_2011_w ~ incent_prop + land_use +
             land_use*incent_prop
                            | clean_name + year,
-                           panel.id = c("clean_name", "year"),
+                           panel.id = c("pin", "year"),
                            vcov = "DK",
                            data = model_df_ind_relev),
   
@@ -379,7 +382,7 @@ incent_paper_models_ind_ref <- list(
     feols(fmv_growth_2011_w ~ incent_prop + land_use + 
             landuse_change*incent_prop
                            | clean_name + year,
-                           panel.id = c("clean_name", "year"),
+                           panel.id = c("pin", "year"),
                            vcov = "DK",
                            data = model_df_ind_relev)  
     
@@ -451,7 +454,7 @@ formatted_regression_models
 
 ```{r}
 #| label: tbl-bothmodels-notwinsorized
-#| tbl-cap: "Comparison of PIN-year vs Muni-year FE for values that were not winsorized."
+#| tbl-cap: "Comparison of PIN-year vs Muni-year FE for values that were **not winsorized.**"
 
 incent_paper_models <- list(
   
@@ -606,7 +609,6 @@ formatted_regression_models
 
 ```{r}
 #| label: reassessment-timings
-#| include: false
 #| results: hold
 
 
@@ -686,7 +688,7 @@ ols_models <- list(
 modelsummary(ols_models,
              stars = TRUE,
              fmt = function(x) round(x, 2),
-             coef_omit= 'clean_name|year',
+            # coef_omit= 'clean_name|year',
              gof_omit = "AIC|BIC|Log.Lik.") #|>  theme_tt("grid")
 
 ```
