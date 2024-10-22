@@ -68,6 +68,7 @@ comm_ind <- comm_ind |>
         landuse_change = relevel(landuse_change, ref = "Always Commercial"),
         incent_status = relevel(incent_status, ref = "Never had Incentive"),
          incent_prop = relevel(incent_prop, ref = "Non-Incentive"),
+        clean_name = relevel(clean_name, ref = "Chicago"),
          triad = relevel(triad, ref = "City"),
          land_use = relevel(land_use, ref = "Commercial"))|> 
   
@@ -441,7 +442,7 @@ incent_paper_models <- list(
   "Municipality-Level" = list(
     
     "I" = feols(fmv_growth_2011 ~ incent_prop + land_use                            | clean_name + year,
-                           panel.id = c("clean_name", "year"),
+                           panel.id = c("pin", "year"),
                            vcov = "DK",
                            data = model_df),
   
@@ -449,14 +450,14 @@ incent_paper_models <- list(
     
     feols(fmv_growth_2011 ~ incent_prop + land_use +
 land_use*incent_prop                           | clean_name + year,
-                           panel.id = c("clean_name", "year"),
+                           panel.id = c("pin", "year"),
                            vcov = "DK",
                            data = model_df),
    "III" = 
     
     feols(fmv_growth_2011 ~ incent_prop + land_use +
 land_use*incent_prop    + landuse_change*incent_prop                        | clean_name + year,
-                           panel.id = c("clean_name", "year"),
+                           panel.id = c("pin", "year"),
                            vcov = "DK",
                            data = model_df)
     
@@ -528,25 +529,43 @@ modelsummary(ols_models,
 #| label: tbl-twoyearsofdata-filtered
 #| tbl-cap: "2022 observations only - Growth from 2011. Winsorized. Removes Excluded observations from Land Use categories and Incentive Change Categories."
 
-model_df <- comm_ind %>% filter( year == 2022 & land_use != "Excluded" & incent_change != "Excluded" & landuse_change != "Excluded" & incent_status != "Excluded") 
+model_df <- comm_ind %>% 
+  filter( year == 2022 & land_use != "Excluded" & 
+            incent_change != "Excluded" & 
+            landuse_change != "Excluded" & 
+            incent_status != "Excluded")
 
 ols_models <- list(
-    "1" = lm(fmv_growth_2011_w ~  incent_status + clean_name,
+    "I" = lm(fmv_growth_2011_w ~  incent_status + clean_name,
                 data = model_df),
   
-  "2" = lm(fmv_growth_2011_w ~ landuse_change + clean_name,
+    "II" = lm(fmv_growth_2011_w ~ landuse_change + clean_name,
                 data = model_df),
   
-    "3" = lm(fmv_growth_2011_w ~ landuse_change*incent_status + clean_name,
+    "III" = lm(fmv_growth_2011_w ~ landuse_change*incent_status + clean_name*incent_status,
                 data = model_df)
   )
 
 
-modelsummary(ols_models,
-             stars = TRUE,
+# modelsummary(ols_models,
+#              stars = TRUE,
+#              fmt = function(x) round(x, 2),
+#             # coef_omit= 'clean_name|year',
+#              gof_omit = "AIC|BIC|Log.Lik.")
+
+
+formatted_regression_models <- 
+  modelsummary(ols_models,
+            # shape = "cbind",
              fmt = function(x) round(x, 2),
-            # coef_omit= 'clean_name|year',
-             gof_omit = "AIC|BIC|Log.Lik.") #|>  theme_tt("grid")
+             stars = TRUE)
+
+formatted_regression_models
+
+save_tt(formatted_regression_models,
+        "models_OLS_2024_10_21.docx",
+        overwrite = TRUE
+        )
 
 ```
 
@@ -554,6 +573,8 @@ modelsummary(ols_models,
 ```{r}
 #| label: tbl-twoyearsofdata
 #| tbl-cap: "2022 observations only - Growth from 2011. Winsorized FMV Growth Values"
+#| eval: false
+#| include: false
 
 model_df <- comm_ind %>% filter( year == 2022)
 
@@ -564,7 +585,7 @@ ols_models <- list(
   "2" = lm(fmv_growth_2011_w ~ landuse_change + clean_name,
                 data = model_df),
   
-    "3" = lm(fmv_growth_2011_w ~ landuse_change*incent_status + clean_name,
+    "3" = lm(fmv_growth_2011_w ~ landuse_change*incent_status + clean_name*incent_status,
                 data = model_df)
   )
 
