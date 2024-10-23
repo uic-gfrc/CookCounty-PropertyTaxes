@@ -53,7 +53,7 @@ comm_ind <- read_csv("./Output/comm_ind_PINs_2011to2022_timeseries.csv") |>
 year_count <- 12
 
 comm_ind <- comm_ind |>
-
+  
   # set reference levels
   mutate(incent_change = as.factor(incent_change),
          incent_status = as.factor(incent_status),
@@ -65,10 +65,11 @@ comm_ind <- comm_ind |>
          clean_name = as.factor(clean_name),
          incent_indicator = ifelse(incent_prop == "Incentive", 1, 0),
          incent_change = relevel(incent_change, ref = "Never Incentive"),
-        landuse_change = relevel(landuse_change, ref = "Always Commercial"),
-        incent_status = relevel(incent_status, ref = "Never had Incentive"),
+         landuse_change = relevel(landuse_change, ref = "Always Commercial"),
+         incent_status = relevel(incent_status, ref = "Never had Incentive"),
          incent_prop = relevel(incent_prop, ref = "Non-Incentive"),
-        clean_name = relevel(clean_name, ref = "Chicago"),
+         # default reference group is Alsip
+         # clean_name = relevel(clean_name, ref = "Chicago"),
          triad = relevel(triad, ref = "City"),
          land_use = relevel(land_use, ref = "Commercial"))|> 
   
@@ -77,9 +78,9 @@ comm_ind <- comm_ind |>
          nonvacant = ifelse(class %in% vacant, 0, 1)) %>%
   group_by(pin) %>% 
   arrange(year) |>
-
-# select variables
-
+  
+  # select variables
+  
   select(pin, class, year, clean_name, 
          incent_prop, incent_status, base_year_fmv_2011, 
          base_year_fmv_2011_w,
@@ -90,7 +91,6 @@ comm_ind <- comm_ind |>
 
 ```
 
-# Models
 
 
 ```{r }
@@ -103,9 +103,7 @@ table(comm_ind$landuse_change)
 
 ```
 
-## Setup
 
-### Data
 
 ```{r model_data_setup}
 
@@ -124,6 +122,7 @@ model_df_ind_relev <- model_df |>
 
 ```
 
+# Models
 ### Output formatting
 ```{r }
 #| label: summary_formats
@@ -519,7 +518,8 @@ modelsummary(ols_models,
              stars = TRUE,
              fmt = function(x) round(x, 2),
              coef_omit= 'clean_name|year',
-             gof_omit = "AIC|BIC|Log.Lik.", output = "flextable")
+             gof_omit = "AIC|BIC|Log.Lik.", 
+             output = "flextable")
 
 
 ```
@@ -528,6 +528,8 @@ modelsummary(ols_models,
 ```{r}
 #| label: tbl-twoyearsofdata-filtered
 #| tbl-cap: "2022 observations only - Growth from 2011. Winsorized. Removes Excluded observations from Land Use categories and Incentive Change Categories."
+
+
 
 model_df <- comm_ind %>% 
   filter( year == 2022 & land_use != "Excluded" & 
@@ -542,7 +544,19 @@ ols_models <- list(
     "II" = lm(fmv_growth_2011_w ~ landuse_change + clean_name,
                 data = model_df),
   
-    "III" = lm(fmv_growth_2011_w ~ landuse_change*incent_status + clean_name*incent_status,
+    "III" = lm(fmv_growth_2011_w ~ landuse_change*incent_status + clean_name,
+                data = model_df),
+    
+    "IV" = lm(fmv_growth_2011_w ~ landuse_change + triad + triad*incent_status + clean_name,
+                data = model_df),
+    
+    "V" = lm(fmv_growth_2011_w ~ landuse_change*incent_status + triad+ clean_name,
+                data = model_df),
+    
+    "VI" = lm(fmv_growth_2011_w ~ landuse_change  + triad + incent_status,
+                data = model_df),
+    
+    "VII" = lm(fmv_growth_2011_w ~ landuse_change*incent_status+ triad,
                 data = model_df)
   )
 
@@ -582,7 +596,7 @@ ols_models <- list(
     "1" = lm(fmv_growth_2011_w ~  incent_status + clean_name,
                 data = model_df),
   
-  "2" = lm(fmv_growth_2011_w ~ landuse_change + clean_name,
+    "2" = lm(fmv_growth_2011_w ~ landuse_change + clean_name,
                 data = model_df),
   
     "3" = lm(fmv_growth_2011_w ~ landuse_change*incent_status + clean_name*incent_status,
