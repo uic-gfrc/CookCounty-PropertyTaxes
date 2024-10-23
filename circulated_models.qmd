@@ -130,45 +130,76 @@ model_df_ind_relev <- model_df |>
 #| include: false
 
 name_map <- c(
-  "incent_propIncentive" = "Incentive Property",
-  "gain_incent" = "Gains Incentive",
+  # Incentive
+  "incent_propIncentive" = "Incentive",
+
+  # Land Use
   "land_useCommercial" = "Commercial",
   "land_useIndustrial" = "Industrial",
   "land_useOther Land Use" = "Other Land Uses",
   "land_useLand" = "Land",
   
-  "land_useCommercial:incent_statusGained Incentive" = "Commercial (Gains Incentive)",
-  "land_useCommercial:incent_statusLost Incentive" = "Commercial (Lost Incentive)",
-  "land_useCommercial:incent_statusGains & Loses Incent" = "Commercial (Multi Incent Change)",
-  
-  "land_useIndustrial:incent_statusGained Incentive" = "Industrial (Gains Incentive)",
-  "land_useIndustrial:incent_statusLost Incentive" = "Industrial (Lost Incentive)",
-  "land_useIndustrial:incent_statusGains & Loses Incent" = "Industrial (Multi Incent Change)",
-  
-  "land_useCommercial:incent_changeChanges Sometime" = "Commercial (Changes Incentive)",
-  "land_useIndustrial:incent_changeChanges Sometime" = "Industrial (Changes Incentive)",
+  # Landuse_change
+  "landuse_changeAlways Industrial" = "Always Industrial",
+  "landuse_changeChanges Land Use" = "Chages Land Use",
+  "landuse_changeAlways Commercial" = "Always Commercial",
  
-     "incent_propIncentive:landuse_changeAlwaysIndustrial" = "Incentive (Always Industrial)",
-
-   "incent_propIncentive:landuse_changeChanges Land Use" = "Incentive (Changes Land Use)",
-  
-  "gain_incent:landuse_changeChanges Land Use" = "Changes Land Use and Gains Incentive"
+  # Incentive*Land_use Change
+   "incent_propIncentive:landuse_changeAlwaysIndustrial" = "Incentive (Always Industrial)",
+   "incent_propIncentive:landuse_changeChanges Land Use" = "Incentive (Changes Land Use)"
 )
 
-gof_mm <- tibble::tribble(
-  ~raw,        ~clean,        ~fmt,
-  "nobs",      "N",             0,#fmt_significant(3),
-  "adj.r.squared", "R2 Adj.", 2,
-  "vcov.type", "Std. Errors", 0
-  #"se_type", "Standard Errors:", 3,
-  #"p.value", "p-value", 2
-  )
+# gof_mm <- tibble::tribble(
+#   ~raw,             ~clean,      ~fmt,
+#   "nobs",           "N",           0,
+#   "adj.r.squared",  "R2 Adj.",    2,
+#   "adj.within.r2", "Within R2 Adj.", 2,
+#   "p.value",       "P-value",     2 
+# )
 
 gof_format_fun <- function(x) format(round(x, 3), big.mark=",")
 
 ```
 
 **USE ME**
+
+```{r paper_FE_body_models}
+
+fe_body_models <- list(
+  
+  "PIN FE" = feols(fmv_growth_2011_w ~ incent_prop + land_use + incent_prop*landuse_change |
+                     pin + year,
+                   panel.id = c("pin", "year"),
+                   vcov = ~clean_name,
+                   data = model_df),
+  
+  "Municipality FE" = feols(fmv_growth_2011_w ~ incent_prop + land_use + incent_prop*landuse_change |
+                     clean_name + year,
+                     panel.id = c("pin", "year"),
+                     vcov = ~clean_name,
+                     data = model_df)
+)
+
+fe_body_models_formatted <- modelsummary(fe_body_models,
+             coef_map = name_map,
+             fmt = function(x) round(x, 2),
+             gof_omit = "AIC|BIC|RMSE|Std.Errors|FE",
+             gof_rename = Num.Obs.
+             stars = TRUE)
+
+fe_body_models_formatted
+
+```
+
+```{r appx_FE_models}
+
+
+```
+
+```{r appx_OLS_model}
+
+
+```
 
 ```{r}
 #| label: tbl-pinandmunimodels-filtered
