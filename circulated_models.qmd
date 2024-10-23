@@ -123,6 +123,7 @@ model_df_ind_relev <- model_df |>
 ```
 
 # Models
+
 ### Output formatting
 ```{r }
 #| label: summary_formats
@@ -182,7 +183,7 @@ incent_paper_models <- list(
     feols(fmv_growth_2011_w ~ incent_prop + land_use
                            | pin + year,
                            panel.id = c("pin", "year"),
-                           vcov = "NW",
+                           vcov = ~ clean_name,
                            data = model_df),
     
   "II" = 
@@ -191,7 +192,7 @@ incent_paper_models <- list(
             land_use*incent_prop
                            | pin + year,
                            panel.id = c("pin", "year"),
-                           vcov = "NW",
+                           vcov = ~ clean_name,
                            data = model_df),
   
   "III" = 
@@ -200,7 +201,7 @@ incent_paper_models <- list(
             landuse_change*incent_prop
                            | pin + year,
                            panel.id = c("pin", "year"),
-                           vcov = "NW",
+                           vcov = ~ clean_name,
                            data = model_df)  
   ),
                            
@@ -209,7 +210,7 @@ incent_paper_models <- list(
     "I" = feols(fmv_growth_2011_w ~ incent_prop + land_use
                            | clean_name + year,
                            panel.id = c("pin", "year"),
-                           vcov = "DK",
+                           vcov = ~clean_name,
                            data = model_df),
   
    "II" = 
@@ -218,7 +219,7 @@ incent_paper_models <- list(
             land_use*incent_prop
                            | clean_name + year,
                            panel.id = c("pin", "year"),
-                           vcov = "DK",
+                           vcov = ~ clean_name,
                            data = model_df),
   
   "III" = 
@@ -227,7 +228,7 @@ incent_paper_models <- list(
             landuse_change*incent_prop
                            | clean_name + year,
                            panel.id = c("pin", "year"),
-                           vcov = "DK",
+                           vcov = ~ clean_name,
                            data = model_df)  
     
   )
@@ -242,7 +243,7 @@ formatted_regression_models <- modelsummary(incent_paper_models,
 formatted_regression_models
 
 save_tt(formatted_regression_models,
-        "models_2024_10_21.docx",
+        "models_2024_10_23.docx",
         overwrite = TRUE)
 
 ```
@@ -337,7 +338,7 @@ incent_paper_models_ind_ref <- list(
     feols(fmv_growth_2011_w ~ incent_prop + land_use
                            | pin + year,
                            panel.id = c("pin", "year"),
-                           vcov = "NW",
+                           vcov = ~clean_name,
                            data = model_df_ind_relev),
     
   "II" = 
@@ -346,7 +347,7 @@ incent_paper_models_ind_ref <- list(
             land_use*incent_prop
                            | pin + year,
                            panel.id = c("pin", "year"),
-                           vcov = "NW",
+                           vcov = ~clean_name,
                            data = model_df_ind_relev),
   
   "III" = 
@@ -355,7 +356,7 @@ incent_paper_models_ind_ref <- list(
             landuse_change*incent_prop
                            | pin + year,
                            panel.id = c("pin", "year"),
-                           vcov = "NW",
+                           vcov = ~clean_name,
                            data = model_df_ind_relev)  
   ),
                            
@@ -364,7 +365,7 @@ incent_paper_models_ind_ref <- list(
     "I" = feols(fmv_growth_2011_w ~ incent_prop + land_use
                            | clean_name + year,
                            panel.id = c("pin", "year"),
-                           vcov = "DK",
+                           vcov = ~clean_name,
                            data = model_df_ind_relev),
   
    "II" = 
@@ -373,7 +374,7 @@ incent_paper_models_ind_ref <- list(
             land_use*incent_prop
                            | clean_name + year,
                            panel.id = c("pin", "year"),
-                           vcov = "DK",
+                           vcov = ~clean_name,
                            data = model_df_ind_relev),
   
   "III" = 
@@ -382,7 +383,7 @@ incent_paper_models_ind_ref <- list(
             landuse_change*incent_prop
                            | clean_name + year,
                            panel.id = c("pin", "year"),
-                           vcov = "DK",
+                           vcov = ~clean_name,
                            data = model_df_ind_relev)  
     
   )
@@ -417,7 +418,7 @@ incent_paper_models <- list(
     feols(fmv_growth_2011 ~ incent_prop + land_use
                            | pin + year,
                            panel.id = c("pin", "year"),
-                           vcov = "NW",
+                           vcov = ~clean_name,
                            data = model_df),
   
   "II" = 
@@ -426,7 +427,7 @@ incent_paper_models <- list(
            + land_use*incent_prop
                            | pin + year,
                            panel.id = c("pin", "year"),
-                           vcov = "NW",
+                           vcov = ~clean_name,
                            data = model_df),
   
   "III" =
@@ -434,15 +435,7 @@ incent_paper_models <- list(
            + land_use*incent_prop + landuse_change*incent_prop
                            | pin + year,
                            panel.id = c("pin", "year"),
-                           vcov = "NW",
-                           data = model_df)
-  ),
-                           
-  "Municipality-Level" = list(
-    
-    "I" = feols(fmv_growth_2011 ~ incent_prop + land_use                            | clean_name + year,
-                           panel.id = c("pin", "year"),
-                           vcov = "DK",
+                           vcov = ~clean_name,
                            data = model_df),
   
    "II" = 
@@ -450,14 +443,14 @@ incent_paper_models <- list(
     feols(fmv_growth_2011 ~ incent_prop + land_use +
 land_use*incent_prop                           | clean_name + year,
                            panel.id = c("pin", "year"),
-                           vcov = "DK",
+                           vcov = ~clean_name,
                            data = model_df),
    "III" = 
     
     feols(fmv_growth_2011 ~ incent_prop + land_use +
 land_use*incent_prop    + landuse_change*incent_prop                        | clean_name + year,
                            panel.id = c("pin", "year"),
-                           vcov = "DK",
+                           vcov = ~clean_name,
                            data = model_df)
     
   )
@@ -495,7 +488,7 @@ If that is true, there’s a second condition. Either the fixed effect groups/in
 So before clustering, think about whether both conditions are likely to be true. If it is, go ahead and cluster! If not, don’t bother, as the clustering will make your standard errors larger than they’re supposed to be." - [The Effect](https://theeffectbook.net/ch-FixedEffects.html) 
 
 
-## Pooled OLS - With and Without Muni and Year Controls
+## OLS - With and Without Muni and Year Controls
 
 ```{r}
 #| eval: false
