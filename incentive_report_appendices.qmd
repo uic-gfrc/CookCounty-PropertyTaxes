@@ -17,7 +17,10 @@ format:
 library(tidyverse)
 library(DT)        # for interactive html tables on website
 library(flextable) # best for exporting to word or PDF files.
+library(sf) # for amazon maps
+library(ptaxsim)
 
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2023.0.0.db")
 
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 
@@ -112,6 +115,122 @@ ptax_pins <- ptax_pins %>%
           both_ids = ifelse(is.na(both_ids) & between(class, 300, 899), pin, both_ids))
 
 ```
+
+
+# Map Amazon PINs
+
+BOR Appeals data: Amazon Appeal Id's   
+3718744 - AMAZON.COM SERVICES LL & 1311866 - AMAZON.COM SERVICES LL	
+```{r}
+amazon <- bor %>% filter(project_id == 3718744 | project_id == 1311866) %>%
+  filter(tax_year >=2022)
+
+amazon_pins <-  read_csv("./Output/comm_ind_PINs_2006to2022_timeseries.csv") %>% 
+  mutate(class = as.numeric(class),
+         pin10 = str_sub(pin, 1, 10),
+         block7 = str_sub(pin, 1, 7)) %>% 
+  filter(pin %in% amazon$pin) %>% 
+  left_join(amazon, by = "pin") 
+
+
+amazon <- unique(substr(amazon_pins$pin, 1, 10))
+
+geo_years <- c(2022)
+
+amazon_geo <- lookup_pin10_geometry(year = geo_years, pin10 = amazon) %>%
+  st_as_sf(wkt = "geometry", crs = 4326) %>% select(-year)
+
+table(amazon_geo2$year, amazon_geo2$major_class_code)
+library(ggspatial)
+
+amazon_geo2 <- amazon_pins %>%
+  group_by(year, pin10) %>%
+  mutate(major_class_type = first(major_class_type)) %>%
+  filter(year %in% c(2006, 2015, 2021, 2022)) %>% 
+ # filter(!block7 %in% c("2815117", "2817402" )) %>%
+  left_join(amazon_geo)  %>% 
+  select(pin10, year, major_class_type, major_class_code, majorclass, geometry) %>% ungroup()
+```
+
+
+```{r}
+
+#colors <- scale_fill_manual(values = c("#FED789FF", "#023743FF", "#72874EFF", "#476F84FF", "#A4BED5FF", "#453947FF") ) 
+#classes <- scale_shape_manual(values = c("0", "1", "2", "5A", "5B", "8") )
+
+amazon_geo2 %>%
+  filter(year== 2006) %>%
+  ggplot() + 
+  geom_sf(
+      data = amazon_geo$geometry,
+   aes(fill = amazon_geo2$major_class_code[amazon_geo2$year == 2006]),
+    alpha = 0.5,
+    linewidth = 0.1
+  ) +
+  theme_void() +
+  theme(
+    legend.title =  element_blank(), #element_text(size = 14),
+    legend.text = element_text(size = 10),
+    legend.key.size = unit(18, "points"),
+    legend.position = "bottom"
+  ) + scale_fill_manual(values = c("0" = "#FED789FF", "1"= "#023743FF", "2" = "#72874EFF", "5A" = "#476F84FF", "5B" = "#A4BED5FF", "8" = "#453947FF"))
+
+
+amazon_geo2 %>%
+  filter(year== 2015) %>%
+  ggplot() + 
+  geom_sf(
+      data = amazon_geo$geometry,
+
+   aes(fill = amazon_geo2$major_class_code[amazon_geo2$year == 2015]),
+    alpha = 0.5,
+    linewidth = 0.1
+  ) +
+  theme_void() +
+  theme(
+    legend.title =  element_blank(), #element_text(size = 14),
+    legend.text = element_text(size = 10),
+    legend.key.size = unit(18, "points"),
+    legend.position = "bottom"
+  ) + scale_fill_manual(values = c("0" = "#FED789FF", "1"= "#023743FF", "2" = "#72874EFF", "5A" = "#476F84FF", "5B" = "#A4BED5FF", "8" = "#453947FF"))
+
+amazon_geo2 %>%
+  filter(year== 2021) %>%
+  ggplot() + 
+  geom_sf(
+      data = amazon_geo$geometry,
+   aes(fill = amazon_geo2$major_class_code[amazon_geo2$year == 2021]),
+    alpha = 0.5,
+    linewidth = 0.1
+  ) +
+  theme_void() +
+  theme(
+    legend.title =  element_blank(), #element_text(size = 14),
+    legend.text = element_text(size = 10),
+    legend.key.size = unit(18, "points"),
+    legend.position = "bottom"
+  ) + scale_fill_manual(values = c("0" = "#FED789FF", "1"= "#023743FF", "2" = "#72874EFF", "5A" = "#476F84FF", "5B" = "#A4BED5FF", "8" = "#453947FF"))
+
+amazon_geo2 %>%
+  filter(year== 2022) %>%
+  ggplot() + 
+  geom_sf(
+      data = amazon_geo$geometry,
+
+   aes(fill = amazon_geo2$major_class_code[amazon_geo2$year == 2022]),
+    alpha = 0.5,
+    linewidth = 0.1
+  ) +
+  theme_void() +
+  theme(
+    legend.title =  element_blank(), #element_text(size = 14),
+    legend.text = element_text(size = 10),
+    legend.key.size = unit(18, "points"),
+    legend.position = "bottom"
+  ) + scale_fill_manual(values = c("0" = "#FED789FF", "1"= "#023743FF", "2" = "#72874EFF", "5A" = "#476F84FF", "5B" = "#A4BED5FF", "8" = "#453947FF"))
+```
+
+
 
 <!--- Don't use tax_amount_exe for calculations below because it is the "naive" calculation of the current tax rate * exempt eav discussed in the exemptions research. --->
 
