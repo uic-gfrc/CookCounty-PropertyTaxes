@@ -1,5 +1,5 @@
 ---
-title: "Models for Circulation - Updated after Circulation"
+title: "Models for Circulation - Updated after (after (after)) Circulation"
 author: "MVH & AWM"
 date: 8/17/24
 date-modified: last-modified
@@ -141,12 +141,30 @@ name_map <- c(
   
   # Landuse_change
   "landuse_changeAlways Industrial" = "Always Industrial",
-  "landuse_changeChanges Land Use" = "Chages Land Use",
+  "landuse_changeChanges Land Use" = "Changes Land Use",
   "landuse_changeAlways Commercial" = "Always Commercial",
+  
+  # incentive*land_use
+  "incent_propIncentive:land_useIndustrial" = "Incentive (Industrial)",
  
   # Incentive*Land_use Change
    "incent_propIncentive:landuse_changeAlwaysIndustrial" = "Incentive (Always Industrial)",
-   "incent_propIncentive:landuse_changeChanges Land Use" = "Incentive (Changes Land Use)"
+   "incent_propIncentive:landuse_changeChanges Land Use" = "Incentive (Changes Land Use)"#,
+  
+  # Incent*Land_use
+  #"incent_propIncentive:land_useIndustrial" = "Incentive (Industrial)"
+)
+
+ols_name_map <- c(
+  "incent_statusAlways had Incentive" = "Incentive Entire Period",
+  "incent_statusGained Incentive" = "Gained Incentive",
+  "incent_statusLost Incentive" = "Lost Incentive",
+  "landuse_changeAlways Industrial" = "Always Industrial",
+  "landuse_changeChanges Land Use" = "Changed Land Use",
+  "incent_statusAlways had Incentive:landuse_changeAlways Industrial" =
+    "Industrial Incentive Entire Period",
+  "incent_statusGained Incentive:landuse_changeAlways Industrial" =
+    "Gained an Incentive, Industrial Entire Time Period"
 )
 
 # gof_mm <- tibble::tribble(
@@ -184,20 +202,124 @@ fe_body_models_formatted <- modelsummary(fe_body_models,
              coef_map = name_map,
              fmt = function(x) round(x, 2),
              gof_omit = "AIC|BIC|RMSE|Std.Errors|FE",
-             gof_rename = Num.Obs.
              stars = TRUE)
 
 fe_body_models_formatted
+
+save_tt(fe_body_models_formatted,
+        "models_2024_10_23.docx",
+        overwrite = TRUE)
 
 ```
 
 ```{r appx_FE_models}
 
+incent_appx_fe_models <- list(
+  
+  "PIN-Level" = list(
+    
+    "I" = 
+    
+    feols(fmv_growth_2011_w ~ incent_prop + land_use
+                           | pin + year,
+                           panel.id = c("pin", "year"),
+                           vcov = ~clean_name,
+                           data = model_df),
+    
+  "II" = 
+    
+    feols(fmv_growth_2011_w ~ incent_prop + land_use +
+            incent_prop*land_use
+                           | pin + year,
+                           panel.id = c("pin", "year"),
+                           vcov = ~clean_name,
+                           data = model_df),
+  
+  "III" = 
+
+    feols(fmv_growth_2011_w ~ incent_prop + land_use + 
+            incent_prop*landuse_change
+                           | pin + year,
+                           panel.id = c("pin", "year"),
+                           vcov = ~ clean_name,
+                           data = model_df)  
+  ),
+                           
+  "Municipality-Level" = list(
+    
+    "I" = feols(fmv_growth_2011_w ~ incent_prop + land_use
+                           | clean_name + year,
+                           panel.id = c("pin", "year"),
+                           vcov = ~clean_name,
+                           data = model_df),
+  
+   "II" = 
+    
+    feols(fmv_growth_2011_w ~ incent_prop + land_use +
+            incent_prop*land_use
+                           | clean_name + year,
+                           panel.id = c("pin", "year"),
+                           vcov = ~ clean_name,
+                           data = model_df),
+  
+  "III" = 
+
+    feols(fmv_growth_2011_w ~ incent_prop + land_use + 
+            incent_prop*landuse_change
+                           | clean_name + year,
+                           panel.id = c("pin", "year"),
+                           vcov = ~ clean_name,
+                           data = model_df)  
+    
+  )
+)
+
+incent_appx_fe_models_formatted <- modelsummary(incent_appx_fe_models,
+             shape = "cbind",                                  
+             coef_map = name_map,
+             fmt = function(x) round(x, 2),
+             gof_omit = "AIC|BIC|RMSE|Std.Errors|FE",
+             stars = TRUE)
+
+incent_appx_fe_models_formatted
+
+save_tt(incent_appx_fe_models_formatted,
+        "appx_fe_models.docx",
+        overwrite = TRUE)
 
 ```
 
 ```{r appx_OLS_model}
 
+ols_df <- model_df |> 
+  filter( year == 2022)
+
+ols_models <- list(
+    "I" = feols(fmv_growth_2011_w ~  incent_status + clean_name,
+                vcov = ~clean_name,
+                data = ols_df),
+  
+    "II" = feols(fmv_growth_2011_w ~ incent_status + landuse_change + clean_name,
+              vcov = ~clean_name,
+                data = ols_df),
+  
+    "III" = feols(fmv_growth_2011_w ~ incent_status + landuse_change + incent_status*landuse_change + clean_name,
+               vcov = ~clean_name,
+                data = ols_df)
+  )
+
+ols_models_formatted <- modelsummary(ols_models,                              
+             coef_map = ols_name_map,
+             coef_omit = "clean_name",
+             fmt = function(x) round(x, 2),
+             gof_omit = "AIC|BIC|RMSE|Std.Errors|FE",
+             stars = TRUE)
+
+ols_models_formatted
+
+save_tt(ols_models_formatted,
+        "ols_models.docx",
+        overwrite = TRUE)
 
 ```
 
@@ -628,11 +750,7 @@ ols_models <- list(
   )
 
 
-modelsummary(ols_models,
-             stars = TRUE,
-             fmt = function(x) round(x, 2),
-            # coef_omit= 'clean_name|year',
-             gof_omit = "AIC|BIC|Log.Lik.") #|>  theme_tt("grid")
+
 
 ```
 
