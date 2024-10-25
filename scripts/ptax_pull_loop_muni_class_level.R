@@ -16,7 +16,7 @@ library(glue)
 # Create the DB connection with the default name expected by PTAXSIM functions
 
 # AWM filepath:
-ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2022.0.0.db")
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2023.0.0.db")
 
 # MVH filepath:
 # ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "ptaxsim.db")
@@ -30,7 +30,7 @@ nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
 
  # Set years for loop to run.
 
-years <-(2006:2022)
+years <-(2006:2023)
 
 # Create empty dataframes for the loop to populate.
 muni_class_summary <- NULL
@@ -235,8 +235,12 @@ for(i in years){
 
   # Summarize ---------------------------------------------------------------
 joined_pin_data <- joined_pin_data %>%
-  mutate(class_group = str_sub(class, 1,1),
-         class_group = case_when(
+  mutate(
+    incent_prop = ifelse(between(class, 600, 899), 1, 0),
+    res_prop = ifelse(between(class, 200, 399), 1, 0),
+    c2_prop = ifelse(between(class, 200, 299), 1, 0),
+    class_group = str_sub(class, 1,1),
+    class_group = case_when(
            (class_group == 5 & class %in% commercial_classes) ~ "5A",
            (class_group == 5 & class %in% industrial_classes) ~ "5B",
            class_group == 7 &  class < 742 ~ "7A",    # commercial developments less than $2 million
@@ -266,7 +270,7 @@ joined_pin_data <- joined_pin_data %>%
         (final_tax_to_tif /  tax_code_rate*100) +
 
         ## difference between 25% and reduced level of assessment for incentive class properties. Excludes TIF increment when calculating the difference!
-        ifelse(between(class, 600, 900),
+        ifelse(incent_prop == 1,
                (taxable_av - taxed_av)*eq_factor, 0),
 
       #  manually adjust untaxable value of class 239 properties
@@ -286,15 +290,15 @@ joined_pin_data <- joined_pin_data %>%
 
       fmv_inTIF = ifelse(in_tif==1,
                          av/loa, 0),
-      # fmv_inTIF = ifelse(is.nan(fmv_inTIF), 0 , fmv_inTIF),
 
       fmv_tif_increment = ifelse(final_tax_to_tif > 0,
                                  ((final_tax_to_tif / (tax_code_rate/100)) / eq_factor ) / loa, 0),
- #    fmv_tif_increment = ifelse(is.nan(fmv_tif_increment), 0 , fmv_tif_increment),
 
-
-      fmv_incents_inTIF = ifelse(between(class, 600, 900) & in_tif == 1,
+      fmv_incents_inTIF = ifelse(incent_prop == 1 & in_tif == 1,
                                  fmv, 0),
+      fmv_incents_tif_increment = ifelse(incent_prop == 1 & final_tax_to_tif > 0 , 
+                                    ((final_tax_to_tif / (tax_code_rate/100)) / eq_factor ) / loa, 0),
+ 
       eav_incents_inTIF = fmv_incents_inTIF * loa * eq_factor
     ) %>%
     select(tax_code, class, pin, taxed_fmv,
