@@ -5,12 +5,12 @@
 library(tidyverse)
 library(DBI)
 library(data.table)
-library(gstat)
-library(here)
-library(httr)
-library(jsonlite)
+#library(gstat)
+#library(here)
+#library(httr)
+#library(jsonlite)
 library(ptaxsim)
-library(stars)
+#library(stars)
 library(glue)
 
 # Create the DB connection with the default name expected by PTAXSIM functions
@@ -404,7 +404,10 @@ if(is.data.frame(county_sums)){county_sums <- rbind(county_sums, county_sums2)}e
       muni_fmv = sum(fmv, na.rm=TRUE),
       muni_fmv_residential = sum(ifelse(class %in% c(200:399), fmv, 0), na.rm = TRUE),
       muni_fmv_industrial = sum(ifelse(class %in% industrial_classes, fmv, 0), na.rm = TRUE),
+      muni_fmv_indust_incent = sum(ifelse(class %in% industrial_classes & incent_prop == 1, fmv, 0), na.rm = TRUE),
       muni_fmv_commercial = sum(ifelse(class %in% commercial_classes, fmv, 0), na.rm = TRUE),
+      muni_fmv_commerc_incent = sum(ifelse(class %in% commercial_classes & incent_prop == 1, fmv, 0), na.rm = TRUE),
+      
       muni_zero_bill = sum(zero_bill, na.rm=TRUE),
       muni_levy = sum(final_tax_to_dist, na.rm=TRUE),
       muni_current_rate_avg = mean(tax_code_rate, na.rm=TRUE),
@@ -566,7 +569,9 @@ rm(muni_level_summary2)
     fmv = sum(fmv, na.rm=TRUE),
     fmv_residential = sum(ifelse(class %in% c(200:399), fmv, 0), na.rm = TRUE),
     fmv_industrial = sum(ifelse(class %in% industrial_classes, fmv, 0), na.rm = TRUE),
+    fmv_indust_incent = sum(ifelse(class %in% industrial_classes & incent_prop == 1, fmv, 0), na.rm = TRUE),
     fmv_commercial = sum(ifelse(class %in% commercial_classes, fmv, 0), na.rm = TRUE),
+    fmv_commerc_incent = sum(ifelse(class %in% commercial_classes & incent_prop == 1, fmv, 0), na.rm = TRUE),
     zero_bill = sum(zero_bill, na.rm=TRUE),
     levy = sum(final_tax_to_dist, na.rm=TRUE),
     current_rate_avg = mean(tax_code_rate, na.rm=TRUE),
@@ -670,8 +675,9 @@ rm(muni_level_summary2)
 # Export CSVs ------------------------------------------------------------
 
 
-write_csv(county_sums, "./Output/ptaxsim_cook_level_2006-2022.csv")
+write_csv(county_sums, "./Output/ptaxsim_cook_level_2020-2023.csv")
 
-write_csv(muni_level_summary, "./Output/ptaxsim_muni_level_2006-2022.csv")
-write_csv(muni_MC_summary, "./Output/ptaxsim_muni_MC_2006-2022.csv")
+write_csv(muni_level_summary, "./Output/ptaxsim_muni_level_2020-2023.csv")
+
+write_csv(muni_MC_summary, "./Output/ptaxsim_muni_MC_2020-2023.csv")
  
