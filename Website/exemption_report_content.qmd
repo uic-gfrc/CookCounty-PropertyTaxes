@@ -32,12 +32,14 @@ nicknames <- readxl::read_excel("../Necessary_Files/muni_shortnames.xlsx")
 muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006-2022.csv") %>% 
   left_join(nicknames)
 
-muni_cl_sums <- read_csv("../Output/ptaxsim_muni_class_summaries_2006-2022.csv") %>% 
+muni_cl_sums <- read_csv("../Output/ptaxsim_muni_class_summaries_2006to2023.csv") %>% 
   left_join(nicknames)
 ```
 
 ```{r}
-year_examples <- c(2020, 2021, 2022)
+#| layout-ncol: 4
+
+year_examples <- c(2020, 2021, 2022, 2023)
 
 for(i in year_examples){
   tbl <- muni_cl_sums %>% 
@@ -67,20 +69,25 @@ print(tbl)
 Total value of exemptions as a share of residential EAV, 2021
 
 ```{r}
+year_examples <- c(2020, 2021, 2022)
+
+for(i in year_examples){
+
 median_exempt <- muni_sums %>%
-  filter(year==2021)%>%
+  filter(year==i)%>%
   mutate(pct_fmv_exempt = muni_fmv_exempt / muni_fmv ) %>% 
   select(pct_fmv_exempt)
 
-  muni_sums %>%
-  filter(year==2021)%>%
+print(muni_sums %>%
+  filter(year==i)%>%
   mutate(pct_fmv_exempt = muni_fmv_exempt / muni_fmv ) %>%
     mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
   ggplot(aes(fill = pct_fmv_exempt)) + 
   geom_sf(aes(geometry = geometry), color = "black") + 
   theme_void()+ 
-  labs(title = "Exempt FMV / Municipality FMV") +
+  labs(title = paste0(i), 
+       subtitle =  "Exempt FMV / Municipality FMV") +
     theme_void() + 
   theme(axis.ticks = element_blank(), 
         axis.text = element_blank())+
@@ -89,34 +96,8 @@ median_exempt <- muni_sums %>%
                        na.value = NA,
                     nice.breaks = FALSE,
                    midpoint = median(median_exempt$pct_fmv_exempt),
-                        name = "% FMV \nthat is exempt", label = scales::percent)
-```
-
-```{r}
-median_exempt <- muni_sums %>%
-  filter(year==2021) %>%
-  mutate(pct_fmv_exempt = muni_fmv_exempt / muni_fmv_residential ) %>% 
-  select(pct_fmv_exempt)
-
-muni_sums %>%
-  filter(year==2021)%>%
-  mutate(pct_fmv_exempt = muni_fmv_exempt / muni_fmv_residential ) %>%
-  mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
-  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
-  ggplot(aes(fill = pct_fmv_exempt)) + 
-  geom_sf(aes(geometry = geometry), color = "black") + 
-  theme_void()+ 
-  labs(title = "Exempt FMV/Residential FMV") +
-  theme_void() + 
-  theme(axis.ticks = element_blank(), 
-        axis.text = element_blank()) +
-  scale_fill_steps2(high = "darkblue", low = "black",  mid = "beige",
-                    n.breaks = 7, show.limits=TRUE,
-                    na.value = NA,
-                    nice.breaks = FALSE,
-                    midpoint = median(median_exempt$pct_fmv_exempt),
-                    name = "% Residential FMV \n that is exempt", 
-                    label = scales::percent)
+                        name = "% FMV \nthat is exempt", label = scales::percent))
+}
 ```
 
 
@@ -152,7 +133,7 @@ muni_comp_rates <- muni_sums %>%
 
 muni_cl_sums <- left_join(muni_cl_sums, muni_comp_rates, by = c("year", "clean_name"))
 
-year_examples <- c(2020, 2021, 2022)
+year_examples <- c(2020, 2021, 2022, 2023)
 
 for(i in year_examples){
   
@@ -184,7 +165,6 @@ tbl <- muni_cl_sums %>%
     digits = 2) %>%  
   formatCurrency('Composite Levy', digits = 0) 
    print(htmltools::tagList(tbl)) 
-#knitr::knit_print(tbl)
 }
 
 # 
