@@ -448,9 +448,9 @@ table_cook %>%
 
 table_cook %>% 
   mutate(cty_pct_fmv_ind_incent = cty_fmv_indwithincent / cty_fmv_industrial,
-       cty_pct_fmv_ind_incent_inTIF = cty_fmv_ind_incent_inTIF / cty_fmv_indwithincent,
-       
-       cty_pct_PC_ind_incent_inTIF = cty_PC_ind_incent_inTIF / cty_PC_ind_incent) %>%
+         cty_pct_fmv_ind_incent_inTIF = cty_fmv_ind_incent_inTIF / cty_fmv_indwithincent,
+         
+         cty_pct_PC_ind_incent_inTIF = cty_PC_ind_incent_inTIF / cty_PC_ind_incent) %>%
   
   select(cty_PC_industrial, cty_PC_ind_incent, cty_PC_ind_incent_inTIF, 
          cty_pct_incent_ofindPC, cty_pct_fmv_ind_incent_inTIF, cty_pct_PC_ind_incent_inTIF,
@@ -459,14 +459,15 @@ table_cook %>%
   ) %>%
   mutate(across(contains("pct_"), scales::percent, accuracy = .01)) %>%
   flextable() %>% 
-    align(align = "right") %>%     set_header_labels(cty_fmv_industrial = 'Industrial FMV',
-                          cty_PC_industrial = 'Industrial Pin Count', 
-                        cty_PC_ind_incent = 'Ind. PIN Count w/ Incent.',
+  align(align = "right") %>% 
+  set_header_labels(cty_fmv_industrial = 'Industrial FMV',
+                    cty_PC_industrial = 'Industrial Pin Count', 
+                    cty_PC_ind_incent = 'Ind. PIN Count w/ Incent.',
                     cty_pct_incent_ofindPC = 'Ind. PINs w/ Incent.',
                     cty_pct_fmv_ind_incent = '% of Ind. FMV  w/ Incent.', 
-
+                    
                     cty_pct_fmv_ind_incent_inTIF = '% of Ind. FMV  w/ Incent. in TIF', 
-                      cty_PC_ind_incent_inTIF = "Ind. Incent. PINs in TIF", 
+                    cty_PC_ind_incent_inTIF = "Ind. Incent. PINs in TIF", 
                     cty_pct_PC_ind_incent = '% of Com. PINs w/ Incent.',
                     cty_pct_PC_ind_incent_inTIF = '% of Incent. PINs in TIF'
   ) %>% 
@@ -544,7 +545,7 @@ cty_MC_table <- ptax_pins %>%
     cty_MC_PC = n(),
     cty_MC_projects = n_distinct(both_ids), # mostly for industrial and commercial properties
     cty_MC_fmv_incentive = sum(ifelse(between(class, 600, 900), fmv, 0), na.rm = TRUE),
-   # cty_MC_fmv_taxed =  sum(taxed_fmv, na.rm=TRUE),
+    # cty_MC_fmv_taxed =  sum(taxed_fmv, na.rm=TRUE),
     cty_MC_av_taxed  = sum(taxed_av, na.rm=TRUE),
     cty_MC_fmv_incent_inTIF = sum(ifelse(between(class, 600, 900) & in_tif == 1, fmv, 0), na.rm = TRUE),
     cty_MC_fmv_inTIF = sum(fmv_inTIF, na.rm=TRUE),
@@ -561,31 +562,31 @@ cty_MC_table <- ptax_pins %>%
     cty_MC_current_rate_avg = mean(tax_code_rate),
     
     cty_MC_avg_C2_bill_noexe = mean(ifelse(between(class, 200, 299) & all_exemptions == 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
-     cty_MC_avg_C2_bill_withexe = mean(ifelse(between(class,200, 299) & all_exemptions > 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
+    cty_MC_avg_C2_bill_withexe = mean(ifelse(between(class,200, 299) & all_exemptions > 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
   ) %>%
   mutate( cty_fmv = sum(cty_MC_fmv),
           pct_cty_MC_fmv_untaxable = cty_MC_fmv_untaxable_value / cty_MC_fmv,
-         # pct_fmv_taxed = cty_MC_fmv_taxed / cty_fmv,
+          # pct_fmv_taxed = cty_MC_fmv_taxed / cty_fmv,
           pct_MC_levy_paid = cty_MC_levy_paid / sum(cty_MC_levy_paid) )
 
 
 cty_MC_table %>%
   select(-c(cty_MC_avg_C2_bill_noexe, cty_MC_avg_C2_bill_withexe, cty_MC_fmv_residential, cty_MC_fmv_industrial, cty_MC_fmv_commercial, cty_fmv, cty_MC_fmv_incent_inTIF)) %>%
   select(
-"Property Type" = class_group, 
-"Homeowner Exempt FMV"= cty_MC_fmv_exemptions,
-         "Abated FMV" = cty_MC_fmv_abatements,
-        "$0 Bill Count" = cty_MC_cty_zero_bill,
-       "$ Levy Paid" = cty_MC_levy_paid,
-      "% of Levy Paid" =  pct_MC_levy_paid, 
+    "Property Type" = class_group, 
+    "Homeowner Exempt FMV"= cty_MC_fmv_exemptions,
+    "Abated FMV" = cty_MC_fmv_abatements,
+    "$0 Bill Count" = cty_MC_cty_zero_bill,
+    "$ Levy Paid" = cty_MC_levy_paid,
+    "% of Levy Paid" =  pct_MC_levy_paid, 
     "FMV in Major Class" =  cty_MC_fmv,
     "Taxed AV" = cty_MC_av_taxed,
     "Project Count" = cty_MC_projects,
-       "Avg Composite Tax Rate" = cty_MC_current_rate_avg, everything()) %>%
+    "Avg Composite Tax Rate" = cty_MC_current_rate_avg, everything()) %>%
   mutate(across(contains("pct_"), scales::percent, accuracy = .01)) %>%
   flextable() %>% 
-    align(align = "right") %>%
-set_header_labels(
+  align(align = "right") %>%
+  set_header_labels(
     cty_MC_PC = 'PINs',# projects = "Project IDs", 
     cty_MC_fmv_taxed = 'Taxed FMV', 
     cty_MC_fmv_untaxable_value = 'Value not Taxable for Levy', 
@@ -1244,7 +1245,7 @@ bold(i = 8) %>%
 #| tbl-cap: "Percent of Commercial FMV within each Municipality that has incentive classification. 49 municipalities do not use commercial incentives."
 #| 
 commerc_share_full <- munilevel  %>%
-ungroup() %>%
+  ungroup() %>%
 #filter(!agency_num %in% cross_county_lines) %>%
   mutate(pct_fmv_commerc_incent =  muni_fmv_commerc_incentive/muni_fmv_commercial,
     pct_fmv_commerc_incent = ifelse(is.na(pct_fmv_commerc_incent), 0, pct_fmv_commerc_incent)) %>%
