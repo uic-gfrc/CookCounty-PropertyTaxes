@@ -39,7 +39,7 @@ FitFlextableToPage <- function(ft, pgwidth = 6){
 ```
 
 ```{r}
-# all pins for 2022
+# all pins for 2022 in incorporated AND unincorporated areas
 ptax_pins <- read_csv("Output/Dont_Upload/0_joined_PIN_data_2022.csv") %>%
   mutate(class = as.numeric(class)) %>%         # Allows for joining later
     select(-c(propclass_1dig:av.y))
@@ -52,7 +52,7 @@ bor <- read_csv("Output/borappeals.csv") %>%
 # modelsummary::datasummary_skim(bor)
 
 
-# Cleaned PIN-Project list after cleaning the commercial valuatoin dataset found online. 
+# Cleaned PIN-Project list after cleaning the commercial valuation dataset found online. 
 # Another temporary work-around until we (maybe) have full keypin list:
 proj_xwalk <- read_csv("Output/all_keypins.csv")               
 # all commercial valuation properties but made with not-quite-clean data from commercial valuation dataset on Cook County Data Portal (which was made from combining the Methodology worksheets) 
@@ -192,11 +192,15 @@ ptax_pins <- ptax_pins %>%
 ```{r}
 #| label: tbl-incentivePINs2022-revshifted
 #| tbl-cap: "PIN level tax savings due to incentive classification. Also can be viewed as the shifted tax burden from PINs with incentive classification in 2022 to all other non-incentive PINs. Sorted from largest tax bill savings to smallest bill reduction."
+#| layout-ncol: 2
 
 ptax_pins %>% filter(naive_rev_forgone > 0) %>% select(pin, class, fmv, naive_rev_forgone, untaxable_incent_eav, taxed_eav, everything())
+
+ptax_pins %>% filter(naive_rev_forgone > 0) %>% 
+  summarize(fmv = sum(fmv),                                                   naive_rev_forgone = sum(naive_rev_forgone),                      untaxable_incent_eav = sum(untaxable_incent_eav),                     taxed_eav = sum(taxed_eav))
 ```
 
-> Total Value should equal Current Taxable Value + non-Taxable Value where non-Taxable Value = Value in TIF Increment + Reduced Value from Policy Choices where Reduced Value = Tax Exempt Value from Homeowners exemptions or abatements + Reduced Taxable Value from lower levels of assessments due to incentive classifications.
+> Total Value should equal Current Taxable Value + non-Taxable Value where non-Taxable Value = Value in TIF Increment + Reduced Value from Policy Choices where Reduced Value = Tax Exempt Value from Homeowners exemptions or abatements + Reduced Taxable Value from lower levels of assessments due to incentive classifications:
 
 $$\mbox{Total Value = Taxed Value + Untaxable Value}$$
 
@@ -339,7 +343,8 @@ table_cook <- ptax_pins %>%
     cty_pct_incent_ofindPC = cty_PC_ind_incent / cty_PC_industrial,  # incentive pins / commercial PINs
     cty_pct_PC_incent_inTIF = cty_PC_incent_inTIF / cty_PC_incent        # count of incentive classes in TIFs / count of incentive Class PINs
     
-  ) %>%  mutate(cty_pct_fmv_both_incent = cty_fmv_comwithincent / cty_fmv_comandind,
+  ) %>%  
+  mutate(cty_pct_fmv_both_incent = cty_fmv_comwithincent / cty_fmv_comandind,
          cty_pct_PC_both_incent = cty_PC_incent / cty_PC_comandind,
          cty_pct_PC_both_incent_inTIF = cty_PC_incent_inTIF / cty_PC_incent,
          cty_pct_fmv_both_incent_inTIF = cty_fmv_incent_inTIF / cty_fmv_incentive,
@@ -354,7 +359,8 @@ table_cook %>%
                     cty_fmv = 'Total FMV', 
                     cty_fmv_taxed = 'Taxed FMV', cty_fmv_untaxable_value = 'FMV not Taxed\nfor Levy',
                     cty_pct_fmv_untaxable = 'Value not Taxed (%)'
-  ) %>%   FitFlextableToPage()
+  ) %>%   
+  FitFlextableToPage()
 ```
 
 ```{r add-variable-labels, eval=FALSE, include =FALSE}
@@ -1103,8 +1109,6 @@ datatable(table2,
 
 ## Share of Commercial & Industrial FMV with Incentive Classification
 
-### Tables
-
 ```{r}
 #| label: tbl-muni-comind-shareofFMV
 #| tbl-cap: "Municipalities with the largest share of Commercial and Industrial property with incentive classification. Uses tax year 2022 values obtained from PTAXSIM, and levels of assessment from CCAO's Github. There are 27 municipalities that do not use incentives and have a majority of their taxable EAV within Cook County."
@@ -1175,7 +1179,6 @@ bold(i = 8) %>%
   set_table_properties( layout = "autofit")
 ```
 
-### Map
 
 ```{r}
 #| label: fig-shareofcomindFMV
@@ -1205,7 +1208,7 @@ filter(clean_name != "Unincorporated") %>%
 
 ```
 
-## Share of Industrial
+## Share of Industrial FMV with Incentive Classification within each Municipality
 
 ```{r}
 #| label: tbl-industrialsharewithincentive
@@ -1234,7 +1237,7 @@ bold(i = 8) %>%
   set_table_properties( layout = "autofit")
 ```
 
-## Share of Commercial
+## Share of Commercial FMV with Incentive Classification within each Municipality
 
 ```{r}
 #| label: tbl-commercialsharewithincentive
