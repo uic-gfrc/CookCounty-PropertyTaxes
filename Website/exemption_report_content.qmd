@@ -26,6 +26,46 @@ nicknames <- readxl::read_excel("../Necessary_Files/muni_shortnames.xlsx")
 
 ## Cook County's Use of Homestead Exemptions
 
+## Figure 1 or 2?. Exemption Use
+
+```{r}
+
+muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006-2022.csv") %>% 
+  left_join(nicknames)
+
+muni_cl_sums <- read_csv("../Output/ptaxsim_muni_class_summaries_2006-2022.csv") %>% 
+  left_join(nicknames)
+```
+
+
+```{r}
+year_examples <- c(2020, 2021, 2022)
+
+for(i in year_examples){
+  print(muni_cl_sums %>% 
+  filter(year == i) %>%
+  group_by(year) %>% 
+  summarize(AV = sum(muni_c_av), 
+            EAV = sum(muni_c_eav), 
+            Eq_AV = sum(muni_c_equalized_av),
+            'Taxed EAV' = sum(muni_c_current_taxable_eav),
+            'All Exemptions' = sum(muni_c_all_exemptions), 
+            'GHE' = sum(muni_c_exe_homeowner), 
+            'Senior Exemp.' = sum(muni_c_exe_senior), 
+            'Freeze Exemp.' = sum(muni_c_exe_freeze), 
+            'PINs in Muni' = sum(muni_c_pins_in_muni),
+            'PINs with Exemptions' = sum(muni_c_has_HO_exemp))  %>% 
+  pivot_longer(cols = c(AV:'PINs with Exemptions'), 
+               names_to = "Totals", values_to = "Values") 
+  )  
+}
+
+
+
+```
+
+
+
 ### Figure 3. Percent Exempt
 
 Total value of exemptions as a share of residential EAV, 2021
@@ -36,7 +76,62 @@ _Report went up to 2021, this image includes values through 2023._
 
 
 
+
+
 ## Effect on Composite Tax Rates
+
+```{r updated-code-taxrates, eval=FALSE}
+muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006-2022.csv") %>% 
+  left_join(nicknames)
+
+MuniLevel_CompRates <- muni_sums %>%  
+  filter(year == 2022) %>% 
+  select(clean_name, cur_comp_muni_rate, new_comp_muni_rate, tif_share, zero_bills, final_tax_to_dist) %>%
+  mutate(cur_comp_muni_rate = cur_comp_muni_rate/100,
+new_comp_muni_rate = new_comp_muni_rate / 100 ,
+rate_change = cur_comp_muni_rate - new_comp_muni_rate) %>%
+  select(clean_name, rate_change, cur_comp_muni_rate, new_comp_muni_rate, final_tax_to_dist) %>% arrange(desc(rate_change))
+
+datatable(MuniLevel_CompRates, rownames = FALSE,
+          colnames = c('Municipality' = 'clean_name', 
+                       'Composite Tax Rate Change'='rate_change', 
+                       'Current Comp. Rate' = 'cur_comp_muni_rate', 
+                       'Hypothetical Rate' = 'new_comp_muni_rate', 
+                       #'%Rev to TIF' = 'tif_share', 'Count of $0 Tax Bills' = 'zero_bills', 
+                       'Composite Levy' = 'final_tax_to_dist'),
+          caption = "Table 1: 2022 Current and Hypothetical Composite Tax Rates if GHE $0") %>%
+  formatPercentage(c('Current Comp. Rate', 'Hypothetical Rate', 
+                    # '%Rev to TIF'
+                    'Composite Tax Rate Change'
+                     ), 
+                   digits = 2) %>%  
+  formatCurrency('Composite Levy', digits = 0)
+
+
+
+MuniLevel_CompRates <- muni_sums %>% 
+  filter(year == 2021) %>%
+  select(clean_name, cur_comp_muni_rate, new_comp_muni_rate, tif_share, zero_bills, final_tax_to_dist) %>%
+  mutate(cur_comp_muni_rate = cur_comp_muni_rate/100,
+new_comp_muni_rate = new_comp_muni_rate / 100 ,
+rate_change = cur_comp_muni_rate - new_comp_muni_rate) %>%
+  select(clean_name, rate_change, cur_comp_muni_rate, new_comp_muni_rate, final_tax_to_dist) %>% arrange(desc(rate_change))
+
+datatable(MuniLevel_CompRates, rownames = FALSE,
+          colnames = c('Municipality' = 'clean_name', 
+                       'Composite Tax Rate Change'='rate_change', 
+                       'Current Comp. Rate' = 'cur_comp_muni_rate', 
+                       'Hypothetical Rate' = 'new_comp_muni_rate', 
+                       #'%Rev to TIF' = 'tif_share', 'Count of $0 Tax Bills' = 'zero_bills', 
+                       'Composite Levy' = 'final_tax_to_dist'),
+          caption = "Table 1: 2021 Current and Hypothetical Composite Tax Rates if GHE $0") %>%
+  formatPercentage(c('Current Comp. Rate', 'Hypothetical Rate', 
+                    # '%Rev to TIF'
+                    'Composite Tax Rate Change'
+                     ), 
+                   digits = 2) %>%  
+  formatCurrency('Composite Levy', digits = 0)
+```
 
 
 ```{r}
