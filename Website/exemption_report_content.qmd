@@ -23,17 +23,38 @@ muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/poli
 nicknames <- readxl::read_excel("../Necessary_Files/muni_shortnames.xlsx")
 ```
 
-## Composite Tax Rates for Municipalities
 
-![](images/Composite_Rate_Change.png)
+## Cook County's Use of Homestead Exemptions
+
+### Figure 3. Percent Exempt
+
+Total value of exemptions as a share of residential EAV, 2021
+
+### Figure 5. Value of residential exemptions by type in Cook County, 2006 - 2023
+
+_Report went up to 2021, this image includes values through 2023._ 
+
+
+
+## Effect on Composite Tax Rates
+
 
 ```{r}
 #| code-fold: true
 
 
 muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006-2021.csv") %>% 
-  filter(year == 2021) %>% left_join(nicknames)
+  filter(year == 2021) %>% 
+  left_join(nicknames)
+```
 
+
+
+### Figure 6. Composite property tax rates with and without homestead exemptions, tax year 2021
+
+### Table 1. Change in composite property tax rates due to exemptions, tax year 2021.
+
+```{r}
 MuniLevel_CompRates <- muni_sums %>% 
   select(clean_name, cur_comp_muni_rate, new_comp_muni_rate, tif_share, zero_bills, final_tax_to_dist) %>%
   mutate(current_rate_avg = cur_comp_muni_rate/100,
@@ -54,9 +75,25 @@ datatable(MuniLevel_CompRates, rownames = FALSE,
   formatCurrency('Composite Levy', digits = 0)
 ```
 
-## Tax Burden Shift from Current GHE
+### Figure 7 Alternate. Composite Tax Rates for Municipalities
+
+![](images/Composite_Rate_Change.png)
+
+## Effect on Tax Burdens
+
+### Figure 8. Dolton example of Share of levy paid by property type 
+
+
+_CMAP used a donut chart, we will use a  bar chart that represents 100% on the x a axis._
+
+### Figure 10. Tax Burden Shift from Current GHE
 
 ![](images/clipboard-2721715046.png)
+
+### Table 2. Change in share of property tax burden
+
+_Table 2: Change in the share of property tax burden due to exemptions for single-family, multi-family,
+and commercial and industrial properties, tax year 2021
 
 ```{r}
 #| code-fold: true
@@ -102,6 +139,7 @@ datatable(current_burden_c2, rownames = FALSE,
 
 ```
 
+#### Figure 10 Follow up. Current Tax Burden Map
 
 ```{r}
 #| code-fold: true
