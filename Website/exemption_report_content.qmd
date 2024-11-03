@@ -23,10 +23,9 @@ muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/poli
 nicknames <- readxl::read_excel("../Necessary_Files/muni_shortnames.xlsx")
 ```
 
-
 ## Cook County's Use of Homestead Exemptions
 
-## Figure 1 or 2?. Exemption Use
+### Figure 1 or 2?. Exemption Use
 
 ```{r}
 
@@ -37,12 +36,11 @@ muni_cl_sums <- read_csv("../Output/ptaxsim_muni_class_summaries_2006-2022.csv")
   left_join(nicknames)
 ```
 
-
 ```{r}
 year_examples <- c(2020, 2021, 2022)
 
 for(i in year_examples){
-  print(muni_cl_sums %>% 
+  tbl <- muni_cl_sums %>% 
   filter(year == i) %>%
   group_by(year) %>% 
   summarize(AV = sum(muni_c_av), 
@@ -57,31 +55,94 @@ for(i in year_examples){
             'PINs with Exemptions' = sum(muni_c_has_HO_exemp))  %>% 
   pivot_longer(cols = c(AV:'PINs with Exemptions'), 
                names_to = "Totals", values_to = "Values") 
-  )  
+print(tbl)
 }
 
 
 
 ```
 
-
-
 ### Figure 3. Percent Exempt
 
 Total value of exemptions as a share of residential EAV, 2021
 
+```{r}
+median_exempt <- muni_sums %>%
+  filter(year==2021)%>%
+  mutate(pct_fmv_exempt = muni_fmv_exempt / muni_fmv ) %>% 
+  select(pct_fmv_exempt)
+
+  muni_sums %>%
+  filter(year==2021)%>%
+  mutate(pct_fmv_exempt = muni_fmv_exempt / muni_fmv ) %>%
+    mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
+ full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+  ggplot(aes(fill = pct_fmv_exempt)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  theme_void()+ 
+  labs(title = "Exempt FMV / Municipality FMV") +
+    theme_void() + 
+  theme(axis.ticks = element_blank(), 
+        axis.text = element_blank())+
+   scale_fill_steps2(high = "darkblue", low = "black",  mid = "beige",
+                       n.breaks = 7, show.limits=TRUE,
+                       na.value = NA,
+                    nice.breaks = FALSE,
+                   midpoint = median(median_exempt$pct_fmv_exempt),
+                        name = "% FMV \nthat is exempt", label = scales::percent)
+```
+
+```{r}
+median_exempt <- muni_sums %>%
+  filter(year==2021) %>%
+  mutate(pct_fmv_exempt = muni_fmv_exempt / muni_fmv_residential ) %>% 
+  select(pct_fmv_exempt)
+
+muni_sums %>%
+  filter(year==2021)%>%
+  mutate(pct_fmv_exempt = muni_fmv_exempt / muni_fmv_residential ) %>%
+  mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+  ggplot(aes(fill = pct_fmv_exempt)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  theme_void()+ 
+  labs(title = "Exempt FMV/Residential FMV") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), 
+        axis.text = element_blank()) +
+  scale_fill_steps2(high = "darkblue", low = "black",  mid = "beige",
+                    n.breaks = 7, show.limits=TRUE,
+                    na.value = NA,
+                    nice.breaks = FALSE,
+                    midpoint = median(median_exempt$pct_fmv_exempt),
+                    name = "% Residential FMV \n that is exempt", 
+                    label = scales::percent)
+```
+
+
+### Figure 4. Exempt Tax Base in Cook County
+
+*Exempt Tax Base in Cook County by exemption type and geography, for tax year 2021*
+
+![](images/clipboard-1115901107.png)
+
+
+
 ### Figure 5. Value of residential exemptions by type in Cook County, 2006 - 2023
 
-_Report went up to 2021, this image includes values through 2023._ 
+![](images/clipboard-3650281473.png)
 
+*Report went up to 2021, this image includes values for 2021 & 2023.*
 
 
 
 
 ## Effect on Composite Tax Rates
 
-```{r tbl-updated-code-taxrates}
+```{r}
+#| label:  tbl-updated-code-taxrates
 #| tbl-cap: "Table 1: Actual and Hypothetical Composite Tax Rates if GHE $0 in select Years"
+#| results: asis
 
 muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006-2022.csv") %>% 
   left_join(nicknames)
@@ -95,7 +156,7 @@ year_examples <- c(2020, 2021, 2022)
 
 for(i in year_examples){
   
- MuniLevel_CompRates <- muni_cl_sums %>%  
+tbl <- muni_cl_sums %>%  
       filter(year == i) %>% 
       group_by(clean_name) %>% 
       summarize(muni_current_rate_avg = first(muni_current_rate_avg),
@@ -109,9 +170,8 @@ for(i in year_examples){
         rate_change = cur_comp_muni_rate - new_comp_muni_rate) %>%
           
       select(clean_name, rate_change, cur_comp_muni_rate, new_comp_muni_rate, muni_levy) %>% 
-    arrange(desc(rate_change))
- 
-   MuniLevel_CompRates %>% datatable(rownames = FALSE,
+    arrange(desc(rate_change)) %>%
+     datatable(rownames = FALSE,
               colnames = c('Municipality' = 'clean_name', 
                            'Composite Tax Rate Change'='rate_change', 
                            'Current Comp. Rate' = 'cur_comp_muni_rate', 
@@ -122,8 +182,9 @@ for(i in year_examples){
                        'Composite Tax Rate Change'
     ), 
     digits = 2) %>%  
-  formatCurrency('Composite Levy', digits = 0)  
-  
+  formatCurrency('Composite Levy', digits = 0) 
+   print(htmltools::tagList(tbl)) 
+#knitr::knit_print(tbl)
 }
 
 # 
@@ -151,9 +212,6 @@ for(i in year_examples){
 #                    digits = 2) %>%  
 #   formatCurrency('Composite Levy', digits = 0)
 ```
-
-
-
 
 ### Figure 6. Composite property tax rates with and without homestead exemptions, tax year 2021
 
@@ -189,30 +247,24 @@ datatable(MuniLevel_CompRates, rownames = FALSE,
   formatCurrency('Composite Levy', digits = 0)
 ```
 
+### Figure 7. Map of Spatial Patterns in Composite Tax Rate Change 
+
+Change in composite tax rate if exempt EAV was added back to the the taxable tax base (i.e. if there were no exemptions).
+
+
+
+
 ### Figure 7 Alternate. Composite Tax Rates for Municipalities
 
 ![](images/Composite_Rate_Change.png)
 
 ## Effect on Tax Burdens
 
-### Figure 8. Dolton example of Share of levy paid by property type 
 
+### Figure 8. Dolton example of Share of levy paid by property type
 
-_CMAP used a donut chart, we will use a  bar chart that represents 100% on the x a axis._
-
-### Figure 10. Tax Burden Shift from Current GHE
-
-![](images/clipboard-2721715046.png)
-
-### Table 2. Change in share of property tax burden
-
-_Table 2: Change in the share of property tax burden due to exemptions for single-family, multi-family,
-and commercial and industrial properties, tax year 2021
-
+*CMAP used a donut chart, we will use a bar chart that represents 100% on the x a axis.*
 ```{r}
-#| code-fold: true
-
-
 MC_sums <- read_csv("../Output/ptaxsim_muni_MC_2006-2021.csv") %>% 
  # rename_all(~str_replace_all(., "muni_mc_","")) %>%
   filter(year == 2021)  %>% 
@@ -241,6 +293,36 @@ MC_burden <- MC_sums %>%
 current_burden_c2 <- MC_burden %>% 
   filter(major_class_code == 2) %>% 
   select(clean_name, pct_eav, burden_shift,  pct_taxburden_current, pct_taxburden_ghe0) %>% arrange(pct_eav)
+
+MC_burden %>% filter(clean_name == "Dolton") %>% select(major_class_code, pct_taxburden_current, pct_taxburden_ghe0) %>% arrange(desc(pct_taxburden_current))
+```
+
+
+### Table 3. 
+
+Difference in taxbills for those that do and do not claim homeowner exemption
+
+
+### Table 4.
+
+Municipalities with the largest and smallest reductions  in tax base (as a share of residential EAV due to exemptions) and median property values
+
+
+
+### Figure 10. Tax Burden Shift from Current GHE
+
+Share of municipal property tax levy paid by Class 2 properties with and without homestead exemptions, tax year 2021
+
+
+![](images/clipboard-2721715046.png)
+
+### Table 2. Change in share of property tax burden
+
+_Table 2: Change in the share of property tax burden due to exemptions for single-family, multi-family, and commercial and industrial properties, tax year 2021_
+
+```{r}
+#| code-fold: true
+
 
 
 datatable(current_burden_c2, rownames = FALSE,
@@ -283,3 +365,11 @@ MC_burden %>%
   labs(title = "Current share of property tax burden", 
        subtitle = "for Class = 2 Property Types")
 ```
+
+
+### Figure 11. Zero Dollar Bills
+
+```{r}
+#muni_cl_sums %>% group_by(year) %>% ggplot()+ geom_bar(aes(x=year, fill=))
+```
+
