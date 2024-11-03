@@ -123,7 +123,7 @@ for(i in years){
     mutate(class_code = as.character(class_code)) %>%
     filter(year == i) %>%
     select(-year) %>%
-    mutate(loa = as.numeric(loa)) %>% 
+    mutate(loa = as.numeric(loa)) %>%
     mutate(loa = ifelse(loa == 0, NA, loa))
 
   # Tax Bills ---------------------------------------------------------------
@@ -296,9 +296,9 @@ joined_pin_data <- joined_pin_data %>%
 
       fmv_incents_inTIF = ifelse(incent_prop == 1 & in_tif == 1,
                                  fmv, 0),
-      fmv_incents_tif_increment = ifelse(incent_prop == 1 & final_tax_to_tif > 0 , 
+      fmv_incents_tif_increment = ifelse(incent_prop == 1 & final_tax_to_tif > 0 ,
                                     ((final_tax_to_tif / (tax_code_rate/100)) / eq_factor ) / loa, 0),
- 
+
       eav_incents_inTIF = fmv_incents_inTIF * loa * eq_factor
     ) %>%
     select(tax_code, class, pin, taxed_fmv,
@@ -373,7 +373,7 @@ joined_pin_data <- joined_pin_data %>%
 # Rename Variables -------------------------------------------------------
 
 muni_class_summary <- muni_class_summary %>%
-  rename(clean_name = muni_c_clean_name, 
+  rename(clean_name = muni_c_clean_name,
          year = muni_c_year,
          class = muni_c_class
 )
@@ -381,7 +381,7 @@ muni_class_summary <- muni_class_summary %>%
 
 
 
-write_csv(muni_class_summary, "./Output/ptaxsim_muni_class_summaries_2006-2022.csv")
+write_csv(muni_class_summary, "./Output/ptaxsim_muni_class_summaries_2006to2023.csv")
 
 
 # write_csv(tc_mc_summaries, "./Output/ptaxsim_TC_MC_summaries_2006-2022.csv")
