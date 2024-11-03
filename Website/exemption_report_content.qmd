@@ -80,59 +80,84 @@ _Report went up to 2021, this image includes values through 2023._
 
 ## Effect on Composite Tax Rates
 
-```{r updated-code-taxrates, eval=FALSE}
+```{r tbl-updated-code-taxrates}
+#| tbl-cap: "Table 1: Actual and Hypothetical Composite Tax Rates if GHE $0 in select Years"
+
 muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006-2022.csv") %>% 
   left_join(nicknames)
 
-MuniLevel_CompRates <- muni_sums %>%  
-  filter(year == 2022) %>% 
-  select(clean_name, cur_comp_muni_rate, new_comp_muni_rate, tif_share, zero_bills, final_tax_to_dist) %>%
-  mutate(cur_comp_muni_rate = cur_comp_muni_rate/100,
-new_comp_muni_rate = new_comp_muni_rate / 100 ,
-rate_change = cur_comp_muni_rate - new_comp_muni_rate) %>%
-  select(clean_name, rate_change, cur_comp_muni_rate, new_comp_muni_rate, final_tax_to_dist) %>% arrange(desc(rate_change))
+muni_comp_rates <- muni_sums %>%
+  select(year, clean_name, muni_current_rate_avg)
 
-datatable(MuniLevel_CompRates, rownames = FALSE,
-          colnames = c('Municipality' = 'clean_name', 
-                       'Composite Tax Rate Change'='rate_change', 
-                       'Current Comp. Rate' = 'cur_comp_muni_rate', 
-                       'Hypothetical Rate' = 'new_comp_muni_rate', 
-                       #'%Rev to TIF' = 'tif_share', 'Count of $0 Tax Bills' = 'zero_bills', 
-                       'Composite Levy' = 'final_tax_to_dist'),
-          caption = "Table 1: 2022 Current and Hypothetical Composite Tax Rates if GHE $0") %>%
-  formatPercentage(c('Current Comp. Rate', 'Hypothetical Rate', 
-                    # '%Rev to TIF'
-                    'Composite Tax Rate Change'
-                     ), 
-                   digits = 2) %>%  
-  formatCurrency('Composite Levy', digits = 0)
+muni_cl_sums <- left_join(muni_cl_sums, muni_comp_rates, by = c("year", "clean_name"))
 
+year_examples <- c(2020, 2021, 2022)
 
+for(i in year_examples){
+  
+ MuniLevel_CompRates <- muni_cl_sums %>%  
+      filter(year == i) %>% 
+      group_by(clean_name) %>% 
+      summarize(muni_current_rate_avg = first(muni_current_rate_avg),
+            muni_levy = sum(muni_c_final_tax_to_dist),
+            muni_current_taxable_eav = sum(muni_c_current_taxable_eav),
+            muni_exe_homeowner = sum(muni_c_exe_homeowner)) %>%
+      mutate(        
+            new_comp_muni_rate = muni_levy/(muni_current_taxable_eav + muni_exe_homeowner),
+        new_comp_muni_rate = new_comp_muni_rate, 
+        cur_comp_muni_rate = muni_current_rate_avg / 100,
+        rate_change = cur_comp_muni_rate - new_comp_muni_rate) %>%
+          
+      select(clean_name, rate_change, cur_comp_muni_rate, new_comp_muni_rate, muni_levy) %>% 
+    arrange(desc(rate_change))
+ 
+   MuniLevel_CompRates %>% datatable(rownames = FALSE,
+              colnames = c('Municipality' = 'clean_name', 
+                           'Composite Tax Rate Change'='rate_change', 
+                           'Current Comp. Rate' = 'cur_comp_muni_rate', 
+                           'Hypothetical Rate' = 'new_comp_muni_rate', 
+                           'Composite Levy' = 'muni_levy')
+              ) %>%
+    formatPercentage(c('Current Comp. Rate', 'Hypothetical Rate', 
+                       'Composite Tax Rate Change'
+    ), 
+    digits = 2) %>%  
+  formatCurrency('Composite Levy', digits = 0)  
+  
+}
 
-MuniLevel_CompRates <- muni_sums %>% 
-  filter(year == 2021) %>%
-  select(clean_name, cur_comp_muni_rate, new_comp_muni_rate, tif_share, zero_bills, final_tax_to_dist) %>%
-  mutate(cur_comp_muni_rate = cur_comp_muni_rate/100,
-new_comp_muni_rate = new_comp_muni_rate / 100 ,
-rate_change = cur_comp_muni_rate - new_comp_muni_rate) %>%
-  select(clean_name, rate_change, cur_comp_muni_rate, new_comp_muni_rate, final_tax_to_dist) %>% arrange(desc(rate_change))
-
-datatable(MuniLevel_CompRates, rownames = FALSE,
-          colnames = c('Municipality' = 'clean_name', 
-                       'Composite Tax Rate Change'='rate_change', 
-                       'Current Comp. Rate' = 'cur_comp_muni_rate', 
-                       'Hypothetical Rate' = 'new_comp_muni_rate', 
-                       #'%Rev to TIF' = 'tif_share', 'Count of $0 Tax Bills' = 'zero_bills', 
-                       'Composite Levy' = 'final_tax_to_dist'),
-          caption = "Table 1: 2021 Current and Hypothetical Composite Tax Rates if GHE $0") %>%
-  formatPercentage(c('Current Comp. Rate', 'Hypothetical Rate', 
-                    # '%Rev to TIF'
-                    'Composite Tax Rate Change'
-                     ), 
-                   digits = 2) %>%  
-  formatCurrency('Composite Levy', digits = 0)
+# 
+# 
+# MuniLevel_CompRates <- muni_sums %>% 
+#   filter(year == 2021) %>%
+#   select(clean_name, cur_comp_muni_rate, new_comp_muni_rate, tif_share, zero_bills, final_tax_to_dist) %>%
+#   mutate(cur_comp_muni_rate = cur_comp_muni_rate/100,
+# new_comp_muni_rate = new_comp_muni_rate / 100 ,
+# rate_change = cur_comp_muni_rate - new_comp_muni_rate) %>%
+#   select(clean_name, rate_change, cur_comp_muni_rate, new_comp_muni_rate, final_tax_to_dist) %>% arrange(desc(rate_change))
+# 
+# datatable(MuniLevel_CompRates, rownames = FALSE,
+#           colnames = c('Municipality' = 'clean_name', 
+#                        'Composite Tax Rate Change'='rate_change', 
+#                        'Current Comp. Rate' = 'cur_comp_muni_rate', 
+#                        'Hypothetical Rate' = 'new_comp_muni_rate', 
+#                        #'%Rev to TIF' = 'tif_share', 'Count of $0 Tax Bills' = 'zero_bills', 
+#                        'Composite Levy' = 'final_tax_to_dist'),
+#           caption = "Table 1: 2021 Current and Hypothetical Composite Tax Rates if GHE $0") %>%
+#   formatPercentage(c('Current Comp. Rate', 'Hypothetical Rate', 
+#                     # '%Rev to TIF'
+#                     'Composite Tax Rate Change'
+#                      ), 
+#                    digits = 2) %>%  
+#   formatCurrency('Composite Levy', digits = 0)
 ```
 
+
+
+
+### Figure 6. Composite property tax rates with and without homestead exemptions, tax year 2021
+
+### Table 1. Change in composite property tax rates due to exemptions, tax year 2021.
 
 ```{r}
 #| code-fold: true
@@ -142,12 +167,6 @@ muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006-2021.csv") %>%
   filter(year == 2021) %>% 
   left_join(nicknames)
 ```
-
-
-
-### Figure 6. Composite property tax rates with and without homestead exemptions, tax year 2021
-
-### Table 1. Change in composite property tax rates due to exemptions, tax year 2021.
 
 ```{r}
 MuniLevel_CompRates <- muni_sums %>% 
