@@ -5,12 +5,7 @@
 library(tidyverse)
 library(DBI)
 library(data.table)
-#library(gstat)
-#library(here)
-#library(httr)
-#library(jsonlite)
 library(ptaxsim)
-#library(stars)
 library(glue)
 
 # Create the DB connection with the default name expected by PTAXSIM functions
