@@ -147,8 +147,8 @@ for(i in years){
     group_by(agency_num, agency_name, agency_tax_rate, agency_total_eav, agency_total_ext, agency_minor_type, agency_major_type) %>%
     
     mutate(
-              taxed_eav = final_tax_to_dist / agency_tax_rate*100,
-              total_value_eav = ((final_tax_to_dist + final_tax_to_tif)/ agency_tax_rate * 100 + exe_total),
+              taxed_eav = final_tax_to_dist / agency_tax_rate,
+              total_value_eav = ((final_tax_to_dist + final_tax_to_tif)/ agency_tax_rate + exe_total),
               
               total_taxed_av =  (taxed_eav / eq_factor),     # current value that taxing agencies can tax for their levies
               in_tif = (ifelse(tax_code %in% tif_distrib$tax_code_num, 1, 0)),
@@ -170,7 +170,7 @@ for(i in years){
               untaxable_value_eav = exe_total +
                 
                 ## TIF increment EAV above frozen EAV, which becomes TIF revenue
-                (final_tax_to_tif /  agency_tax_rate*100) +
+                (final_tax_to_tif /  agency_tax_rate) +
                 
                 ## difference between 25% and reduced level of assessment for incentive class properties. Excludes TIF increment when calculating the difference!
                 ifelse(incent_prop == 1,
@@ -193,12 +193,12 @@ for(i in years){
                                  av/loa, 0),
               
               fmv_tif_increment = ifelse(final_tax_to_tif > 0,
-                                         ((final_tax_to_tif / (agency_tax_rate/100)) / eq_factor ) / loa, 0),
+                                         ((final_tax_to_tif / (agency_tax_rate)) / eq_factor ) / loa, 0),
               
               fmv_incents_inTIF = ifelse(incent_prop == 1 & in_tif == 1,
                                          fmv, 0),
               fmv_incents_tif_increment = ifelse(incent_prop == 1 & final_tax_to_tif > 0 ,
-                                                 ((final_tax_to_tif / (agency_tax_rate/100)) / eq_factor ) / loa, 0),
+                                                 ((final_tax_to_tif / (agency_tax_rate)) / eq_factor ) / loa, 0),
               
               eav_incents_inTIF = fmv_incents_inTIF * loa * eq_factor) %>%
     summarize(
