@@ -1,0 +1,108 @@
+---
+title: "Supporting Content for 'Extended Analysis of Selected Benefits andCosts of Homestead Exemptions in Illinois'"
+subtitle: "Addendum to _The Current and Future Use of Homestead Exemptions in Cook County_"
+---
+
+```{r setup, warning=FALSE, message=FALSE}
+#| code-fold: TRUE
+
+
+library(tidyverse)
+library(ptaxsim)
+library(DBI)
+library(httr)
+library(jsonlite)
+library(glue)
+library(sf)
+library(DT)
+
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/politicalBoundary/MapServer/2/query?outFields=*&where=1%3D1&f=geojson")
+
+
+nicknames <- readxl::read_excel("../Necessary_Files/muni_shortnames.xlsx")
+```
+
+```{r}
+
+muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006-2022.csv") %>% 
+  left_join(nicknames)
+
+muni_cl_sums <- read_csv("../Output/ptaxsim_muni_class_summaries_2006to2023.csv") %>% 
+  left_join(nicknames)
+```
+
+## Which taxpayers benefit the most from homestead exemptions?
+
+### Table 1. Comparison of Tax Bills for Median Assessed Value (AV) Class 2 Properties in Selected Municpalitiesunder the Status Quo and Alternative Scenario
+
+### Figure 1. Examples of Actual Tax Bills
+
+**Park Forest vs. Winnetka**
+
+### Figure 2. Value of Median Residential Property Indifferent to Elimination of GHE
+
+![](images/clipboard-1323518501.png)
+
+## How progressive are exemptions?
+
+### Figure 3. Ratio of Tax Bills to AV for 25th and 75th Percentile AV Class 2 Properties with \$10,000 GHE
+
+![](images/clipboard-1581842196.png)
+
+```{r}
+#| layout-ncol: 4
+
+year_examples <- c(2020, 2021, 2022, 2023)
+
+for(i in year_examples){
+  tbl <- muni_cl_sums %>% 
+  filter(year == i) %>%
+  group_by(year) %>% 
+  summarize(AV = sum(muni_c_av), 
+            EAV = sum(muni_c_eav), 
+            Eq_AV = sum(muni_c_equalized_av),
+            'Taxed EAV' = sum(muni_c_current_taxable_eav),
+            'All Exemptions' = sum(muni_c_all_exemptions), 
+            'GHE' = sum(muni_c_exe_homeowner), 
+            'Senior Exemp.' = sum(muni_c_exe_senior), 
+            'Freeze Exemp.' = sum(muni_c_exe_freeze), 
+            'PINs in Muni' = sum(muni_c_pins_in_muni),
+            'PINs with Exemptions' = sum(muni_c_has_HO_exemp))  %>% 
+  pivot_longer(cols = c(AV:'PINs with Exemptions'), 
+               names_to = "Totals", values_to = "Values") 
+print(tbl)
+}
+
+
+
+```
+
+
+### Figure 4. Effect ofChanging the GHE on Progressivity
+
+**2 X 3 image of distribution for each $10,000 increase in exemption amount**
+### Table 3. Revenue Neutral Tax Rates
+
+__Revenue Neutral Tax Rates (Percent) for Select Municipalities as a Function of GHE Value__
+
+
+### Figure 5. GHE Value and Revenue Neutral Tax Rates
+
+**Relationship of GHE Value and Revenue Neutral Tax Rates in Chicago, Dolton, and Glencoe**
+
+
+## Can we identify an optimal exemption value
+
+### Figure 6.
+
+**Doesn't exist, whoops!**
+
+### Figure 7. Exemptions by Value in Class 8 Municipalities
+
+
+### Figure 8.  Exemption Share in Class 8 Municipalities
+
+
+
