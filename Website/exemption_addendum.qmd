@@ -22,12 +22,12 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 ```{r}
 file_path <- "C:/Users/aleaw/" 
 
-taxyear <-c(2022)
+taxyear <-c(2021)
 taxyear = as.data.frame(taxyear)
 
 
 
-source("./scripts/helper_tc_muninames.R", local=TRUE)
+source("../scripts/helper_tc_muninames.R")
 ```
 
 
@@ -43,18 +43,25 @@ if (file.exists(file_path)){
 }
 
 
+current_dir = getwd()
 
+if (grepl("website", current_dir)) {
+  dots = "../"
+} else {
+  dots = "../"
+}
 
-
-#nicknames <- readxl::read_excel("../Necessary_Files/muni_shortnames.xlsx")
 ```
 
 
 ```{r}
-muni_sums <- read_csv("./Output/ptaxsim_muni_level_2006to2023.csv") #%>% 
+path <- paste0(dots, "Output/ptaxsim_muni_level_2006to2023.csv")
+
+muni_sums <- read_csv(path) %>% 
   left_join(nicknames)
 
-muni_cl_sums <- read_csv("./Output/ptaxsim_muni_class_summaries_2006to2023.csv") %>% 
+path <- paste0(dots, "Output/ptaxsim_muni_class_summaries_2006to2023.csv")
+muni_cl_sums <- read_csv(path) %>% 
   left_join(nicknames)
 ```
 
@@ -80,14 +87,16 @@ cook_pins <- DBI::dbGetQuery(
              SELECT DISTINCT* 
              FROM pin 
              WHERE class > 199 AND class < 300
-             AND year = 2022
+             AND year = 2021
              "
               , 
              .con = ptaxsim_db_conn))
 
 cook_pins <- cook_pins |> 
   mutate(has_HO_exe = ifelse( exe_homeowner > 0, 1, 0),
-         has_other_exe = ifelse(exe_senior + exe_freeze + exe_longtime_homeowner + exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 > 0, 1, 0 ))
+         has_other_exe = ifelse(exe_senior + exe_freeze + exe_longtime_homeowner + exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 > 0, 1, 0 )) %>% 
+  left_join(tc_muninames) %>%
+    mutate(av = av_clerk) 
 
 table(cook_pins$has_HO_ex)
 table(cook_pins$has_other_exe)
@@ -115,7 +124,7 @@ muni_quartiles <- cook_pins %>%
 muni_quartiles
 
 munis_ranked <- cook_pins  %>%
-  inner_join(muni_quartiles, by = c("agency_name", "clean_name")) %>% 
+  inner_join(muni_quartiles, by = c("agency_name")) %>% 
   mutate(rank = case_when(
     av > (quant25-500) & (av<quant25+500) ~ "q25",
     av > (quant50-500) & (av<quant50+500) ~ "q50",
@@ -126,21 +135,9 @@ munis_ranked <- cook_pins  %>%
 ```
 
 ```{r}
-source("scripts/helper_tc_muninames.R")
-
 ccao_loa <- read_csv("../inputs/ccao_loa.csv") %>% 
   mutate(class_code = as.character(class_code))
 
-  
-# tif_distribution table contains eav 
-
-tif_distrib <- DBI::dbGetQuery(
-    ptaxsim_db_conn,
-    glue_sql(
-  'SELECT *
-  FROM tif_distribution
-  WHERE year = 2022'), .con = ptaxsim_db_conn)
-          
     
 ```
 
