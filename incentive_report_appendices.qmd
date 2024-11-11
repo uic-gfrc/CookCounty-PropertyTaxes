@@ -113,7 +113,7 @@ ptax_pins <- ptax_pins %>%
   mutate( both_ids = project_id,
           both_ids = ifelse(is.na(both_ids), keypin, both_ids),
           both_ids = ifelse(is.na(both_ids) & between(class, 300, 899), pin, both_ids))
-
+ptax_pins2 <- ptax_pins
 ```
 
 
@@ -121,6 +121,7 @@ ptax_pins <- ptax_pins %>%
 
 BOR Appeals data: Amazon Appeal Id's   
 3718744 - AMAZON.COM SERVICES LL & 1311866 - AMAZON.COM SERVICES LL	
+
 ```{r}
 amazon <- bor %>% filter(project_id == 3718744 | project_id == 1311866) %>%
   filter(tax_year >=2022)
@@ -310,7 +311,7 @@ ptax_pins <- ptax_pins %>%
   select(tax_code, class, pin, fmv,
          untaxable_value_fmv, fmv_inTIF, fmv_tif_increment, fmv, total_billed, final_tax_to_dist, final_tax_to_tif, tax_code_rate, eav, equalized_av, av, everything())
 
-
+ptax_pins2 <- ptax_pins
 ```
 
 
@@ -713,14 +714,13 @@ select(reducedEAV_commerc_incents, reducedEAV_indust_incents, reducedEAV_comind_
 # Slide 8 Tax Rate Calculations
 
 ```{r}
-#| eval: false
 
 #muni_sums
 #muni_cl_sums <- read_csv("./Output/ptaxsim_muni_class_summaries_2006to2023.csv")
 
 # muni_rate_change <- muni_cl_sums |> 
   
-  muni_ratechange <- ptax_pins %>%
+muni_ratechange <- ptax_pins2 %>%
   # left_join(muni_rate) %>%
   filter(!clean_name  %in% c("Frankfort", "Homer Glen",  "Oak Brook", "East Dundee", "University Park",  "Bensenville", "Hinsdale", "Roselle", "Deer Park", "Deerfield")) %>% 
   filter(!agency_num %in% cross_county_lines) %>%
@@ -732,7 +732,7 @@ select(reducedEAV_commerc_incents, reducedEAV_indust_incents, reducedEAV_comind_
     fmv_incentive = sum(ifelse(class >=600 & class <900, fmv, 0), na.rm = TRUE),
     #fmv_taxed =  sum(taxed_fmv, na.rm=TRUE),
     fmv_incents_inTIFs = sum(ifelse(class >=600 & class <900 & final_tax_to_tif > 0, fmv, 0), na.rm = TRUE),
-    fmv_inTIF = sum(fmv_inTIF, na.rm=TRUE),
+    fmv_inTIF = sum(ifelse(final_tax_to_tif > 0, fmv, 0), na.rm=TRUE),
     fmv_tif_increment = sum(fmv_tif_increment, na.rm=TRUE),
     fmv_untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
     fmv_exemptions = sum(all_exemptions/eq2022/loa, na.rm=TRUE),
@@ -864,7 +864,7 @@ table(ptax_pins$land_use)
 #| label: fig-FMVgraphs
 #| fig-cap: ""
 
-ptax_pins %>%ungroup() %>%
+ptax_pins %>% ungroup() %>%
   group_by(year, incent_change) %>%
   summarize(fmv = sum(fmv),
             av = sum(av_clerk)) %>% 
@@ -1245,9 +1245,14 @@ geom_line(aes(x=year, y = pct_incent, group = land_use, color = land_use)) + lab
 ```{r}
 #| label: fig-growth-facetby-incentprop
 #| fig-cap: "Growth from 2006 to 2022. Faceted by binary indicator for if a property had incentive classification or not. Indexed to FMV of properties during 2011"
+#| eval: false
 
-df_2006 %>% filter(!is.na(incent_prop) ) %>% 
-ggplot() + geom_line(aes(x=year, y=fmv_group_growth, group = land_use, color = land_use)) + facet_wrap(~incent_prop) + labs(title= "Growth from 2006 to 2022")
+df_2006 %>% 
+  filter(!is.na(incent_prop) ) %>% 
+  ggplot() + 
+  geom_line(aes(x=year, y=fmv_group_growth, group = land_use, color = land_use)) + 
+  facet_wrap(~incent_prop) + 
+  labs(title= "Growth from 2006 to 2022")
 
 
 ```
