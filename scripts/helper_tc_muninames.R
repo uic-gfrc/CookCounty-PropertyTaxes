@@ -6,21 +6,37 @@
 library(tidyverse)
 library(DBI)
 library(data.table)
-library(gstat)
-library(here)
 library(httr)
-#library(jsonlite)
 library(ptaxsim)
 library(glue)
 
 # Create the DB connection with the default name expected by PTAXSIM functions
-ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2022.0.0.db")
+file_path <- "C:/Users/aleaw/"
+
+if (file.exists(file_path)){
+  ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "C:/Users/aleaw/OneDrive/Documents/PhD Fall 2021 - Spring 2022/Merriman RA/ptax/ptaxsim.db/ptaxsim-2023.0.0.db")
+} else {
+  ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2023.0.0.db")
+
+}
+#ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2023.0.0.db")
+
+current_dir = getwd()
+
+if (grepl("website", current_dir)) {
+  dots = "../"
+} else {
+  dots = "./"
+}
 
 
 options(digits=4, scipen = 999)
 
+path <- paste0(dots, "Necessary_Files/muni_shortnames.xlsx")
+nicknames <- readxl::read_excel(path)
 
-nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
+#taxyear = as.data.frame(taxyear)
+#nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
 
 
 
@@ -35,15 +51,16 @@ nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
 ## the taxable EAV or levy or other variables and then tell tax_bill() function 
 ## to use the modified agency data table for simulated tax bills.
 
-
 # has EAV values, extensions by agency_num
 agency_dt <- DBI::dbGetQuery(
   ptaxsim_db_conn,
-  "SELECT *
+  glue_sql("
+  SELECT *
   FROM agency
-  WHERE year = 2021
-  "
-)
+  WHERE year IN ({taxyear$taxyear*})
+      ",
+      .con = ptaxsim_db_conn
+ ))
 
 
 # cook_agency_names <- DBI::dbGetQuery(
@@ -72,7 +89,7 @@ muni_tax_codes <- DBI::dbGetQuery(
   SELECT*
   FROM tax_code
   WHERE agency_num IN ({muni_agency_names$agency_num*})
-  AND year = 2021
+  AND year IN ({taxyear$taxyear*})
   ",
   .con = ptaxsim_db_conn
   )
@@ -85,11 +102,13 @@ tax_codes <- DBI::dbGetQuery(
   glue_sql("
   SELECT DISTINCT tax_code_num, tax_code_rate
   FROM tax_code
-  WHERE year = 2021  
+  WHERE year IN ({taxyear$taxyear*})
   ",
   .con = ptaxsim_db_conn
   )
 )
+
+DBI::dbDisconnect(ptaxsim_db_conn)
 
 ## All tax codes. 
 ## tax codes within municipalities have additional info 
