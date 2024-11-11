@@ -1,6 +1,6 @@
 ---
 title: "Supporting Content for 'Extended Analysis of Selected Benefits andCosts of Homestead Exemptions in Illinois'"
-subtitle: "Addendum to _The Current and Future Use of Homestead Exemptions in Cook County_"
+subtitle: "Addendum to The Current and Future Use of Homestead Exemptions in Cook County"
 ---
 
 ```{r setup, warning=FALSE, message=FALSE}
@@ -13,24 +13,135 @@ library(DBI)
 library(httr)
 library(jsonlite)
 library(glue)
-library(sf)
 library(DT)
 
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
-
-muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/politicalBoundary/MapServer/2/query?outFields=*&where=1%3D1&f=geojson")
-
-
-nicknames <- readxl::read_excel("../Necessary_Files/muni_shortnames.xlsx")
 ```
+
+
+```{r}
+file_path <- "C:/Users/aleaw/" 
+
+taxyear <-c(2022)
+taxyear = as.data.frame(taxyear)
+
+
+
+source("./scripts/helper_tc_muninames.R", local=TRUE)
+```
+
 
 ```{r}
 
-muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006-2022.csv") %>% 
+#ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2023.0.0.db")
+
+if (file.exists(file_path)){
+   ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "C:/Users/aleaw/OneDrive/Documents/PhD Fall 2021 - Spring 2022/Merriman RA/ptax/ptaxsim.db/ptaxsim-2023.0.0.db")
+} else {
+    ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2023.0.0.db")
+
+}
+
+
+
+
+
+#nicknames <- readxl::read_excel("../Necessary_Files/muni_shortnames.xlsx")
+```
+
+
+```{r}
+muni_sums <- read_csv("./Output/ptaxsim_muni_level_2006to2023.csv") #%>% 
   left_join(nicknames)
 
-muni_cl_sums <- read_csv("../Output/ptaxsim_muni_class_summaries_2006to2023.csv") %>% 
+muni_cl_sums <- read_csv("./Output/ptaxsim_muni_class_summaries_2006to2023.csv") %>% 
   left_join(nicknames)
+```
+
+```{r}
+# Pull in the tax code rates
+# 
+# tax_codes <- DBI::dbGetQuery(
+#   ptaxsim_db_conn,
+#   glue_sql("
+#   SELECT DISTINCT tax_code_num, tax_code_rate
+#   FROM tax_code
+#   WHERE year = 2022
+#   ",
+#   .con = ptaxsim_db_conn
+#   )
+#   )
+
+# Identify PINs associated with tax codes
+
+cook_pins <- DBI::dbGetQuery(
+    ptaxsim_db_conn, 
+    glue_sql("
+             SELECT DISTINCT* 
+             FROM pin 
+             WHERE class > 199 AND class < 300
+             AND year = 2022
+             "
+              , 
+             .con = ptaxsim_db_conn))
+
+cook_pins <- cook_pins |> 
+  mutate(has_HO_exe = ifelse( exe_homeowner > 0, 1, 0),
+         has_other_exe = ifelse(exe_senior + exe_freeze + exe_longtime_homeowner + exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 > 0, 1, 0 ))
+
+table(cook_pins$has_HO_ex)
+table(cook_pins$has_other_exe)
+```
+
+
+```{r}
+#| label: medianproperty-bymuni
+#| fig-cap: "Median AV Class 2 property by Municipality"
+
+q = c(.25, .5, .75)
+
+## ranks properties that are considered single family homes in order of AV for each Muni
+muni_quartiles <- cook_pins %>%
+  group_by(agency_name) %>%
+  arrange(av) %>%
+  summarize(count_pins = n(), 
+            min = min(av),
+            quant25 = round(quantile(av, probs = q[1])), 
+            quant50 = round(quantile(av, probs = q[2])),
+            quant75 = round(quantile(av, probs = q[3])),
+            max = max(av)
+           ) %>% 
+  arrange( desc( quant50))
+muni_quartiles
+
+munis_ranked <- cook_pins  %>%
+  inner_join(muni_quartiles, by = c("agency_name", "clean_name")) %>% 
+  mutate(rank = case_when(
+    av > (quant25-500) & (av<quant25+500) ~ "q25",
+    av > (quant50-500) & (av<quant50+500) ~ "q50",
+    av > (quant75-500) & (av<quant75+500) ~ "q75")
+    ) %>%
+  select(clean_name, rank, av, pin, class, everything()) %>%
+  left_join(nicknames)
+```
+
+```{r}
+source("scripts/helper_tc_muninames.R")
+
+ccao_loa <- read_csv("../inputs/ccao_loa.csv") %>% 
+  mutate(class_code = as.character(class_code))
+
+  
+# tif_distribution table contains eav 
+
+tif_distrib <- DBI::dbGetQuery(
+    ptaxsim_db_conn,
+    glue_sql(
+  'SELECT *
+  FROM tif_distribution
+  WHERE year = 2022'), .con = ptaxsim_db_conn)
+          
+    
 ```
 
 ## Which taxpayers benefit the most from homestead exemptions?
@@ -50,34 +161,6 @@ muni_cl_sums <- read_csv("../Output/ptaxsim_muni_class_summaries_2006to2023.csv"
 ### Figure 3. Ratio of Tax Bills to AV for 25th and 75th Percentile AV Class 2 Properties with \$10,000 GHE
 
 ![](images/clipboard-1581842196.png)
-
-```{r}
-#| layout-ncol: 4
-
-year_examples <- c(2020, 2021, 2022, 2023)
-
-for(i in year_examples){
-  tbl <- muni_cl_sums %>% 
-  filter(year == i) %>%
-  group_by(year) %>% 
-  summarize(AV = sum(muni_c_av), 
-            EAV = sum(muni_c_eav), 
-            Eq_AV = sum(muni_c_equalized_av),
-            'Taxed EAV' = sum(muni_c_current_taxable_eav),
-            'All Exemptions' = sum(muni_c_all_exemptions), 
-            'GHE' = sum(muni_c_exe_homeowner), 
-            'Senior Exemp.' = sum(muni_c_exe_senior), 
-            'Freeze Exemp.' = sum(muni_c_exe_freeze), 
-            'PINs in Muni' = sum(muni_c_pins_in_muni),
-            'PINs with Exemptions' = sum(muni_c_has_HO_exemp))  %>% 
-  pivot_longer(cols = c(AV:'PINs with Exemptions'), 
-               names_to = "Totals", values_to = "Values") 
-print(tbl)
-}
-
-
-
-```
 
 
 ### Figure 4. Effect ofChanging the GHE on Progressivity
