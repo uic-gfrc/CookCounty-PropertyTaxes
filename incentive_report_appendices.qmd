@@ -154,6 +154,7 @@ amazon_geo2 <- amazon_pins %>%
 
 
 ```{r}
+#| layout-ncol: 2
 
 #colors <- scale_fill_manual(values = c("#FED789FF", "#023743FF", "#72874EFF", "#476F84FF", "#A4BED5FF", "#453947FF") ) 
 #classes <- scale_shape_manual(values = c("0", "1", "2", "5A", "5B", "8") )
@@ -317,13 +318,56 @@ ptax_pins2 <- ptax_pins
 
 # Cook County Total Value
 
-
-
 ```{r}
 #| label: tbl-cooktotals
 #| tbl-cap: "**FMV of PINs in Cook County**       Taxed FMV represents the property value that was actually taxed by local taxing jurisdictions(equal to the amount levied) but converted to FMV. We use the the portion of an individuals tax bill that does NOT go to a TIF to calculate the composite levy for taxing jursidictions."
 
+cook_sums <- read_csv("./Output/ptaxsim_cook_level_2006to2023.csv") 
 
+
+cook_sums %>%
+  select(Year = year, cty_PC, cty_fmv, cty_fmv_taxed, cty_pct_fmv_taxed) %>%
+  mutate(cty_pct_fmv_untaxable = scales::percent(1 - cty_pct_fmv_taxed, accuracy = 0.01),
+         Year = as.character(Year)) %>%
+  flextable() %>% 
+  align(align = "right") %>%
+  set_header_labels(cty_PC = 'PINs', cty_projects = "Project IDs", 
+                    cty_fmv = 'Total FMV', 
+                    cty_fmv_taxed = 'Taxed FMV',
+                    cty_pct_fmv_untaxable = 'Cty Value\nnot Taxed (%)',
+                    cty_pct_fmv_taxed = 'Cty FMV Value\nTaxed (%)'
+  ) %>%   FitFlextableToPage()
+```
+
+
+```{r}
+#| label: tbl-cooktotals-incentives
+#| tbl-cap: "**Fair market value of Incentive PINs in Cook County that is not taxed** Over $20 billion FMV has an incentive classification, but because of the reduced level of assessment (25% to 10%), only 8% billion of it is taxable."
+
+
+cook_sums %>%
+    mutate(Year = as.character(year),
+    cty_pct_fmv_untaxable = scales::percent(cty_pct_fmv_untaxable, accuracy = 0.01)) %>%
+  select(Year, 
+         cty_fmv_untaxable_value, cty_fmv, cty_pct_fmv_untaxable#, cty_pct_fmv_taxed
+         ) %>%
+  flextable() %>% 
+
+  align(align = "right") %>%
+  set_header_labels(#cty_PC = 'PINs', 
+                    #cty_projects = "Project IDs", 
+                    cty_fmv = 'Total FMV', 
+                    cty_fmv_taxed = 'Total Taxed FMV',
+                    cty_fmv_untaxable_value = 'FMV not Taxed\ Because of\nIncentives',
+                    cty_pct_fmv_untaxable = 'Cty Value not Taxed\n(%) Because of\nIncentives'
+                   # cty_pct_fmv_taxed = 'Cty FMV Value\nTaxed (%)'
+  ) %>%   FitFlextableToPage()
+```
+
+
+
+
+```{r eval=FALSE}
 table_cook <- ptax_pins %>%
   summarize( 
     cty_PC = n(),
@@ -396,7 +440,7 @@ table_cook <- ptax_pins %>%
   ) 
 
 table_cook %>% 
-  select(cty_PC, cty_fmv_untaxable_value, cty_fmv, cty_pct_fmv_untaxable) %>%
+    select(cty_PC, cty_fmv_untaxable_value, cty_fmv, cty_pct_fmv_untaxable) %>%
   mutate(cty_pct_fmv_untaxable = scales::percent(cty_pct_fmv_untaxable, accuracy = 0.01)) %>%
   flextable() %>% 
   align(align = "right") %>%
@@ -444,6 +488,13 @@ table_cook <- table_cook %>%
 -   Oak Brook, Deer Park, Deerfield, & Bensenville each have less than 75 PINs in Cook County, IL
 
 ```{r}
+# created in ptax_pull_loop_cty_muni_MC_summaries.R script.
+
+muni_sums <- read_csv("./Output/ptaxsim_muni_level_2006to2023.csv")
+```
+
+
+```{r eval = FALSE}
 munilevel <- ptax_pins %>% 
   group_by(clean_name) %>%
 filter(clean_name != "Unincorporated") %>%
@@ -512,49 +563,33 @@ pct_fmv_incents_inTIFs = muni_fmv_incents_inTIF / muni_fmv ) %>%
 ## Intensity of Incentive Class Use
 
 ```{r}
-#| label: tbl-top10industrialincentive-munis
-#| tbl-cap: "Top 10 Municipalities using Industrial Incentives"
+#| label: tbl-top10incentive-munis
+#| tbl-cap: "Top 10 Municipalities using Incentives in 2022"
 
-table3 <- ptax_pins %>% 
-  filter(Alea_cat != "Land") %>%
-  group_by(clean_name, Alea_cat) %>% 
-  summarize(pin_count = n(),
-            incent_PC = sum(ifelse(class >=600 & class <=900, 1, 0), na.rm=TRUE),
-            fmv_incentive = sum(ifelse(class >=600 & class <=900, fmv, 0), na.rm = TRUE),
-            project_count = n_distinct(keypin),
-            fmv_group = sum(fmv, na.rm=TRUE),
-          #   av=sum(av)
-) %>%
-  mutate(
-    fmv_incentive = ifelse(fmv_incentive == 0, NA, fmv_incentive),
-    pct_incent = fmv_incentive / fmv_group,
-    pct_incent = ifelse(is.na(pct_incent), 0, pct_incent),
-pct_incent = scales::percent(pct_incent)
-)  
 
-table3 %>%
-  select(clean_name, Alea_cat, fmv_incentive, incent_PC) %>% 
-  filter(Alea_cat == "Industrial") %>%
-  arrange(desc(fmv_incentive)) %>%
+muni_sums %>% select(year, clean_name, muni_PC_total, muni_PC_withincents, muni_fmv_incentive, muni_fmv) %>% 
+  filter(year == 2022 ) %>%
+  arrange(desc(muni_fmv_incentive)) %>%
   head(10) %>% 
-  select(-Alea_cat) %>%
   flextable() %>% 
-  set_header_labels(clean_name = "Municipality", incent_PC = '# of Incent. PINs',
-fmv_incentive = "FMV from Incentive\nClass Properties"
+  set_header_labels(clean_name = "Municipality", muni_PC_withincents = '# of Incent. PINs',
+muni_fmv_incentive = "FMV from Incentive\nClass Properties"
 ) %>%
   set_table_properties( layout = "autofit", width = .75)
+
 ```
+
 
 
 ### Share of Muni Industrial and Commercial FMV with incentive class
 
 ```{r}
-table_muni_percentages <- munilevel %>%   
+table_muni_percentages <- muni_sums %>%   
 filter(!clean_name  %in% c("Frankfort", "Homer Glen",  "Oak Brook", "East Dundee", "University Park",  "Bensenville", "Hinsdale", "Roselle", "Deer Park", "Deerfield"))
 ```
 
 
-```{r}
+```{r delete, eval = FALSE}
 no_incentives <-  ptax_pins %>% 
  # filter(between(class, 600, 899)) %>%
   group_by(clean_name) %>% 
@@ -575,12 +610,16 @@ ccao_loa <- read_csv("./inputs/ccao_loa.csv") %>%
   filter(year== 2022) %>% 
   select(-year)
 
-muni_rate <- read_csv("./Output/ptaxsim_muni_level_2006-2022.csv") %>%
+muni_sums <- read_csv("./Output/ptaxsim_muni_level_2006to2023.csv")
+
+muni_rate <- muni_sums %>%
   filter(year == 2022) %>%
   left_join(nicknames) %>% 
   select(clean_name, muni_current_rate_avg, muni_pct_eav_taxed,# cur_comp_muni_rate
 ) %>%
   rename(cur_munilevel_rate = muni_current_rate_avg)
+
+muni_rate %>% DT::datatable( rownames = FALSE)
 ```
 
 ## Not Taxed FMV - PIN aggregated to County Level
@@ -707,7 +746,6 @@ select(rate_current, rate_noInc, change_noInc)
 cook_ratechange %>% 
 select(reducedEAV_commerc_incents, reducedEAV_indust_incents, reducedEAV_comind_incents, all_exemptions)
 
-
 ```
 
 
@@ -720,7 +758,7 @@ select(reducedEAV_commerc_incents, reducedEAV_indust_incents, reducedEAV_comind_
 
 # muni_rate_change <- muni_cl_sums |> 
   
-muni_ratechange <- ptax_pins2 %>%
+muni_ratechange <- ptax_pins %>%
   # left_join(muni_rate) %>%
   filter(!clean_name  %in% c("Frankfort", "Homer Glen",  "Oak Brook", "East Dundee", "University Park",  "Bensenville", "Hinsdale", "Roselle", "Deer Park", "Deerfield")) %>% 
   filter(!agency_num %in% cross_county_lines) %>%
@@ -813,7 +851,7 @@ forgone_EAV_incent = #class_group %in% incentive_majorclasses,
      mutate(across(contains("change_"), round, digits = 2))
 
 
-muni_ratechange %>% select(starts_with("change_")) %>% DT::datatable()
+muni_ratechange %>% select(clean_name, starts_with("change_")) %>% DT::datatable(rownames = FALSE)
 ```
 
 # Unbalanced Panel Data: 2006 to 2022 Growth
@@ -1154,7 +1192,6 @@ datatable(rate_table,
 ## All Municipalities' Tax Rate Change Scenarios
 
 ```{r}
-#| eval: false
 
 ratechange_table <- muni_ratechange %>% 
   select(clean_name, starts_with("change")
