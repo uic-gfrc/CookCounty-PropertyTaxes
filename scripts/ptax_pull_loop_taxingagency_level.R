@@ -197,19 +197,19 @@ for(i in years){
       eav_incents_inTIF = fmv_incents_inTIF * loa * eq_factor) %>%
     arrange(fmv) |>
     summarize(
-      median_fmv_all = median(fmv, na.rm = TRUE),
-      min_fmv_all = min(fmv, na.rm = TRUE),
-      quant25_all_fmv = round(quantile(fmv, probs = q[1])),
-      mean_fmv_all = mean(fmv, na.rm = TRUE),
-      quant75_all_fmv = round(quantile(fmv, probs = q[3])),
-      fmv_sd = sd(fmv),
+      median_fmv_c2 = median(fmv[c2_prop == 1], na.rm = TRUE),
+      min_fmv_c2 = min(fmv[c2_prop == 1], na.rm = TRUE),
+      quant25_c2_fmv = round(quantile(fmv[c2_prop == 1], probs = q[1])),
+      mean_fmv_c2 = mean(fmv[c2_prop == 1], na.rm = TRUE),
+      quant75_c2_fmv = round(quantile(fmv[c2_prop == 1], probs = q[3])),
+      fmv_sd_c2 = sd(fmv[c2_prop == 1]),
       
-      mean_fmv_taxed = mean(fmv_taxed, na.rm = TRUE),
-      median_fmv_taxed = median(fmv_taxed),
-      min_fmv_taxed = min(fmv_taxed),
-      quant25_all_fmv_taxed = round(quantile(fmfmv_taxedv, probs = q[1])),
-      quant75_all_fmv_taxed = round(quantile(fmv_taxed, probs = q[3])),
-      fmv_taxed_sd = sd(fmv_taxed),
+      mean_fmv_taxed = mean(fmv_taxed[c2_prop == 1], na.rm = TRUE),
+      median_fmv_taxed = median(fmv_taxed[c2_prop == 1]),
+      min_fmv_taxed = min(fmv_taxed[c2_prop == 1]),
+      quant25_c2_fmv_taxed = round(quantile(fmv_taxed[c2_prop == 1], probs = q[1])),
+      quant75_c2_fmv_taxed = round(quantile(fmv_taxed[c2_prop == 1], probs = q[3])),
+      fmv_taxed_sd = sd(fmv_taxed[c2_prop == 1]),
       
       fmv_exemptions = sum(exe_total/eq_factor/loa, na.rm=TRUE),
       fmv_residential = sum(ifelse(res_prop == 1, fmv, 0), na.rm = TRUE),
