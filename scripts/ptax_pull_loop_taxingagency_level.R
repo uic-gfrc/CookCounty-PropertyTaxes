@@ -25,6 +25,8 @@ nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
 
 years <-(2006:2023)
 
+q = c(.25, .5, .75)
+
 # Create empty dataframes for the loop to populate.
 agency_summary <- NULL
 
@@ -193,7 +195,22 @@ for(i in years){
                                          ((final_tax_to_tif / (agency_tax_rate)) / eq_factor ) / loa, 0),
       
       eav_incents_inTIF = fmv_incents_inTIF * loa * eq_factor) %>%
+    arrange(fmv) |>
     summarize(
+      median_fmv_all = median(fmv, na.rm = TRUE),
+      min_fmv_all = min(fmv, na.rm = TRUE),
+      quant25_all_fmv = round(quantile(fmv, probs = q[1])),
+      mean_fmv_all = mean(fmv, na.rm = TRUE),
+      quant75_all_fmv = round(quantile(fmv, probs = q[3])),
+      fmv_sd = sd(fmv),
+      
+      mean_fmv_taxed = mean(fmv_taxed, na.rm = TRUE),
+      median_fmv_taxed = median(fmv_taxed),
+      min_fmv_taxed = min(fmv_taxed),
+      quant25_all_fmv_taxed = round(quantile(fmfmv_taxedv, probs = q[1])),
+      quant75_all_fmv_taxed = round(quantile(fmv_taxed, probs = q[3])),
+      fmv_taxed_sd = sd(fmv_taxed),
+      
       fmv_exemptions = sum(exe_total/eq_factor/loa, na.rm=TRUE),
       fmv_residential = sum(ifelse(res_prop == 1, fmv, 0), na.rm = TRUE),
       fmv_industrial = sum(ifelse(class %in% industrial_classes, fmv, 0), na.rm = TRUE),
