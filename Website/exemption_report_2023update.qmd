@@ -38,7 +38,7 @@ muni_cl_sums <- read_csv("../Output/ptaxsim_muni_class_summaries_2006to2023.csv"
 
 ```{r}
 
-year_examples <- c(2020, 2023)
+year_examples <- c(2023)
 
 for(i in year_examples){
   tbl <- muni_cl_sums %>% 
@@ -68,7 +68,7 @@ print(tbl)
 Total value of exemptions as a share of residential EAV, 2021
 
 ```{r}
-year_examples <- c(2020, 2023)
+year_examples <- c(2021, 2023)
 
 for(i in year_examples){
 
@@ -105,7 +105,7 @@ print(muni_sums %>%
 
 
 ```{r}
-year_examples <- c(2020, 2023)
+year_examples <- c(2021, 2023)
 
 for(i in year_examples){
 
@@ -147,16 +147,70 @@ print(muni_sums %>%
 #| tbl-cap: "Total Exempt EAV in 2023 in the City of Chicago and the Suburbs"
 
 
-muni_cl_sums %>% filter(year == 2023) %>% select(clean_name, muni_c_exe_homeowner:muni_c_exe_vet_dis) %>%
-  mutate(Geography = ifelse(clean_name == "Chicago", "City", "Suburbs")) %>%
+muni_cl_sums %>% 
+  filter(year == 2023) %>% 
+  select(clean_name, muni_c_exe_homeowner:muni_c_exe_vet_dis) %>%
+  mutate(clean_name = ifelse(is.na(clean_name), "Unincorporated", clean_name),
+    Geography = ifelse(clean_name == "Chicago", "City", "Suburbs"),
+         Geography = ifelse(is.na(clean_name), "Unincorporated", Geography),
+         Geography = factor(Geography, levels = c("Suburbs", "City", "Unincorporated"))) %>%
   group_by(Geography) %>%
   summarize("GHE" = sum(muni_c_exe_homeowner, na.rm=TRUE),
-            "Senior" = sum(muni_c_exe_senior, na.rm=TRUE),
+            "Senior Homestead" = sum(muni_c_exe_senior, na.rm=TRUE),
             "Senior Freeze" = sum(muni_c_exe_freeze, na.rm=TRUE),
-            "Other Exemptions" = sum(muni_c_exe_longtime_homeowner+muni_c_exe_disabled+muni_c_exe_vet_returning+ muni_c_exe_vet_dis_lt50 + muni_c_exe_vet_dis_50_69+muni_c_exe_vet_dis_ge70))
+            "Other Exemptions" = sum(muni_c_exe_longtime_homeowner+muni_c_exe_disabled+muni_c_exe_vet_returning+ muni_c_exe_vet_dis_lt50 + muni_c_exe_vet_dis_50_69+muni_c_exe_vet_dis_ge70)) %>%
+  pivot_longer(cols = c(`GHE`:`Other Exemptions`), names_to = "Type" ) %>%
+   mutate(Type = factor(Type, levels = c("GHE", "Senior Homestead", "Senior Freeze", "Other Exemptions" 
+                                         #"Senior Freeze", "Senior Homestead", "GHE"
+                                        )
+                                        )) %>%
+  ggplot(aes(x=Type, y = value/1000000000, fill = Geography
+             )) +
+  
+  geom_col(
+           position = "dodge" 
+          ) + 
+  theme_minimal() +
+  labs(title = "Exempt EAV in Cook County, Tax Year 2023", 
+       subtitle = "by Type and Geography", 
+       y = "EAV (Billions)", x = "Exemption Type") + 
+  scale_y_continuous() +
+  scale_fill_manual(values = c("blue3", "deepskyblue3", "gray"), )
 ```
 
 *Exempt Tax Base in Cook County by exemption type and geography, for tax year 2021*
+
+
+```{r}
+muni_cl_sums %>% 
+  select(year, muni_c_exe_homeowner:muni_c_exe_vet_dis) %>%
+  group_by(year) %>%
+  summarize("GHE" = sum(muni_c_exe_homeowner, na.rm=TRUE),
+            "Senior Homestead" = sum(muni_c_exe_senior, na.rm=TRUE),
+            "Senior Freeze" = sum(muni_c_exe_freeze, na.rm=TRUE),
+            "Other Exemptions" = sum(muni_c_exe_longtime_homeowner + muni_c_exe_disabled + muni_c_exe_vet_returning+ muni_c_exe_vet_dis_lt50 + muni_c_exe_vet_dis_50_69+muni_c_exe_vet_dis_ge70, na.rm = T)) %>%
+  pivot_longer(cols = c(`GHE`:`Other Exemptions`), names_to = "Type" ) %>%
+  mutate(Type = factor(Type, levels = c(#"GHE", "Senior Homestead", "Senior Freeze", 
+                                        "Other Exemptions", "Senior Freeze", "Senior Homestead", "GHE"))) %>%
+  ggplot(aes(x=year, y = value/1000000000, fill = Type)) +
+  
+  geom_bar( stat = "identity" ) + 
+  theme_minimal() +
+  labs(title = "Residential Exempt EAV in Cook County", 
+       subtitle = "by Type and Geography, 2006-2023", 
+       y = "EAV (Billions)", x ="",
+       caption = "Values are NOT adjusted to current dollars") +
+  scale_fill_manual(values = c("chartreuse2",  "darksalmon", "brown2", "blue4" )) +
+                    scale_x_continuous(breaks = c(2006, 2010, 2015, 2020, 2023))
+```
+
+```{r}
+
+'GHE' = sum(muni_c_exe_homeowner), 
+            'Senior Exemp.' = sum(muni_c_exe_senior), 
+            'Freeze Exemp.' = sum(muni_c_exe_freeze), 
+```
+
 
 ![](images/clipboard-1115901107.png)
 
@@ -166,6 +220,9 @@ muni_cl_sums %>% filter(year == 2023) %>% select(clean_name, muni_c_exe_homeowne
 
 ![](images/clipboard-3650281473.png)
 
+```{r}
+
+```
 
 
 ## Effect on Composite Tax Rates
