@@ -543,7 +543,7 @@ muni_ratechange %>%
 
 **Figure 6 will not be recreated but is just a bar  chart of the change in tax rate in the table below**
 
-### Table 1. Change in composite property tax rates due to exemptions, tax year 2021.
+### Table 1. Change in composite property tax rates due to exemptions, tax year 2023.
 
 ```{r}
 #| code-fold: true
@@ -571,11 +571,6 @@ muni_ratechange %>%
 
                        'Composite Levy' = 'final_tax_to_dist'),
           caption = "Table 1: Current and Hypothetical Composite Tax Rates if GHE $0") %>%
- # formatPercentage(c('Current Comp. Rate', 'Hypothetical Rate', 
-                    # '%Rev to TIF'
-                #    'Composite Tax Rate Change'
-              #       ), 
-            #       digits = 2) %>%  
   formatCurrency('Composite Levy', digits = 0)
 ```
 
@@ -590,11 +585,6 @@ muni_ratechange %>%
 
                        'Composite Levy' = 'final_tax_to_dist'),
           caption = "Table 1: Current and Hypothetical Composite Tax Rates if GHE $0") %>%
- # formatPercentage(c('Current Comp. Rate', 'Hypothetical Rate', 
-                    # '%Rev to TIF'
-                #    'Composite Tax Rate Change'
-              #       ), 
-            #       digits = 2) %>%  
   formatCurrency('Composite Levy', digits = 0)
 ```
 
@@ -707,6 +697,39 @@ MC_burden %>% filter(clean_name == "Dolton") %>% select(major_class_code, pct_ta
 
 > Not done. Has current shares with exemptions but not change in property tax burden. Need to create from PIN level data I think. 
 
+```{r}
+#| eval: false
+
+
+burden_shift <- ptax_pins %>%
+  left_join(muni_ratechange) %>%
+  group_by(clean_name) %>%
+  mutate(muni_levy = sum(final_tax_to_dist, na.rm = T),
+         muni_TEAV = sum(taxed_eav, na.rm = T),
+         muni_hyp_TEAV = sum(taxed_eav + all_exemptions, na.rm=T)) %>%
+  ungroup() %>%
+ # mutate(hyp_TEAV = eav_taxed + all_exemptions)%>%
+  mutate(Group = case_when(
+    class_1dig == 2 ~ "Single-family",
+    class_1dig %in% c(3, 9) ~ "Multi-family",
+     TRUE ~ "Commercial & Industrial"
+  )) %>%
+  group_by(clean_name, Group) %>%
+  summarize(
+         hyp_amt_todist = sum(((rate_noExe/100) * (taxed_eav + all_exemptions)), na.rm=TRUE),
+    amt_todist = sum(final_tax_to_dist, na.rm = T) ) %>%
+  arrange(desc(amt_todist))
+
+burden_shift %>%  
+  filter(Group == "Single-family") %>%
+    select(clean_name, hyp_burden, burden) 
+
+burden_shift %>%  
+    select(clean_name, Group, hyp_burden, burden) %>% 
+pivot_wider(names_from = Group, values_from = burden) %>%
+  arrange(desc(`Single-family`))
+```
+
 
 ```{r}
 muni_mc_sums <- read_csv("../Output/ptaxsim_muni_MC_2006to2023.csv") %>%
@@ -726,7 +749,9 @@ mc_burden <- muni_mc_sums %>%
   summarize(levy = sum(final_tax_to_dist)) %>%
     mutate(burden = levy / muni_levy ) %>% arrange(desc(burden))
 
-mc_burden %>% select(clean_name, Group, burden) %>% pivot_wider(names_from = Group, values_from = burden) %>%
+mc_burden %>% 
+  select(clean_name, Group, burden) %>% 
+  pivot_wider(names_from = Group, values_from = burden) %>%
   arrange(desc(`Single-family`))
 ```
 
