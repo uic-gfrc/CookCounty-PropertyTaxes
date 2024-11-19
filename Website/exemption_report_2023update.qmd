@@ -541,48 +541,128 @@ muni_ratechange %>%
 
 ### Figure 6. Composite property tax rates with and without homestead exemptions, tax year 2021
 
+**Figure 6 will not be recreated but is just a bar  chart of the change in tax rate in the table below**
+
 ### Table 1. Change in composite property tax rates due to exemptions, tax year 2021.
 
 ```{r}
 #| code-fold: true
+#| eval: false
 
 
 muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006-2021.csv") %>% 
   filter(year == 2021) %>% 
   left_join(nicknames)
-```
 
-```{r}
 MuniLevel_CompRates <- muni_sums %>% 
   select(clean_name, cur_comp_muni_rate, new_comp_muni_rate, tif_share, zero_bills, final_tax_to_dist) %>%
   mutate(current_rate_avg = cur_comp_muni_rate/100,
 new_comp_muni_rate = new_comp_muni_rate / 100 ,
 rate_change = current_rate_avg - new_comp_muni_rate) %>%
   select(clean_name, rate_change, current_rate_avg, new_comp_muni_rate, final_tax_to_dist) %>% arrange(desc(rate_change))
+```
 
-datatable(MuniLevel_CompRates, rownames = FALSE,
-          colnames = c('Municipality' = 'clean_name', 'Composite Tax Rate Change'='rate_change', 'Current Comp. Rate' = 'current_rate_avg', 'Hypothetical Rate' = 'new_comp_muni_rate', 
-                       #'%Rev to TIF' = 'tif_share', 'Count of $0 Tax Bills' = 'zero_bills', 
+
+```{r}
+muni_ratechange %>% 
+  select(clean_name,  current_rate_avg, rate_noExe, change_noExe, final_tax_to_dist 
+         ) %>% 
+  DT::datatable(rownames = FALSE, colnames = c('Municipality' = 'clean_name','Current Comp. Rate' = 'current_rate_avg', 'Hypothetical Rate' = 'rate_noExe',  'Composite Tax Rate Change'='change_noExe', 
+
                        'Composite Levy' = 'final_tax_to_dist'),
           caption = "Table 1: Current and Hypothetical Composite Tax Rates if GHE $0") %>%
-  formatPercentage(c('Current Comp. Rate', 'Hypothetical Rate', 
+ # formatPercentage(c('Current Comp. Rate', 'Hypothetical Rate', 
                     # '%Rev to TIF'
-                    'Composite Tax Rate Change'
-                     ), 
-                   digits = 2) %>%  
+                #    'Composite Tax Rate Change'
+              #       ), 
+            #       digits = 2) %>%  
   formatCurrency('Composite Levy', digits = 0)
+```
+
+
+```{r}
+#| label: tbl-table1-datatable
+
+muni_ratechange %>% 
+  select(clean_name,  current_rate_avg, rate_noExe, change_noExe, final_tax_to_dist 
+         ) %>% 
+  DT::datatable(rownames = FALSE, colnames = c('Municipality' = 'clean_name','Current Comp. Rate' = 'current_rate_avg', 'Hypothetical Rate' = 'rate_noExe',  'Composite Tax Rate Change'='change_noExe', 
+
+                       'Composite Levy' = 'final_tax_to_dist'),
+          caption = "Table 1: Current and Hypothetical Composite Tax Rates if GHE $0") %>%
+ # formatPercentage(c('Current Comp. Rate', 'Hypothetical Rate', 
+                    # '%Rev to TIF'
+                #    'Composite Tax Rate Change'
+              #       ), 
+            #       digits = 2) %>%  
+  formatCurrency('Composite Levy', digits = 0)
+```
+
+
+```{r}
+#| tbl-Table1-sliced
+#| tbl-cap: "Includes all exemption types in calculation of rate change."
+ 
+library(flextable)
+muni_ratechange %>%
+  select(clean_name,  current_rate_avg, rate_noExe, change_noExe 
+) %>%
+  arrange(desc(change_noExe)) %>%
+  slice(c(1:5, 69:73, 121:125)) %>%
+    #slice(c(1:5, 58:62, 115:119)) %>%
+
+ # mutate(pct_fmv_w_incentclass = scales::percent(pct_fmv_w_incentclass, digits = 2)) %>%
+  flextable() %>% 
+  border_remove() %>%
+  hline_top() %>%
+  hline(i = c(5,10)) %>%
+
+  set_header_labels(
+    clean_name = "Municipality", 
+    current_rate_avg = "With Exemptions",
+    rate_noExe = "Without Exemptions",
+    change_noExe = "Percent Point Difference"
+    
+    ) %>%
+  align(j = 2, align = "right") %>%
+align(j=2, align = "right", part = "header") %>%
+set_table_properties( layout = "autofit") %>% bold(i = 8) 
+
 ```
 
 ### Figure 7. Map of Spatial Patterns in Composite Tax Rate Change 
 
 Change in composite tax rate if exempt EAV was added back to the the taxable tax base (i.e. if there were no exemptions).
 
+```{r}
+muni_ratechange  %>%
+  left_join(nicknames, by = "clean_name") %>%
+     #mutate(burden_current = ifelse(burden_current>1, 1, burden_current)) %>%
+
+    # filter(major_class_code == 2) %>%
+  mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name),
+         shpfile_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+
+  ggplot(aes(fill = change_noExe)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+   scale_fill_stepsn(colors = c( "#F7FEF5",
+                                # "#e4f1e0",
+                                "#d4f6cc",
+                                "#47ba24",
+                                "#1F6805",
+                                "#133C04"),
+                        show.limits=TRUE, 
+                     limits = c(0, 15),
+                     breaks = c(0, 2.5, 5, 7.5, 10, 15),
+                     na.value = NA,
+                        name = "Rate Change from \nExemptions"  
+                    )
+```
 
 
-
-### Figure 7 Alternate. Composite Tax Rates for Municipalities
-
-![](images/Composite_Rate_Change.png)
 
 ## Effect on Tax Burdens
 
@@ -622,6 +702,35 @@ current_burden_c2 <- MC_burden %>%
 
 MC_burden %>% filter(clean_name == "Dolton") %>% select(major_class_code, pct_taxburden_current, pct_taxburden_ghe0) %>% arrange(desc(pct_taxburden_current))
 ```
+
+### Figure 9. Change in Share of Tax Burden
+
+> Not done. Has current shares with exemptions but not change in property tax burden. Need to create from PIN level data I think. 
+
+
+```{r}
+muni_mc_sums <- read_csv("../Output/ptaxsim_muni_MC_2006to2023.csv") %>%
+  rename_all(~str_replace(., "muni_mc_", ""))
+
+mc_burden <- muni_mc_sums %>% 
+  filter(year == 2023) %>%
+  group_by(year, clean_name) %>%
+  mutate(muni_levy = sum(final_tax_to_dist, na.rm = T))%>%
+  ungroup() %>%
+  mutate(Group = case_when(
+    major_class_code == 2 ~ "Single-family",
+    major_class_code %in% c(3, 9) ~ "Multi-family",
+     TRUE ~ "Commercial & Industrial"
+  )) %>%
+  group_by(clean_name, Group, muni_levy) %>%
+  summarize(levy = sum(final_tax_to_dist)) %>%
+    mutate(burden = levy / muni_levy ) %>% arrange(desc(burden))
+
+mc_burden %>% select(clean_name, Group, burden) %>% pivot_wider(names_from = Group, values_from = burden) %>%
+  arrange(desc(`Single-family`))
+```
+
+### Table 2. 
 
 
 ### Table 3. 
