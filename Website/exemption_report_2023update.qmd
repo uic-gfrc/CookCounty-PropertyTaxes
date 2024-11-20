@@ -616,6 +616,9 @@ mc_burden %>%
 _Table 2: Change in the share of property tax burden due to exemptions for single-family, multi-family, and commercial and industrial properties, tax year 2023_
 
 ```{r}
+#| eval: FALSE
+#| label: attemptfor-burdenshift
+
 burden_shift <- ptax_pins %>%
     mutate(Group = case_when(
     class_1dig == 2 ~ "Single-family",
@@ -627,14 +630,14 @@ burden_shift <- ptax_pins %>%
   
   ## calculate taxbase from each major class 
   ## and the amount of taxes currently collected from each
-  summarize(group_taxbase= sum(taxed_eav),
-            group_taxes_current = sum(taxed_eav * (tax_code_rate/100)),
+  summarize(group_taxbase= sum(taxed_eav, na.rm = T),
+            group_taxes_current = sum(taxed_eav * (tax_code_rate/100), na.rm = T),
             hyp_group_taxbase = sum(taxed_eav + all_exemptions, na.rm = T),
             hyp_group_taxes = sum( (taxed_eav + all_exemptions) * (new_comp_TC_rate/100), na.rm = T)
      )  %>%
   mutate(across(c(group_taxbase:hyp_group_taxes), round, 0)) %>%
+  ungroup() |>
   group_by(clean_name) |>
-  
   mutate(
     muni_taxbase = sum(group_taxbase, na.rm=T),
     muni_levy = sum(group_taxes_current, na.rm = T)
@@ -645,9 +648,47 @@ burden_shift <- ptax_pins %>%
          pct_taxburden_current = group_taxes_current / muni_levy,
          hyp_pct_taxburden = hyp_group_taxes / muni_levy) |> 
   mutate(
-         burden_shift = (pct_taxburden_current - hyp_pct_taxburden))
+         burden_shift = (pct_taxburden_current - hyp_pct_taxburden)*100) 
 ```
 
+```{r}
+options(scipen = 999)
+
+
+burden_shift <- ptax_pins %>%
+  filter(class_1dig != 0) |>
+    mutate(Group = case_when(
+    class_1dig == 2 ~ "Single-family",
+    class_1dig == 3 | class_1dig == 9 ~ "Multi-family",
+     TRUE ~ "Commercial & Industrial"
+  )) %>%
+    left_join(taxcode_taxrates, by = "tax_code") |>
+  group_by(clean_name) %>% 
+  mutate(muni_levy = sum(final_tax_to_dist, na.rm=TRUE)) %>%
+  ungroup() %>%
+  group_by(clean_name, Group, muni_levy) |>
+  
+  ## calculate taxbase from each major class 
+  ## and the amount of taxes currently collected from each
+  summarize(group_taxbase= sum(taxed_eav, na.rm = T),
+            group_taxes_current = sum(taxed_eav * (cur_comp_TC_rate/100), na.rm = T),
+            hyp_group_taxbase = sum(taxed_eav + all_exemptions, na.rm = T),
+            hyp_group_taxes = sum( (taxed_eav + all_exemptions) * (new_comp_TC_rate/100), na.rm = T))  %>%
+  mutate(across(c(group_taxbase:hyp_group_taxes), round, 0)) %>%
+  ungroup() |>
+ # group_by(clean_name) |>
+ # mutate(
+   # muni_taxbase = sum(group_taxbase, na.rm=T),
+   # muni_levy = sum(group_taxes_current, na.rm = T)
+ # ) %>%  
+ # ungroup() %>%
+  mutate(
+     #    pct_eav_current = group_taxbase / muni_taxbase,
+         pct_taxburden_current = group_taxes_current / muni_levy,
+         hyp_pct_taxburden = hyp_group_taxes / muni_levy)  |> 
+  mutate(
+         burden_shift = (pct_taxburden_current - hyp_pct_taxburden))
+```
 
 ```{r}
 #| label: tbl-currenttaxburden
@@ -656,10 +697,11 @@ burden_shift <- ptax_pins %>%
 ## Current tax burden 
 burden_shift %>%  
     select(clean_name, Group, pct_taxburden_current) %>%
-pivot_wider(names_from = Group, values_from = pct_taxburden_current) %>%
-  arrange(desc(`Single-family`))
+pivot_wider(id_cols = clean_name, names_from = Group, values_from = pct_taxburden_current) %>%
+  arrange((`Single-family`))
 ```
 
+> Something is wrong with burden shift calculation
 
 ```{r}
 #| label: tbl-burden_change
@@ -667,16 +709,13 @@ pivot_wider(names_from = Group, values_from = pct_taxburden_current) %>%
 
 burden_shift %>%  
     select(clean_name, Group, burden_shift) %>%
-  mutate(burden_shift = round(burden_shift, digits = 4) ) |>
-pivot_wider(names_from = Group, values_from = burden_shift) %>%
+pivot_wider(id_cols=clean_name, names_from = Group, values_from = burden_shift) %>%
   arrange((`Single-family`))
 ```
 
 ```{r}
 #| code-fold: true
 #| eval: false
-
-
 
 datatable(current_burden_c2, rownames = FALSE,
           colnames = c('Municipality' = 'clean_name', 'Burden Shift, Pct Pt Change' = 'burden_shift', "C2 EAV/Muni EAV" = 'pct_eav', 'Current Tax Burden\nC2 Tax Collected / Muni Levy' = 'pct_taxburden_current', "Hypothetical Tax Burden\nHyp. C2 Tax Collected / Muni Levy" = 'pct_taxburden_ghe0'),
@@ -691,9 +730,6 @@ datatable(current_burden_c2, rownames = FALSE,
 #### Figure 9 Follow up. Current Tax Burden Map
 
 ```{r}
-#| code-fold: true
-#| eval: false
-
 
 burden_c2 %>%
   left_join(nicknames) %>%
@@ -739,7 +775,7 @@ ptax_pins <- ptax_pins %>%
 ```{r}
 C2_munistats <- ptax_pins %>% 
   filter(class > 199 & class < 300) %>%
-  group_by(agency_name)  %>%
+  group_by(clean_name)  %>%
   arrange(av) %>%
   summarize(
     median_eav = round(median(eav)), 
@@ -763,7 +799,7 @@ C2_munistats_filtered <- ptax_pins %>%
            exe_vet_dis_50_69 == 0 & 
            exe_vet_dis_ge70 == 0 & 
            exe_abate == 0) %>%
-  group_by(agency_name)  %>%
+  group_by(clean_name)  %>%
   arrange(av) %>%
   summarize(
     median_eav = round(median(eav, na.rm=TRUE)), 
@@ -811,7 +847,7 @@ muni_median_summarytable <- ptax_pins %>%
          bill_noexemps =  new_comp_TC_rate/100*(equalized_av-all_exemptions+exe_homeowner),
          bill_change = bill_noexemps - bill_current) %>%
   
-  group_by(agency_name, # zero_bill, 
+  group_by(clean_name, # zero_bill, 
            has_HO_exemp) %>% 
   
   summarize(AV = median(median_av), # median_av was calculated earlier: C2 median AV for the muni 
@@ -834,7 +870,7 @@ muni_median_summarytable
 
 
 muni_taxrates <- ptax_pins %>% 
-  group_by(agency_name)  %>%
+  group_by(clean_name)  %>%
   arrange(av) %>%
   
   summarize(
