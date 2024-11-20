@@ -571,7 +571,7 @@ mc_burden <- ptax_pins |>
   
   ## calculate taxbase from each major class 
   ## and the amount of taxes currently collected from each
-  summarize(group_taxbase= sum(taxed_eav),
+  summarize(group_taxbase= sum(current_taxable_eav),
             group_taxes_current = sum(taxed_eav * (tax_code_rate/100)),
             hyp_group_taxbase = sum(taxed_eav + all_exemptions, na.rm = T),
             hyp_group_taxes = sum( (taxed_eav + all_exemptions) * (new_comp_TC_rate/100), na.rm = T)
@@ -717,11 +717,15 @@ pivot_wider(id_cols=clean_name, names_from = Group, values_from = burden_shift) 
 #| code-fold: true
 #| eval: false
 
-datatable(current_burden_c2, rownames = FALSE,
-          colnames = c('Municipality' = 'clean_name', 'Burden Shift, Pct Pt Change' = 'burden_shift', "C2 EAV/Muni EAV" = 'pct_eav', 'Current Tax Burden\nC2 Tax Collected / Muni Levy' = 'pct_taxburden_current', "Hypothetical Tax Burden\nHyp. C2 Tax Collected / Muni Levy" = 'pct_taxburden_ghe0'),
+datatable(burden_c2, rownames = FALSE,
+          colnames = c('Municipality' = 'clean_name', 
+                       'Burden Shift, Pct Pt Change' = 'burden_shift', 
+                       "C2 EAV/Muni EAV" = 'pct_eav', 
+                       'Current Tax Burden\nC2 Tax Collected / Muni Levy' = 'pct_taxburden_current', 
+                       "Hypothetical Tax Burden\nHyp. C2 Tax Collected / Muni Levy" = 'hyp_pct_taxburden'),
           caption = "Table 2: Current Share of Taxable EAV and Share of Levy Paid by Class 2 Properties"
            ) %>%
-  formatPercentage(c(2,4,5), digits = 2) %>%
+  formatPercentage(c(2,3,4,5), digits = 2) %>%
   formatRound(c(3), digits = 2)
 
 
@@ -962,54 +966,46 @@ Share of municipal property tax levy paid by Class 2 properties with and without
 
 ```{r}
 #| label: fig-dotplotburdenshift
-#| eval: false
 # as a dot graph ## 
 
-cross_county_lines <- muni_agency_names %>% 
-  filter(agency_num %in%cross_county_lines) %>% 
-   left_join(nicknames, by = "agency_name")
+order <- mc_burden |>
+  filter(class_1dig == 2) |>
+    select(clean_name, pct_taxburden_current, burden_shift)
 
-order <- burden_shift %>% 
-  ungroup %>% as_tibble() %>%
-  #  filter(ResidentialProps == "Residential") %>%
-  filter(grouped_classes == "Class 2") %>%
-  select(agency_name, clean_name, burden_current, burden_change)
-
-
-
-# burder_shift_ordered <-  burden_shift %>% 
-#   ungroup() %>% 
-#   select(agency_name, current_burden, no_exemptions_burden) %>%    
-#   pivot_longer(c("current_burden", "no_exemptions_burden"), 
-#                names_to = "type", values_to = "pct_burden") %>% 
-#   left_join(order)
-
-# look at ones that changed the most
+slice <-  mc_burden |>
+  filter(class_1dig == 2) |>
+    select(clean_name, pct_taxburden_current, burden_shift) %>%
+  arrange(pct_taxburden_current) %>%
+  slice(1:5, 63:67, 127:131)
 
 
-# median burden change is 0.45
-# current median burden is 65.5% of the levy
 
-burden_shift %>% 
-  filter(!clean_name %in% cross_county_lines$clean_name)%>%
-  filter(grouped_classes == "Class 2") %>%
-  filter(burden_current > 0.938 |burden_current < .17 |
-           ( (burden_current < median(burden_current) + 0.01 )& (burden_current > median(burden_current) - 0.01)) )%>% 
+median_burden <- median(order$pct_taxburden_current)
+median_shift <- median(order$burden_shift)
+
+# median burden change is 5.9 percentage points
+# current median burden is 70.3% of the levy
+
+mc_burden %>% 
+  filter(clean_name %in% slice$clean_name) %>%
+#filter(!clean_name %in% cross_county_lines$clean_name)%>%
+  filter(class_1dig == 2) |>
+#  filter(burden_current > 0.938 |burden_current < .17 |
+ #          ( (burden_current < median(burden_current) + 0.01 )& (burden_current > median(burden_current) - 0.01)) )%>% 
   ungroup() %>% 
-  select(agency_name, clean_name, burden_current, burden_noexemps,  burden_change) %>% 
-  arrange(burden_change) %>%
-  mutate( 
-    burden_noexemps = ifelse(burden_noexemps > 1, 1, burden_noexemps)) %>%
-  pivot_longer(c("burden_current", "burden_noexemps"), 
+      select(clean_name, pct_taxburden_current, hyp_pct_taxburden, burden_shift) %>%
+  arrange(burden_shift) %>%
+ # mutate(  burden_noexemps = ifelse(burden_noexemps > 1, 1, burden_noexemps)) %>%
+  pivot_longer(c("pct_taxburden_current", "hyp_pct_taxburden"), 
                names_to = "type", values_to = "pct_burden") %>% 
   inner_join(order) %>%
   ggplot(aes(x = pct_burden*100, 
-             y= reorder(clean_name, -burden_current)))+
+             y= reorder(clean_name, -pct_taxburden_current)))+
   # y= reorder(clean_name, burden_current)))+
-  geom_vline(xintercept = 65.5, linetype = 3)+
+  geom_vline(xintercept = 70.2, linetype = 3)+
   geom_line(aes(group = clean_name))+ 
   geom_hline(yintercept = 5.5, linetype = 2)+
-  geom_hline(yintercept = 13.5, linetype = 2)+
+  geom_hline(yintercept = 10.5, linetype = 2)+
   geom_point(aes(color=type), size=3 )+
 
   theme_minimal() + 
@@ -1027,8 +1023,8 @@ burden_shift %>%
   x = "Share of Levy (%)", y = "" , 
   caption = "Dotted line represents median Class 2 burden (65.5% of the levy). Residential Tax Burden is the 
   share of the property tax collected that was paid for by property owners with Class 2 properties.") +
-    geom_label(label = "Class 2 pays small share of \nlevy; very little residential", x=32, y = 16, label.size = 1, size = 3)+
-    geom_label(label = "Class 2 pays median share of \nlevy (65%), mix of land use", x=42, y = 9.5, label.size = 1, size = 3) +
+    geom_label(label = "Class 2 pays small share of \nlevy; very little residential", x=32, y = 13, label.size = 1, size = 3)+
+    geom_label(label = "Class 2 pays median share of \nlevy (70.3%), mix of land use", x=42, y = 7.5, label.size = 1, size = 3) +
     geom_label(label = "Class 2 pays nearly all of levy, \nhighly residential", x=70, y = 3, label.size = 1,size = 3)
 ```
 
