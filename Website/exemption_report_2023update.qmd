@@ -22,6 +22,8 @@ library(jsonlite)
 library(glue)
 library(sf)
 library(DT)
+library(flextable)
+
 
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 
@@ -39,6 +41,11 @@ nicknames <- readxl::read_excel("../Necessary_Files/muni_shortnames.xlsx")
 
 muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006to2023.csv") %>% 
   left_join(nicknames)
+
+
+muni_mc_sums <- read_csv("../Output/ptaxsim_muni_MC_2006to2023.csv") %>%
+  rename_all(~str_replace(., "muni_mc_", ""))
+
 
 muni_cl_sums <- read_csv("../Output/ptaxsim_muni_class_summaries_2006to2023.csv") %>% 
   left_join(nicknames)
@@ -236,7 +243,8 @@ cross_county_lines <- c("030440000", "030585000", "030890000", "030320000", "031
                         "030080000", "030560000", "031120000", "030280000", "030340000",
                         "030150000","030050000", "030180000","030500000", "031210000")
 
-eq2022 <- 2.9237 #example of eq factor proliferation
+eq_factor <- 3.02
+
 
 incentive_majorclasses <- c("6", "7A", "7B", "8A", "8B")
 
@@ -274,13 +282,13 @@ ptax_pins <- ptax_pins %>%
     
     exempt_eav = all_exemptions + abatements,
     
-    taxed_av =  taxed_eav / eq2022, # current value that taxing agencies can tax for their levies
+    taxed_av =  taxed_eav / eq_factor, # current value that taxing agencies can tax for their levies
     
     ## taxable AV = equalized assessed value net TIF increments, gross exemptions. 
     ## Used for calculating untaxable value further below
-   # taxable_av = (final_tax_to_dist / tax_code_rate *100 + all_exemptions + abatements)/ eq2022, 
+   # taxable_av = (final_tax_to_dist / tax_code_rate *100 + all_exemptions + abatements)/ eq_factor, 
   
-    # taxable_eav_fromincents =  ifelse(class >=600 & class < 900, taxable_av * eq2022, 0),
+    # taxable_eav_fromincents =  ifelse(class >=600 & class < 900, taxable_av * eq_factor, 0),
 
       ## untaxable value = exempt EAV from abatements and exemptions + TIF increment
     untaxable_value_eav = all_exemptions + abatements + 
@@ -289,28 +297,28 @@ ptax_pins <- ptax_pins %>%
       
       ## difference between 25% and reduced level of assessment for incentive class properties. Excludes TIF increment when calculating the difference! 
       ifelse(between(class, 600, 899), 
-             (taxed_av/loa*0.25 - taxed_av)*eq2022, 0),
+             (taxed_av/loa*0.25 - taxed_av)*eq_factor, 0),
    
     untaxable_incent_eav = ifelse(between(class, 600, 899), 
-             (taxed_av/loa*0.25 - taxed_av)*eq2022, 0),
+             (taxed_av/loa*0.25 - taxed_av)*eq_factor, 0),
    
     #  manually adjust untaxable value of class 239 properties
     untaxable_value_eav = ifelse(class == 239, 
                                  equalized_av-taxed_eav, untaxable_value_eav), 
     
-    untaxable_value_av = untaxable_value_eav / eq2022,
+    untaxable_value_av = untaxable_value_eav / eq_factor,
     untaxable_value_fmv = untaxable_value_av / loa,
 
-    exempt_fmv = exempt_eav / eq2022 / loa, 
+    exempt_fmv = exempt_eav / eq_factor / loa, 
     
     fmv_inTIF = ifelse(in_tif==1, av/loa, 0),
    
     fmv_tif_increment = ifelse(final_tax_to_tif > 0, 
-                               ((final_tax_to_tif / (tax_code_rate/100)) / eq2022 ) / loa, 0),
+                               ((final_tax_to_tif / (tax_code_rate/100)) / eq_factor ) / loa, 0),
     fmv_incents_inTIF = ifelse(between(class, 600, 899) & in_tif == 1, 
                                fmv, 0),
     fmv_incents_tif_increment = ifelse(between(class, 600, 899) & final_tax_to_tif > 0 , 
-                               ((final_tax_to_tif / (tax_code_rate/100)) / eq2022 ) / loa, 0),
+                               ((final_tax_to_tif / (tax_code_rate/100)) / eq_factor ) / loa, 0),
     naive_rev_forgone =  untaxable_incent_eav * tax_code_rate/100) %>%
   select(tax_code, class, pin, fmv,
          untaxable_value_fmv, fmv_inTIF, fmv_tif_increment, fmv, total_billed, final_tax_to_dist, final_tax_to_tif, tax_code_rate, eav, equalized_av, av, everything())
@@ -321,10 +329,10 @@ ptax_pins <- ptax_pins %>%
 #| eval: false
 
 muni_ratechange <- ptax_pins %>%
-    mutate(class = as.numeric(class)) %>%         # Allows for joining later
-    select(-c(propclass_1dig:av.y)) %>%
+  mutate(class = as.numeric(class)) %>%         # Allows for joining later
+  select(-c(propclass_1dig:av.y)) %>%
   filter(!clean_name  %in% c("Frankfort", "Homer Glen",  "Oak Brook", "East Dundee", "University Park",  "Bensenville", "Hinsdale", "Roselle", "Deer Park", "Deerfield")) %>% 
- # filter(!agency_num %in% cross_county_lines) %>%
+  # filter(!agency_num %in% cross_county_lines) %>%
   group_by(clean_name) %>%
   summarize(
     classgroup_PC = n(),
@@ -336,8 +344,8 @@ muni_ratechange <- ptax_pins %>%
     fmv_inTIF = sum(ifelse(final_tax_to_tif > 0, fmv, 0), na.rm=TRUE),
     fmv_tif_increment = sum(fmv_tif_increment, na.rm=TRUE),
     fmv_untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
-    fmv_exemptions = sum(all_exemptions/eq2022/loa, na.rm=TRUE),
-    fmv_abatements = sum(exe_abate/eq2022/loa, na.rm=TRUE),
+    fmv_exemptions = sum(all_exemptions/eq_factor/loa, na.rm=TRUE),
+    fmv_abatements = sum(exe_abate/eq_factor/loa, na.rm=TRUE),
     zero_bill = sum(zero_bill, na.rm=TRUE),
     fmv_residential = sum(ifelse(class %in% c(200:399), fmv, 0), na.rm = TRUE),
     fmv_C2 = sum(ifelse(class %in% c(200:299), fmv, 0), na.rm = TRUE),
@@ -351,10 +359,10 @@ muni_ratechange <- ptax_pins %>%
     av_taxed = sum(taxed_av, na.rm = TRUE),
     untaxable_value_av = sum(untaxable_value_av, na.rm=TRUE),
     av = sum(av),
-    eav_taxed = sum(taxed_av*eq2022), 
+    eav_taxed = sum(taxed_av*eq_factor), 
     eav_untaxable = sum(untaxable_value_eav, na.rm=TRUE),
-eav_tif_increment = sum(final_tax_to_tif/tax_code_rate, na.rm=TRUE),
-    eav_max = sum(fmv*loa*eq2022, na.rm=TRUE),
+    eav_tif_increment = sum(final_tax_to_tif/tax_code_rate, na.rm=TRUE),
+    eav_max = sum(fmv*loa*eq_factor, na.rm=TRUE),
     fmv = sum(fmv, na.rm=TRUE),
     pins_in_class = n(),
     all_exemptions = sum(all_exemptions),   # in EAV
@@ -364,25 +372,29 @@ eav_tif_increment = sum(final_tax_to_tif/tax_code_rate, na.rm=TRUE),
     final_tax_to_tif = sum(final_tax_to_tif),
     eav = sum(eav),
     new_TEAV_noIncents = sum(ifelse(class >=600 & class <900,
-      (taxed_av*eq2022/loa)*0.25, taxed_av*eq2022), na.rm=TRUE),
-
-    new_TEAV_noC6 = sum(ifelse( class >=600 & class <700, 
-(taxed_av*eq2022/loa)*0.25 , taxed_av*eq2022)),
-    new_TEAV_noC7 = sum(ifelse(class >=700 & class <800,
-(taxed_av*eq2022/loa)*0.25, taxed_av*eq2022)),
-    new_TEAV_noC8 = sum(ifelse(class >=800 & class <900, (taxed_av*eq2022/loa)*0.25, taxed_av*eq2022)),
+                                    (taxed_av*eq_factor/loa)*0.25, taxed_av*eq_factor), na.rm=TRUE),
     
-    new_TEAV_vacant_noIncents = sum(ifelse(class >=600 & class <900,
-                                       0, taxed_av*eq2022))) %>%
+    ####### Not used currently
+    # new_TEAV_noC6 = sum(ifelse( class >=600 & class <700, 
+    #                             (taxed_av*eq_factor/loa)*0.25 , taxed_av*eq_factor)),
+    # new_TEAV_noC7 = sum(ifelse(class >=700 & class <800,
+    #                            (taxed_av*eq_factor/loa)*0.25, taxed_av*eq_factor)),
+    # new_TEAV_noC8 = sum(ifelse(class >=800 & class <900, (taxed_av*eq_factor/loa)*0.25, taxed_av*eq_factor)),
+    # 
+    #######
+
+     new_TEAV_vacant_noIncents = sum(ifelse(class >=600 & class <900,
+                                            0, taxed_av*eq_factor))
+    ) %>%
   mutate(
-
-new_TEAV_noExemps = eav_taxed + all_exemptions, # does not include abatements
-new_TEAV_noAbates = eav_taxed + abatements, # include only abatements, not other exemption types
-
-# amount of EAV from taxing an additional 15% of the AV if incentive properties didn't exist
-forgone_EAV_incent = #class_group %in% incentive_majorclasses,
-  #incent_prop == "Incentive", 
-  new_TEAV_noIncents - eav_taxed) %>%
+    
+    new_TEAV_noExemps = eav_taxed + all_exemptions, # does not include abatements
+    new_TEAV_noAbates = eav_taxed + abatements, # include only abatements, not other exemption types
+    
+    # amount of EAV from taxing an additional 15% of the AV if incentive properties didn't exist
+    forgone_EAV_incent = #class_group %in% incentive_majorclasses,
+      #incent_prop == "Incentive", 
+      new_TEAV_noIncents - eav_taxed) %>%
   #cbind(table_cook) %>%
   mutate(
     # Absolute maximum TEAV: No Exemptions, no abatements, no TIFS, no Incentive properties
@@ -428,13 +440,14 @@ muni_ratechange %>%
 
 ### Figure 6. Composite property tax rates with and without homestead exemptions, tax year 2021
 
-**Figure 6 will not be recreated but is just a bar  chart of the change in tax rate in the table below**
+_Figure 6 will not be recreated but is just a bar  chart of the change in tax rate in the table below_
 
 ### Table 1. Change in composite property tax rates due to exemptions, tax year 2023.
 
 
 ```{r}
 #| label: tbl-table1-datatable
+#| tbl-cap: "Searchable table containing all municipalities and the hypothetical tax rate change if exempt EAV became taxable."
 
 muni_ratechange %>% 
   select(clean_name,  current_rate_avg, rate_noExe, change_noExe, final_tax_to_dist 
@@ -451,7 +464,6 @@ muni_ratechange %>%
 #| label: tbl-Table1-sliced
 #| tbl-cap: "Includes all exemption types in calculation of rate change."
  
-library(flextable)
 muni_ratechange %>%
   select(clean_name,  current_rate_avg, rate_noExe, change_noExe 
 ) %>%
@@ -459,7 +471,6 @@ muni_ratechange %>%
   slice(c(1:5, 69:73, 121:125)) %>%
     #slice(c(1:5, 58:62, 115:119)) %>%
 
- # mutate(pct_fmv_w_incentclass = scales::percent(pct_fmv_w_incentclass, digits = 2)) %>%
   flextable() %>% 
   border_remove() %>%
   hline_top() %>%
@@ -518,113 +529,9 @@ muni_ratechange  %>%
 ### Figure 8. Dolton example of Share of levy paid by property type
 
 *CMAP used a donut chart, we will use a bar chart that represents 100% on the x a axis.*
-```{r figure8-cold}
-#| eval: false
 
-MC_sums <- read_csv("../Output/ptaxsim_muni_MC_2006-2021.csv") %>% 
- # rename_all(~str_replace_all(., "muni_mc_","")) %>%
-  filter(year == 2021)  %>% 
-  left_join(nicknames)
+```{r tbl-figure8}
 
-MC_burden <- MC_sums %>% 
-  mutate(hyp_taxable_eav = current_taxable_eav + exe_homeowner,
-         class_taxes_current = current_taxable_eav * (cur_comp_muni_rate/100)
-     ) %>%
-  group_by(clean_name) %>%
-  mutate(muni_eav = sum(eav),
-         muni_levy = sum(final_tax_to_dist),
-       hyp_muni_taxableEAV = sum(new_taxable_eav)
-  ) %>%
-  ungroup() %>%
-  mutate(new_comp_rate = muni_levy / hyp_muni_taxableEAV,
-         class_taxes_hyp = hyp_taxable_eav * (new_comp_rate),
-         pct_eav = eav / muni_eav,
-         # pct_taxburden_current = total_bill_current / muni_levy,
-         # pct_taxburden_ghe0 = new_taxable_eav / muni_levy,
-         pct_taxburden_current = class_taxes_current / muni_levy,
-         pct_taxburden_ghe0 = class_taxes_hyp / muni_levy,
-         burden_shift = (pct_taxburden_current - pct_taxburden_ghe0)*100)
-
-
-current_burden_c2 <- MC_burden %>% 
-  filter(major_class_code == 2) %>% 
-  select(clean_name, pct_eav, burden_shift,  pct_taxburden_current, pct_taxburden_ghe0) %>% arrange(pct_eav)
-
-MC_burden %>% filter(clean_name == "Dolton") %>% select(major_class_code, pct_taxburden_current, pct_taxburden_ghe0) %>% arrange(desc(pct_taxburden_current))
-```
-
-### Figure 9. Change in Share of Tax Burden
-
-> Not done. Has current shares with exemptions but not change in property tax burden. Need to create from PIN level data I think. 
-
-```{r}
-#| eval: false
-
-
-burden_shift <- ptax_pins %>%
-  left_join(muni_ratechange) %>%
-  group_by(clean_name) %>%
-  mutate(muni_levy = sum(final_tax_to_dist, na.rm = T),
-         muni_TEAV = sum(taxed_eav, na.rm = T),
-         muni_hyp_TEAV = sum(taxed_eav + all_exemptions, na.rm=T)) %>%
-  ungroup() %>%
- # mutate(hyp_TEAV = eav_taxed + all_exemptions)%>%
-  mutate(Group = case_when(
-    class_1dig == 2 ~ "Single-family",
-    class_1dig %in% c(3, 9) ~ "Multi-family",
-     TRUE ~ "Commercial & Industrial"
-  )) %>%
-  group_by(clean_name, Group) %>%
-  summarize(
-         hyp_amt_todist = sum(((rate_noExe/100) * (taxed_eav + all_exemptions)), na.rm=TRUE),
-    amt_todist = sum(final_tax_to_dist, na.rm = T) ) %>%
-  arrange(desc(amt_todist))
-
-burden_shift %>%  
-  filter(Group == "Single-family") %>%
-    select(clean_name, hyp_burden, burden) 
-
-burden_shift %>%  
-    select(clean_name, Group, hyp_burden, burden) %>% 
-pivot_wider(names_from = Group, values_from = burden) %>%
-  arrange(desc(`Single-family`))
-```
-
-### Table 2. 
-
-```{r}
-muni_mc_sums <- read_csv("../Output/ptaxsim_muni_MC_2006to2023.csv") %>%
-  rename_all(~str_replace(., "muni_mc_", ""))
-
-mc_burden <- muni_mc_sums %>% 
-  filter(year == 2023) %>%
-  group_by(year, clean_name) %>%
-  mutate(muni_levy = sum(final_tax_to_dist, na.rm = T))%>%
-  ungroup() %>%
-  mutate(Group = case_when(
-    major_class_code == 2 ~ "Single-family",
-    major_class_code %in% c(3, 9) ~ "Multi-family",
-     TRUE ~ "Commercial & Industrial"
-  )) %>%
-  group_by(clean_name, Group, muni_levy) %>%
-  summarize(levy = sum(final_tax_to_dist)) %>%
-    mutate(burden = levy / muni_levy ) %>% arrange(desc(burden))
-
-mc_burden %>% 
-  select(clean_name, Group, burden) %>% 
-  pivot_wider(names_from = Group, values_from = burden) %>%
-  arrange(desc(`Single-family`))
-```
-
-
-
-### Table 3. 
-
-Difference in taxbills for those that do and do not claim homeowner exemption
-
-<!---Used Cholton Taxbills file originally when making this. use ptax_pins, filter out munis we want that are major class 2, with assessed values of $15K ----> 
-
-```{r}
 taxcodes_current <- ptax_pins %>% 
   group_by(tax_code)  %>%
   summarize(
@@ -647,7 +554,7 @@ taxcodes_current <- ptax_pins %>%
   ) %>%
   
   mutate(total_bill_current = final_tax_to_dist + final_tax_to_tif) %>%
-  rename(cur_comp_TC_rate = tax_code_rate) %>%
+  mutate(cur_comp_TC_rate = tax_code_rate) %>%
   mutate(current_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100),
          new_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100) + HO_exemps) %>%
   mutate(new_comp_TC_rate = (final_tax_to_dist / new_taxable_eav)*100) %>%
@@ -657,6 +564,168 @@ taxcodes_current <- ptax_pins %>%
 taxcode_taxrates <- taxcodes_current %>% 
   select(tax_code, cur_comp_TC_rate, new_comp_TC_rate, current_exemptions, HO_exemps)
 
+
+mc_burden <- ptax_pins |>
+  left_join(taxcode_taxrates, by = "tax_code") |>
+  group_by(clean_name, class_1dig) |>
+  
+  ## calculate taxbase from each major class 
+  ## and the amount of taxes currently collected from each
+  summarize(group_taxbase= sum(taxed_eav),
+            group_taxes_current = sum(taxed_eav * (tax_code_rate/100)),
+            hyp_group_taxbase = sum(taxed_eav + all_exemptions, na.rm = T),
+            hyp_group_taxes = sum( (taxed_eav + all_exemptions) * (new_comp_TC_rate/100), na.rm = T)
+     )  %>%
+  mutate(across(c(group_taxbase:hyp_group_taxes), round, 0)) %>%
+  group_by(clean_name) |>
+  
+  mutate(
+    muni_taxbase = sum(group_taxbase, na.rm=T),
+    muni_levy = sum(group_taxes_current, na.rm = T)
+  ) %>%
+  ungroup() %>%
+  mutate(
+         pct_eav = group_taxbase / muni_taxbase,
+         pct_taxburden_current = group_taxes_current / muni_levy,
+         hyp_pct_taxburden = hyp_group_taxes / muni_levy) |>
+  mutate(
+         burden_shift = (pct_taxburden_current - hyp_pct_taxburden)*100)
+
+
+burden_c2 <- mc_burden %>% 
+  filter(class_1dig == 2) %>% 
+  select(clean_name, pct_eav, burden_shift,  pct_taxburden_current, hyp_pct_taxburden) %>% 
+  arrange(pct_eav)
+
+mc_burden %>% 
+  filter(clean_name == "Dolton") %>% 
+  select(class_1dig, pct_taxburden_current, hyp_pct_taxburden) %>% 
+  arrange(desc(pct_taxburden_current))
+```
+
+### Figure 9. Change in Share of Tax Burden
+
+
+
+
+
+
+
+### Table 2. Change in share of property tax burden
+
+_Table 2: Change in the share of property tax burden due to exemptions for single-family, multi-family, and commercial and industrial properties, tax year 2023_
+
+```{r}
+burden_shift <- ptax_pins %>%
+    mutate(Group = case_when(
+    class_1dig == 2 ~ "Single-family",
+    class_1dig %in% c(3, 9) ~ "Multi-family",
+     TRUE ~ "Commercial & Industrial"
+  )) %>%
+    left_join(taxcode_taxrates, by = "tax_code") |>
+  group_by(clean_name, Group) |>
+  
+  ## calculate taxbase from each major class 
+  ## and the amount of taxes currently collected from each
+  summarize(group_taxbase= sum(taxed_eav),
+            group_taxes_current = sum(taxed_eav * (tax_code_rate/100)),
+            hyp_group_taxbase = sum(taxed_eav + all_exemptions, na.rm = T),
+            hyp_group_taxes = sum( (taxed_eav + all_exemptions) * (new_comp_TC_rate/100), na.rm = T)
+     )  %>%
+  mutate(across(c(group_taxbase:hyp_group_taxes), round, 0)) %>%
+  group_by(clean_name) |>
+  
+  mutate(
+    muni_taxbase = sum(group_taxbase, na.rm=T),
+    muni_levy = sum(group_taxes_current, na.rm = T)
+  ) %>%  
+  ungroup() %>%
+  mutate(
+         pct_eav_current = group_taxbase / muni_taxbase,
+         pct_taxburden_current = group_taxes_current / muni_levy,
+         hyp_pct_taxburden = hyp_group_taxes / muni_levy) |> 
+  mutate(
+         burden_shift = (pct_taxburden_current - hyp_pct_taxburden))
+```
+
+
+```{r}
+#| label: tbl-currenttaxburden
+#| tbl-cap: "Current tax burden (levy paid by group / total levy billed by municipality)"
+
+## Current tax burden 
+burden_shift %>%  
+    select(clean_name, Group, pct_taxburden_current) %>%
+pivot_wider(names_from = Group, values_from = pct_taxburden_current) %>%
+  arrange(desc(`Single-family`))
+```
+
+
+```{r}
+#| label: tbl-burden_change
+#| tbl-cap: "Change in tax burden, measured in percentage point change."
+
+burden_shift %>%  
+    select(clean_name, Group, burden_shift) %>%
+  mutate(burden_shift = round(burden_shift, digits = 4) ) |>
+pivot_wider(names_from = Group, values_from = burden_shift) %>%
+  arrange((`Single-family`))
+```
+
+```{r}
+#| code-fold: true
+#| eval: false
+
+
+
+datatable(current_burden_c2, rownames = FALSE,
+          colnames = c('Municipality' = 'clean_name', 'Burden Shift, Pct Pt Change' = 'burden_shift', "C2 EAV/Muni EAV" = 'pct_eav', 'Current Tax Burden\nC2 Tax Collected / Muni Levy' = 'pct_taxburden_current', "Hypothetical Tax Burden\nHyp. C2 Tax Collected / Muni Levy" = 'pct_taxburden_ghe0'),
+          caption = "Table 2: Current Share of Taxable EAV and Share of Levy Paid by Class 2 Properties"
+           ) %>%
+  formatPercentage(c(2,4,5), digits = 2) %>%
+  formatRound(c(3), digits = 2)
+
+
+```
+
+#### Figure 9 Follow up. Current Tax Burden Map
+
+```{r}
+#| code-fold: true
+#| eval: false
+
+
+burden_c2 %>%
+  left_join(nicknames) %>%
+  mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+
+  ggplot(aes(fill = pct_taxburden_current)) + 
+  geom_sf(aes(geometry = geometry), color = "black") + 
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+  # scale_fill_gradientn(
+   scale_fill_stepsn(colors = c("#ffffcc","#a1dab4" ,"#41b6c4","#2c7fb8", "#253494"),
+                        show.limits=TRUE, 
+                     limits = c(0,1),
+                     na.value = "gray70",
+                     n.breaks = 6,
+                        name = "Burden with \nExemptions", 
+                     labels = scales::percent
+                     
+                    )+
+  labs(title = "Current share of property tax burden", 
+       subtitle = "for Class = 2 Property Types")
+```
+
+
+### Table 3. 
+
+Difference in taxbills for those that do and do not claim homeowner exemption
+
+<!---Used Cholton Taxbills file originally when making this. use ptax_pins, filter out munis we want that are major class 2, with assessed values of $15K ----> 
+
+```{r}
 ptax_pins <- ptax_pins %>% 
   left_join(taxcode_taxrates, by = "tax_code") |>
   mutate(
@@ -803,7 +872,7 @@ muni_taxrates <- ptax_pins %>%
   left_join(nicknames) %>%
   mutate(rate_change = cur_comp_TC_rate - new_comp_TC_rate,
     nobillchange_propertyEAV = round(10000 * ((cur_comp_TC_rate/100) / (rate_change/100))),
-    nochange_av = round(nobillchange_propertyEAV / eq2022),
+    nochange_av = round(nobillchange_propertyEAV / eq_factor),
     nochange_ratio = nochange_av / median_av) %>%
   select(clean_name, C2median_av = median_av, muni_median_av,  C2mean_av = avg_av, muni_mean_av, cur_comp_TC_rate, new_comp_TC_rate, current_taxable_eav, new_taxable_eav, everything())
 
@@ -860,10 +929,9 @@ Share of municipal property tax levy paid by Class 2 properties with and without
 #| eval: false
 # as a dot graph ## 
 
-cross_county_lines <- c("030440000",
-"030585000", "030890000", "030320000", "031280000","030080000", "030560000", "031120000", "030280000", "030340000","030150000","030050000", "030180000","030500000","031210000")
-
-cross_county_lines <- muni_agency_names %>% filter(agency_num %in%cross_county_lines) %>% left_join(nicknames, by = "agency_name")
+cross_county_lines <- muni_agency_names %>% 
+  filter(agency_num %in%cross_county_lines) %>% 
+   left_join(nicknames, by = "agency_name")
 
 order <- burden_shift %>% 
   ungroup %>% as_tibble() %>%
@@ -926,59 +994,6 @@ burden_shift %>%
     geom_label(label = "Class 2 pays small share of \nlevy; very little residential", x=32, y = 16, label.size = 1, size = 3)+
     geom_label(label = "Class 2 pays median share of \nlevy (65%), mix of land use", x=42, y = 9.5, label.size = 1, size = 3) +
     geom_label(label = "Class 2 pays nearly all of levy, \nhighly residential", x=70, y = 3, label.size = 1,size = 3)
-```
-
-
-### Table 2. Change in share of property tax burden
-
-_Table 2: Change in the share of property tax burden due to exemptions for single-family, multi-family, and commercial and industrial properties, tax year 2021_
-
-```{r}
-#| code-fold: true
-#| eval: false
-
-
-
-datatable(current_burden_c2, rownames = FALSE,
-          colnames = c('Municipality' = 'clean_name', 'Burden Shift, Pct Pt Change' = 'burden_shift', "C2 EAV/Muni EAV" = 'pct_eav', 'Current Tax Burden\nC2 Tax Collected / Muni Levy' = 'pct_taxburden_current', "Hypothetical Tax Burden\nHyp. C2 Tax Collected / Muni Levy" = 'pct_taxburden_ghe0'),
-          caption = "Table 2: Current Share of Taxable EAV and Share of Levy Paid by Class 2 Properties"
-           ) %>%
-  formatPercentage(c(2,4,5), digits = 2) %>%
-  formatRound(c(3), digits = 2)
-
-
-```
-
-#### Figure 10 Follow up. Current Tax Burden Map
-
-```{r}
-#| code-fold: true
-#| eval: false
-
-
-MC_burden %>%
-     # mutate(burden_current = ifelse(burden_current>1, 1, burden_current)) %>%
-
-     filter(major_class_code == 2) %>%
-  mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
-  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
-
-  ggplot(aes(fill = pct_taxburden_current)) + 
-  geom_sf(aes(geometry = geometry), color = "black") + 
-  theme_void() + 
-  theme(axis.ticks = element_blank(), axis.text = element_blank())+
-  # scale_fill_gradientn(
-   scale_fill_stepsn(colors = c("#ffffcc","#a1dab4" ,"#41b6c4","#2c7fb8", "#253494"),
-                        show.limits=TRUE, 
-                     limits = c(0,1),
-                     na.value = "gray70",
-                     n.breaks = 6,
-                        name = "Burden with \nExemptions", 
-                     labels = scales::percent
-                     
-                    )+
-  labs(title = "Current share of property tax burden", 
-       subtitle = "for Class = 2 Property Types")
 ```
 
 
