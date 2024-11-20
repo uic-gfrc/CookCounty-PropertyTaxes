@@ -60,12 +60,17 @@ if (grepl("website", current_dir)) {
 ```{r}
 path <- paste0(dots, "Output/ptaxsim_muni_level_2006to2023.csv")
 
+
+
 muni_sums <- read_csv(path) %>% 
   left_join(nicknames)
 
 path <- paste0(dots, "Output/ptaxsim_muni_class_summaries_2006to2023.csv")
 muni_cl_sums <- read_csv(path) %>% 
   left_join(nicknames)
+
+class_dict <- read_csv("../Necessary_Files/class_dict_singlefamcodes.csv") %>% 
+  mutate(class_code = as.character(class_code)) # change variable type to character so the join works.
 ```
 
 ```{r}
@@ -120,6 +125,7 @@ munis_ranked <- cook_pins  %>%
     av > (quant50-500) & (av<quant50+500) ~ "q50",
     av > (quant75-500) & (av<quant75+500) ~ "q75")
     ) %>%
+  left_join(nicknames) %>%
   select(clean_name, rank, av, pin, class, everything()) %>%
   left_join(nicknames)
 ```
@@ -148,6 +154,178 @@ ccao_loa <- read_csv("../inputs/ccao_loa.csv") %>%
 ### Figure 3. Ratio of Tax Bills to AV for 25th and 75th Percentile AV Class 2 Properties with \$10,000 GHE
 
 ![](images/clipboard-1581842196.png)
+For the different exemption scenarios, we created new exemption variables for alternate exemption amounts that can be subtracted from a properties equalized AV.
+
+-   ex. For `exe_neg10` all exemption amounts are equal to zero.
+-   For `exe_0`, This variable should be the same as the current tax system since we did not add or remove any exempt EAV to the PIN. If the EAV for a PIN is less than 10000 EAV and they did claim the general homestead exemption, then their exempt EAV is equal to their EAV.
+-   If the exempt EAV allowable for the GHE was increased to 20,000 EAV, then the variable `exe_plus10` is used.
+
+```{r recode-exemptions}
+joined_pins <- read_csv("../Output/Dont_Upload/0_joined_PIN_data_2023.csv") %>% 
+  mutate(class = as.character(class))
+
+# eq_factor <- 3.0027 # 2021
+# eq_factor <- 2.9237 # 2022
+eq_factor <- 3.0163 # 2023
+
+
+joined_pins <- joined_pins %>% 
+  left_join(class_dict, by = c("class" = "class_code")) %>%
+  
+  ## Create variables for alternate exemption amounts that can be subtracted from a properties equalized AV
+  mutate(#eav = av_clerk*eq_factor,
+    exe_neg10 = 0,
+         
+      # exe_0 implies no additoinal or removed EAV. Current tax system. 
+         exe_0 = ifelse(eav < 10000 & exe_homeowner!=0, eav, 
+                             ifelse(eav>10000 & exe_homeowner!=0, 10000, 0 )),  # no change in current exemptions
+         exe_plus10 = ifelse(eav < 20000 & exe_homeowner!=0, eav, 
+                             ifelse(eav>20000 & exe_homeowner!=0, 20000, 0 )),
+         exe_plus20 = ifelse(eav < 30000 & exe_homeowner!=0, eav, 
+                             ifelse(eav>30000 & exe_homeowner!=0, 30000, 0 ) ),
+         exe_plus30 = ifelse(eav < 40000 & exe_homeowner!=0, eav, 
+                             ifelse(eav>40000 & exe_homeowner!=0, 40000, 0) ),
+         exe_plus40 = ifelse(eav < 50000 & exe_homeowner!=0, eav, 
+                             ifelse(eav>50000 & exe_homeowner!=0, 50000, 0) ),
+         mil_home = ifelse(major_class_code == 2 & av*10 > 1000000, 1, 0))
+
+
+# all pins in munis fully within cook county that are some form of single-family, detached home
+singfam_pins <- joined_pins %>% 
+ # filter(tax_code %in% muni_TC_fullyCook$tax_code_num) %>% # excludes county line crossing munis
+  filter(Option2 == "Single-Family")
+```
+
+
+
+```{r include = FALSE}
+singfam_pins %>% filter(av > 100000) %>% summarize(count = n())
+singfam_pins %>% filter(av > 300000) %>% summarize(count = n())
+singfam_pins %>% filter(av > 500000) %>% summarize(count = n())
+
+
+joined_pins %>% filter(major_class_code == 2 & av > 100000) %>% 
+  summarize(count = n())
+joined_pins %>% filter(major_class_code == 2 &av > 300000) %>% summarize(count = n())
+joined_pins %>% filter(major_class_code == 2 &av > 500000) %>% summarize(count = n())
+```
+
+```{r, out.width="50%", fig.show='hold'}
+joined_pins %>%
+  #  filter(av < 1000000) %>% # just to see the histogram better
+#  filter(av < 500000) %>% # just to see the histogram better
+  filter(av < 300000) %>% # just to see the histogram better
+  
+  ggplot( aes(x=av)) +
+  geom_histogram(bins = 50)  +
+  theme_classic()+
+  # coord_flip()+
+  labs(title = "Cook County Class 2 Residential PIN Distribution of AV", 
+       x = "Assessed Value ($)", y="# of Pins", 
+       caption = "Dropped 1362 PINs with AVs over $300,000 for better visual of histogram bins.") +
+  scale_x_continuous(label = scales::dollar)+
+  scale_y_continuous(label = scales::comma)
+
+
+singfam_pins %>%
+  #  filter(av < 1000000) %>% # just to see the histogram better
+#  filter(av < 500000) %>% # just to see the histogram better
+  filter(av < 300000) %>% # just to see the histogram better
+  
+  ggplot( aes(x=av)) +
+  geom_histogram(bins = 50)  +
+  theme_classic()+
+  # coord_flip()+
+  labs(title = "Cook County Single-Family PIN Distribution of AV", 
+       x = "Assessed Value ($)", y="# of Pins", 
+       caption = "Dropped 711 PINs with AVs over $300,000 for better visual of histogram bins.") +
+  scale_x_continuous(label = scales::dollar)+
+  scale_y_continuous(label = scales::comma)
+```
+
+```{r create-sing-fam-quartiles}
+
+q = c(.10, .25, .5, .75, .9, .99)
+
+
+muni_ranked <- joined_pins %>% ## cook county single family properties rannked by AV
+  filter(Option2 == "Single-Family") %>%
+ # filter(tax_code %in% muni_TC_fullyCook$tax_code_num) %>% # excludes county line crossing munis
+  arrange(av) %>%
+  summarize(
+    count_pins = n(), 
+            min = min(av),
+            quant10 = round(quantile(av, probs = q[1])), 
+            quant25 = round(quantile(av, probs = q[2])), 
+            quant50 = round(quantile(av, probs = q[3])),
+            quant75 = round(quantile(av, probs = q[4])),
+            quant90 = round(quantile(av, probs = q[5])),
+            quant99 = round(quantile(av, probs = q[6])),
+            max = max(av)
+           )
+
+munis_ranked <- munis_ranked %>%
+  filter(class_1dig == 2) %>%
+#  filter(tax_code %in% muni_TC_fullyCook$tax_code_num) %>%
+  inner_join(muni_quartiles, by = "clean_name") %>%
+  mutate(rank = case_when(
+    av > (quant10-500) & (av<quant10+500) ~ "q10",
+    av > (quant25-500) & (av<quant25+500) ~ "q25",
+    av > (quant50-500) & (av<quant50+500) ~ "q50",
+    av > (quant75-500) & (av<quant75+500) ~ "q75",
+    av > (quant90-500) & (av<quant90+500) ~ "q90",
+    av > (quant99-500) & (av<quant99+500) ~ "q99")) %>%
+  select(clean_name, rank, av, pin, class, everything())
+
+
+```
+
+```{r scenario-calculations}
+
+# Calculates tax rates for all exemption scenarios.
+scenario_calcs <- joined_pins %>%    
+  left_join(nicknames) %>%
+  group_by(clean_name) %>%
+
+    summarize(MuniLevy = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by munis with current exemptions in place
+            current_nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
+            current_TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),  
+            current_Exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE), 
+            current_GHE = sum(exe_homeowner, na.rm=TRUE),
+            Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE),
+            exe_neg10 = sum(exe_neg10),
+            exe_0 = sum(exe_0), # no change, for comparison
+            exe_plus10 = sum(exe_plus10),
+            exe_plus20 = sum(exe_plus20),
+            exe_plus30 = sum(exe_plus30),
+            exe_plus40 = sum(exe_plus40),
+            mil_home = sum(mil_home)) %>%
+
+  # remove all GHE (up to 10,000 EAV added back to base per PIN), 
+  # add exe_homeowner back to taxable base
+  mutate(neg10_taxable_eav = Total_EAV - current_TIF_increment_EAV - current_Exempt_EAV + current_GHE,    # adds GHE exempt EAV back to taxable base and decreases tax rates
+         plus10_taxable_eav = Total_EAV - current_TIF_increment_EAV - current_Exempt_EAV + current_GHE - exe_plus10, # will increase tax rates
+         plus20_taxable_eav = Total_EAV - current_TIF_increment_EAV - current_Exempt_EAV + current_GHE - exe_plus20,
+         plus30_taxable_eav = Total_EAV - current_TIF_increment_EAV - current_Exempt_EAV + current_GHE - exe_plus30,
+         plus40_taxable_eav = Total_EAV - current_TIF_increment_EAV - current_Exempt_EAV + current_GHE - exe_plus40,
+         scenario_noexemptions_taxable_eav = Total_EAV - current_TIF_increment_EAV) %>%
+  
+  mutate(tr_neg10 = MuniLevy / neg10_taxable_eav,
+         tr_nochange = MuniLevy / current_nonTIF_EAV_post_exemps,
+         tr_plus10 = MuniLevy / plus10_taxable_eav,
+         tr_plus20 = MuniLevy / plus20_taxable_eav,
+         tr_plus30 = MuniLevy / plus30_taxable_eav,
+         tr_plus40 = MuniLevy / plus40_taxable_eav, 
+         tax_rate_current = MuniLevy/current_nonTIF_EAV_post_exemps,
+         taxrate_noexemps = MuniLevy /(Total_EAV - current_TIF_increment_EAV  ),
+         taxrate_noTIFs = MuniLevy / (Total_EAV - current_Exempt_EAV),
+         taxrate_noTIFs_orExemps = MuniLevy / Total_EAV) %>%
+  select(clean_name, MuniLevy, tr_neg10:taxrate_noTIFs_orExemps, everything())
+
+scenario_taxrates <- scenario_calcs %>%  select(clean_name, MuniLevy, tr_neg10:taxrate_noTIFs_orExemps) 
+
+scenario_taxrates
+```
 
 
 ### Figure 4. Effect ofChanging the GHE on Progressivity
