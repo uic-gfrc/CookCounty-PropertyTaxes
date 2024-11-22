@@ -235,6 +235,7 @@ muni_cl_sums %>%
 
 ## Effect on Composite Tax Rates
 
+<!--- Do not use the eq_av variable from the joined pins csv. Delete or correct ASAP. --->
 
 ```{r}
 #| label: recode-ptaxpins
@@ -259,7 +260,7 @@ industrial_classes <- c(480:489,493,
                         850:890, 893
                         )
 
-ptax_pins <- read_csv("../Output/Dont_Upload/0_Joined_PIN_data_2023.csv")
+ptax_pins <- read_csv("../Output/Dont_Upload/0_Joined_PIN_data_2023.csv") %>% select(-c(eq_av, propclass_1dig))
 
 
 ptax_pins <- ptax_pins %>% 
@@ -326,6 +327,7 @@ ptax_pins <- ptax_pins %>%
 
 
 ```{r}
+#| label: create-muni_ratechange-csv
 #| eval: false
 
 muni_ratechange <- ptax_pins %>%
@@ -1039,5 +1041,57 @@ muni_mc_sums %>%
   summarize(zerodollar_count = sum(zero_bill)) %>% ggplot(aes(x=year, y = zerodollar_count)) + 
   geom_bar(position = "stack", stat = "identity") + theme_minimal()
   
+
+```
+
+
+```{r}
+smallbills <- ptax_pins |> 
+  filter(class_1dig == 2 & eav < 150 ) |>
+  select(clean_name, class, eav, equalized_av, av, fmv, total_billed, final_tax_to_dist, pin, everything()) |>
+  arrange(total_billed) %>% arrange(desc(total_billed)) %>%
+  filter(total_billed > 0)
+
+smallbills
+
+
+smallbills |>
+  group_by(clean_name) %>%
+  summarize(n = n(), 
+            exe_freeze = sum(exe_freeze, na.rm=T),
+            exe_senior = sum(exe_senior, na.rm=T),
+            exe_homeowner = sum(exe_homeowner, na.rm=T))
+
+smallbills |> select(clean_name, class, eav, equalized_av, av, fmv, total_billed, final_tax_to_dist, pin)
+```
+
+
+```{r}
+zerobills <- ptax_pins |> 
+  filter(class_1dig == 2 & eav > 0 & total_billed == 0) |>
+  select(clean_name, class, eav, equalized_av, av, fmv, total_billed, final_tax_to_dist, pin, exe_homeowner, exe_senior, exe_freeze, everything())  %>%
+  arrange(desc(exe_freeze))
+
+zerobills
+
+
+options(scipen = 999)
+
+zerobills %>% 
+  reframe(n = n(), exe_homeowner = sum(exe_homeowner), exe_senior = sum(exe_senior), 
+          exe_freeze = sum(exe_freeze), taxed_eav = sum(eav, na.rm=TRUE), 
+          total_eav = sum(taxed_eav + exempt_eav, na.rm=TRUE), .by = clean_name) |> 
+  arrange(desc(exe_freeze))
+```
+
+
+```{r}
+ptax_pins |> 
+  filter(class_1dig == 2 & eav > 0 & total_billed == 0) |>
+  select(clean_name, class, eav, equalized_av, av, fmv, total_billed, final_tax_to_dist, pin, exe_homeowner, exe_senior, exe_freeze)  %>%
+  arrange(desc(exe_freeze)) %>%
+  summarize(max = max(eav),
+            min = min(eav),
+            median = median(eav)) 
 ```
 
