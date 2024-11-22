@@ -1036,9 +1036,10 @@ mc_burden %>%
 
 ```{r}
 muni_mc_sums %>%
-  filter(major_class_code== 2) %>% 
+  filter(major_class_code == 2) %>% 
   group_by(year) %>%
-  summarize(zerodollar_count = sum(zero_bill)) %>% ggplot(aes(x=year, y = zerodollar_count)) + 
+  summarize(zerodollar_count = sum(zero_bill)) %>% 
+  ggplot(aes(x=year, y = zerodollar_count)) + 
   geom_bar(position = "stack", stat = "identity") + theme_minimal()
   
 
@@ -1048,11 +1049,18 @@ muni_mc_sums %>%
 ```{r}
 smallbills <- ptax_pins |> 
   filter(class_1dig == 2 & eav < 150 ) |>
-  select(clean_name, class, eav, equalized_av, av, fmv, total_billed, final_tax_to_dist, pin, everything()) |>
+  select(clean_name, class, eav, equalized_av, av, fmv, total_billed, 
+         final_tax_to_dist, pin, everything()) |>
   arrange(total_billed) %>% arrange(desc(total_billed)) %>%
   filter(total_billed > 0)
 
 smallbills
+
+smallbills |>
+  summarize(n = n(), 
+            exe_freeze = sum(exe_freeze, na.rm=T),
+            exe_senior = sum(exe_senior, na.rm=T),
+            exe_homeowner = sum(exe_homeowner, na.rm=T))
 
 
 smallbills |>
@@ -1062,7 +1070,9 @@ smallbills |>
             exe_senior = sum(exe_senior, na.rm=T),
             exe_homeowner = sum(exe_homeowner, na.rm=T))
 
-smallbills |> select(clean_name, class, eav, equalized_av, av, fmv, total_billed, final_tax_to_dist, pin)
+smallbills |> 
+  select(clean_name, class, eav, equalized_av, av, fmv, 
+         total_billed, final_tax_to_dist, pin)
 ```
 
 
@@ -1078,9 +1088,23 @@ zerobills
 options(scipen = 999)
 
 zerobills %>% 
-  reframe(n = n(), exe_homeowner = sum(exe_homeowner), exe_senior = sum(exe_senior), 
-          exe_freeze = sum(exe_freeze), taxed_eav = sum(eav, na.rm=TRUE), 
-          total_eav = sum(taxed_eav + exempt_eav, na.rm=TRUE), .by = clean_name) |> 
+  reframe(n = n(), total_eav = sum(taxed_eav + exempt_eav, na.rm=TRUE),
+          exe_homeowner = sum(exe_homeowner), exe_senior = sum(exe_senior), 
+          exe_freeze = sum(exe_freeze), taxed_eav = sum(taxed_eav, na.rm=TRUE), 
+          .by = clean_name) |> 
+  arrange(desc(exe_freeze))
+
+zerobills %>% 
+  summarize(n = n(), total_eav = sum(taxed_eav + exempt_eav, na.rm=TRUE),
+          exe_homeowner = sum(exe_homeowner), exe_senior = sum(exe_senior), 
+          exe_freeze = sum(exe_freeze), taxed_eav = sum(taxed_eav, na.rm=TRUE)) |> 
+  arrange(desc(exe_freeze))
+
+zerobills %>% 
+  group_by(Triad) %>%
+  summarize(n = n(), total_eav = sum(taxed_eav + exempt_eav, na.rm=TRUE),
+          exe_homeowner = sum(exe_homeowner), exe_senior = sum(exe_senior), 
+          exe_freeze = sum(exe_freeze), taxed_eav = sum(taxed_eav, na.rm=TRUE)) |> 
   arrange(desc(exe_freeze))
 ```
 
@@ -1092,6 +1116,7 @@ ptax_pins |>
   arrange(desc(exe_freeze)) %>%
   summarize(max = max(eav),
             min = min(eav),
-            median = median(eav)) 
+            median = median(eav),
+            n = n()) 
 ```
 
