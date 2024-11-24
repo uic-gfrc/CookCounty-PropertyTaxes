@@ -20,8 +20,8 @@ cde <- read_csv("./Necessary_Files/class_dict_expanded.csv") |>
 # Connect to the database
 con <- dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2023.0.0.db")
 
-# Pull residential PINs between 2010 and 2023 with bills of 0 or eav less than 150
-# Used the upper bound of 3.3 to capture all the low-eav bills.
+# Pull residential PINs between 2010 and 2023 with bills of 0 or eq_av less than 150
+# For eq factor, ußsed the upper bound of 3.3 to capture all the low-eav bills.
 pin_data <- dbGetQuery(con, "
 SELECT
   *
@@ -42,3 +42,16 @@ pin_data <- pin_data |>
 
 pin_data <- pin_data |>
   mutate(unmailed = ifelse(eq_av < 150 & eq_av > 0, 1, 0))
+
+pin_data <- pin_data |>
+  mutate(exe_total = rowSums(across(starts_with("exe_"))))
+
+pin_data |>
+  filter(unmailed == 1) |>
+  group_by(year) |>
+  summarize(n = n())
+
+pin_data |>
+  filter(eav > 150 & zero_bill == 1) |>
+  group_by(year) |>
+  summarize(n = n())
