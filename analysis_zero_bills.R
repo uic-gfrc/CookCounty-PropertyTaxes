@@ -48,5 +48,7 @@ pin_data <- pin_data |>
 
 # These bills should have an EAV < $150 and > 0 after accounting for exemptions
 
-pin_data_unmailed <- pin_data |>
-  filter()
+pin_data |>
+  filter(eav > 0 & zero_bill == 1) |>
+  group_by(year) |>
+  summarize(n = n(), sum(eq_av), sum(exe_total), sum(eav))
