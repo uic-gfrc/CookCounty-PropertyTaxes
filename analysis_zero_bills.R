@@ -41,7 +41,7 @@ pin_data <- pin_data |>
   mutate(exe_total = rowSums(across(starts_with("exe_")))) |>
   mutate(eav = eq_av - exe_total) |>
   mutate(no_eav = ifelse(eav <= 0, 1, 0)) |>
-  mutate(exemps_no_eav = ifelse(eq_av < exe_total)) |>
+  mutate(exemps_no_eav = ifelse(eq_av < exe_total, 1, 0)) |>
   select(-av_mailed, -av_certified, -av_board)
 
 # Section 18-40 Zero Dollar Bills ----------------------------------
