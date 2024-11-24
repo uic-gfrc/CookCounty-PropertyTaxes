@@ -21,7 +21,7 @@ cde <- read_csv("./Necessary_Files/class_dict_expanded.csv") |>
 con <- dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2023.0.0.db")
 
 # Pull residential PINs between 2010 and 2023 with bills of 0 or eq_av less than 150
-# For eq factor, ußsed the upper bound of 3.3 to capture all the low-eav bills.
+# For eq factor, used the upper bound of 3.3 to capture all the low-eav bills.
 pin_data <- dbGetQuery(con, "
 SELECT
   *
@@ -38,20 +38,15 @@ pin_data <- pin_data |>
   left_join(eq_factor, by = "year") |>
   mutate(zero_bill = ifelse(tax_bill_total == 0, 1, 0)) |>
   mutate(eq_av = av_clerk*eq_factor_final) |>
+  mutate(exe_total = rowSums(across(starts_with("exe_")))) |>
+  mutate(eav = eq_av - exe_total) |>
+  mutate(no_eav = ifelse(eav <= 0, 1, 0)) |>
+  mutate(exemps_no_eav = ifelse(eq_av < exe_total)) |>
   select(-av_mailed, -av_certified, -av_board)
 
-pin_data <- pin_data |>
-  mutate(unmailed = ifelse(eq_av < 150 & eq_av > 0, 1, 0))
+# Section 18-40 Zero Dollar Bills ----------------------------------
 
-pin_data <- pin_data |>
-  mutate(exe_total = rowSums(across(starts_with("exe_"))))
+# These bills should have an EAV < $150 and > 0 after accounting for exemptions
 
-pin_data |>
-  filter(unmailed == 1) |>
-  group_by(year) |>
-  summarize(n = n())
-
-pin_data |>
-  filter(eav > 150 & zero_bill == 1) |>
-  group_by(year) |>
-  summarize(n = n())
+pin_data_unmailed <- pin_data |>
+  filter()
