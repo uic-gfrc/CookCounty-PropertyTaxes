@@ -1,0 +1,338 @@
+---
+title: "Where the revenue goes"
+format: html
+---
+
+```{r setup}
+#| output: false
+
+library(DBI)
+library(tidyverse)
+library(data.table)
+#library(ggspatial)
+#library(here)
+#library(httr)
+library(jsonlite)
+library(ptaxsim)
+library(glue)
+
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2022.0.0.db")
+
+```
+
+
+```{r loopsteps, eval=FALSE}
+muni_agency_nums<- agency_names %>% 
+  filter(minor_type %in% c("MUNI", "TOWNSHIP")) %>%
+  select(agency_num)
+muni_names <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT agency_num, agency_name, minor_type
+  FROM agency_info
+  WHERE minor_type IS 'MUNI' OR minor_type IS 'TOWNSHIP'"
+)
+
+```
+
+```{r fig-ciceroplot}
+
+
+agency_names <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT agency_num, agency_name, minor_type
+  FROM agency_info
+  WHERE agency_name LIKE '%CICERO%'"
+)
+## This DOES include TIF and nonTIF taxing agencies in one list!
+agency_names
+
+muni_agency_nums<- agency_names %>% 
+  filter(minor_type %in% c("MUNI", "TOWNSHIP")) %>%
+  select(agency_num)
+
+muni_tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn, 
+  glue_sql("
+  SELECT tax_code_num, year
+  FROM tax_code
+  WHERE agency_num IN ({muni_agency_nums$agency_num*})
+  ",
+  .con = ptaxsim_db_conn
+  )
+)
+
+
+muni_pins <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql(
+  "SELECT DISTINCT pin
+  FROM pin
+  WHERE tax_code_num IN ({muni_tax_codes$tax_code_num*})
+  ",
+  .con = ptaxsim_db_conn
+))
+
+#bills <- lookup_pin(2006:2022, pin = muni_pins$pin)
+
+bills <- tax_bill(2006:2022, muni_pins$pin)
+
+bills_summ <- bills %>%
+  mutate(
+    agency_minor_type = recode(
+      agency_minor_type,
+      "GEN ASST" = "MUNI",
+      "PARK" = "MUNI",
+      "INFRA" = "MUNI",
+      "LIBRARY" = "MUNI",
+      "MOSQUITO" = "MISC",
+      "WATER" = "MISC"
+    ),
+    agency_minor_type = factor(
+      agency_minor_type,
+      levels = c(
+        "TIF", "COOK", "MUNI", "TOWNSHIP", "MISC",
+        "COMM COLL", "ELEMENTARY", "SECONDARY"
+      )
+    )
+  ) %>%
+  group_by(year, agency_minor_type) %>%
+  summarize(total_rev = sum(final_tax, na.rm=TRUE))
+
+
+dist_plot <- ggplot(data=bills_summ) +
+  geom_area(
+    aes(x = year, y = total_rev, fill = agency_minor_type),
+    alpha = 0.8
+  ) +
+  scale_y_continuous(
+    labels = scales::label_dollar(scale = 1e-6, suffix = "M"),
+    expand = c(0, 0)
+  ) +
+  scale_x_continuous(n.breaks = 9, expand = c(0, 0.4)) +
+  scale_fill_manual(
+    name = "",
+    values = c("#7d26cd", RColorBrewer::brewer.pal(7, "Set2"))
+  ) +
+  labs(x = "Year", y = "Total Tax Revenue from PINs in Muni") +
+  theme_minimal() +
+  theme(
+    axis.title = element_text(size = 13),
+    axis.title.x = element_text(margin = margin(t = 6)),
+    axis.title.y = element_text(margin = margin(r = 6)),
+    axis.text = element_text(size = 11),
+    axis.ticks.x = element_line(color = "grey70"),
+    strip.text = element_text(size = 16),
+    strip.background = element_rect(fill = "#c9c9c9"),
+    legend.title = element_text(size = 14),
+    legend.key.size = unit(24, "points"),
+    legend.text = element_text(size = 12)
+  )
+
+dist_plot
+```
+
+```{r fig-cicero-plot-tifpins}
+
+
+agency_names <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT agency_num, agency_name, minor_type
+  FROM agency_info
+  WHERE agency_name LIKE '%CICERO%'"
+)
+
+muni_agency_nums<- agency_names %>% 
+  filter(minor_type %in% c("MUNI", "TOWNSHIP")) %>%
+  select(agency_num)
+
+muni_tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn, 
+  glue_sql("
+  SELECT* 
+  FROM tax_code
+  WHERE agency_num IN ({muni_agency_nums$agency_num*})
+  ",
+  .con = ptaxsim_db_conn
+  )
+)
+
+
+
+tif_distrib <- DBI::dbGetQuery(
+  ptaxsim_db_conn, 
+  glue_sql("
+  SELECT DISTINCT *
+  FROM tif_distribution
+  WHERE tax_code_num IN ({muni_tax_codes$tax_code_num*})
+  ",
+  .con = ptaxsim_db_conn
+  )
+) %>% filter(tax_code_distribution_pct > 0)
+
+# has same number of pins as method used above but way faster. 
+tif_pins <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue::glue_sql("
+    SELECT DISTINCT pin
+    FROM pin
+    WHERE tax_code_num IN ({tif_distrib$tax_code_num*})  ",
+    .con = ptaxsim_db_conn
+  )
+)
+
+bills <- tax_bill(2006:2022, tif_pins$pin)
+
+bills_summ <- bills %>%
+  mutate(
+    agency_minor_type = recode(
+      agency_minor_type,
+      "GEN ASST" = "MUNI",
+      "PARK" = "MUNI",
+      "INFRA" = "MUNI",
+      "LIBRARY" = "MUNI",
+      "MOSQUITO" = "MISC",
+      "WATER" = "MISC"
+    ),
+    agency_minor_type = factor(
+      agency_minor_type,
+      levels = c(
+        "TIF", "COOK", "MUNI", "TOWNSHIP", "MISC",
+        "COMM COLL", "ELEMENTARY", "SECONDARY"
+      )
+    )
+  ) %>%
+  group_by(year, agency_minor_type) %>%
+  summarize(total_rev = sum(final_tax))
+
+
+dist_plot <- ggplot(data=bills_summ) +
+  geom_area(
+    aes(x = year, y = total_rev, fill = agency_minor_type),
+    alpha = 0.8
+  ) +
+  scale_y_continuous(
+    labels = scales::label_dollar(scale = 1e-6, suffix = "M"),
+    expand = c(0, 0)
+  ) +
+  scale_x_continuous(n.breaks = 9, expand = c(0, 0.4)) +
+  scale_fill_manual(
+    name = "",
+    values = c("#7d26cd", RColorBrewer::brewer.pal(7, "Set2"))
+  ) +
+  labs(x = "Year", y = "Total Tax Revenue from PINs in Muni TIF Areas") +
+  theme_minimal() +
+  theme(
+    axis.title = element_text(size = 13),
+    axis.title.x = element_text(margin = margin(t = 6)),
+    axis.title.y = element_text(margin = margin(r = 6)),
+    axis.text = element_text(size = 11),
+    axis.ticks.x = element_line(color = "grey70"),
+    strip.text = element_text(size = 16),
+    strip.background = element_rect(fill = "#c9c9c9"),
+    legend.title = element_text(size = 14),
+    legend.key.size = unit(24, "points"),
+    legend.text = element_text(size = 12)
+  )
+
+dist_plot
+```
+
+
+```{r fig-dolton-plot}
+
+
+agency_names <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT agency_num, agency_name, minor_type
+  FROM agency_info
+  WHERE agency_name LIKE '%DOLTON%'"
+)
+## This DOES include TIF and nonTIF taxing agencies in one list!
+agency_names
+
+muni_agency_nums<- agency_names %>% 
+  filter(minor_type %in% c("MUNI", "TOWNSHIP")) %>%
+  select(agency_num)
+
+muni_tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn, 
+  glue_sql("
+  SELECT tax_code_num, year
+  FROM tax_code
+  WHERE agency_num IN ({muni_agency_nums$agency_num*})
+  ",
+  .con = ptaxsim_db_conn
+  )
+)
+
+
+muni_pins <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql(
+  "SELECT DISTINCT pin
+  FROM pin
+  WHERE tax_code_num IN ({muni_tax_codes$tax_code_num*})
+  ",
+  .con = ptaxsim_db_conn
+))
+
+#bills <- lookup_pin(2006:2022, pin = muni_pins$pin)
+
+bills <- tax_bill(2006:2022, muni_pins$pin)
+
+bills_summ <- bills %>%
+  mutate(
+    agency_minor_type = recode(
+      agency_minor_type,
+      "GEN ASST" = "MUNI",
+      "PARK" = "MUNI",
+      "INFRA" = "MUNI",
+      "LIBRARY" = "MUNI",
+      "MOSQUITO" = "MISC",
+      "WATER" = "MISC"
+    ),
+    agency_minor_type = factor(
+      agency_minor_type,
+      levels = c(
+        "TIF", "COOK", "MUNI", "TOWNSHIP", "MISC",
+        "COMM COLL", "ELEMENTARY", "SECONDARY"
+      )
+    )
+  ) %>%
+  group_by(year, agency_minor_type) %>%
+  summarize(total_rev = sum(final_tax, na.rm=TRUE))
+
+
+dist_plot <- ggplot(data=bills_summ) +
+  geom_area(
+    aes(x = year, y = total_rev, fill = agency_minor_type),
+    alpha = 0.8
+  ) +
+  scale_y_continuous(
+    labels = scales::label_dollar(scale = 1e-6, suffix = "M"),
+    expand = c(0, 0)
+  ) +
+  scale_x_continuous(n.breaks = 9, expand = c(0, 0.4)) +
+  scale_fill_manual(
+    name = "",
+    values = c("#7d26cd", RColorBrewer::brewer.pal(7, "Set2"))
+  ) +
+  labs(x = "Year", y = "Total Tax Revenue from PINs in Muni") +
+  theme_minimal() +
+  theme(
+    axis.title = element_text(size = 13),
+    axis.title.x = element_text(margin = margin(t = 6)),
+    axis.title.y = element_text(margin = margin(r = 6)),
+    axis.text = element_text(size = 11),
+    axis.ticks.x = element_line(color = "grey70"),
+    strip.text = element_text(size = 16),
+    strip.background = element_rect(fill = "#c9c9c9"),
+    legend.title = element_text(size = 14),
+    legend.key.size = unit(24, "points"),
+    legend.text = element_text(size = 12)
+  )
+
+dist_plot
+```
+
+
