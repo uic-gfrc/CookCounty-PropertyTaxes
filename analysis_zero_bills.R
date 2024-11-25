@@ -34,8 +34,15 @@ WHERE
     OR tax_bill_total = 0
   )")
 
+taxcode_rates  <- dbGetQuery(con, "
+SELECT DISTINCT year, tax_code_num, tax_code_rate
+FROM tax_code
+                             ")
+
+
 pin_data <- pin_data |>
   left_join(eq_factor, by = "year") |>
+  left_join(taxcode_rates, by = c("year", "tax_code_num")) %>%
   mutate(zero_bill = ifelse(tax_bill_total == 0, 1, 0)) |>
   mutate(eq_av = av_clerk*eq_factor_final) |>
   mutate(exe_total = rowSums(across(starts_with("exe_")), na.rm=T)) |>
@@ -65,6 +72,7 @@ pin_data |>
   summarize(n = n(), eq_av = sum(av_clerk*eq_factor_final, na.rm=TRUE), 
             total_exempt = sum(exe_total), taxed_eav = sum(av_clerk*eq_factor_final - exe_total, na.rm=T),
             billed = sum(tax_bill_total),
+            max_av = max((av_clerk*eq_factor_final- exe_total)/eq_factor_final),
             max_eav = max(av_clerk*eq_factor_final),
             max_taxable_eav = max(av_clerk*eq_factor_final- exe_total))
 
@@ -81,5 +89,15 @@ pin_data |> filter(exe_total < av_clerk*eq_factor_final ) %>%
 # Over 9600 PINs had enough in exemptions to cover all of their EAV
 
 pin_data |> filter(exe_total >= av_clerk*eq_factor_final ) %>%
+  mutate(skin_in_game = 0.1*av_clerk*eq_factor_final*tax_code_rate) |>
+  reframe(n=n(),
+          rev_change = sum(skin_in_game),
+          .by = year)
+
+
+
+pin_data |> filter(av_clerk == 0 ) %>%
   reframe(n=n(), .by = year)
 
+pin_data |> filter(av_clerk  < 150 ) %>%
+  reframe(n=n(), .by = year)
