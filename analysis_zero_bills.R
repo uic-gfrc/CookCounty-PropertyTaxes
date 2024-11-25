@@ -45,31 +45,98 @@ pin_data <- pin_data |>
   left_join(taxcode_rates, by = c("year", "tax_code_num")) %>%
   mutate(zero_bill = ifelse(tax_bill_total == 0, 1, 0)) |>
   mutate(eq_av = av_clerk*eq_factor_final) |>
-  mutate(exe_total = rowSums(across(starts_with("exe_")), na.rm=T)) |>
-  mutate(taxed_eav = eq_av - exe_total) |>
-  mutate(no_eav = ifelse(taxed_eav <= 0, 1, 0)) |>
+  mutate(exe_total = rowSums(across(starts_with("exe_")))) |>
+  mutate(taxable_eav = eq_av - exe_total) |>
+  mutate(no_eav = ifelse(taxable_eav <= 0, 1, 0)) |>
   mutate(exemps_no_eav = ifelse(eq_av < exe_total, 1, 0)) |>
   select(-av_mailed, -av_certified, -av_board)
 
-# All PINs that didn't pay tax bills -------------------------------
+# ALL zero-dollar PINs in 2023 -------------------------------
+
+## Total: 27053 <<<- this value
+
+pin_data |>
+  filter(year == 2023) |>
+  filter(tax_bill_total == 0) |>
+  summarize(n = n()) # 27053
+
+## AV of 0: 74 <<<- this value
+
+pin_data |>
+  filter(year == 2023) |>
+  filter(av_clerk == 0) |>
+  summarize(n = n())
+
+## AV > 0, Taxable EAV <= 0: 9622 <<-- this value
+
+pin_data |>
+  filter(year == 2023) |>
+  filter(av_clerk > 0 & taxable_eav <= 0) |>
+  summarize(n = n())
+
+## Taxable EAV > 0 and Zero-Bill: 17357 <<-- this value
+
+pin_data |>
+  filter(year == 2023) |>
+  filter(taxable_eav > 0 & tax_bill_total == 0) |>
+  summarize(n = n())
+
+pin_data |>
+  filter(year == 2023) |>
+  filter(taxable_eav > 0 & tax_bill_total == 0) |>
+  summarize(sum_foregone_rev = sum(taxable_eav*tax_code_rate/100, na.rm = T))
+
+## Taxable EAV between 0 and 150: 10,003
+
+pin_data |>
+  filter(year == 2023) |>
+  filter(taxable_eav > 0 & taxable_eav < 150 & tax_bill_total <= 0) |>
+  summarize(n = n())
+
+pin_data |>
+  filter(year == 2023) |>
+  filter(taxable_eav > 0 & taxable_eav < 150 & tax_bill_total <= 0) |>
+  mutate(foregone_rev = taxable_eav*tax_code_rate/100, na.rm = T) |>
+  summarize(sum(foregone_rev, na.rm = T)) # $50mil
+
+## Taxable EAV > $150: 7354
+
+pin_data |>
+  filter(year == 2023) |>
+  filter(taxable_eav > 150 & tax_bill_total <= 0) |>
+  summarize(n = n())
+
+pin_data |>
+  filter(year == 2023) |>
+  filter(taxable_eav > 150 & tax_bill_total <= 0) |>
+  mutate(foregone_rev = taxable_eav*tax_code_rate/100, na.rm = T) |>
+  summarize(sum(foregone_rev, na.rm = T)) # $50mil
 
 # Over 27,000 residential PINs did not have to pay a tax bill in 2023.
 pin_data |>
-  filter(
-           tax_bill_total < 1) |>
+  filter(tax_bill_total <= 0) |>
   group_by(year) |>
-  summarize(n = n(), eq_av = sum(av_clerk*eq_factor_final, na.rm=TRUE), 
-            total_exempt = sum(exe_total), taxed_eav = sum(av_clerk*eq_factor_final - exe_total, na.rm=T))
+  summarize(n = n(),
+            sum_eq_av = sum(av_clerk*eq_factor_final, na.rm=TRUE),
+            total_exempt = sum(exe_total), taxable_eav = sum(av_clerk*eq_factor_final - exe_total, na.rm=T))
 
 
 # Section 18-40 Zero Dollar Bills ----------------------------------
 
 # These bills should have an EAV < $150 and > 0 after accounting for exemptions
 # but they tend to have EAVs much greater than 150, even after exemptions are subtracted
+
+
+
+## All with Taxable EAV between 0 and 150 --------------------
+
+
+# Using maximum calculations
 pin_data |>
-  filter(taxed_eav > 0 & tax_bill_total == 0) |>
+  filter(taxable_eav > 0 & taxable_eav <= 150 & tax_bill_total == 0) |>
   group_by(year) |>
-  summarize(n = n(), eq_av = sum(av_clerk*eq_factor_final, na.rm=TRUE), 
+  summarize(n = n(),
+            eq_av = sum(av_clerk*eq_factor_final, na.rm=TRUE),
             total_exempt = sum(exe_total), taxed_eav = sum(av_clerk*eq_factor_final - exe_total, na.rm=T),
             billed = sum(tax_bill_total),
             max_av = max((av_clerk*eq_factor_final- exe_total)/eq_factor_final),
@@ -77,11 +144,36 @@ pin_data |>
             max_taxable_eav = max(av_clerk*eq_factor_final- exe_total))
 
 
+# Raw Values
+pin_data |>
+  filter(taxable_eav > 0 & taxable_eav <= 150 & tax_bill_total == 0) |>
+  group_by(year) |>
+  summarize(n = n(),
+            sum_av = sum(av_clerk, na.rm = T),
+            sum_eq_av = sum(eq_av, na.rm=TRUE),
+            sum_eav_exempt = sum(exe_total, na.rm = T),
+            sum_taxable_eav = sum(taxable_eav, na.rm=T),
+            sum_billed = sum(tax_bill_total),
+            sum_foregone = sum(taxable_eav*tax_code_rate/100, na.rm = T))
+
+
 # double checking
 pin_data |> filter(exe_total < av_clerk*eq_factor_final ) %>%
   reframe(n=n(),
-          sum(eq_av), sum(exe_total), sum(taxed_eav), billed = sum(tax_bill_total),
+          sum(eq_av), sum(exe_total), sum(taxable_eav), billed = sum(tax_bill_total),
           .by = year)
+
+## Zero Bill with EAV > $150 --------------------------------
+
+pin_data |>
+  filter(taxable_eav > 150 & tax_bill_total == 0) |>
+  group_by(year) |>
+  summarize(n = n(),
+            sum_av = sum(av_clerk, na.rm = T),
+            sum_eq_av = sum(eq_av, na.rm = T),
+            sum_exe_total = sum(exe_total, na.rm = T),
+            sum_taxable_eav = sum(taxable_eav, na.rm = T),
+            sum_foregone = sum(taxable_eav*tax_code_rate/100, na.rm = T))
 
 # More Exemptions than EAV -----------------------------------------
 
@@ -101,3 +193,10 @@ pin_data |> filter(av_clerk == 0 ) %>%
 
 pin_data |> filter(av_clerk  < 150 ) %>%
   reframe(n=n(), .by = year)
+
+## All Exempt EAV > eq_av Zero-Bills: 9696
+
+pin_data |>
+  filter(year == 2023) |>
+  filter(exe_total >= eq_av) |>
+  summarize(n = n())
