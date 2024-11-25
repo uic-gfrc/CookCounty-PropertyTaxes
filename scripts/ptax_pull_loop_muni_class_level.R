@@ -249,8 +249,10 @@ joined_pin_data <- joined_pin_data %>%
            (class_group == 8 & class %in% industrial_classes ) ~ "8B",
            TRUE ~ as.character(class_group))) %>%
     mutate(
-      # taxing district revenue = taxable eav * tax rate so rearrange the formula:
+      # taxing district revenue = taxed eav * tax rate so rearrange the formula:
       taxed_eav = final_tax_to_dist / tax_code_rate*100,
+      
+      # total value eav based on current levels of assessment
       total_value_eav = (final_tax_to_dist + final_tax_to_tif)/ tax_code_rate * 100 + all_exemptions + abatements,
 
       taxed_av =  taxed_eav / eq_factor,     # current value that taxing agencies can tax for their levies
