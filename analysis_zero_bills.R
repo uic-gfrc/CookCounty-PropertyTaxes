@@ -38,17 +38,48 @@ pin_data <- pin_data |>
   left_join(eq_factor, by = "year") |>
   mutate(zero_bill = ifelse(tax_bill_total == 0, 1, 0)) |>
   mutate(eq_av = av_clerk*eq_factor_final) |>
-  mutate(exe_total = rowSums(across(starts_with("exe_")))) |>
-  mutate(eav = eq_av - exe_total) |>
-  mutate(no_eav = ifelse(eav <= 0, 1, 0)) |>
+  mutate(exe_total = rowSums(across(starts_with("exe_")), na.rm=T)) |>
+  mutate(taxed_eav = eq_av - exe_total) |>
+  mutate(no_eav = ifelse(taxed_eav <= 0, 1, 0)) |>
   mutate(exemps_no_eav = ifelse(eq_av < exe_total, 1, 0)) |>
   select(-av_mailed, -av_certified, -av_board)
+
+# All PINs that didn't pay tax bills -------------------------------
+
+# Over 27,000 residential PINs did not have to pay a tax bill in 2023.
+pin_data |>
+  filter(
+           tax_bill_total < 1) |>
+  group_by(year) |>
+  summarize(n = n(), eq_av = sum(av_clerk*eq_factor_final, na.rm=TRUE), 
+            total_exempt = sum(exe_total), taxed_eav = sum(av_clerk*eq_factor_final - exe_total, na.rm=T))
+
 
 # Section 18-40 Zero Dollar Bills ----------------------------------
 
 # These bills should have an EAV < $150 and > 0 after accounting for exemptions
-
+# but they tend to have EAVs much greater than 150, even after exemptions are subtracted
 pin_data |>
-  filter(eav > 0 & zero_bill == 1) |>
+  filter(taxed_eav > 0 & tax_bill_total == 0) |>
   group_by(year) |>
-  summarize(n = n(), sum(eq_av), sum(exe_total), sum(eav))
+  summarize(n = n(), eq_av = sum(av_clerk*eq_factor_final, na.rm=TRUE), 
+            total_exempt = sum(exe_total), taxed_eav = sum(av_clerk*eq_factor_final - exe_total, na.rm=T),
+            billed = sum(tax_bill_total),
+            max_eav = max(av_clerk*eq_factor_final),
+            max_taxable_eav = max(av_clerk*eq_factor_final- exe_total))
+
+
+# double checking
+pin_data |> filter(exe_total < av_clerk*eq_factor_final ) %>%
+  reframe(n=n(),
+          sum(eq_av), sum(exe_total), sum(taxed_eav), billed = sum(tax_bill_total),
+          .by = year)
+
+# More Exemptions than EAV -----------------------------------------
+
+# These properties do not have tax bills due to having exemptions that remove all taxable value.
+# Over 9600 PINs had enough in exemptions to cover all of their EAV
+
+pin_data |> filter(exe_total >= av_clerk*eq_factor_final ) %>%
+  reframe(n=n(), .by = year)
+
