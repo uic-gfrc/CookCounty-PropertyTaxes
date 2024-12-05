@@ -5,9 +5,9 @@ library(data.table)
 library(glue)
 
 
-ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2022.0.0.db")
-years <- c(2022, 2021, 2020, 2008, 2007, 2006)
-years <- c(2022: 2006)
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2023.0.0.db")
+years <- c(2023, 2022, 2021, 2020, 2019, 2018, 2008, 2007, 2006)
+years <- c(2023:2006)
 
 # Wholefoods example, North Chicago:
 pins <- c("17052120010000", "17052120020000", "17052120030000", "17052120040000",
@@ -196,3 +196,22 @@ pinchecks <- DBI::dbGetQuery(
   ",
     .con = ptaxsim_db_conn
   ))
+
+
+# PIN in slides from Meyer Blank and Mayor Patel
+# 31-36-111-027-0000
+pins <- c("31361110270000")
+
+pinchecks <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql(
+    "SELECT*
+  FROM pin
+  WHERE pin IN ({pins*}) AND
+  year IN ({years*})
+  ",
+    .con = ptaxsim_db_conn
+  ))
+
+pinbills <- ptaxsim::tax_bill(2019, "31361110270000",
+                              simplify = FALSE)
