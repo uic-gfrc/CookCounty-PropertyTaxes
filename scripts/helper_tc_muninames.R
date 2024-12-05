@@ -1,5 +1,4 @@
 ### Code for pulling unique tax codes from PTAXSIM ###
-### for tax year 2021  
 ### Identifies the municipality name that taxes each tax code ###
 ### Joins "clean names", agency_num, etc. to unique tax codes
 
@@ -10,23 +9,23 @@ library(httr)
 library(ptaxsim)
 library(glue)
 
-# Create the DB connection with the default name expected by PTAXSIM functions
-# file_path <- "C:/Users/aleaw/"
-# 
-# if (file.exists(file_path)){
-#   ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "C:/Users/aleaw/OneDrive/Documents/PhD Fall 2021 - Spring 2022/Merriman RA/ptax/ptaxsim.db/ptaxsim-2023.0.0.db")
-# } else {
-#   ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2023.0.0.db")
-# 
-# }
-ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "C:/Users/aleaw/OneDrive/Documents/PhD Fall 2021 - Spring 2022/Merriman RA/ptax/ptaxsim.db/ptaxsim-2023.0.0.db")
+#Create the DB connection with the default name expected by PTAXSIM functions
+file_path <- "C:/Users/aleaw/"
+
+if (file.exists(file_path)){
+  ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "C:/Users/aleaw/OneDrive/Documents/PhD Fall 2021 - Spring 2022/Merriman RA/ptax/ptaxsim.db/ptaxsim-2023.0.0.db")
+} else {
+  ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2023.0.0.db")
+
+}
+# ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "C:/Users/aleaw/OneDrive/Documents/PhD Fall 2021 - Spring 2022/Merriman RA/ptax/ptaxsim.db/ptaxsim-2023.0.0.db")
 #
 current_dir = getwd()
 
-if (grepl("website", current_dir)) {
+if(grepl("website", current_dir)){
   dots = "../"
-} else {
-  dots = "../"
+} else{
+  dots = "./"
 }
 
 
@@ -119,3 +118,5 @@ tc_muninames <- tax_codes %>%
   select(-c(minor_type, short_name, 
            # `Column1`, `Most recent reassessed`, 
             agency_number))
+
+
