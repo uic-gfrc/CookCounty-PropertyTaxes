@@ -65,18 +65,28 @@ pin_data <- pin_data |>
   mutate(flag_missingdata = ifelse(taxable_eav > 1000, 1, 0)) |>
   mutate(exe_missing_disvet = ifelse(taxable_eav > 1000, taxable_eav, 0)) |>
   mutate(taxable_eav_adj = ifelse(taxable_eav > 1000 & flag_missingdata == 1, 0 , taxable_eav)) |>
+  mutate(proposal_eav = eq_av * 0.1) |> 
+  mutate(proposal_taxbill = proposal_eav * tax_code_rate/100) |>
   #mutate(no_eav = ifelse(taxable_eav <= 0, 1, 0)) |>
   #mutate(exemps_no_eav = ifelse(eq_av < exe_total, 1, 0)) |>
   select(-av_mailed, -av_certified, -av_board) |>
   mutate(exe_total_adj = rowSums(across(starts_with("exe_")))-exe_total) # don't count the total value when summing the values 
   
 
+# Over 27,000 residential PINs did not have to pay a tax bill in 2023.
 pin_data |> 
- filter(taxable_eav > 1000) |> 
   group_by(year) |> 
   summarize( n = n(), 
+             n_disvet = sum(exe_missing_disvet > 0),
+             n_ghe = sum(exe_homeowner > 0),
+             n_senior = sum(exe_senior > 0),
+             n_freeze = sum(exe_freeze > 0),
+             
              exe_missing_disvet = sum(exe_missing_disvet),
+             exe_vet_dis = sum(exe_vet_dis_lt50+exe_vet_dis_50_69+exe_vet_dis_ge70),
              exe_homeowner = sum(exe_homeowner),
+             exe_senior = sum(exe_senior),
+             exe_freeze = sum(exe_freeze),
              
              taxable_eav = sum(taxable_eav), 
              taxable_eav_adj = sum(taxable_eav_adj),
@@ -84,14 +94,14 @@ pin_data |>
              exe_total = sum(exe_total),
              exe_total_adj = sum(exe_total_adj),
              
-             shifted_rev = sum(eq_av * tax_code_rate/100), 
-             shifted_rev_adj = sum()
+             shifted_rev = sum(0.1*eq_av * tax_code_rate/100),  # if all properties with $0 taxbills had 10% of their equalized AV taxed at current tax rate
+           #  shifted_rev_adj = sum(taxable_eav_adj * tax_code_rate/100)
              
-             )
+             ) |> View()
 
 
 
-# ALL zero-dollar PINs in 2023 -------------------------------
+ # ALL zero-dollar PINs in 2023 -------------------------------
 
 ## Total: 27053 <<<- this value
 
@@ -100,35 +110,54 @@ pin_data |>
 # independently from the bill amount in the pin table
 
 pin_data |>
-  filter(year == 2023) |>
+  filter(year == 2023 & av_clerk > 0) |>
   filter(tax_bill_total == 0) |>
-  summarize(n = n()) # 27053
+  summarize(n = n()) # 27053, 26,979 with  an av > 0
 
-## AV of 0: 74 <<<- this value
+## AV of 0: 74 
 
 pin_data |>
   filter(year == 2023) |>
   filter(av_clerk == 0) |>
   summarize(n = n())
 
-## AV > 0, Taxable EAV <= 0: 9622 <<-- this value
+pin_data |>
+  filter(year == 2023) |>
+  filter(av_clerk > 0) |>
+  summarize(n = n())
+
+pin_data |>
+  filter(year == 2023) |>
+  filter(eq_av > 0) |>
+  summarize(n = n())
+
+## AV > 0, Taxable EAV <= 0: 9622 
 
 pin_data |>
   filter(year == 2023) |>
   filter(av_clerk > 0 & taxable_eav <= 0) |>
   summarize(n = n())
 
-## Taxable EAV > 0 and Zero-Bill: 17357 <<-- this value
+## AV > 0 & taxable EAV = 0: 16,843      <-- this value after adjusting likely missing exemptions
+pin_data |>
+  filter(year == 2023) |>
+  filter(av_clerk > 0 & taxable_eav_adj <= 0) |>
+  summarize(n = n())
+
+## Taxable EAV > 0 and Zero-Bill: 17357  <<-- this value based on ptaxsim pin table
 
 pin_data |>
   filter(year == 2023) |>
   filter(taxable_eav > 0 & tax_bill_total == 0) |>
   summarize(n = n())
 
+## Taxable EAV > 0 and Zero-Bill: 10,135 <<-- this value after adjusting missing exemptions
 pin_data |>
   filter(year == 2023) |>
-  filter(taxable_eav > 0 & tax_bill_total == 0) |>
-  summarize(sum_foregone_rev = sum(taxable_eav*tax_code_rate/100, na.rm = T))
+  filter(taxable_eav_adj > 0 & tax_bill_total <= 0) |>
+  summarize(n = n())
+
+
 
 ## Taxable EAV between 0 and 150: 10,003
 
@@ -139,11 +168,17 @@ pin_data |>
 
 pin_data |>
   filter(year == 2023) |>
+  filter(taxable_eav_adj > 0 & taxable_eav_adj < 150 & tax_bill_total <= 0) |>
+  summarize(n = n())
+
+pin_data |>
+  filter(year == 2023) |>
   filter(taxable_eav > 0 & taxable_eav < 150 & tax_bill_total <= 0) |>
   mutate(foregone_rev = taxable_eav*tax_code_rate/100, na.rm = T) |>
-  summarize(sum(foregone_rev, na.rm = T)) # $50mil
+  summarize(sum(foregone_rev, na.rm = T)) 
 
 ## Taxable EAV > $150: 7354
+## Adjusted Taxable EAV > $150: 133 residential PINs in 2023
 
 pin_data |>
   filter(year == 2023) |>
@@ -152,28 +187,22 @@ pin_data |>
 
 pin_data |>
   filter(year == 2023) |>
-  filter(taxable_eav > 150 & tax_bill_total <= 0) |>
-  mutate(foregone_rev = taxable_eav*tax_code_rate/100, na.rm = T) |>
-  summarize(sum(foregone_rev, na.rm = T)) # $50mil
+  filter(taxable_eav_adj > 150 & tax_bill_total <= 0) |>
+  summarize(n = n())
 
-# Over 27,000 residential PINs did not have to pay a tax bill in 2023.
-pin_data |>
-  filter(tax_bill_total <= 0) |>
-  group_by(year) |>
-  summarize(n = n(),
-            sum_eq_av = sum(av_clerk*eq_factor_final, na.rm=TRUE),
-            total_exempt = sum(exe_total), taxable_eav = sum(av_clerk*eq_factor_final - exe_total, na.rm=T))
 
 
 # Section 18-40 Zero Dollar Bills ----------------------------------
 
 # These bills should have an EAV < $150 and > 0 after accounting for exemptions
 # but they tend to have EAVs much greater than 150, even after exemptions are subtracted
+# potentially due to missing exemption values (such as the disabled veteran exemption values noticed by the RAs)
 
 
 
 ## All with Taxable EAV between 0 and 150 --------------------
 
+# $5,000 could be collected from harassing 10,000 residents for their tiny amount of taxbills that are current waived 
 
 # Using maximum calculations
 pin_data |>
@@ -196,7 +225,10 @@ pin_data |>
             sum_av = sum(av_clerk, na.rm = T),
             sum_eq_av = sum(eq_av, na.rm=TRUE),
             sum_eav_exempt = sum(exe_total, na.rm = T),
+            sum_adj_eav_exempt = sum(exe_total_adj),
             sum_taxable_eav = sum(taxable_eav, na.rm=T),
+            sum_adj_taxable_eav = sum(taxable_eav_adj, na.rm=T),
+            
             sum_billed = sum(tax_bill_total),
             sum_foregone = sum(taxable_eav*tax_code_rate/100, na.rm = T))
 
