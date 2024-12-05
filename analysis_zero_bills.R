@@ -4,6 +4,7 @@
 library(DBI)
 library(RSQLite)
 library(tidyverse)
+library(ptaxsim)
 
 # Load random files
 
@@ -19,6 +20,8 @@ cde <- read_csv("./Necessary_Files/class_dict_expanded.csv") |>
 
 # Connect to the database
 con <- dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2023.0.0.db")
+ptaxsim_db_conn <- dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2023.0.0.db")
+
 
 # Pull residential PINs between 2010 and 2023 with bills of 0 or eq_av less than 150
 # For eq factor, used the upper bound of 3.3 to capture all the low-eav bills.
@@ -47,9 +50,18 @@ pin_data <- pin_data |>
   mutate(eq_av = av_clerk*eq_factor_final) |>
   mutate(exe_total = rowSums(across(starts_with("exe_")))) |>
   mutate(taxable_eav = eq_av - exe_total) |>
+  mutate(flag_missingdata = ifelse(taxable_eav > 1000, 1, 0)) |>
   mutate(no_eav = ifelse(taxable_eav <= 0, 1, 0)) |>
   mutate(exemps_no_eav = ifelse(eq_av < exe_total, 1, 0)) |>
   select(-av_mailed, -av_certified, -av_board)
+
+pin_data |> filter(taxable_eav > 1000) |> 
+  group_by(year) |> 
+  summarize( n = n(), 
+             taxable_eav = sum(taxable_eav), 
+             shifted_rev = sum(eq_av * tax_code_rate/100))
+
+
 
 # ALL zero-dollar PINs in 2023 -------------------------------
 
