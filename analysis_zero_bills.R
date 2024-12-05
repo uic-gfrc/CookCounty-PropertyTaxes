@@ -45,27 +45,39 @@ FROM tax_code
 
 pin_data <- pin_data |>
   left_join(eq_factor, by = "year") |>
-  left_join(taxcode_rates, by = c("year", "tax_code_num")) %>%
+  left_join(taxcode_rates, by = c("year", "tax_code_num")) |>
   mutate(zero_bill = ifelse(tax_bill_total == 0, 1, 0)) |>
   mutate(eq_av = av_clerk*eq_factor_final) |>
-  mutate(exe_total = rowSums(across(starts_with("exe_")))) |>
+  mutate(exe_total = rowSums(across(starts_with("exe_"))),
+         exe_total = ifelse(exe_total > eq_av, eq_av, exe_total)) |>
   mutate(taxable_eav = eq_av - exe_total) |>
   mutate(flag_missingdata = ifelse(taxable_eav > 1000, 1, 0)) |>
+  mutate(exe_missing_disvet = ifelse(taxable_eav > 1000, taxable_eav, 0)) |>
+  mutate(taxable_eav = ifelse(taxable_eav > 1000 & flag_missingdata == 1, 0 , taxable_eav)) |>
   mutate(no_eav = ifelse(taxable_eav <= 0, 1, 0)) |>
   mutate(exemps_no_eav = ifelse(eq_av < exe_total, 1, 0)) |>
-  select(-av_mailed, -av_certified, -av_board)
+  select(-av_mailed, -av_certified, -av_board) |>
+  mutate(exe_total_adj = rowSums(across(starts_with("exe_")))-exe_total) # don't count the total value when summing the values 
+  
 
-pin_data |> filter(taxable_eav > 1000) |> 
+pin_data |> 
+  #filter(taxable_eav > 1000) |> 
   group_by(year) |> 
   summarize( n = n(), 
              taxable_eav = sum(taxable_eav), 
-             shifted_rev = sum(eq_av * tax_code_rate/100))
+             shifted_rev = sum(eq_av * tax_code_rate/100),
+             exe_total = sum(exe_total),
+             exe_total_adj = sum(exe_total_adj))
 
 
 
 # ALL zero-dollar PINs in 2023 -------------------------------
 
 ## Total: 27053 <<<- this value
+
+# NOTE: 17,000+ taxbills are zero dollar bills when using the tax_bill() command.
+# tax_bill() sums the exemptions for each pin and then calculates the bill 
+# independently from the bill amount in the pin table
 
 pin_data |>
   filter(year == 2023) |>
