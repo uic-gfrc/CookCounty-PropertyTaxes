@@ -6,6 +6,17 @@ library(RSQLite)
 library(tidyverse)
 library(ptaxsim)
 
+
+## Things MVH wants for memo:
+# Total zero bills & distribution of TEAV
+# top middle bottom 5 munis by #
+# top middle bottom 5 munis by EAV
+# back on rolls for > $150 EAV by < $150  EAV
+# back on rolls for > $150
+# for when EAV <= TEAV where is that  change EAV come from (e.g. disabled vets?)
+
+
+
 # Load random files
 
 eq_factor <- read_csv("./Necessary_Files/eq_factor.csv") |>
@@ -53,21 +64,30 @@ pin_data <- pin_data |>
   mutate(taxable_eav = eq_av - exe_total) |>
   mutate(flag_missingdata = ifelse(taxable_eav > 1000, 1, 0)) |>
   mutate(exe_missing_disvet = ifelse(taxable_eav > 1000, taxable_eav, 0)) |>
-  mutate(taxable_eav = ifelse(taxable_eav > 1000 & flag_missingdata == 1, 0 , taxable_eav)) |>
-  mutate(no_eav = ifelse(taxable_eav <= 0, 1, 0)) |>
-  mutate(exemps_no_eav = ifelse(eq_av < exe_total, 1, 0)) |>
+  mutate(taxable_eav_adj = ifelse(taxable_eav > 1000 & flag_missingdata == 1, 0 , taxable_eav)) |>
+  #mutate(no_eav = ifelse(taxable_eav <= 0, 1, 0)) |>
+  #mutate(exemps_no_eav = ifelse(eq_av < exe_total, 1, 0)) |>
   select(-av_mailed, -av_certified, -av_board) |>
   mutate(exe_total_adj = rowSums(across(starts_with("exe_")))-exe_total) # don't count the total value when summing the values 
   
 
 pin_data |> 
-  #filter(taxable_eav > 1000) |> 
+ filter(taxable_eav > 1000) |> 
   group_by(year) |> 
   summarize( n = n(), 
+             exe_missing_disvet = sum(exe_missing_disvet),
+             exe_homeowner = sum(exe_homeowner),
+             
              taxable_eav = sum(taxable_eav), 
-             shifted_rev = sum(eq_av * tax_code_rate/100),
+             taxable_eav_adj = sum(taxable_eav_adj),
+           
              exe_total = sum(exe_total),
-             exe_total_adj = sum(exe_total_adj))
+             exe_total_adj = sum(exe_total_adj),
+             
+             shifted_rev = sum(eq_av * tax_code_rate/100), 
+             shifted_rev_adj = sum()
+             
+             )
 
 
 
