@@ -111,6 +111,7 @@ joined_pins |>
   filter(proposal_eav > taxed_eav | zero_bill == 1) |>
   summarize(n= n(),
     n_zerobills = sum(zero_bill==1),
+    amount_paid = sum(final_tax_to_dist),
     shifted_rev = sum(0.1*eq_av * tax_code_rate/100),
     shifted_rev_fromdisvets = sum(.1*(exe_missing_disvet+exe_vet_dis_ge70)*tax_code_rate/100),
   ) 
@@ -146,6 +147,33 @@ joined_pins |>  # already only class 2 pins
   mutate(rev_share = shifted_rev/muni_levy) |>
   arrange(desc(rev_share)) |> View()
 
+
+## Cook county sums
+joined_pins |>  # already only class 2 pins 
+  mutate(taxed_eav = eav-all_exemptions,
+         final_tax_to_dist = ifelse(total_billed_adj == 0, 0, final_tax_to_dist)) |>
+  mutate(muni_levy = sum(final_tax_to_dist, na.rm=T)) |>
+  
+  filter(proposal_eav > taxed_eav | zero_bill == 1) |>
+  
+  summarize(n= n(),
+            muni_levy = max(muni_levy),
+            levy_paid_bygroup = sum(final_tax_to_dist, na.rm=T),
+            n_zerobills = sum(zero_bill==1),
+            n_disvet_zeros = sum(exe_missing_disvet+exe_vet_dis_lt50+exe_vet_dis_50_69+exe_vet_dis_ge70>0),
+            
+            shifted_rev = sum(0.1*eq_av * tax_code_rate/100, na.rm=T),
+            shifted_rev_fromdisvets = sum(.1*(exe_missing_disvet+exe_vet_dis_ge70)*tax_code_rate/100),
+            exe_homeowner = sum(exe_homeowner),
+            exe_senior = sum(exe_senior),
+            exe_freeze = sum(exe_freeze),
+            exe_vet_dis_total = sum(exe_missing_disvet+exe_vet_dis_ge70),
+            exe_total_adj = sum(exe_total_adj),
+            
+  ) |>  # if all properties with $0 taxbills had 10% of their equalized AV taxed at current tax rate
+  
+  mutate(rev_share = shifted_rev/muni_levy) |>
+  arrange(desc(rev_share)) |> View()
 
 taxcode_rates  <- dbGetQuery(con, "
 SELECT DISTINCT year, tax_code_num, tax_code_rate
