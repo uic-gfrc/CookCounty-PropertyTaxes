@@ -65,30 +65,31 @@ joined_pins <- read_csv("./output/Dont_Upload/0_joined_PIN_data_2023.csv") %>% m
 
 joined_pins <- joined_pins |> 
   filter(class > 199 & class < 300) |> 
-#  left_join(tc_muninames, by = c("tax_code_num")) |>
+  mutate(zero_bill = ifelse(pin %in% pin_data$pin & pin_data$tax_bill_total == 0, 1, 0)) |>  # if pin is recorded as no bill in the pin table
   left_join(eq_factor, by = "year") |>
-  # left_join(taxcode_rates, by = c("year", "tax_code_num")) |>
- # mutate(zero_bill = ifelse(tax_bill_total == 0, 1, 0)) |>
   mutate(eq_av = av*eq_factor_final) |>
   mutate(exe_total = rowSums(across(starts_with("exe_"))),
          exe_total = ifelse(exe_total > eq_av, eq_av, exe_total)) |>
-  mutate(taxable_eav = eq_av - exe_total) |>
+  mutate(taxable_eav = eq_av - exe_total) |> # amount of eav that can be taxed after exemptions
   
-  mutate(flag_missingdata = ifelse(taxable_eav > 1000, 1, 0)) |>
-  mutate(exe_missing_disvet = ifelse(taxable_eav > 1000, taxable_eav, 0)) |>
-  mutate(taxable_eav_adj = ifelse(taxable_eav > 1000 & flag_missingdata == 1, 0 , taxable_eav)) |>
+  mutate(flag_missingdata = ifelse(zero_bill ==1 & taxable_eav > 1000, 1, 0)) |>
+  mutate(exe_missing_disvet = ifelse(taxable_eav > 1000 & zero_bill ==1, taxable_eav, 0)) |>
+  mutate(taxable_eav_adj = ifelse(zero_bill == 1 & flag_missingdata == 1, 0, taxable_eav)) |> # should be less than or equal to the taxable EAV calculated before
+  mutate(total_billed_adj = taxable_eav_adj * tax_code_rate/100 ) |>
+  
   mutate(proposal_eav = eq_av * 0.1) |> 
   mutate(proposal_taxbill = proposal_eav * tax_code_rate/100) |>
-  #mutate(no_eav = ifelse(taxable_eav <= 0, 1, 0)) |>
-  #mutate(exemps_no_eav = ifelse(eq_av < exe_total, 1, 0)) |>
-  #select(-av_mailed, -av_certified, -av_board) |>
   mutate(exe_total_adj = rowSums(across(starts_with("exe_")))-exe_total)
 
-joined_pins |> summarize( n = n(), 
+joined_pins |> 
+  summarize( n = n(), 
+             taxbill = sum(total_billed, na.rm = T),
+             taxbill_adj = sum( (eq_av - exe_total_adj)*tax_code_rate/100, na.rm=T),
              n_disvet = sum(exe_missing_disvet > 0),
              n_ghe = sum(exe_homeowner > 0),
              n_senior = sum(exe_senior > 0),
              n_freeze = sum(exe_freeze > 0),
+             n_zerobill = sum(zero_bill == 1),
              
              exe_missing_disvet = sum(exe_missing_disvet),
              exe_vet_dis = sum(exe_vet_dis_lt50+exe_vet_dis_50_69+exe_vet_dis_ge70),
@@ -100,12 +101,31 @@ joined_pins |> summarize( n = n(),
              taxable_eav_adj = sum(taxable_eav_adj),
              
              exe_total = sum(exe_total),
-             exe_total_adj = sum(exe_total_adj),
-             
-             shifted_rev = sum(0.1*eq_av * tax_code_rate/100),  # if all properties with $0 taxbills had 10% of their equalized AV taxed at current tax rate
-             #  shifted_rev_adj = sum(taxable_eav_adj * tax_code_rate/100)
-             
-  ) |> View()
+             exe_total_adj = sum(exe_total_adj)
+  )  |>
+ # filter()|> 
+  View()
+
+joined_pins |> 
+  mutate(taxed_eav = eav-all_exemptions ) |>
+  filter(proposal_eav > taxed_eav | zero_bill == 1) |>
+  summarize(n= n(),
+    n_zerobills = sum(zero_bill==1),
+    shifted_rev = sum(0.1*eq_av * tax_code_rate/100))  # if all properties with $0 taxbills had 10% of their equalized AV taxed at current tax rate
+
+# 27 million in revenue as upper bound
+
+
+joined_pins |> 
+  mutate(taxed_eav = eav-all_exemptions ) |>
+  filter(proposal_eav > taxed_eav | zero_bill == 1) |>
+  group_by(clean_name) |>
+  summarize(n= n(),
+            n_zerobills = sum(zero_bill==1),
+            shifted_rev = sum(0.1*eq_av * tax_code_rate/100)) |>  # if all properties with $0 taxbills had 10% of their equalized AV taxed at current tax rate
+arrange(desc(n))
+# 27 million in revenue as upper bound
+
 
 taxcode_rates  <- dbGetQuery(con, "
 SELECT DISTINCT year, tax_code_num, tax_code_rate
