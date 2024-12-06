@@ -48,15 +48,82 @@ WHERE
     OR tax_bill_total = 0
   )")
 
+
+pin_data2 <- dbGetQuery(con, "
+SELECT
+  *
+FROM pin
+WHERE
+  year BETWEEN 2010 AND 2023
+  AND substr(CAST(class as TEXT), 1, 1) = '2'
+  AND (
+    (av_clerk * 3.3) < 150
+    OR tax_bill_total = 0
+  )")
+
+joined_pins <- read_csv("./output/Dont_Upload/0_joined_PIN_data_2023.csv") %>% mutate(tax_code_num = as.character(tax_code_num))
+
+joined_pins <- joined_pins |> 
+  filter(class > 199 & class < 300) |> 
+#  left_join(tc_muninames, by = c("tax_code_num")) |>
+  left_join(eq_factor, by = "year") |>
+  # left_join(taxcode_rates, by = c("year", "tax_code_num")) |>
+ # mutate(zero_bill = ifelse(tax_bill_total == 0, 1, 0)) |>
+  mutate(eq_av = av*eq_factor_final) |>
+  mutate(exe_total = rowSums(across(starts_with("exe_"))),
+         exe_total = ifelse(exe_total > eq_av, eq_av, exe_total)) |>
+  mutate(taxable_eav = eq_av - exe_total) |>
+  
+  mutate(flag_missingdata = ifelse(taxable_eav > 1000, 1, 0)) |>
+  mutate(exe_missing_disvet = ifelse(taxable_eav > 1000, taxable_eav, 0)) |>
+  mutate(taxable_eav_adj = ifelse(taxable_eav > 1000 & flag_missingdata == 1, 0 , taxable_eav)) |>
+  mutate(proposal_eav = eq_av * 0.1) |> 
+  mutate(proposal_taxbill = proposal_eav * tax_code_rate/100) |>
+  #mutate(no_eav = ifelse(taxable_eav <= 0, 1, 0)) |>
+  #mutate(exemps_no_eav = ifelse(eq_av < exe_total, 1, 0)) |>
+  #select(-av_mailed, -av_certified, -av_board) |>
+  mutate(exe_total_adj = rowSums(across(starts_with("exe_")))-exe_total)
+
+joined_pins |> summarize( n = n(), 
+             n_disvet = sum(exe_missing_disvet > 0),
+             n_ghe = sum(exe_homeowner > 0),
+             n_senior = sum(exe_senior > 0),
+             n_freeze = sum(exe_freeze > 0),
+             
+             exe_missing_disvet = sum(exe_missing_disvet),
+             exe_vet_dis = sum(exe_vet_dis_lt50+exe_vet_dis_50_69+exe_vet_dis_ge70),
+             exe_homeowner = sum(exe_homeowner),
+             exe_senior = sum(exe_senior),
+             exe_freeze = sum(exe_freeze),
+             
+             taxable_eav = sum(taxable_eav), 
+             taxable_eav_adj = sum(taxable_eav_adj),
+             
+             exe_total = sum(exe_total),
+             exe_total_adj = sum(exe_total_adj),
+             
+             shifted_rev = sum(0.1*eq_av * tax_code_rate/100),  # if all properties with $0 taxbills had 10% of their equalized AV taxed at current tax rate
+             #  shifted_rev_adj = sum(taxable_eav_adj * tax_code_rate/100)
+             
+  ) |> View()
+
 taxcode_rates  <- dbGetQuery(con, "
 SELECT DISTINCT year, tax_code_num, tax_code_rate
 FROM tax_code
                              ")
 
 
+taxyear = 2023
+taxyear = as.data.frame(taxyear)
+source("./scripts/helper_tc_muninames.R") 
+
+tc_muninames <- tc_muninames |> select(tax_code_num, tax_code_rate, clean_name, Triad, Township)
+
+
 pin_data <- pin_data |>
+  left_join(tc_muninames, by = c("tax_code_num")) |>
   left_join(eq_factor, by = "year") |>
-  left_join(taxcode_rates, by = c("year", "tax_code_num")) |>
+ # left_join(taxcode_rates, by = c("year", "tax_code_num")) |>
   mutate(zero_bill = ifelse(tax_bill_total == 0, 1, 0)) |>
   mutate(eq_av = av_clerk*eq_factor_final) |>
   mutate(exe_total = rowSums(across(starts_with("exe_"))),
@@ -71,7 +138,6 @@ pin_data <- pin_data |>
   #mutate(exemps_no_eav = ifelse(eq_av < exe_total, 1, 0)) |>
   select(-av_mailed, -av_certified, -av_board) |>
   mutate(exe_total_adj = rowSums(across(starts_with("exe_")))-exe_total) # don't count the total value when summing the values 
-  
 
 # Over 27,000 residential PINs did not have to pay a tax bill in 2023.
 pin_data |> 
@@ -99,7 +165,7 @@ pin_data |>
              
              ) |> View()
 
-
+hist(pin_data$eq_av, breaks = 100, xlim = c(0,300000))
 
  # ALL zero-dollar PINs in 2023 -------------------------------
 
