@@ -201,7 +201,7 @@ pin_data |>
              exe_total_adj = sum(exe_total_adj),
              
              shifted_rev = sum(0.1*eq_av * tax_code_rate/100),  # if all properties with $0 taxbills had 10% of their equalized AV taxed at current tax rate
-           #  shifted_rev_adj = sum(taxable_eav_adj * tax_code_rate/100)
+             #  shifted_rev_adj = sum(taxable_eav_adj * tax_code_rate/100)
              
              ) |> View()
 
@@ -209,7 +209,7 @@ hist(pin_data$eq_av, breaks = 100, xlim = c(0,300000))
 
  # ALL zero-dollar PINs in 2023 -------------------------------
 
-## Total: 27053 <<<- this value
+## Total: 26,979 <<<- this value
 
 # NOTE: 17,000+ taxbills are zero dollar bills when using the tax_bill() command.
 # tax_bill() sums the exemptions for each pin and then calculates the bill 
@@ -227,15 +227,6 @@ pin_data |>
   filter(av_clerk == 0) |>
   summarize(n = n())
 
-pin_data |>
-  filter(year == 2023) |>
-  filter(av_clerk > 0) |>
-  summarize(n = n())
-
-pin_data |>
-  filter(year == 2023) |>
-  filter(eq_av > 0) |>
-  summarize(n = n())
 
 ## AV > 0, Taxable EAV <= 0: 9622 
 
@@ -257,7 +248,7 @@ pin_data |>
   filter(taxable_eav > 0 & tax_bill_total == 0) |>
   summarize(n = n())
 
-## Taxable EAV > 0 and Zero-Bill: 10,135 <<-- this value after adjusting missing exemptions
+## Taxable EAV > 0 and Zero-Bill: 10,136 <<-- this value after adjusting missing exemptions
 pin_data |>
   filter(year == 2023) |>
   filter(taxable_eav_adj > 0 & tax_bill_total <= 0) |>
@@ -277,11 +268,7 @@ pin_data |>
   filter(taxable_eav_adj > 0 & taxable_eav_adj < 150 & tax_bill_total <= 0) |>
   summarize(n = n())
 
-pin_data |>
-  filter(year == 2023) |>
-  filter(taxable_eav > 0 & taxable_eav < 150 & tax_bill_total <= 0) |>
-  mutate(foregone_rev = taxable_eav*tax_code_rate/100, na.rm = T) |>
-  summarize(sum(foregone_rev, na.rm = T)) 
+
 
 ## Taxable EAV > $150: 7354
 ## Adjusted Taxable EAV > $150: 133 residential PINs in 2023
@@ -316,7 +303,8 @@ pin_data |>
   group_by(year) |>
   summarize(n = n(),
             eq_av = sum(av_clerk*eq_factor_final, na.rm=TRUE),
-            total_exempt = sum(exe_total), taxed_eav = sum(av_clerk*eq_factor_final - exe_total, na.rm=T),
+            total_exempt = sum(exe_total), 
+            taxed_eav = sum(av_clerk*eq_factor_final - exe_total, na.rm=T),
             billed = sum(tax_bill_total),
             max_av = max((av_clerk*eq_factor_final- exe_total)/eq_factor_final),
             max_eav = max(av_clerk*eq_factor_final),
@@ -337,7 +325,8 @@ pin_data |>
             
             sum_billed = sum(tax_bill_total),
             sum_foregone = sum(taxable_eav*tax_code_rate/100, na.rm = T))
-
+# $5000 from properties with taxable eav between 0 and 150.
+# 10,000 from properties with taxable eav > 0
 
 # double checking
 pin_data |> filter(exe_total < av_clerk*eq_factor_final ) %>%
@@ -346,7 +335,7 @@ pin_data |> filter(exe_total < av_clerk*eq_factor_final ) %>%
           .by = year)
 
 ## Zero Bill with EAV > $150 --------------------------------
-
+# using values from ptaxsim pin table, which might be missing exemption
 pin_data |>
   filter(taxable_eav > 150 & tax_bill_total == 0) |>
   group_by(year) |>
