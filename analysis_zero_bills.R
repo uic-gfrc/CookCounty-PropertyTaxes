@@ -111,7 +111,9 @@ joined_pins |>
   filter(proposal_eav > taxed_eav | zero_bill == 1) |>
   summarize(n= n(),
     n_zerobills = sum(zero_bill==1),
-    shifted_rev = sum(0.1*eq_av * tax_code_rate/100)) 
+    shifted_rev = sum(0.1*eq_av * tax_code_rate/100),
+    shifted_rev_fromdisvets = sum(.1*(exe_missing_disvet+exe_vet_dis_ge70)*tax_code_rate/100),
+  ) 
 
 # 37,801 PINs are paying less than 10% of their EAV (or less than ~1% of their market value for assessment purposes)
 # 14.9 million in revenue as upper bound
@@ -132,10 +134,11 @@ joined_pins |>  # already only class 2 pins
             n_disvet_zeros = sum(exe_missing_disvet+exe_vet_dis_lt50+exe_vet_dis_50_69+exe_vet_dis_ge70>0),
             
             shifted_rev = sum(0.1*eq_av * tax_code_rate/100, na.rm=T),
+            shifted_rev_fromdisvets = sum(.1*(exe_missing_disvet+exe_vet_dis_ge70)*tax_code_rate/100),
             exe_homeowner = sum(exe_homeowner),
             exe_senior = sum(exe_senior),
             exe_freeze = sum(exe_freeze),
-            exe_vet_dis_total = sum(exe_missing_disvet+exe_vet_dis_lt50+exe_vet_dis_50_69+exe_vet_dis_ge70),
+            exe_vet_dis_total = sum(exe_missing_disvet+exe_vet_dis_ge70),
             exe_total_adj = sum(exe_total_adj),
             
             ) |>  # if all properties with $0 taxbills had 10% of their equalized AV taxed at current tax rate
@@ -352,7 +355,53 @@ pin_data |>
             sum_eq_av = sum(eq_av, na.rm = T),
             sum_exe_total = sum(exe_total, na.rm = T),
             sum_taxable_eav = sum(taxable_eav, na.rm = T),
-            sum_foregone = sum(taxable_eav*tax_code_rate/100, na.rm = T))
+            sum_foregone = sum(.1*taxable_eav*tax_code_rate/100, na.rm = T)) |>
+  View()
+
+pin_data |>
+  filter(taxable_eav_adj > 0) |>
+  group_by(year) |>
+  summarize(n = n(),
+            sum_av = sum(av_clerk, na.rm = T),
+            sum_eq_av = sum(eq_av, na.rm = T),
+            sum_exe_total = sum(exe_total, na.rm = T),
+            sum_exe_total_adj = sum(exe_total_adj, na.rm = T),
+            
+            sum_taxable_eav = sum(taxable_eav, na.rm = T),
+            sum_taxable_eav_adj = sum(taxable_eav_adj, na.rm = T),
+            proposal_rev = sum(.1*eq_av*tax_code_rate/100, na.rm = T),
+            sum_1840_foregone = sum(taxable_eav*tax_code_rate/100, na.rm = T)
+            ) |>
+  View()
+
+
+pin_data |>
+  filter(tax_bill_total == 0 & av_clerk > 0) |>
+  group_by(year) |>
+  summarize(n = n(),
+            n_disvet = sum(exe_missing_disvet > 0),
+            n_disvet_total = sum(exe_vet_dis_lt50+exe_vet_dis_ge70),
+            n_ghe = sum(exe_homeowner > 0),
+            n_senior = sum(exe_senior > 0),
+            n_freeze = sum(exe_freeze > 0),
+            exe_vet_dis_total = sum(exe_missing_disvet + exe_vet_dis_ge70),
+            
+            exe_missing_disvet = sum(exe_missing_disvet),
+            exe_other_vet_dis = sum(exe_vet_dis_lt50+exe_vet_dis_50_69),
+            exe_homeowner = sum(exe_homeowner),
+            exe_senior = sum(exe_senior),
+            exe_freeze = sum(exe_freeze),
+            sum_av = sum(av_clerk, na.rm = T),
+            sum_eq_av = sum(eq_av, na.rm = T),
+            sum_exe_total = sum(exe_total, na.rm = T),
+            sum_exe_total_adj = sum(exe_total_adj, na.rm = T),
+            
+            sum_taxable_eav = sum(taxable_eav, na.rm = T),
+            sum_taxable_eav_adj = sum(taxable_eav_adj, na.rm = T),
+            proposal_rev = sum(.1*eq_av*tax_code_rate/100, na.rm = T),
+            sum_1840_foregone = sum(taxable_eav*tax_code_rate/100, na.rm = T)
+  ) |>
+  View()
 
 # More Exemptions than EAV -----------------------------------------
 
