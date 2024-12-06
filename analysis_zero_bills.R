@@ -116,16 +116,32 @@ joined_pins |>
 # 37,801 PINs are paying less than 10% of their EAV (or less than ~1% of their market value for assessment purposes)
 # 14.9 million in revenue as upper bound
 
-
-joined_pins |> 
-  mutate(taxed_eav = eav-all_exemptions ) |>
-  filter(proposal_eav > taxed_eav | zero_bill == 1) |>
+## Municipalities with most zero dollar bills and the share of levy shifted to other tax payers
+joined_pins |>  # already only class 2 pins 
+  mutate(taxed_eav = eav-all_exemptions,
+         final_tax_to_dist = ifelse(total_billed_adj == 0, 0, final_tax_to_dist)) |>
   group_by(clean_name) |>
+  mutate(muni_levy = sum(final_tax_to_dist, na.rm=T)) |>
+  
+  filter(proposal_eav > taxed_eav | zero_bill == 1) |>
+
   summarize(n= n(),
+            muni_levy = max(muni_levy),
+            levy_paid_bygroup = sum(final_tax_to_dist, na.rm=T),
             n_zerobills = sum(zero_bill==1),
-            shifted_rev = sum(0.1*eq_av * tax_code_rate/100)) |>  # if all properties with $0 taxbills had 10% of their equalized AV taxed at current tax rate
-arrange(desc(n))
-# 27 million in revenue as upper bound
+            n_disvet_zeros = sum(flag_missingdata==1),
+            
+            shifted_rev = sum(0.1*eq_av * tax_code_rate/100, na.rm=T),
+            exe_homeowner = sum(exe_homeowner),
+            exe_senior = sum(exe_senior),
+            exe_freeze = sum(exe_freeze),
+            exe_vet_dis_total = sum(exe_missing_disvet+exe_vet_dis_lt50+exe_vet_dis_50_69+exe_vet_dis_ge70),
+            exe_total_adj = sum(exe_total_adj),
+            
+            ) |>  # if all properties with $0 taxbills had 10% of their equalized AV taxed at current tax rate
+
+  mutate(rev_share = shifted_rev/muni_levy) |>
+  arrange(desc(rev_share)) |> View()
 
 
 taxcode_rates  <- dbGetQuery(con, "
