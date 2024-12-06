@@ -65,7 +65,7 @@ joined_pins <- read_csv("./output/Dont_Upload/0_joined_PIN_data_2023.csv") %>% m
 
 joined_pins <- joined_pins |> 
   filter(class > 199 & class < 300) |> 
-  mutate(zero_bill = ifelse(pin %in% pin_data$pin & pin_data$tax_bill_total == 0, 1, 0)) |>  # if pin is recorded as no bill in the pin table
+  mutate(zero_bill = ifelse(pin %in% pin_data$pin[pin_data$year == 2023][pin_data$tax_bill_total == 0], 1, 0)) |>  # if pin is recorded as no bill in the pin table
   left_join(eq_factor, by = "year") |>
   mutate(eq_av = av*eq_factor_final) |>
   mutate(exe_total = rowSums(across(starts_with("exe_"))),
