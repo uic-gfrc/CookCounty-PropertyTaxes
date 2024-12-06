@@ -113,6 +113,7 @@ joined_pins |>
     n_zerobills = sum(zero_bill==1),
     shifted_rev = sum(0.1*eq_av * tax_code_rate/100)) 
 
+# 37,801 PINs are paying less than 10% of their EAV (or less than ~1% of their market value for assessment purposes)
 # 14.9 million in revenue as upper bound
 
 
