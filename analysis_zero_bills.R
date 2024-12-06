@@ -129,7 +129,7 @@ joined_pins |>  # already only class 2 pins
             muni_levy = max(muni_levy),
             levy_paid_bygroup = sum(final_tax_to_dist, na.rm=T),
             n_zerobills = sum(zero_bill==1),
-            n_disvet_zeros = sum(flag_missingdata==1),
+            n_disvet_zeros = sum(exe_missing_disvet+exe_vet_dis_lt50+exe_vet_dis_50_69+exe_vet_dis_ge70>0),
             
             shifted_rev = sum(0.1*eq_av * tax_code_rate/100, na.rm=T),
             exe_homeowner = sum(exe_homeowner),
