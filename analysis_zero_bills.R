@@ -111,9 +111,9 @@ joined_pins |>
   filter(proposal_eav > taxed_eav | zero_bill == 1) |>
   summarize(n= n(),
     n_zerobills = sum(zero_bill==1),
-    shifted_rev = sum(0.1*eq_av * tax_code_rate/100))  # if all properties with $0 taxbills had 10% of their equalized AV taxed at current tax rate
+    shifted_rev = sum(0.1*eq_av * tax_code_rate/100)) 
 
-# 27 million in revenue as upper bound
+# 14.9 million in revenue as upper bound
 
 
 joined_pins |> 
