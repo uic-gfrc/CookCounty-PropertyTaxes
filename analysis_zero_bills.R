@@ -6,6 +6,8 @@ library(RSQLite)
 library(tidyverse)
 library(ptaxsim)
 
+options(scipen = 999)
+
 
 ## Things MVH wants for memo:
 # Total zero bills & distribution of TEAV
@@ -141,10 +143,11 @@ joined_pins |>  # already only class 2 pins
             exe_freeze = sum(exe_freeze),
             exe_vet_dis_total = sum(exe_missing_disvet+exe_vet_dis_ge70),
             exe_total_adj = sum(exe_total_adj),
-            
+
             ) |>  # if all properties with $0 taxbills had 10% of their equalized AV taxed at current tax rate
 
-  mutate(rev_share = shifted_rev/muni_levy) |>
+  mutate(rev_share = shifted_rev/muni_levy,
+         revenue_increase = shifted_rev-levy_paid_bygroup, .before = n) |>
   arrange(desc(rev_share)) |> View()
 
 
