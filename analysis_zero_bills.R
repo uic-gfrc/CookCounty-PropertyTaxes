@@ -204,7 +204,7 @@ joined_pins |>  # already only class 2 pins
   ggplot()+
   geom_histogram(aes(x=bill_change), binwidth = 50) +
   theme_classic() +
-  scale_x_continuous(n.breaks = 10)+
+  scale_x_continuous(n.breaks = 20, limits = c(0,3000))+
   labs(title = "Distribution of Tax Bill Change", 
        x = "Tax Bill Change ($)",
        y = "# of Bills")
