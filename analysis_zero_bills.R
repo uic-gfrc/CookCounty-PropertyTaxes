@@ -103,7 +103,6 @@ joined_pins |>
              exe_total = sum(exe_total),
              exe_total_adj = sum(exe_total_adj)
   )  |>
- # filter()|> 
   View()
 
 joined_pins |> 
@@ -132,10 +131,11 @@ joined_pins |>  # already only class 2 pins
             muni_levy = max(muni_levy),
             levy_paid_bygroup = sum(final_tax_to_dist, na.rm=T),
             n_zerobills = sum(zero_bill==1),
-            n_disvet_zeros = sum(exe_missing_disvet+exe_vet_dis_lt50+exe_vet_dis_50_69+exe_vet_dis_ge70>0),
+            n_disvet_zeros = sum(exe_missing_disvet + exe_vet_dis_lt50
+                                 + exe_vet_dis_50_69 + exe_vet_dis_ge70 > 0),
             
             shifted_rev = sum(0.1*eq_av * tax_code_rate/100, na.rm=T),
-            shifted_rev_fromdisvets = sum(.1*(exe_missing_disvet+exe_vet_dis_ge70)*tax_code_rate/100),
+            shifted_rev_fromdisvets = sum(.1*(exe_missing_disvet + exe_vet_dis_ge70)*tax_code_rate/100),
             exe_homeowner = sum(exe_homeowner),
             exe_senior = sum(exe_senior),
             exe_freeze = sum(exe_freeze),
@@ -209,6 +209,7 @@ pin_data <- pin_data |>
 
 # Over 27,000 residential PINs did not have to pay a tax bill in 2023.
 pin_data |> 
+  # filter(taxable_eav_adj > 0 ) |> 
   group_by(year) |> 
   summarize( n = n(), 
              n_disvet = sum(exe_missing_disvet > 0),
@@ -231,7 +232,8 @@ pin_data |>
              shifted_rev = sum(0.1*eq_av * tax_code_rate/100),  # if all properties with $0 taxbills had 10% of their equalized AV taxed at current tax rate
              #  shifted_rev_adj = sum(taxable_eav_adj * tax_code_rate/100)
              
-             ) |> View()
+            ) |> mutate(
+              avg_taxable_eav= taxable_eav_adj/n) |> View()
 
 hist(pin_data$eq_av, breaks = 100, xlim = c(0,300000))
 
