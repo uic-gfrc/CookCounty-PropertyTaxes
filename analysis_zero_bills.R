@@ -108,13 +108,16 @@ joined_pins |>
   View()
 
 joined_pins |> 
-  mutate(taxed_eav = eav-all_exemptions ) |>
+  mutate(taxed_eav = eav-all_exemptions,
+         bill_change = proposal_eav * tax_code_rate/100) |>
   filter(proposal_eav > taxed_eav | zero_bill == 1) |>
   summarize(n= n(),
     n_zerobills = sum(zero_bill==1),
     amount_paid = sum(final_tax_to_dist),
     shifted_rev = sum(0.1*eq_av * tax_code_rate/100),
     shifted_rev_fromdisvets = sum(.1*(exe_missing_disvet+exe_vet_dis_ge70)*tax_code_rate/100),
+    avg_billchange = mean(bill_change),
+    median_billchange = median(bill_change)
   ) 
 
 # 37,801 PINs are paying less than 10% of their EAV (or less than ~1% of their market value for assessment purposes)
@@ -123,6 +126,7 @@ joined_pins |>
 ## Municipalities with most zero dollar bills and the share of levy shifted to other tax payers
 joined_pins |>  # already only class 2 pins 
   mutate(taxed_eav = eav-all_exemptions,
+         bill_change = proposal_eav * tax_code_rate/100,
          final_tax_to_dist = ifelse(total_billed_adj == 0, 0, final_tax_to_dist)) |>
   group_by(clean_name) |>
   mutate(muni_levy = sum(final_tax_to_dist, na.rm=T)) |>
@@ -143,6 +147,10 @@ joined_pins |>  # already only class 2 pins
             exe_freeze = sum(exe_freeze),
             exe_vet_dis_total = sum(exe_missing_disvet+exe_vet_dis_ge70),
             exe_total_adj = sum(exe_total_adj),
+            avg_billchange = mean(bill_change),
+            median_billchange = median(bill_change),
+            max_billchange = max(bill_change),
+            min_billchange = min(bill_change)
 
             ) |>  # if all properties with $0 taxbills had 10% of their equalized AV taxed at current tax rate
 
@@ -154,6 +162,8 @@ joined_pins |>  # already only class 2 pins
 ## Cook county sums
 joined_pins |>  # already only class 2 pins 
   mutate(taxed_eav = eav-all_exemptions,
+         bill_change = proposal_eav * tax_code_rate/100,
+         
          final_tax_to_dist = ifelse(total_billed_adj == 0, 0, final_tax_to_dist)) |>
   mutate(muni_levy = sum(final_tax_to_dist, na.rm=T)) |>
   
@@ -172,11 +182,32 @@ joined_pins |>  # already only class 2 pins
             exe_freeze = sum(exe_freeze),
             exe_vet_dis_total = sum(exe_missing_disvet+exe_vet_dis_ge70),
             exe_total_adj = sum(exe_total_adj),
+            avg_billchange = mean(bill_change),
+            median_billchange = median(bill_change),
+            max_billchange = max(bill_change),
+            min_billchange = min(bill_change)
+            
             
   ) |>  # if all properties with $0 taxbills had 10% of their equalized AV taxed at current tax rate
   
-  mutate(rev_share = shifted_rev/muni_levy) |>
+  mutate(rev_share = shifted_rev/muni_levy,
+  ) |>
   arrange(desc(rev_share)) |> View()
+
+## Histogram of bill change -----------------
+joined_pins |>  # already only class 2 pins 
+  mutate(taxed_eav = eav-all_exemptions,
+         bill_change = proposal_eav * tax_code_rate/100,
+         final_tax_to_dist = ifelse(total_billed_adj == 0, 0, final_tax_to_dist)) |>
+  mutate(muni_levy = sum(final_tax_to_dist, na.rm=T)) |>
+  filter(proposal_eav > taxed_eav | zero_bill == 1) |>
+  ggplot()+
+  geom_histogram(aes(x=bill_change), binwidth = 50) +
+  theme_classic() +
+  scale_x_continuous(n.breaks = 10)+
+  labs(title = "Distribution of Tax Bill Change", 
+       x = "Tax Bill Change ($)",
+       y = "# of Bills")
 
 taxcode_rates  <- dbGetQuery(con, "
 SELECT DISTINCT year, tax_code_num, tax_code_rate
