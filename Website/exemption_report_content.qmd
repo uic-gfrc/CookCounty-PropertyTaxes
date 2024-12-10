@@ -29,10 +29,10 @@ nicknames <- readxl::read_excel("../Necessary_Files/muni_shortnames.xlsx")
 
 ```{r}
 
-muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006-2022.csv") %>% 
+muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006-2022.csv") |> 
   left_join(nicknames)
 
-muni_cl_sums <- read_csv("../Output/ptaxsim_muni_class_summaries_2006to2023.csv") %>% 
+muni_cl_sums <- read_csv("../Output/ptaxsim_muni_class_summaries_2006-2022.csv") |> 
   left_join(nicknames)
 ```
 
@@ -42,9 +42,9 @@ muni_cl_sums <- read_csv("../Output/ptaxsim_muni_class_summaries_2006to2023.csv"
 year_examples <- c(2020, 2021, 2022, 2023)
 
 for(i in year_examples){
-  tbl <- muni_cl_sums %>% 
-  filter(year == i) %>%
-  group_by(year) %>% 
+  tbl <- muni_cl_sums |> 
+  filter(year == i) |>
+  group_by(year) |> 
   summarize(AV = sum(muni_c_av), 
             EAV = sum(muni_c_eav), 
             Eq_AV = sum(muni_c_equalized_av),
@@ -54,7 +54,7 @@ for(i in year_examples){
             'Senior Exemp.' = sum(muni_c_exe_senior), 
             'Freeze Exemp.' = sum(muni_c_exe_freeze), 
             'PINs in Muni' = sum(muni_c_pins_in_muni),
-            'PINs with Exemptions' = sum(muni_c_has_HO_exemp))  %>% 
+            'PINs with Exemptions' = sum(muni_c_has_HO_exemp))  |> 
   pivot_longer(cols = c(AV:'PINs with Exemptions'), 
                names_to = "Totals", values_to = "Values") 
 print(tbl)
@@ -73,16 +73,16 @@ year_examples <- c(2020, 2021, 2022)
 
 for(i in year_examples){
 
-median_exempt <- muni_sums %>%
-  filter(year==i)%>%
-  mutate(pct_fmv_exempt = muni_fmv_exempt / muni_fmv ) %>% 
+median_exempt <- muni_sums |>
+  filter(year==i)|>
+  mutate(pct_fmv_exempt = muni_fmv_exempt / muni_fmv ) |> 
   select(pct_fmv_exempt)
 
-print(muni_sums %>%
-  filter(year==i)%>%
-  mutate(pct_fmv_exempt = muni_fmv_exempt / muni_fmv ) %>%
-    mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
- full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+print(muni_sums |>
+  filter(year==i)|>
+  mutate(pct_fmv_exempt = muni_fmv_exempt / muni_fmv ) |>
+    mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) |>
+ full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) |>
   ggplot(aes(fill = pct_fmv_exempt)) + 
   geom_sf(aes(geometry = geometry), color = "black") + 
   theme_void()+ 
@@ -125,10 +125,10 @@ print(muni_sums %>%
 #| tbl-cap: "Table 1: Actual and Hypothetical Composite Tax Rates if GHE $0 in select Years"
 #| results: asis
 
-muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006-2022.csv") %>% 
+muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006-2022.csv") |> 
   left_join(nicknames)
 
-muni_comp_rates <- muni_sums %>%
+muni_comp_rates <- muni_sums |>
   select(year, clean_name, muni_current_rate_avg)
 
 muni_cl_sums <- left_join(muni_cl_sums, muni_comp_rates, by = c("year", "clean_name"))
@@ -137,45 +137,45 @@ year_examples <- c(2020, 2021, 2022, 2023)
 
 for(i in year_examples){
   
-tbl <- muni_cl_sums %>%  
-      filter(year == i) %>% 
-      group_by(clean_name) %>% 
+tbl <- muni_cl_sums |>  
+      filter(year == i) |> 
+      group_by(clean_name) |> 
       summarize(muni_current_rate_avg = first(muni_current_rate_avg),
             muni_levy = sum(muni_c_final_tax_to_dist),
             muni_current_taxable_eav = sum(muni_c_current_taxable_eav),
-            muni_exe_homeowner = sum(muni_c_exe_homeowner)) %>%
+            muni_exe_homeowner = sum(muni_c_exe_homeowner)) |>
       mutate(        
             new_comp_muni_rate = muni_levy/(muni_current_taxable_eav + muni_exe_homeowner),
         new_comp_muni_rate = new_comp_muni_rate, 
         cur_comp_muni_rate = muni_current_rate_avg / 100,
-        rate_change = cur_comp_muni_rate - new_comp_muni_rate) %>%
+        rate_change = cur_comp_muni_rate - new_comp_muni_rate) |>
           
-      select(clean_name, rate_change, cur_comp_muni_rate, new_comp_muni_rate, muni_levy) %>% 
-    arrange(desc(rate_change)) %>%
+      select(clean_name, rate_change, cur_comp_muni_rate, new_comp_muni_rate, muni_levy) |> 
+    arrange(desc(rate_change)) |>
      datatable(rownames = FALSE,
               colnames = c('Municipality' = 'clean_name', 
                            'Composite Tax Rate Change'='rate_change', 
                            'Current Comp. Rate' = 'cur_comp_muni_rate', 
                            'Hypothetical Rate' = 'new_comp_muni_rate', 
                            'Composite Levy' = 'muni_levy')
-              ) %>%
+              ) |>
     formatPercentage(c('Current Comp. Rate', 'Hypothetical Rate', 
                        'Composite Tax Rate Change'
     ), 
-    digits = 2) %>%  
+    digits = 2) |>  
   formatCurrency('Composite Levy', digits = 0) 
    print(htmltools::tagList(tbl)) 
 }
 
 # 
 # 
-# MuniLevel_CompRates <- muni_sums %>% 
-#   filter(year == 2021) %>%
-#   select(clean_name, cur_comp_muni_rate, new_comp_muni_rate, tif_share, zero_bills, final_tax_to_dist) %>%
+# MuniLevel_CompRates <- muni_sums |> 
+#   filter(year == 2021) |>
+#   select(clean_name, cur_comp_muni_rate, new_comp_muni_rate, tif_share, zero_bills, final_tax_to_dist) |>
 #   mutate(cur_comp_muni_rate = cur_comp_muni_rate/100,
 # new_comp_muni_rate = new_comp_muni_rate / 100 ,
-# rate_change = cur_comp_muni_rate - new_comp_muni_rate) %>%
-#   select(clean_name, rate_change, cur_comp_muni_rate, new_comp_muni_rate, final_tax_to_dist) %>% arrange(desc(rate_change))
+# rate_change = cur_comp_muni_rate - new_comp_muni_rate) |>
+#   select(clean_name, rate_change, cur_comp_muni_rate, new_comp_muni_rate, final_tax_to_dist) |> arrange(desc(rate_change))
 # 
 # datatable(MuniLevel_CompRates, rownames = FALSE,
 #           colnames = c('Municipality' = 'clean_name', 
@@ -184,12 +184,12 @@ tbl <- muni_cl_sums %>%
 #                        'Hypothetical Rate' = 'new_comp_muni_rate', 
 #                        #'%Rev to TIF' = 'tif_share', 'Count of $0 Tax Bills' = 'zero_bills', 
 #                        'Composite Levy' = 'final_tax_to_dist'),
-#           caption = "Table 1: 2021 Current and Hypothetical Composite Tax Rates if GHE $0") %>%
+#           caption = "Table 1: 2021 Current and Hypothetical Composite Tax Rates if GHE $0") |>
 #   formatPercentage(c('Current Comp. Rate', 'Hypothetical Rate', 
 #                     # '%Rev to TIF'
 #                     'Composite Tax Rate Change'
 #                      ), 
-#                    digits = 2) %>%  
+#                    digits = 2) |>  
 #   formatCurrency('Composite Levy', digits = 0)
 ```
 
@@ -201,29 +201,29 @@ tbl <- muni_cl_sums %>%
 #| code-fold: true
 
 
-muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006-2021.csv") %>% 
-  filter(year == 2021) %>% 
+muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006-2021.csv") |> 
+  filter(year == 2021) |> 
   left_join(nicknames)
 ```
 
 ```{r}
-MuniLevel_CompRates <- muni_sums %>% 
-  select(clean_name, cur_comp_muni_rate, new_comp_muni_rate, tif_share, zero_bills, final_tax_to_dist) %>%
+MuniLevel_CompRates <- muni_sums |> 
+  select(clean_name, cur_comp_muni_rate, new_comp_muni_rate, tif_share, zero_bills, final_tax_to_dist) |>
   mutate(current_rate_avg = cur_comp_muni_rate/100,
 new_comp_muni_rate = new_comp_muni_rate / 100 ,
-rate_change = current_rate_avg - new_comp_muni_rate) %>%
-  select(clean_name, rate_change, current_rate_avg, new_comp_muni_rate, final_tax_to_dist) %>% arrange(desc(rate_change))
+rate_change = current_rate_avg - new_comp_muni_rate) |>
+  select(clean_name, rate_change, current_rate_avg, new_comp_muni_rate, final_tax_to_dist) |> arrange(desc(rate_change))
 
 datatable(MuniLevel_CompRates, rownames = FALSE,
           colnames = c('Municipality' = 'clean_name', 'Composite Tax Rate Change'='rate_change', 'Current Comp. Rate' = 'current_rate_avg', 'Hypothetical Rate' = 'new_comp_muni_rate', 
                        #'%Rev to TIF' = 'tif_share', 'Count of $0 Tax Bills' = 'zero_bills', 
                        'Composite Levy' = 'final_tax_to_dist'),
-          caption = "Table 1: Current and Hypothetical Composite Tax Rates if GHE $0") %>%
+          caption = "Table 1: Current and Hypothetical Composite Tax Rates if GHE $0") |>
   formatPercentage(c('Current Comp. Rate', 'Hypothetical Rate', 
                     # '%Rev to TIF'
                     'Composite Tax Rate Change'
                      ), 
-                   digits = 2) %>%  
+                   digits = 2) |>  
   formatCurrency('Composite Levy', digits = 0)
 ```
 
@@ -245,21 +245,21 @@ Change in composite tax rate if exempt EAV was added back to the the taxable tax
 
 *CMAP used a donut chart, we will use a bar chart that represents 100% on the x a axis.*
 ```{r}
-MC_sums <- read_csv("../Output/ptaxsim_muni_MC_2006-2021.csv") %>% 
- # rename_all(~str_replace_all(., "muni_mc_","")) %>%
-  filter(year == 2021)  %>% 
+MC_sums <- read_csv("../Output/ptaxsim_muni_MC_2006-2021.csv") |> 
+ # rename_all(~str_replace_all(., "muni_mc_","")) |>
+  filter(year == 2021)  |> 
   left_join(nicknames)
 
-MC_burden <- MC_sums %>% 
+MC_burden <- MC_sums |> 
   mutate(hyp_taxable_eav = current_taxable_eav + exe_homeowner,
          class_taxes_current = current_taxable_eav * (cur_comp_muni_rate/100)
-     ) %>%
-  group_by(clean_name) %>%
+     ) |>
+  group_by(clean_name) |>
   mutate(muni_eav = sum(eav),
          muni_levy = sum(final_tax_to_dist),
        hyp_muni_taxableEAV = sum(new_taxable_eav)
-  ) %>%
-  ungroup() %>%
+  ) |>
+  ungroup() |>
   mutate(new_comp_rate = muni_levy / hyp_muni_taxableEAV,
          class_taxes_hyp = hyp_taxable_eav * (new_comp_rate),
          pct_eav = eav / muni_eav,
@@ -270,11 +270,11 @@ MC_burden <- MC_sums %>%
          burden_shift = (pct_taxburden_current - pct_taxburden_ghe0)*100)
 
 
-current_burden_c2 <- MC_burden %>% 
-  filter(major_class_code == 2) %>% 
-  select(clean_name, pct_eav, burden_shift,  pct_taxburden_current, pct_taxburden_ghe0) %>% arrange(pct_eav)
+current_burden_c2 <- MC_burden |> 
+  filter(major_class_code == 2) |> 
+  select(clean_name, pct_eav, burden_shift,  pct_taxburden_current, pct_taxburden_ghe0) |> arrange(pct_eav)
 
-MC_burden %>% filter(clean_name == "Dolton") %>% select(major_class_code, pct_taxburden_current, pct_taxburden_ghe0) %>% arrange(desc(pct_taxburden_current))
+MC_burden |> filter(clean_name == "Dolton") |> select(major_class_code, pct_taxburden_current, pct_taxburden_ghe0) |> arrange(desc(pct_taxburden_current))
 ```
 
 
@@ -308,8 +308,8 @@ _Table 2: Change in the share of property tax burden due to exemptions for singl
 datatable(current_burden_c2, rownames = FALSE,
           colnames = c('Municipality' = 'clean_name', 'Burden Shift, Pct Pt Change' = 'burden_shift', "C2 EAV/Muni EAV" = 'pct_eav', 'Current Tax Burden\nC2 Tax Collected / Muni Levy' = 'pct_taxburden_current', "Hypothetical Tax Burden\nHyp. C2 Tax Collected / Muni Levy" = 'pct_taxburden_ghe0'),
           caption = "Table 2: Current Share of Taxable EAV and Share of Levy Paid by Class 2 Properties"
-           ) %>%
-  formatPercentage(c(2,4,5), digits = 2) %>%
+           ) |>
+  formatPercentage(c(2,4,5), digits = 2) |>
   formatRound(c(3), digits = 2)
 
 
@@ -321,12 +321,12 @@ datatable(current_burden_c2, rownames = FALSE,
 #| code-fold: true
 
 
-MC_burden %>%
-     # mutate(burden_current = ifelse(burden_current>1, 1, burden_current)) %>%
+MC_burden |>
+     # mutate(burden_current = ifelse(burden_current>1, 1, burden_current)) |>
 
-     filter(major_class_code == 2) %>%
-  mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) %>%
-  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
+     filter(major_class_code == 2) |>
+  mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) |>
+  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) |>
 
   ggplot(aes(fill = pct_taxburden_current)) + 
   geom_sf(aes(geometry = geometry), color = "black") + 
@@ -349,7 +349,4 @@ MC_burden %>%
 
 ### Figure 11. Zero Dollar Bills
 
-```{r}
-#muni_cl_sums %>% group_by(year) %>% ggplot()+ geom_bar(aes(x=year, fill=))
-```
-
+**MVH: I don't think we need this one anymore?**
