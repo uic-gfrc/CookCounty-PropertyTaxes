@@ -10,13 +10,13 @@ format:
     df-print: paged
 ---
 
-```{r setup, warning=FALSE, message=FALSE}
-#| code-fold: TRUE
+```{r setup}
+#| output: false
 
 
 library(tidyverse)
-library(ptaxsim)
-library(DBI)
+#library(ptaxsim)
+#library(DBI)
 library(httr)
 library(jsonlite)
 library(glue)
@@ -26,6 +26,8 @@ library(flextable)
 
 
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+options(scipen = 999)
 
 muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/politicalBoundary/MapServer/2/query?outFields=*&where=1%3D1&f=geojson")
 
@@ -39,16 +41,17 @@ nicknames <- readxl::read_excel("../Necessary_Files/muni_shortnames.xlsx")
 
 ```{r}
 
-muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006to2023.csv") %>% 
-  left_join(nicknames)
+muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006to2023.csv") |> 
+ left_join(nicknames)
 
 
-muni_mc_sums <- read_csv("../Output/ptaxsim_muni_MC_2006to2023.csv") %>%
+muni_mc_sums <- read_csv("../Output/ptaxsim_muni_MC_2006to2023.csv") |>
   rename_all(~str_replace(., "muni_mc_", ""))
 
 
-muni_cl_sums <- read_csv("../Output/ptaxsim_muni_class_summaries_2006to2023.csv") %>% 
+muni_cl_sums <- read_csv("../Output/ptaxsim_muni_class_summaries_2006to2023.csv") |>
   left_join(nicknames)
+
 ```
 
 ```{r}
@@ -80,10 +83,10 @@ print(tbl)
 
 ### Figure 3. Percent Exempt
 
-Total value of exemptions as a share of residential EAV, 2021
+Total value of exemptions as a share of residential EAV, 2023
 
 ```{r}
-year_examples <- c(2021, 2023)
+year_examples <- c(2023)
 
 for(i in year_examples){
 
@@ -120,7 +123,7 @@ print(muni_sums %>%
 
 
 ```{r}
-year_examples <- c(2021, 2023)
+year_examples <- c(2023)
 
 for(i in year_examples){
 
@@ -161,6 +164,7 @@ print(muni_sums %>%
 ```{r}
 #| label: tbl-exemptiontotals_for2023
 #| tbl-cap: "Total Exempt EAV in 2023 in the City of Chicago and the Suburbs"
+#| caption: "Note: Our current calculations undervalue the disabled veterans exemption."
 
 
 muni_cl_sums %>% 
@@ -222,8 +226,7 @@ muni_cl_sums %>%
   theme_minimal() +
   labs(title = "Residential Exempt EAV in Cook County", 
        subtitle = "by Type and Geography, 2006-2023", 
-       y = "EAV (Billions)", x ="",
-       caption = "Values are NOT adjusted to current dollars") +
+       y = "EAV (Billions)", x ="") +
   scale_fill_manual(values = c("chartreuse2",  "darksalmon", "brown2", "blue4" )) +
                     scale_x_continuous(breaks = c(2006, 2010, 2015, 2020, 2023))
 ```
@@ -654,8 +657,6 @@ burden_shift <- ptax_pins %>%
 ```
 
 ```{r}
-options(scipen = 999)
-
 
 burden_shift <- ptax_pins %>%
   filter(class_1dig != 0) |>
