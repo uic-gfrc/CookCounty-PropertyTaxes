@@ -56,10 +56,7 @@ if (grepl("Website", current_dir)) {
   dots = "./"
 }
 
-```
 
-
-```{r}
 path <- paste0(dots, "Output/ptaxsim_muni_level_2006to2023.csv")
 
 
@@ -81,11 +78,6 @@ ccao_loa <- read_csv("../inputs/ccao_loa.csv") %>%
 eq_factor = 3.0027
 
 
-```
-
-
-
-```{r calculate-muniratechanges}
 # get all tax codes and tax rates
 tax_codes <- DBI::dbGetQuery(
     ptaxsim_db_conn, 
@@ -190,9 +182,7 @@ tax_code_change <- cook_pins |>
          tc_hyp_taxrate =  tc_final_tax_to_dist / tc_hyp_taxbase * 100 )
 
 
-```
 
-```{r}
 # Identify PINs associated with tax codes
 
 cook_pins <- DBI::dbGetQuery(
@@ -222,19 +212,35 @@ table(cook_pins$has_other_exe)
 #| label: medianproperty-bymuni
 #| fig-cap: "Median AV Class 2 property by Municipality"
 
-q = c(.25, .5, .75)
+q = c(.1, .25, .5, .75, .9)
 
 ## ranks properties that are considered single family homes in order of AV for each Muni
 muni_quartiles <- cook_pins %>%
-    left_join(nicknames) %>%
+ left_join(tax_codes) |>
+  left_join(tc_muninames) |>
+  left_join(tif_distribution) |>
+  mutate(
+    tax_code_distribution_pct = ifelse(is.na(tax_code_distribution_pct), 0, tax_code_distribution_pct),
+    in_tif = ifelse(tax_code_num %in% tif_distribution$tax_code_num, 1, 0),
+    has_HO_exe = ifelse(exe_homeowner > 0, 1, 0),
+    has_other_exe = ifelse(exe_senior + exe_freeze + exe_longtime_homeowner + exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 > 0, 1, 0 ),
+    all_exemptions = sum(across(starts_with("exe_"))),
+    final_tax_to_tif = tax_bill_total *  tax_code_distribution_pct/100,
+    final_tax_to_dist = tax_bill_total-final_tax_to_tif,
+    eav_inTIF = final_tax_to_tif / tax_code_rate/100,
 
+    taxed_eav = av_clerk*eq_factor - eav_inTIF,
+  )|>
   group_by(clean_name) %>%
   arrange(av) %>%
   summarize(count_pins = n(), 
             min = min(av),
-            quant25 = round(quantile(av, probs = q[1])), 
-            quant50 = round(quantile(av, probs = q[2])),
-            quant75 = round(quantile(av, probs = q[3])),
+            quant10 = round(quantile(av, probs = q[1])), 
+            quant25 = round(quantile(av, probs = q[2])), 
+            quant50 = round(quantile(av, probs = q[3])),
+            quant75 = round(quantile(av, probs = q[4])),
+            quant90 = round(quantile(av, probs = q[5])),
+
             max = max(av)
            ) %>% 
   arrange(desc(quant50))
@@ -243,16 +249,20 @@ muni_quartiles
 
 
 munis_ranked <- cook_pins  %>%
-  inner_join(muni_quartiles, by = c("agency_name")) %>% 
+  left_join(tc_muninames)|>
+  inner_join(muni_quartiles, by = c("clean_name")) %>% 
   mutate(rank = case_when(
+   av > (quant10-500) & (av<quant10+500) ~ "q10",
+
     av > (quant25-500) & (av<quant25+500) ~ "q25",
     av > (quant50-500) & (av<quant50+500) ~ "q50",
-    av > (quant75-500) & (av<quant75+500) ~ "q75")
+    av > (quant75-500) & (av<quant75+500) ~ "q75",
+    av > (quant90-500) & (av<quant90+500) ~ "q90")
+
     ) %>%
       left_join(nicknames) %>%
 
   select(clean_name, rank, av, pin, class, everything())
-munis_ranked
 ```
 
 
@@ -268,24 +278,39 @@ The assessed value and original equalized assessed values come from the `pin` da
 ```{r}
 
 tax_bill_change_HO <- cook_pins %>% 
+ left_join(tax_code_change) |>
+  left_join(tc_muninames) |>
+  left_join(tif_distribution) |>
+  mutate(
+    tax_code_distribution_pct = ifelse(is.na(tax_code_distribution_pct), 0, tax_code_distribution_pct),
+    in_tif = ifelse(tax_code_num %in% tif_distribution$tax_code_num, 1, 0),
+    has_HO_exe = ifelse(exe_homeowner > 0, 1, 0),
+    has_other_exe = ifelse(exe_senior + exe_freeze + exe_longtime_homeowner + exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 > 0, 1, 0 ),
+    all_exemptions = sum(across(starts_with("exe_"))),
+    final_tax_to_tif = tax_bill_total *  tax_code_distribution_pct/100,
+    final_tax_to_dist = tax_bill_total-final_tax_to_tif,
+    eav_inTIF = final_tax_to_tif / tax_code_rate/100,
+
+    taxed_eav = av_clerk*eq_factor - eav_inTIF,
+  )|> 
   filter(av > 0) %>% 
   #filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF WINNETKA", "VILLAGE OF RIVERDALE")) %>%
   filter(clean_name %in% c("Park Forest", "Phoenix", "Winnetka", "Riverdale")) %>%
-    filter(class >199 & class < 300) %>% 
   arrange(av) %>%
-  mutate(all_exemptions = sum(across(starts_with("exe_")), na.rm=T)) |>
-    mutate(eq_av = av_clerk*eq_factor,
-      bill_current = (eq_av*tax_code_rate), # excludes tif portion
-         bill_noexemps =  new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
+  #mutate(all_exemptions = sum(across(starts_with("exe_")), na.rm=T)) |>
+  mutate(eq_av = av_clerk*eq_factor,
+         bill_current = (taxed_eav*tax_code_rate/100), # excludes tif portion
+         bill_noexemps =  tc_hyp_taxrate/100*(taxed_eav+exe_homeowner),
          bill_change = bill_noexemps - bill_current) %>%
-  group_by(agency_name, has_HO_exemp) %>% 
+  group_by(clean_name, has_HO_exe) %>% 
   summarize(median_AV = median(av),
-            median_EAV = median(eav),
+            median_EAV = median(taxed_eav),
             median_bill_cur = round(median(bill_current)),
             median_bill_new = round(median(bill_noexemps)),
             median_change = round(median(bill_change)),
             pincount=n(),
-            perceived_savings = median(tax_amt_exe))
+            perceived_savings = median(exe_homeowner*tax_code_rate)
+  )
 
 tax_bill_change_HO
 ```
@@ -298,10 +323,26 @@ tax_bill_change_HO
 chosen3 <- muni_quartiles %>% 
   left_join(nicknames) %>% 
   filter(clean_name %in% c("Dolton", "Chicago", "Glencoe"))
-# chosen3
 
 chosen3_ranked <- cook_pins %>%
-  inner_join(chosen3, by = "agency_name") %>%
+  left_join(tc_muninames)|>
+  inner_join(chosen3, by = "clean_name") %>%
+   arrange(av) %>%
+  summarize(
+    count_pins = n(), 
+            min = min(av),
+            quant10 = round(quantile(av, probs = q[1])), 
+            quant25 = round(quantile(av, probs = q[2])), 
+            quant50 = round(quantile(av, probs = q[3])),
+            quant75 = round(quantile(av, probs = q[4])),
+            quant90 = round(quantile(av, probs = q[5])),
+            quant99 = round(quantile(av, probs = q[6])),
+            max = max(av)
+           )
+
+chosen3_ranked <- cook_pins %>%
+  left_join(tc_muninames)|>
+  inner_join(chosen3, by = "clean_name") %>%
   mutate(rank = case_when(
     av > (quant10-500) & (av<quant10+500) ~ "q10",
     av > (quant25-500) & (av<quant25+500) ~ "q25",
@@ -310,6 +351,35 @@ chosen3_ranked <- cook_pins %>%
     av > (quant90-500) & (av<quant90+500) ~ "q90",
     av > (quant99-500) & (av<quant99+500) ~ "q99")) %>%
   select(clean_name, rank, av, pin, class, everything())
+
+chosen3_ranked <- cook_pins %>%
+  left_join(tc_muninames)|>
+  inner_join(chosen3, by = "clean_name") %>%
+   arrange(av) %>%
+  summarize(
+    count_pins = n(), 
+            min = min(av),
+            quant10 = round(quantile(av, probs = q[1])), 
+            quant25 = round(quantile(av, probs = q[2])), 
+            quant50 = round(quantile(av, probs = q[3])),
+            quant75 = round(quantile(av, probs = q[4])),
+            quant90 = round(quantile(av, probs = q[5])),
+            quant99 = round(quantile(av, probs = q[6])),
+            max = max(av)
+           )
+# 
+# munis_ranked <- munis_ranked %>%
+# #  filter(tax_code %in% muni_TC_fullyCook$tax_code_num) %>%
+#   inner_join(muni_quartiles, by = "clean_name") %>%
+#   mutate(rank = case_when(
+#     av > (quant10-500) & (av<quant10+500) ~ "q10",
+#     av > (quant25-500) & (av<quant25+500) ~ "q25",
+#     av > (quant50-500) & (av<quant50+500) ~ "q50",
+#     av > (quant75-500) & (av<quant75+500) ~ "q75",
+#     av > (quant90-500) & (av<quant90+500) ~ "q90",
+#     av > (quant99-500) & (av<quant99+500) ~ "q99")) %>%
+#   select(clean_name, rank, av, pin, class, everything())
+
 
 
 chosen3_billchange <-  chosen3_ranked %>% 
