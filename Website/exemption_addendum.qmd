@@ -29,7 +29,9 @@ taxyear = as.data.frame(taxyear)
 
 
 
-source("../scripts/helper_tc_muninames.R")
+source("../scripts/helper_tc_muninames.R") 
+
+tc_muninames <- tc_muninames |> select(-tax_code_rate)
 ```
 
 
@@ -65,10 +67,10 @@ path <- paste0(dots, "Output/ptaxsim_muni_level_2006to2023.csv")
 muni_sums <- read_csv(path) %>% 
   left_join(nicknames)
 
-path <- paste0(dots, "Output/ptaxsim_muni_class_summaries_2006to2023.csv")
+# path <- paste0(dots, "Output/ptaxsim_muni_class_summaries_2006to2023.csv")
 
-muni_cl_sums <- read_csv(path) %>% 
-  left_join(nicknames)
+# muni_cl_sums <- read_csv(path) %>% 
+#  left_join(nicknames)
 
 class_dict <- read_csv("../Necessary_Files/class_dict_singlefamcodes.csv") %>% 
   mutate(class_code = as.character(class_code)) # change variable type to character so the join works.
@@ -84,6 +86,17 @@ eq_factor = 3.0027
 
 
 ```{r calculate-muniratechanges}
+# get all tax codes and tax rates
+tax_codes <- DBI::dbGetQuery(
+    ptaxsim_db_conn, 
+    glue_sql("
+             SELECT DISTINCT tax_code_num, tax_code_rate
+             FROM tax_code
+             WHERE year = 2021
+             "
+             , 
+             .con = ptaxsim_db_conn))
+
 # get percent of eav that goes to a TIF:
 tif_distribution <- DBI::dbGetQuery(
     ptaxsim_db_conn, 
@@ -110,6 +123,7 @@ cook_pins <- DBI::dbGetQuery(
 
 # create some variables that we need:
 muni_rates <- cook_pins |> 
+  left_join(tax_codes) |>
   left_join(tc_muninames) |>
   left_join(tif_distribution) |>
   mutate(
@@ -126,24 +140,56 @@ muni_rates <- cook_pins |>
     total_bill = final_tax_to_tif + final_tax_to_dist
 
   ) %>% 
-  mutate(av = av_clerk)  |># av used for calculations is the final av value from the clerk's office
+  mutate(av = av_clerk)  |> # av used for calculations is the final av value from the clerk's office
   group_by(clean_name)|>
   summarize(
-    tax_bill_total = sum(tax_bill_total),
-    eav_inTIF = sum(eav_inTIF, na.rm=T),
-    taxed_eav = sum(taxed_eav, na.rm=T), # taxed by government agencies
-            exempt_eav_from_GHE = sum(exe_homeowner, na.rm=T),
-            muni_levy = sum(final_tax_to_dist, na.rm=T),
-            
-            muni_min_rate = min(tax_code_rate),
-            muni_median_rate = median(tax_code_rate),
-            muni_avg_rate = mean(tax_code_rate),
-            muni_max_rate = max(tax_code_rate),
-    total_billed = sum(total_bill),
+    tax_bill_total = sum(tax_bill_total), # TIF and local government revenue
+    eav_inTIF = sum(eav_inTIF, na.rm=T),  # should be sum of frozen EAV
+    muni_taxed_eav = sum(taxed_eav, na.rm=T),  # non-TIF and non-exempt EAV taxed by government agencies
+    muni_exempt_eav_from_GHE = sum(exe_homeowner, na.rm=T),
+    muni_levy = sum(final_tax_to_dist, na.rm=T),
+    
+    muni_min_rate = min(tax_code_rate),
+    muni_median_rate = median(tax_code_rate),
+    muni_avg_rate = mean(tax_code_rate, na.rm=T),
+    muni_max_rate = max(tax_code_rate),
     final_tax_to_dist = sum(final_tax_to_dist, na.rm=T),
     final_tax_to_tif = sum(final_tax_to_tif, na.rm=T)) |>
-  mutate(hyp_taxbase = taxed_eav + exempt_eav_from_GHE,
-         hyp_taxrate =  muni_levy / hyp_taxbase * 100 )
+  mutate(muni_hyp_taxbase = muni_taxed_eav + muni_exempt_eav_from_GHE,   
+         muni_hyp_taxrate =  muni_levy / muni_hyp_taxbase * 100 )
+  
+tax_code_change <- cook_pins |>  
+  left_join(tax_codes) |>
+  left_join(tc_muninames) |>
+  left_join(tif_distribution) |>
+  mutate(
+    tax_code_distribution_pct = ifelse(is.na(tax_code_distribution_pct), 0, tax_code_distribution_pct),
+    in_tif = ifelse(tax_code_num %in% tif_distribution$tax_code_num, 1, 0),
+    has_HO_exe = ifelse(exe_homeowner > 0, 1, 0),
+    has_other_exe = ifelse(exe_senior + exe_freeze + exe_longtime_homeowner + exe_disabled +
+                             exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + 
+                             exe_vet_dis_ge70 > 0, 1, 0 ),
+    all_exemptions = sum(across(starts_with("exe_"))),
+    final_tax_to_tif = tax_bill_total *  tax_code_distribution_pct/100,
+    final_tax_to_dist = tax_bill_total-final_tax_to_tif,
+    eav_inTIF = final_tax_to_tif / tax_code_rate/100,
+    
+    taxed_eav = av_clerk*eq_factor - eav_inTIF,
+    total_bill = final_tax_to_tif + final_tax_to_dist
+  ) %>% 
+  group_by(clean_name, tax_code_num, tax_code_rate) |>
+  summarize(
+    tc_pc = n(),
+    tc_tax_bill_total = sum(tax_bill_total), # TIF and local government revenue at tax code level
+    tc_eav_inTIF = sum(eav_inTIF, na.rm=T),  # should be sum of frozen EAV
+    tc_taxed_eav = sum(taxed_eav, na.rm=T),  # non-TIF and non-exempt EAV taxed by government agencies
+    tc_exempt_eav_from_GHE = sum(exe_homeowner, na.rm=T),
+    tc_final_tax_to_dist = sum(final_tax_to_dist, na.rm=T),
+    tc_final_tax_to_tif = sum(final_tax_to_tif, na.rm=T)) |>
+  mutate(tc_hyp_taxbase = tc_taxed_eav + tc_exempt_eav_from_GHE,   
+         tc_hyp_taxrate =  tc_final_tax_to_dist / tc_hyp_taxbase * 100 )
+
+
 ```
 
 ```{r}
@@ -163,6 +209,7 @@ cook_pins <- DBI::dbGetQuery(
 cook_pins <- cook_pins |> 
   mutate(has_HO_exe = ifelse( exe_homeowner > 0, 1, 0),
          has_other_exe = ifelse(exe_senior + exe_freeze + exe_longtime_homeowner + exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 > 0, 1, 0 )) %>% 
+  left_join(tax_codes) |>
   left_join(tc_muninames) %>%
     mutate(av = av_clerk) 
 
@@ -181,7 +228,7 @@ q = c(.25, .5, .75)
 muni_quartiles <- cook_pins %>%
     left_join(nicknames) %>%
 
-  group_by(clean_name, agency_name) %>%
+  group_by(clean_name) %>%
   arrange(av) %>%
   summarize(count_pins = n(), 
             min = min(av),
@@ -190,7 +237,7 @@ muni_quartiles <- cook_pins %>%
             quant75 = round(quantile(av, probs = q[3])),
             max = max(av)
            ) %>% 
-  arrange( desc( quant50))
+  arrange(desc(quant50))
 muni_quartiles
 
 
