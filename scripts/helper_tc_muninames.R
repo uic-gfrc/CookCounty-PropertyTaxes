@@ -22,9 +22,9 @@ if (file.exists(file_path)){
 #
 current_dir = getwd()
 
-if(grepl("website", current_dir)){
+if(grepl("Website", current_dir)){
   dots = "../"
-} else{
+}else{
   dots = "./"
 }
 
