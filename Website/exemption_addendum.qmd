@@ -48,7 +48,7 @@ if (file.exists(file_path)){
 
 current_dir = getwd()
 
-if (grepl("website", current_dir)) {
+if (grepl("Website", current_dir)) {
   dots = "../"
 } else {
   dots = "./"
@@ -76,9 +76,77 @@ class_dict <- read_csv("../Necessary_Files/class_dict_singlefamcodes.csv") %>%
 ccao_loa <- read_csv("../inputs/ccao_loa.csv") %>% 
   mutate(class_code = as.character(class_code))
 
+eq_factor = 3.0027
+
+
 ```
 
-```{r eval = FALSE, include = FALSE}
+
+
+```{r calculate-muniratechanges}
+# get percent of eav that goes to a TIF:
+tif_distribution <- DBI::dbGetQuery(
+    ptaxsim_db_conn, 
+    glue_sql("
+             SELECT DISTINCT* 
+             FROM tif_distribution
+             WHERE year = 2021
+             "
+             , 
+             .con = ptaxsim_db_conn)) %>%
+  select(-c(tax_code_rate, agency_num))
+
+# get AV and exemption amounts:
+cook_pins <- DBI::dbGetQuery(
+    ptaxsim_db_conn, 
+    glue_sql("
+             SELECT DISTINCT* 
+             FROM pin 
+             WHERE year = 2021
+             "
+             , 
+             .con = ptaxsim_db_conn))
+
+
+# create some variables that we need:
+muni_rates <- cook_pins |> 
+  left_join(tc_muninames) |>
+  left_join(tif_distribution) |>
+  mutate(
+    tax_code_distribution_pct = ifelse(is.na(tax_code_distribution_pct), 0, tax_code_distribution_pct),
+    in_tif = ifelse(tax_code_num %in% tif_distribution$tax_code_num, 1, 0),
+    has_HO_exe = ifelse(exe_homeowner > 0, 1, 0),
+    has_other_exe = ifelse(exe_senior + exe_freeze + exe_longtime_homeowner + exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 > 0, 1, 0 ),
+    all_exemptions = sum(across(starts_with("exe_"))),
+    final_tax_to_tif = tax_bill_total *  tax_code_distribution_pct/100,
+    final_tax_to_dist = tax_bill_total-final_tax_to_tif,
+    eav_inTIF = final_tax_to_tif / tax_code_rate/100,
+
+    taxed_eav = av_clerk*eq_factor - eav_inTIF,
+    total_bill = final_tax_to_tif + final_tax_to_dist
+
+  ) %>% 
+  mutate(av = av_clerk)  |># av used for calculations is the final av value from the clerk's office
+  group_by(clean_name)|>
+  summarize(
+    tax_bill_total = sum(tax_bill_total),
+    eav_inTIF = sum(eav_inTIF, na.rm=T),
+    taxed_eav = sum(taxed_eav, na.rm=T), # taxed by government agencies
+            exempt_eav_from_GHE = sum(exe_homeowner, na.rm=T),
+            muni_levy = sum(final_tax_to_dist, na.rm=T),
+            
+            muni_min_rate = min(tax_code_rate),
+            muni_median_rate = median(tax_code_rate),
+            muni_avg_rate = mean(tax_code_rate),
+            muni_max_rate = max(tax_code_rate),
+    total_billed = sum(total_bill),
+    final_tax_to_dist = sum(final_tax_to_dist, na.rm=T),
+    final_tax_to_tif = sum(final_tax_to_tif, na.rm=T)) |>
+  mutate(hyp_taxbase = taxed_eav + exempt_eav_from_GHE,
+         hyp_taxrate =  muni_levy / hyp_taxbase * 100 )
+```
+
+```{r}
 # Identify PINs associated with tax codes
 
 cook_pins <- DBI::dbGetQuery(
@@ -103,7 +171,7 @@ table(cook_pins$has_other_exe)
 ```
 
 
-```{r eval = FALSE, include = FALSE}
+```{r}
 #| label: medianproperty-bymuni
 #| fig-cap: "Median AV Class 2 property by Municipality"
 
@@ -150,14 +218,17 @@ Assessed Value is used to identify the quartile breaks within each municipality 
 
 The assessed value and original equalized assessed values come from the `pin` data table within PTAXSIM. This table also has every type of exemption that the property received and the amount of EAV that was exempt due to the exemption.
 
-```{r eval=FALSE, include = FALSE}
+```{r}
+
 tax_bill_change_HO <- cook_pins %>% 
   filter(av > 0) %>% 
   #filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF WINNETKA", "VILLAGE OF RIVERDALE")) %>%
   filter(clean_name %in% c("Park Forest", "Phoenix", "Winnetka", "Riverdale")) %>%
     filter(class >199 & class < 300) %>% 
   arrange(av) %>%
-    mutate(bill_current = (final_tax_to_dist + final_tax_to_tif),
+  mutate(all_exemptions = sum(across(starts_with("exe_")), na.rm=T)) |>
+    mutate(eq_av = av_clerk*eq_factor,
+      bill_current = (eq_av*tax_code_rate), # excludes tif portion
          bill_noexemps =  new_comp_TC_rate/100*(equalized_AV-all_exemptions+exe_homeowner),
          bill_change = bill_noexemps - bill_current) %>%
   group_by(agency_name, has_HO_exemp) %>% 
@@ -176,15 +247,13 @@ tax_bill_change_HO
 #### Select Municipalities
 
 ```{r}
-#| eval: false
-
 
 chosen3 <- muni_quartiles %>% 
   left_join(nicknames) %>% 
   filter(clean_name %in% c("Dolton", "Chicago", "Glencoe"))
 # chosen3
 
-chosen3_ranked <- joined_pins %>%
+chosen3_ranked <- cook_pins %>%
   inner_join(chosen3, by = "agency_name") %>%
   mutate(rank = case_when(
     av > (quant10-500) & (av<quant10+500) ~ "q10",
