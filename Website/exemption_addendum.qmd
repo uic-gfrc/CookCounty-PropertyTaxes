@@ -16,11 +16,7 @@ library(glue)
 library(DT)
 
 knitr::opts_chunk$set(warning = FALSE, message = FALSE, error=TRUE)
-```
 
-
-```{r}
-#| code-fold: true
 
 file_path <- "C:/Users/aleaw/" 
 
@@ -32,11 +28,6 @@ taxyear = as.data.frame(taxyear)
 source("../scripts/helper_tc_muninames.R") 
 
 tc_muninames <- tc_muninames |> select(-tax_code_rate)
-```
-
-
-```{r}
-#| code-fold: true
 
 #ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2023.0.0.db")
 
@@ -101,7 +92,8 @@ tif_distribution <- DBI::dbGetQuery(
              .con = ptaxsim_db_conn)) %>%
   select(-c(tax_code_rate, agency_num))
 
-# get AV and exemption amounts:
+# All PINs - get AV and exemption amounts -----------------------------
+# Include ALL PINs for calculating muni level composite rates:
 cook_pins <- DBI::dbGetQuery(
     ptaxsim_db_conn, 
     glue_sql("
@@ -183,38 +175,25 @@ tax_code_change <- cook_pins |>
 
 
 
-# Identify PINs associated with tax codes
-
-cook_pins <- DBI::dbGetQuery(
-    ptaxsim_db_conn, 
-    glue_sql("
+# Identify Class 2 Residential PINs ------------- 
+c2pins <- DBI::dbGetQuery(
+  ptaxsim_db_conn, 
+  glue_sql("
              SELECT DISTINCT* 
              FROM pin 
              WHERE class > 199 AND class < 300
              AND year = 2021
              "
-              , 
-             .con = ptaxsim_db_conn))
+           , 
+           .con = ptaxsim_db_conn))
 
-cook_pins <- cook_pins |> 
+c2pins <- c2pins |> 
   mutate(has_HO_exe = ifelse( exe_homeowner > 0, 1, 0),
          has_other_exe = ifelse(exe_senior + exe_freeze + exe_longtime_homeowner + exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 > 0, 1, 0 )) %>% 
   left_join(tax_codes) |>
   left_join(tc_muninames) %>%
-    mutate(av = av_clerk) 
-```
-
-
-```{r}
-#| label: medianproperty-bymuni
-#| fig-cap: "Median AV Class 2 property by Municipality"
-
-q = c(.1, .25, .5, .75, .9)
-
-## ranks properties that are considered single family homes in order of AV for each Muni
-muni_quartiles <- cook_pins %>%
- left_join(tax_codes) |>
-  left_join(tc_muninames) |>
+  mutate(av = av_clerk) |>
+  left_join(tax_code_change) |>
   left_join(tif_distribution) |>
   mutate(
     tax_code_distribution_pct = ifelse(is.na(tax_code_distribution_pct), 0, tax_code_distribution_pct),
@@ -225,9 +204,18 @@ muni_quartiles <- cook_pins %>%
     final_tax_to_tif = tax_bill_total *  tax_code_distribution_pct/100,
     final_tax_to_dist = tax_bill_total-final_tax_to_tif,
     eav_inTIF = final_tax_to_tif / tax_code_rate/100,
+    
+    taxed_eav = av_clerk*eq_factor - eav_inTIF)
+```
 
-    taxed_eav = av_clerk*eq_factor - eav_inTIF,
-  )|>
+```{r}
+#| label: medianproperty-bymuni
+# #| tbl-cap: "Median AV Class 2 property by Municipality"
+
+q = c(.1, .25, .5, .75, .9)
+
+## ranks properties that are considered C2 properties in order of AV for each Muni
+muni_quartiles <- c2pins %>%
   group_by(clean_name) %>%
   arrange(av) %>%
   summarize(count_pins = n(), 
@@ -242,13 +230,9 @@ muni_quartiles <- cook_pins %>%
            ) %>% 
   arrange(desc(quant50))
 
-muni_quartiles
-
 
 # All Class 2 Properties
-munis_ranked <- cook_pins  %>%
-  left_join(tc_muninames)|>
-
+munis_ranked <- c2pins  %>%
   inner_join(muni_quartiles, by = c("clean_name")) %>% 
   mutate(rank = case_when(
    av > (quant10-500) & (av<quant10+500) ~ "q10",
@@ -258,12 +242,8 @@ munis_ranked <- cook_pins  %>%
     av > (quant90-500) & (av<quant90+500) ~ "q90")
 
     ) %>%
-      left_join(nicknames) %>%
-
   select(clean_name, rank, av, pin, class, everything())
 ```
-
-
 
 ## Which taxpayers benefit the most from homestead exemptions?
 
@@ -274,28 +254,13 @@ Assessed Value is used to identify the quartile breaks within each municipality 
 The assessed value and original equalized assessed values come from the `pin` data table within PTAXSIM. This table also has every type of exemption that the property received and the amount of EAV that was exempt due to the exemption.
 
 ```{r}
+#| label: tbl-taxbillchange
+#| tbl-cap: "**Figure 2** The median property was found for all Class 2 properties and used to calculate the hypothetical tax bill change for those that do and do not claim the GHE. It is important to note that almost all municipalities have a median AV for those that do claim the GHE that is quite different from those that do not claim the GHE."
 
-tax_bill_change_HO <- cook_pins %>% 
- left_join(tax_code_change) |>
-  left_join(tc_muninames) |>
-  left_join(tif_distribution) |>
-  mutate(
-    tax_code_distribution_pct = ifelse(is.na(tax_code_distribution_pct), 0, tax_code_distribution_pct),
-    in_tif = ifelse(tax_code_num %in% tif_distribution$tax_code_num, 1, 0),
-    has_HO_exe = ifelse(exe_homeowner > 0, 1, 0),
-    has_other_exe = ifelse(exe_senior + exe_freeze + exe_longtime_homeowner + exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 > 0, 1, 0 ),
-    all_exemptions = sum(across(starts_with("exe_"))),
-    final_tax_to_tif = tax_bill_total *  tax_code_distribution_pct/100,
-    final_tax_to_dist = tax_bill_total-final_tax_to_tif,
-    eav_inTIF = final_tax_to_tif / tax_code_rate/100,
+tax_bill_change_HO <- c2pins %>% 
 
-    taxed_eav = av_clerk*eq_factor - eav_inTIF,
-  )|> 
   filter(av > 0) %>% 
-  #filter(agency_name %in% c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX", "VILLAGE OF WINNETKA", "VILLAGE OF RIVERDALE")) %>%
- # filter(clean_name %in% c("Park Forest", "Phoenix", "Winnetka", "Riverdale")) %>%
-  arrange(av) %>%
-  #mutate(all_exemptions = sum(across(starts_with("exe_")), na.rm=T)) |>
+ arrange(av) %>%
   mutate(eq_av = av_clerk*eq_factor,
          bill_current = (taxed_eav*tax_code_rate/100), # excludes tif portion
          bill_noexemps =  tc_hyp_taxrate/100*(taxed_eav+exe_homeowner),
@@ -307,203 +272,16 @@ tax_bill_change_HO <- cook_pins %>%
             median_bill_new = round(median(bill_noexemps)),
             median_change = round(median(bill_change)),
             pincount=n(),
-            perceived_savings = median(exe_homeowner*tax_code_rate)
+            perceived_savings = median(exe_homeowner*tax_code_rate/100)
   )
 
 tax_bill_change_HO |> filter(clean_name %in% c("Park Forest", "Phoenix", "Winnetka", "Riverdale"))
 ```
 
-
-<!-- #### Select Municipalities -->
-
-<!-- ```{r} -->
-<!-- chosen3_billchange <- tax_bill_change_HO %>% filter(clean_name %in% c("Dolton", "Chicago", "Glencoe")) -->
-<!-- chosen3_billchange -->
-
-<!-- # chosen3 <- muni_quartiles %>%  -->
-<!-- #   left_join(nicknames) %>%  -->
-<!-- #   filter(clean_name %in% c("Dolton", "Chicago", "Glencoe")) -->
-<!-- #  -->
-<!-- # chosen3_ranked <- cook_pins %>% -->
-<!-- #   left_join(tc_muninames)|> -->
-<!-- #   inner_join(chosen3, by = "clean_name") %>% -->
-<!-- #    arrange(av) %>% -->
-<!-- #   summarize( -->
-<!-- #     count_pins = n(),  -->
-<!-- #             min = min(av), -->
-<!-- #             quant10 = round(quantile(av, probs = q[1])),  -->
-<!-- #             quant25 = round(quantile(av, probs = q[2])),  -->
-<!-- #             quant50 = round(quantile(av, probs = q[3])), -->
-<!-- #             quant75 = round(quantile(av, probs = q[4])), -->
-<!-- #             quant90 = round(quantile(av, probs = q[5])), -->
-<!-- #             max = max(av) -->
-<!-- #            ) -->
-<!-- #  -->
-<!-- # chosen3_ranked <- cook_pins %>% -->
-<!-- #   left_join(tc_muninames)|> -->
-<!-- #   inner_join(chosen3, by = "clean_name") %>% -->
-<!-- #   mutate(rank = case_when( -->
-<!-- #     av > (quant10-500) & (av<quant10+500) ~ "q10", -->
-<!-- #     av > (quant25-500) & (av<quant25+500) ~ "q25", -->
-<!-- #     av > (quant50-500) & (av<quant50+500) ~ "q50", -->
-<!-- #     av > (quant75-500) & (av<quant75+500) ~ "q75", -->
-<!-- #     av > (quant90-500) & (av<quant90+500) ~ "q90") )|> -->
-<!-- #   select(clean_name, rank, av, pin, class, everything()) -->
-<!-- # #  -->
-<!-- # # munis_ranked <- munis_ranked %>% -->
-<!-- # # #  filter(tax_code %in% muni_TC_fullyCook$tax_code_num) %>% -->
-<!-- # #   inner_join(muni_quartiles, by = "clean_name") %>% -->
-<!-- # #   mutate(rank = case_when( -->
-<!-- # #     av > (quant10-500) & (av<quant10+500) ~ "q10", -->
-<!-- # #     av > (quant25-500) & (av<quant25+500) ~ "q25", -->
-<!-- # #     av > (quant50-500) & (av<quant50+500) ~ "q50", -->
-<!-- # #     av > (quant75-500) & (av<quant75+500) ~ "q75", -->
-<!-- # #     av > (quant90-500) & (av<quant90+500) ~ "q90", -->
-<!-- # #     av > (quant99-500) & (av<quant99+500) ~ "q99")) %>% -->
-<!-- # #   select(clean_name, rank, av, pin, class, everything()) -->
+![](images/clipboard-3760892845.png)
 
 
-<!-- #  -->
-<!-- chosen3_billchange <-  munis_ranked %>% -->
-<!--   group_by(clean_name, rank)%>% -->
-<!--   arrange(av) %>% -->
-<!--  # group_by(agency_name, has_HO_exemp) %>% -->
-<!--   mutate(#taxable_eav = final_tax_to_dist / tax_code_rate, -->
-<!--     # current bill = current tax rate * portion of levy billed -->
-<!--          bill_current = (final_tax_to_dist + final_tax_to_tif), -->
-<!--          bill_noexemps =  tc_hyp_taxrate/100*(equalized_AV-all_exemptions+exe_homeowner), -->
-<!--          bill_change = bill_noexemps - bill_current) %>% -->
-<!--   group_by(clean_name, rank, has_HO_exemp) %>% -->
-<!--   summarize(median_AV = round(median(av)), -->
-<!--             median_EAV = round(median(eav)), -->
-<!--             # median_bill_cur = median(bill_current), -->
-<!--             # median_bill_new = median(bill_noexemps), -->
-<!--             # median_change = median(bill_change), -->
-<!--             mean_bill_cur = round(mean(bill_current, na.rm=TRUE)), -->
-<!--             mean_bill_new = round(mean(bill_noexemps, na.rm=TRUE)), -->
-<!--             mean_change = round(mean(bill_change, na.rm=TRUE)), -->
-<!--             perceived_savings = median(tax_amt_exe), -->
-<!--             cur_comp_TC_rate = round(mean(cur_comp_TC_rate), digits = 2), -->
-<!--             new_comp_TC_rate = round(mean(new_comp_TC_rate), digits = 2), -->
-<!--             pincount=n() -->
-<!-- ) %>% -->
-<!--   arrange(has_HO_exemp, rank) -->
 
-<!-- #chosen3_billchange -->
-<!-- ``` -->
-
-
-<!-- ```{r} -->
-<!-- cook_pins %>% -->
-<!--   left_join(nicknames) %>% -->
-<!--   filter(av < 500000) %>% # remove the couple really extreme outliers in Chicago -->
-<!--   filter(clean_name %in% c("Dolton", "Chicago", "Glencoe", "Oak Park")) %>% -->
-<!--   ggplot( aes(y=av, group = clean_name, fill = clean_name)) + -->
-<!--   geom_boxplot()+ -->
-<!--  # facet_wrap(~agency_name, nrow=4) + -->
-<!--  coord_flip() + -->
-<!--   theme_bw()  + -->
-<!--     theme(axis.text.x = element_blank(),  -->
-<!--         axis.ticks.x = element_blank()) + -->
-<!--   labs(title = "Distribution of Residential Properties AV", y = "Assessed Value ($)") + -->
-<!--   scale_y_continuous(label = scales::dollar) -->
-
-<!-- ``` -->
-
-<!-- ```{r} -->
-<!-- #install.packages("ggridges") -->
-<!-- library(ggridges) -->
-
-<!-- cook_pins %>% -->
-<!--   left_join(nicknames) %>% -->
-<!--   filter(av < 300000) %>% # remove the couple really extreme outliers in Chicago -->
-<!--  filter(clean_name %in% c("Dolton", "Chicago", "Glencoe", "Riverside", "Oak Park")) %>% -->
-<!--   ggplot( aes(x = av, y= clean_name, fill = clean_name ) )+ -->
-<!--   geom_density_ridges( aes(x = av, y=clean_name, fill = clean_name) )+ -->
-<!--   viridis::scale_fill_viridis(discrete = T, name = "")+ -->
-<!--   #facet_wrap(~agency_name, ncol=4) + -->
-<!-- #  coord_flip() + -->
-<!--   theme_ridges() +  -->
-<!--   theme(#axis.text.x = element_blank(),  -->
-<!--  #       axis.ticks.x = element_blank(, -->
-<!--  legend.position = "none") + -->
-<!--   labs(title = "Distribution of Residential Properties' AV",  -->
-<!--        x = "Assessed Value", y= "" ) + -->
-<!--   scale_x_continuous(label = scales::dollar) -->
-
-<!-- ``` -->
-
-<!-- ```{r} -->
-
-<!-- munis_ranked %>%  -->
-<!--    filter(clean_name %in% c("Park Forest", "Phoenix", "Winnetka", "Riverdale") & -->
-<!--             !is.na(rank)) |> -->
-<!--   pivot_wider(id_cols = c(clean_name, has_HO_exemp),  -->
-<!--               names_from = "rank", values_from = "mean_change") %>% -->
-<!--     mutate(Claimed_Exemption= ifelse(has_HO_exemp == 0 , "Didn't Claim Exemption", "Did Claim Exemption")) -->
-
-<!-- # chosen3_billchange %>%  -->
-<!-- #   pivot_wider(id_cols = c(clean_name, has_HO_exemp, rank),  -->
-<!-- #               names_from = "rank", values_from = "mean_change") %>% -->
-<!-- #     mutate(Claimed_Exemption= ifelse(has_HO_exemp == 0 , "Didn't Claim Exemption", "Did Claim Exemption")) %>% -->
-<!-- #   select(Municipality=clean_name, "Claimed_Exemption", "q25", "q50", "q75") -->
-<!-- ``` -->
-
-<!-- ##### Bill change for those that Did Not Claim Exemptions: -->
-
-<!-- ```{r} -->
-<!-- chosen3_billchange %>%  -->
-<!--   filter(has_HO_exemp == 0 & !is.na(rank)) %>% -->
-<!--   select(Municipality = clean_name, "AV Percentile" = rank, "AV" = median_AV, "Average Current Bill" = mean_bill_cur, "Average New Bill" = mean_bill_new, "Tax Bill Change" = mean_change, "Perceived Savings" = perceived_savings, "# Pins in AV Range" = pincount, cur_comp_TC_rate, new_comp_TC_rate, everything()) -->
-<!-- ``` -->
-
-<!-- ##### Bill Change for those that did claim the General Homestead Exemption -->
-
-<!-- ```{r} -->
-<!-- chosen3_summarytable <- chosen3_billchange %>%  -->
-<!--   filter(has_HO_exemp == 1 & !is.na(rank)) %>% -->
-<!--   arrange(clean_name, rank) %>% -->
-<!--   select(Municipality = clean_name, "AV Percentile" = rank, "AV" = median_AV, "Average Current Bill" = mean_bill_cur, "Average New Bill" = mean_bill_new, "Tax Bill Change" = mean_change, "Perceived Savings" = perceived_savings, "# Pins in AV Range" = pincount, cur_comp_TC_rate, new_comp_TC_rate, everything()) -->
-
-<!-- chosen3_summarytable -->
-<!-- ``` -->
-
-<!-- ```{r create-sing-fam-quartiles} -->
-
-<!-- q = c(.10, .25, .5, .75, .9, .99) -->
-
-
-<!-- muni_ranked <- joined_pins %>% ## cook county single family properties rannked by AV -->
-<!--   filter(Option2 == "Single-Family") %>% -->
-<!--   filter(tax_code %in% muni_TC_fullyCook$tax_code_num) %>% # excludes county line crossing munis -->
-<!--   arrange(av) %>% -->
-<!--   summarize( -->
-<!--     count_pins = n(),  -->
-<!--             min = min(av), -->
-<!--             quant10 = round(quantile(av, probs = q[1])),  -->
-<!--             quant25 = round(quantile(av, probs = q[2])),  -->
-<!--             quant50 = round(quantile(av, probs = q[3])), -->
-<!--             quant75 = round(quantile(av, probs = q[4])), -->
-<!--             quant90 = round(quantile(av, probs = q[5])), -->
-<!--             quant99 = round(quantile(av, probs = q[6])), -->
-<!--             max = max(av) -->
-<!--            ) -->
-
-<!-- munis_ranked <- munis_ranked %>% -->
-<!--   filter(major_class_code == 2) %>% -->
-<!--   filter(tax_code %in% muni_TC_fullyCook$tax_code_num) %>% -->
-<!--   inner_join(muni_quartiles, by = "agency_name") %>% -->
-<!--   mutate(rank = case_when( -->
-<!--     av > (quant10-500) & (av<quant10+500) ~ "q10", -->
-<!--     av > (quant25-500) & (av<quant25+500) ~ "q25", -->
-<!--     av > (quant50-500) & (av<quant50+500) ~ "q50", -->
-<!--     av > (quant75-500) & (av<quant75+500) ~ "q75", -->
-<!--     av > (quant90-500) & (av<quant90+500) ~ "q90", -->
-<!--     av > (quant99-500) & (av<quant99+500) ~ "q99")) %>% -->
-<!--   select(clean_name, rank, av, pin, class, everything()) -->
-
-
-<!-- ``` -->
 
 
 
@@ -511,118 +289,154 @@ tax_bill_change_HO |> filter(clean_name %in% c("Park Forest", "Phoenix", "Winnet
 
 **Park Forest vs. Winnetka**
 
+![](images/clipboard-3418026779.png){width="387"}
+
+![](images/clipboard-3189035135.png){width="392"}
+
 ### Figure 2. Value of Median Residential Property Indifferent to Elimination of GHE
 
-```{r}
-#| eval: false
-eq_2021 <- 3.0027
-
-
-muni_taxrates <- cook_pins %>% 
-  group_by(clean_name)  %>%
-  arrange(av) %>%
-  
-  summarize(
-    muni_median_av = round(median(av, na.rm=TRUE)),
-    muni_median_eav = round(median(eav, na.rm=TRUE)),
-    muni_mean_av = round(mean(av, na.rm=TRUE)),
-    muni_mean_eav = round(mean(eav, na.rm=TRUE)),
-    av = sum(av, na.rm = TRUE),
-    eav = sum(eav, na.rm = TRUE),
-    equalized_AV = sum(av*eq_factor, na.rm = TRUE),
-    pins_in_muni = n(),
-    current_exemptions = sum(all_exemptions, na.rm = TRUE),
-    HO_exemps = sum(exe_homeowner, na.rm = TRUE),
-    tax_code_rate = mean(tax_code_rate, na.rm = TRUE), # Changed from first() to mean() on Nov 1
-    final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # used as LEVY amount!! 
-    final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
-    tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), 
-    tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), 
-    tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE),
-    tif_share = mean(tif_share, na.rm=TRUE), # not used
-  ) %>%
-  
-  mutate(total_bill_current = final_tax_to_dist + final_tax_to_tif) %>%
-  rename(cur_comp_muni_rate = tax_code_rate) %>%
-  mutate(current_taxable_eav = final_tax_to_dist/(cur_comp_muni_rate/100),
-         new_taxable_eav = final_tax_to_dist/(cur_comp_muni_rate/100) + HO_exemps) %>%
-  mutate(new_comp_muni_rate = (final_tax_to_dist / new_taxable_eav)*100) %>%
-  
-  mutate(new_comp_muni_rate = ifelse(is.nan(new_comp_muni_rate), cur_comp_muni_rate, new_comp_muni_rate)) %>% 
-  
-  left_join(C2_munistats) %>%
-  left_join(nicknames) %>%
-  mutate(rate_change = cur_comp_muni_rate - new_comp_muni_rate,
-        # nobillchange_propertyEAV = round(10000 * ((cur_comp_muni_rate/100) / (rate_change/100))),
-        # nochange_av = round(nobillchange_propertyEAV / eq_2021),
-        # nochange_ratio = nochange_av / median_av
-        ) %>%
-  select(clean_name, C2median_av = median_av, muni_median_av,  C2mean_av = avg_av, muni_mean_av, cur_comp_muni_rate, new_comp_muni_rate, current_taxable_eav, new_taxable_eav, everything())
-
-muni_taxrates 
-```
 
 ```{r}
 
 muni_breakeven_points <- cook_pins |>
-  left_join(tax_code_change) |>
-  left_join(tc_muninames) |>
-  left_join(tif_distribution) |>
-  mutate(
-    tax_code_distribution_pct = ifelse(is.na(tax_code_distribution_pct), 0, tax_code_distribution_pct),
-    in_tif = ifelse(tax_code_num %in% tif_distribution$tax_code_num, 1, 0),
-    has_HO_exe = ifelse(exe_homeowner > 0, 1, 0),
-    has_other_exe = ifelse(exe_senior + exe_freeze + exe_longtime_homeowner + exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 > 0, 1, 0 ),
-    all_exemptions = sum(across(starts_with("exe_"))),
-    final_tax_to_tif = tax_bill_total *  tax_code_distribution_pct/100,
-    final_tax_to_dist = tax_bill_total-final_tax_to_tif,
-    eav_inTIF = final_tax_to_tif / tax_code_rate/100,
-
-    taxed_eav = av_clerk*eq_factor - eav_inTIF) |>
- filter(exe_homeowner == 10000) %>% 
-    filter(exe_senior == 0 & 
+  left_join(muni_rates) |>
+  filter(exe_homeowner == 10000) %>% 
+  filter(exe_senior == 0 & 
            exe_freeze == 0 & 
            exe_longtime_homeowner == 0 & 
            exe_disabled == 0 & 
            exe_vet_returning == 0 & 
            exe_vet_dis_lt50 == 0 & 
            exe_vet_dis_50_69 == 0 & 
-             exe_vet_dis_ge70 == 0 & 
-             exe_abate == 0) %>%
-  select(av, tax_code_num:all_exemptions, tax_code_rate, clean_name, final_tax_to_dist, taxed_eav) %>%
+           exe_vet_dis_ge70 == 0 & 
+           exe_abate == 0) %>%
+  #select(av, tax_code_num:all_exemptions, tax_code_rate, clean_name, final_tax_to_dist, taxed_eav) %>%
+  
   group_by(clean_name) %>%
-  summarize(median_AV = median(av),
-            bill_current = mean(final_tax_to_dist), # money needed by non-TIF agencies
+  
+  summarize(
+    median_AV = median(av),     # median class 2 AV for properties that did claim the GHE but not other exemptions
+    bill_current = mean(taxed_eav * tax_code_rate/100), # money collected by non-TIF agencies
+    
+    bill_noGHE = mean(tc_hyp_taxrate/100 * (taxed_eav+exe_homeowner)), # this uses tax code tax rate
+    #avg_bill_change = mean(bill_noGHE - bill_current),
+    avg_current_comprate = mean(tax_code_rate/100, na.rm=T),
+    avg_noGHE_comprate = mean(tc_hyp_taxrate/100, na.rm=T ),
+    rate_change = mean(tax_code_rate - tc_hyp_taxrate),
+ 
+    
+    bill_change = round(mean(bill_noGHE - bill_current)),
+    
+    muni_avg_rate_change = mean(muni_avg_rate - muni_hyp_taxrate),
+        avg_rate_change = mean(avg_current_comprate - avg_noGHE_comprate),
 
-            bill_noGHE = mean(tc_hyp_taxrate/100 * (taxed_eav+exe_homeowner)), # this uses tax code tax rate
-            bill_change = round(mean(bill_noGHE - bill_current)),
-        
-   # rate_change_muni = mean(cur_comp_muni_rate - new_comp_muni_rate), # muni level, not tax code level
-    rate_change_TCs = mean(tax_code_rate - tc_hyp_taxrate),
-    nobillchange_propertyEAV = round(mean(10000 * ((tax_code_rate/100) / (rate_change_TCs/100)))),
-#   nobillchange_propertyEAV_munirates = round(mean(exe_homeowner * ((cur_comp_muni_rate/100) / (rate_change_muni/100)))),
-    #nochange_av_munirates = round(mean(nobillchange_propertyEAV_munirates / eq_2021)),
-   # rate_change_TC = cur_comp_TC_rate - new_comp_TC_rate, # tax code level
-    nobillchange_propertyEAV_TCrates = round(exe_homeowner * ((cur_comp_TC_rate/100) / (rate_change_TC/100))),
+    #nobillchange_propertyEAV = round(mean(10000 * ((tax_code_rate/100) / (rate_change/100)))),
+ #  nochange_av = round(mean(nobillchange_propertyEAV / eq_factor)),
+   # ratio_av_to_breakeven = (median_AV / nochange_av) , 
+   
+   nobillchange_propertyEAV = round(mean(exe_homeowner * ((muni_avg_rate) / (muni_avg_rate_change)))),
+    nochange_av = round(mean(nobillchange_propertyEAV / eq_factor)),
+  )# %>%
+ # select(clean_name, median_AV, ratio_av_to_breakeven, bill_change, nobillchange_propertyEAV,nochange_av, rate_change, avg_current_comprate, avg_noGHE_comprate,rate_change)
 
- nochange_av_TCrates = round(nobillchange_propertyEAV_TCrates / eq_2021),
 
-    ratio_av_to_breakeven = mean(median_AV / nochange_av_munirates)    
- ) %>%
-  #filter(between(bill_change, -5, 5))  %>% 
-  select(clean_name, median_AV, ratio_av_to_breakeven, bill_change, 
-         #nobillchange_propertyEAV_munirates, nochange_av_munirates,   rate_change_muni, 
-         rate_change_TCs)
+
+
+muni_breakeven_points %>%       
+  filter(clean_name %in% c("Chicago","Park Forest", "Phoenix", "Riverdale", "Winnetka")) |>
+  ggplot(aes(y=median_AV, x = clean_name)) +
+  geom_col()+
+    geom_text(aes(y=median_AV + 3000, label = round(median_AV) ) ) +
+  scale_y_continuous(labels = scales::dollar) +
+  theme_classic() +
+  scale_x_discrete(label = c("Chicago","Park Forest", "Phoenix", "Riverdale", "Winnetka")) + 
+  labs(y = "Median Residential AV", x = "", 
+       title = "Median Residential Property Assessed Value - All Class 2 property Types")
+
+muni_breakeven_points %>%       
+  filter(clean_name %in% c("Chicago","Park Forest", "Phoenix", "Riverdale", "Winnetka")) |>
+  ggplot(aes(y=(nobillchange_propertyEAV/eq_factor), x = clean_name)) +
+  geom_col() +
+  geom_text(aes(y=(nobillchange_propertyEAV/eq_factor) + 3000, label = round(nobillchange_propertyEAV/eq_factor)) ) +
+  scale_y_continuous(labels = scales::dollar) +
+  theme_classic() +
+  scale_x_discrete(label = c("Chicago", "Park Forest", "Phoenix", "Riverdale", "Winnetka")) + 
+  labs(y = "Breakeven Point - AV", x = "", 
+  title = "Residential Property AV Breakeven Point", 
+  caption = "Residential properties above these values would have their bills decrease if the GHE were eliminated
+       (if they had claimed the GHE before)")
 ```
 
-
 ![](images/clipboard-1323518501.png)
+
+
+```{r}
+#| label: fig-breakevenToAV-notfiltered
+#| column: margin
+#| fig-cap: "Includes all municipalities"
+
+nobillchange %>%
+ # filter(nochange_av < 300000) %>%
+  ggplot(aes(y=nochange_av, 
+             x = median_AV, 
+             label=clean_name
+             )) +
+  geom_abline(intercept = 0, slope = 1, lty = 2, alpha = .4) +
+  geom_point(aes(alpha = .5)) +
+ # geom_smooth(method = "lm" )+
+  geom_text(aes(y = (nochange_av-5000), x = (median_AV)), size = 2)+
+  theme_classic() +
+  scale_x_continuous(labels = scales::dollar) +
+  scale_y_continuous(labels = scales::dollar) +
+  theme(legend.position = "none")+
+  labs(y = " Breakeven Point", 
+       x = "Median AV - Class 2 Properties in Municipality", 
+      # title = "Some highly valued homes would have lower tax bills if the GHE were eliminated", 
+       #caption = "The breakeven point is the assessed values at which a major class 2 
+     #  property would not have their taxbill change if the GHE were eliminated."
+     )
+```
+
+```{r}
+#| label: fig-Figure2
+#| fig-cap: "Breakeven Point ... "
+
+nobillchange %>%
+  filter(nochange_av < 300000) %>%
+  ggplot(aes(y=nochange_av, 
+             x = median_AV, 
+             label=clean_name
+             )) +
+  geom_abline(intercept = 0, slope = 1, lty = 2, alpha = .4) +
+
+  geom_point(aes(alpha = .5)) +
+  
+  geom_point(data = (nobillchange %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Riverdale","Dolton"))), aes(y = nochange_av, x = median_AV, color = "red"), size = 3) +
+  ggrepel::geom_label_repel(data = (nobillchange %>% filter(clean_name %in% c("Park Forest", "Chicago", "Winnetka", "Riverdale", "Dolton"))), aes(y = (nochange_av), x = (median_AV)), size = 3)+
+  theme_classic() +
+  theme(panel.background = element_blank()) + 
+  scale_x_continuous(labels = scales::dollar, expand = c(0,0), limits = c(0,170000) ) +
+  scale_y_continuous(labels = scales::dollar, expand = c(0,0), limits = c(0,170000) ) +
+    theme(legend.position = "none") +
+
+  labs(title = "Municipalities' Median AV & Breakeven Point \nClass 2 Properties Only",
+    y = "Breakeven Point", 
+       x = "Median AV", 
+ # caption = "The breakeven point is the assessed values at which a major class 2 property would not have their taxbill change if the 
+ # GHE were eliminated. Excludes outliers: University Park, Bedford Park, McCook, Hodgkins, and Rosemont. Class 2 properties that had
+ # claimed the GHE would have lower taxbills even if the GHE were removed if the AV is above the breakeven point."
+ ) + coord_fixed()
+
+#ggsave("breakevenpoint.svg", bg = "transparent")
+```
 
 ## How progressive are exemptions?
 
 ### Figure 3. Ratio of Tax Bills to AV for 25th and 75th Percentile AV Class 2 Properties with \$10,000 GHE
 
-![](images/clipboard-1581842196.png)
+
+![](images/clipboard-1581842196.png) 
+
 For the different exemption scenarios, we created new exemption variables for alternate exemption amounts that can be subtracted from a properties equalized AV.
 
 -   ex. For `exe_neg10` all exemption amounts are equal to zero.
@@ -661,11 +475,8 @@ joined_pins <- joined_pins %>%
 
 # all pins in munis fully within cook county that are some form of single-family, detached home
 singfam_pins <- joined_pins %>% 
- # filter(tax_code %in% muni_TC_fullyCook$tax_code_num) %>% # excludes county line crossing munis
   filter(Option2 == "Single-Family")
 ```
-
-
 
 ```{r include = FALSE}
 singfam_pins %>% filter(av > 100000) %>% summarize(count = n())
@@ -715,12 +526,11 @@ singfam_pins %>%
 
 ```{r create-muni-sing-fam-quartiles}
 
-q = c(.10, .25, .5, .75, .9, .99)
+q = c(.10, .25, .5, .75, .9)
 
 
 muni_ranked <- joined_pins %>% ## cook county single family properties rannked by AV
   filter(Option2 == "Single-Family") %>%
- # filter(tax_code %in% muni_TC_fullyCook$tax_code_num) %>% # excludes county line crossing munis
   arrange(av) %>%
   summarize(
     count_pins = n(), 
@@ -730,21 +540,19 @@ muni_ranked <- joined_pins %>% ## cook county single family properties rannked b
             quant50 = round(quantile(av, probs = q[3])),
             quant75 = round(quantile(av, probs = q[4])),
             quant90 = round(quantile(av, probs = q[5])),
-            quant99 = round(quantile(av, probs = q[6])),
             max = max(av)
            )
 
 munis_ranked <- munis_ranked %>%
+  mutate(class_1dig = substr(class, 1, 1))|>
   filter(class_1dig == 2) %>%
-#  filter(tax_code %in% muni_TC_fullyCook$tax_code_num) %>%
   inner_join(muni_quartiles, by = "clean_name") %>%
   mutate(rank = case_when(
     av > (quant10-500) & (av<quant10+500) ~ "q10",
     av > (quant25-500) & (av<quant25+500) ~ "q25",
     av > (quant50-500) & (av<quant50+500) ~ "q50",
     av > (quant75-500) & (av<quant75+500) ~ "q75",
-    av > (quant90-500) & (av<quant90+500) ~ "q90",
-    av > (quant99-500) & (av<quant99+500) ~ "q99")) %>%
+    av > (quant90-500) & (av<quant90+500) ~ "q90",))|>
   select(clean_name, rank, av, pin, class, everything())
 
 
@@ -792,24 +600,23 @@ scenario_calcs <- joined_pins %>%
          taxrate_noTIFs_orExemps = MuniLevy / Total_EAV) %>%
   select(clean_name, MuniLevy, tr_neg10:taxrate_noTIFs_orExemps, everything())
 
-scenario_taxrates <- scenario_calcs %>%  select(clean_name, MuniLevy, tr_neg10:taxrate_noTIFs_orExemps) 
+scenario_taxrates <- scenario_calcs %>%  
+  select(clean_name, MuniLevy, tr_neg10:taxrate_noTIFs_orExemps) 
 
 scenario_taxrates
 ```
 
+### Figure 4. Effect of Changing the GHE on Progressivity
 
-### Figure 4. Effect ofChanging the GHE on Progressivity
+**2 X 3 image of distribution for each \$10,000 increase in exemption amount** 
 
-**2 X 3 image of distribution for each $10,000 increase in exemption amount**
 ### Table 3. Revenue Neutral Tax Rates
 
-__Revenue Neutral Tax Rates (Percent) for Select Municipalities as a Function of GHE Value__
-
+**Revenue Neutral Tax Rates (Percent) for Select Municipalities as a Function of GHE Value**
 
 ### Figure 5. GHE Value and Revenue Neutral Tax Rates
 
 **Relationship of GHE Value and Revenue Neutral Tax Rates in Chicago, Dolton, and Glencoe**
-
 
 ## Can we identify an optimal exemption value
 
@@ -819,8 +626,4 @@ __Revenue Neutral Tax Rates (Percent) for Select Municipalities as a Function of
 
 ### Figure 7. Exemptions by Value in Class 8 Municipalities
 
-
-### Figure 8.  Exemption Share in Class 8 Municipalities
-
-
-
+### Figure 8. Exemption Share in Class 8 Municipalities
