@@ -960,4 +960,41 @@ scenario_taxrates %>%
 
 ### Figure 7. Exemptions by Value in Class 8 Municipalities
 
+```{r}
+cook_pins %>% 
+  group_by(clean_name) %>% 
+  summarize(
+    exe_homeowner = sum(exe_homeowner),
+    exe_senior = sum(exe_senior),
+    exe_freeze = sum(exe_freeze),
+    exe_longtime_homeowner = sum(exe_longtime_homeowner),
+    exe_disabled = sum(exe_disabled),
+    
+  ) %>%
+  filter(clean_name %in% c("Blue Island", "Markham", "Matteson", "Park Forest")) %>%
+  pivot_longer(cols = c(exe_homeowner:exe_disabled), names_to = "exe_type") %>%
+  ggplot() + 
+  geom_col(aes(x=clean_name, y = value, fill = exe_type), position = "dodge") +
+  scale_y_continuous() + theme_classic()
+```
+
+
 ### Figure 8. Exemption Share in Class 8 Municipalities
+
+```{r}
+cook_pins %>% 
+  group_by(clean_name) %>% 
+  summarize(
+    all_exemptions = sum(all_exemptions),
+    eq_av = sum(av_clerk*eq_factor),
+    tif_increment_eav = sum(tif_increment_eav)
+  ) %>%
+  mutate(taxable_eav = eq_av - tif_increment_eav - all_exemptions) |>
+  filter(clean_name %in% c("Blue Island", "Markham", "Matteson", "Park Forest")) %>%
+  pivot_longer(cols = c(all_exemptions:taxable_eav), names_to = "exe_type") %>%
+  filter(exe_type %in% c("taxable_eav", "all_exemptions"))|>
+  ggplot() + 
+  geom_col(aes(x=clean_name, y = value, fill = exe_type), position = "stack") +
+  scale_y_continuous() + theme_classic()
+```
+
