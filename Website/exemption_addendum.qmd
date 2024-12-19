@@ -698,16 +698,16 @@ ggplot(data = ratios, aes(y = currbill_to_AV_25, x = currbill_to_AV_75, label = 
   labs(title="", y="Tax Burden as a Share of AV \n(25th Percentile)", x="Tax Burden as a Share of AV \n(75th Percentile)", subtitle = "Current Tax System, GHE = 10,000 EAV") + coord_fixed()
 ```
 
-```{r, out.width="50%", fig.show='hold'}
+```{r}
+#| label: fig-pindistribution
+#| fig-cap: "**Distribution of Assessed Values: Class 2 Properties vs Single-Family Properties** There is a difference in the assessed values depending on if you use all 200 level properties or only a subset of them. All figures and tables were created for both options when writing the report as a robustness check."
+#| out-width: 50 
+
 cook_pins %>%
-  #  filter(av < 1000000) %>% # just to see the histogram better
-#  filter(av < 500000) %>% # just to see the histogram better
   filter(av < 300000) %>% # just to see the histogram better
-  
   ggplot( aes(x=av)) +
   geom_histogram(bins = 50)  +
   theme_classic()+
-  # coord_flip()+
   labs(title = "Cook County Class 2 Residential PIN Distribution of AV", 
        x = "Assessed Value ($)", y="# of Pins", 
        caption = "Dropped PINs with AVs over $300,000 for better visual of histogram bins.") +
@@ -716,14 +716,11 @@ cook_pins %>%
 
 
 singfam_pins %>%
-  #  filter(av < 1000000) %>% # just to see the histogram better
-#  filter(av < 500000) %>% # just to see the histogram better
-  filter(av < 300000) %>% # just to see the histogram better
+ filter(av < 300000) %>% # just to see the histogram better
   
   ggplot( aes(x=av)) +
   geom_histogram(bins = 50)  +
   theme_classic()+
-  # coord_flip()+
   labs(title = "Cook County Single-Family PIN Distribution of AV", 
        x = "Assessed Value ($)", y="# of Pins", 
        caption = "Dropped PINs with AVs over $300,000 for better visual of histogram bins."
@@ -733,6 +730,7 @@ singfam_pins %>%
 ```
 
 
+## What would happen if the GHE value were increased?
 
 ### Figure 4. Effect of Changing the GHE on Progressivity
 
@@ -923,7 +921,7 @@ scenario_taxrates %>%
   filter(clean_name %in% c("Chicago", "Dolton", "Glencoe")) |>
   select(Municipality = clean_name,
          "0 GHE" = tr_neg10,
-         "10,000 GHE (Current)" = tr_nochange,
+         "10,000 GHE\n(Current)" = tr_nochange,
          "20,000 GHE" = tr_plus10,
          "30,000 GHE" = tr_plus20,
          "40,000 GHE" = tr_plus30,
@@ -931,34 +929,15 @@ scenario_taxrates %>%
   pivot_longer(cols = c(`0 GHE`:`50,000 GHE`), names_to = "Scenarios") %>%
 
   ggplot() +
-  geom_line(aes(x=Scenarios, y = value, group = Municipality)) + theme_classic()
-```
-
-```{r}
-scenario_taxrates %>% 
-  filter(clean_name %in% c("Chicago", "Dolton", "Glencoe")) %>%
-  select(clean_name, MuniLevy, tr_neg10:taxrate_noTIFs_orExemps) %>%
-  pivot_longer(cols = c(tr_neg10:taxrate_noTIFs_orExemps), names_to = "GHE_Amount") %>%
-  ggplot() + 
-  geom_col(aes(x=value, y = GHE_Amount, fill = clean_name), position = "dodge")  +
-  theme(legend.background = element_rect(fill = "transparent"), 
-        legend.box.background = element_rect(fill = "transparent"), 
-        panel.background = element_rect(fill = "transparent"), 
-        panel.grid.major = element_blank(), 
-        panel.grid.minor = element_blank(), 
-        plot.background = element_rect(fill = "transparent", 
-                                       color = NA) ) +
-  labs(x = "Municipality Composite Tax Rate", y = "Exemption Scenarios")
+  geom_line(aes(x=Scenarios, y = value, group = Municipality, color = Municipality)) + theme_classic() + 
+  labs(title = "Tax Rates for GHE Scenarios", x = "GHE Amount", y = "Tax Rate") +
+  scale_y_continuous(label = scales::percent)
 ```
 
 
-## Can we identify an optimal exemption value
+## Paying for the inequitable effects of exemptions
 
-### Figure 6.
-
-**Doesn't exist, whoops!**
-
-### Figure 7. Exemptions by Value in Class 8 Municipalities
+### Figure 6. Exemptions by Value in Class 8 Municipalities
 
 ```{r}
 cook_pins %>% 
@@ -967,7 +946,7 @@ cook_pins %>%
     exe_homeowner = sum(exe_homeowner),
     exe_senior = sum(exe_senior),
     exe_freeze = sum(exe_freeze),
-    exe_longtime_homeowner = sum(exe_longtime_homeowner),
+   # exe_longtime_homeowner = sum(exe_longtime_homeowner),
     exe_disabled = sum(exe_disabled),
     
   ) %>%
@@ -975,11 +954,11 @@ cook_pins %>%
   pivot_longer(cols = c(exe_homeowner:exe_disabled), names_to = "exe_type") %>%
   ggplot() + 
   geom_col(aes(x=clean_name, y = value, fill = exe_type), position = "dodge") +
-  scale_y_continuous() + theme_classic()
+  scale_y_continuous(label = scales::dollar) + theme_classic() + labs(x = NA, y = "Exempt EAV")
 ```
 
 
-### Figure 8. Exemption Share in Class 8 Municipalities
+### Figure 7. Exemption Share in Class 8 Municipalities
 
 ```{r}
 cook_pins %>% 
@@ -995,6 +974,8 @@ cook_pins %>%
   filter(exe_type %in% c("taxable_eav", "all_exemptions"))|>
   ggplot() + 
   geom_col(aes(x=clean_name, y = value, fill = exe_type), position = "stack") +
-  scale_y_continuous() + theme_classic()
+  scale_y_continuous(label = scales::dollar) + 
+  theme_classic() + 
+  labs(x = NA, y = "Non-TIF Increment EAV in Municipality")
 ```
 
