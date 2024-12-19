@@ -15,7 +15,7 @@ library(jsonlite)
 library(glue)
 library(DT)
 
-knitr::opts_chunk$set(warning = FALSE, message = FALSE, error=TRUE)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 
 
 file_path <- "C:/Users/aleaw/" 
@@ -406,7 +406,6 @@ muni_breakeven_points %>%
        (if they had claimed the GHE before)")
 ```
 
-![](images/clipboard-1323518501.png)
 
 
 ```{r}
@@ -508,8 +507,8 @@ cook_pins <- cook_pins %>%
     eav_postexemptions = av_clerk*eq_factor - all_exemptions,
     eav_preexemptions = av_clerk*eq_factor) |>
   ## Create variables for alternate exemption amounts that can be subtracted from a properties equalized AV
-  mutate(#eav = av_clerk*eq_factor,
-    eav = eav_postexemptions,
+  mutate(
+    eav = eav_preexemptions,
     exe_neg10 = 0,
          
       # exe_0 implies no additional or removed EAV. Current tax system. 
@@ -543,16 +542,17 @@ scenario_calcs <- cook_pins %>%
     summarize(MuniLevy = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by munis with current exemptions in place
             current_nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate), na.rm = TRUE),
             current_TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate), na.rm=TRUE),  
-            current_Exempt_EAV = sum(all_exemptions), 
+            current_Exempt_EAV = sum(all_exemptions, na.rm=T), 
             current_GHE = sum(exe_homeowner, na.rm=TRUE),
-            Total_EAV = sum((all_exemptions+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate), na.rm = TRUE),
+            Total_EAV = sum(all_exemptions+(final_tax_to_dist+final_tax_to_tif)/(tax_code_rate), na.rm = TRUE),
             exe_neg10 = sum(exe_neg10),
             exe_0 = sum(exe_0), # no change, for comparison
             exe_plus10 = sum(exe_plus10),
             exe_plus20 = sum(exe_plus20),
             exe_plus30 = sum(exe_plus30),
             exe_plus40 = sum(exe_plus40),
-            mil_home = sum(mil_home)) %>%
+            mil_home = sum(mil_home)
+            ) %>%
 
   # remove all GHE (up to 10,000 EAV added back to base per PIN), 
   # add exe_homeowner back to taxable base
@@ -583,16 +583,30 @@ scenario_taxrates
 
 ```{r}
 munis_billchange <- munis_ranked %>% 
-  group_by(clean_name, rank) %>%
-  left_join(scenario_calcs, by = "clean_name") %>%
-    mutate(#taxable_eav = final_tax_to_dist / tax_code_rate,
+    left_join(scenario_taxrates) %>%
+
+  mutate(
+    eav = eav_preexemptions,
+    exe_neg10 = 0,
+         
+      # exe_0 implies no additional or removed EAV. Current tax system. 
+         exe_0 = ifelse(eav < 10000 & exe_homeowner!=0, eav, 
+                             ifelse(eav>10000 & exe_homeowner!=0, 10000, 0 )),  # no change in current exemptions
+         exe_plus10 = ifelse(eav < 20000 & exe_homeowner!=0, eav, 
+                             ifelse(eav>20000 & exe_homeowner!=0, 20000, 0 )),
+         exe_plus20 = ifelse(eav < 30000 & exe_homeowner!=0, eav, 
+                             ifelse(eav>30000 & exe_homeowner!=0, 30000, 0 ) ),
+         exe_plus30 = ifelse(eav < 40000 & exe_homeowner!=0, eav, 
+                             ifelse(eav>40000 & exe_homeowner!=0, 40000, 0) ),
+         exe_plus40 = ifelse(eav < 50000 & exe_homeowner!=0, eav, 
+                             ifelse(eav>50000 & exe_homeowner!=0, 50000, 0) ),
+         mil_home = ifelse(av*10 > 1000000, 1, 0)) |>
+    mutate(,
     # current bill = current tax rate * portion of levy billed
-    
-    
-   # ## Made negative tax bills!! ## #
-         eav = eav_postexemptions,
          equalized_AV = av_clerk*eq_factor,
-         bill_neg10 = tr_neg10*(equalized_AV-all_exemptions+ exe_homeowner -exe_neg10),
+         
+   # ## Made negative tax bills!! ## #
+          bill_neg10 = tr_neg10*(equalized_AV-all_exemptions+ exe_homeowner -exe_neg10),
 
          bill_current = tax_code_rate*(equalized_AV-all_exemptions),
          bill_plus10 =  tr_plus10*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus10),
@@ -600,14 +614,14 @@ munis_billchange <- munis_ranked %>%
          bill_plus30 = tr_plus20*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus30),
          bill_plus40 = tr_plus20*(equalized_AV-all_exemptions+ exe_homeowner -exe_plus40),
     
-    # ## make bills $1 if they had been negative.    
+    # ## make bills $1 if they had been negative.
          bill_neg10 = ifelse(bill_neg10 < 1, 1, bill_neg10),
          bill_current = ifelse(bill_current < 1, 1, bill_current),
          bill_plus10 = ifelse(bill_plus10 < 1, 1, bill_plus10),
          bill_plus20 = ifelse(bill_plus20 < 1, 1, bill_plus20),
          bill_plus30 = ifelse(bill_plus30 < 1, 1, bill_plus30),
          bill_plus40 = ifelse(bill_plus40 < 1, 1, bill_plus40),
-         
+
          )%>%
   mutate(
          zerodol_bills_ghe0 = ifelse(bill_neg10 < 5, 1, 0),
@@ -628,7 +642,6 @@ munis_billchange <- munis_ranked %>%
             mean_bill_plus30 = round(mean(bill_plus30, na.rm=TRUE)),
             mean_bill_plus40 = round(mean(bill_plus40, na.rm=TRUE)),
             
-            # current perceived_savings = median(tax_amt_exe),
             tr_neg10 = round(mean(tr_neg10*100), digits = 2), 
             cur_comp_TC_rate = round(mean(tax_code_rate*100), digits = 2),
             tr_plus10 = round(mean(tr_plus10*100), digits = 2),
@@ -647,6 +660,9 @@ munis_billchange <- munis_ranked %>%
   ) %>%
   mutate(clean_name = ifelse(clean_name == "Hazelcrest", "Hazel Crest", clean_name)) %>%
   arrange(has_HO_exe, rank)
+
+
+
 
 
 ratios <- munis_billchange %>% 
@@ -781,7 +797,8 @@ new_ratios<- munis_billchange %>%
   group_by(clean_name) %>%
   summarize(newbill_to_AV_25 = max(newbill_to_AV_25, na.rm=TRUE),
             newbill_to_AV_75 = max(newbill_to_AV_75, na.rm=TRUE)) %>%
-  mutate(muni_ratio_25to75 = newbill_to_AV_25/newbill_to_AV_75) %>% filter(muni_ratio_25to75 > 0.01)
+  mutate(muni_ratio_25to75 = newbill_to_AV_25/newbill_to_AV_75) %>% 
+  filter(muni_ratio_25to75 > 0.01)
 
 
 ggplot(data = new_ratios, aes(y = newbill_to_AV_25, x = newbill_to_AV_75, label = clean_name)) + 
@@ -805,7 +822,9 @@ new_ratios<- munis_billchange %>%
   group_by(clean_name) %>%
   summarize(newbill_to_AV_25 = max(newbill_to_AV_25, na.rm=TRUE),
             newbill_to_AV_75 = max(newbill_to_AV_75, na.rm=TRUE)) %>%
-  mutate(muni_ratio_25to75 = newbill_to_AV_25/newbill_to_AV_75) %>% filter(muni_ratio_25to75 > 0.01)
+  mutate(muni_ratio_25to75 = newbill_to_AV_25/newbill_to_AV_75) %>% 
+  
+  filter(muni_ratio_25to75 > 0.01)
 
 
 ggplot(data = new_ratios, aes(y = newbill_to_AV_25, x = newbill_to_AV_75, label = clean_name)) + 
@@ -830,7 +849,8 @@ new_ratios<- munis_billchange %>%
   group_by(clean_name) %>%
   summarize(newbill_to_AV_25 = max(newbill_to_AV_25, na.rm=TRUE),
             newbill_to_AV_75 = max(newbill_to_AV_75, na.rm=TRUE)) %>%
-  mutate(muni_ratio_25to75 = newbill_to_AV_25/newbill_to_AV_75) %>% filter(muni_ratio_25to75 > 0.01)
+  mutate(muni_ratio_25to75 = newbill_to_AV_25/newbill_to_AV_75) %>% 
+  filter(muni_ratio_25to75 > 0.01)
 
 
 ggplot(data = new_ratios, aes(y = newbill_to_AV_25, x = newbill_to_AV_75, label = clean_name)) + 
