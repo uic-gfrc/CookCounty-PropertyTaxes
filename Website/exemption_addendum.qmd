@@ -48,22 +48,12 @@ if (grepl("Website", current_dir)) {
 }
 
 
-path <- paste0(dots, "Output/ptaxsim_muni_level_2006to2023.csv")
-
-
-
-muni_sums <- read_csv(path) %>% 
-  left_join(nicknames)
-
-# path <- paste0(dots, "Output/ptaxsim_muni_class_summaries_2006to2023.csv")
-
-# muni_cl_sums <- read_csv(path) %>% 
-#  left_join(nicknames)
-
-class_dict <- read_csv("../Necessary_Files/class_dict_singlefamcodes.csv") %>% 
+path <- paste0(dots, "Necessary_Files/class_dict_singlefamcodes.csv")
+class_dict <- read_csv(path) %>% 
   mutate(class_code = as.character(class_code)) # change variable type to character so the join works.
 
-ccao_loa <- read_csv("../inputs/ccao_loa.csv") %>% 
+path <- paste0(dots, "inputs/ccao_loa.csv")
+ccao_loa <- read_csv(path) %>% 
   mutate(class_code = as.character(class_code))
 
 eq_factor = 3.0027
@@ -229,7 +219,6 @@ c2pins <- c2pins |>
 
 ```{r}
 #| label: medianproperty-bymuni
-# #| tbl-cap: "Median AV Class 2 property by Municipality"
 
 q = c(.1, .25, .5, .75, .9)
 
@@ -265,9 +254,6 @@ C2_munistats <- c2pins %>%
     C2_HO_exemps = sum(exe_homeowner, na.rm = TRUE),
   ) 
 
-C2_munistats %>% left_join(nicknames) %>%
-  select(clean_name, everything()) %>% select(-c(agency_name, agency_number))
-
 # All Class 2 Properties
 munis_ranked <- c2pins  %>%
   inner_join(muni_quartiles, by = c("clean_name")) %>% 
@@ -281,6 +267,15 @@ munis_ranked <- c2pins  %>%
     ) %>%
   select(clean_name, rank, av, pin, class, everything())
 ```
+```{r}
+#| include: false
+# #| tbl-cap: "Median AV Class 2 property by Municipality"
+
+C2_munistats %>% left_join(nicknames) %>%
+  select(clean_name, everything()) %>% select(-c(agency_name, agency_number))
+
+```
+
 
 ## Which taxpayers benefit the most from homestead exemptions?
 
@@ -295,9 +290,8 @@ The assessed value and original equalized assessed values come from the `pin` da
 #| tbl-cap: "**Figure 2** The median property was found for all Class 2 properties and used to calculate the hypothetical tax bill change for those that do and do not claim the GHE. It is important to note that almost all municipalities have a median AV for those that do claim the GHE that is quite different from those that do not claim the GHE."
 
 tax_bill_change_HO <- c2pins %>% 
-
   filter(av > 0) %>% 
- arrange(av) %>%
+  arrange(av) %>%
   mutate(eq_av = av_clerk*eq_factor,
          bill_current = (eav_postexemptions*tax_code_rate),
          bill_noexemps =  tc_hyp_taxrate*(eav_postexemptions+exe_homeowner),
@@ -315,10 +309,13 @@ tax_bill_change_HO <- c2pins %>%
 tax_bill_change_HO |> filter(clean_name %in% c("Park Forest", "Phoenix", "Winnetka", "Riverdale"))
 ```
 
+_The table created from the code calculates the median AV for those with exemptions and those without exemptions. Usually these values are significantly different. In the Report, the table was simplified to show the save assessed value for both types of homeowners (See image of table pasted below)._ 
+
+
 ![](images/clipboard-3760892845.png)
 
 
-
+_Notes: AV = Assessed Value. "Tax Calculator" reduction refers to the section of the tax bill received by property tax payers (See Figure 1). It does not take into account changes in property tax rates due to the larger taxbase that would come from having a larger tax base. Figures in columns titled Current Bill, Tax Bill without GHE, and "Tax Calculator" Reduction in Tax Liability are estimated using an average of the properties with AV within $1,000 of the municipality median in order to enlarge the number of observations therefore do not precisely represent the median figure._ 
 
 
 
@@ -326,15 +323,14 @@ tax_bill_change_HO |> filter(clean_name %in% c("Park Forest", "Phoenix", "Winnet
 
 **Park Forest vs. Winnetka**
 
-![](images/clipboard-3418026779.png){width="387"}
+![](images/clipboard-3418026779.png){width="300"}
 
-![](images/clipboard-3189035135.png){width="392"}
+![](images/clipboard-3189035135.png){width="300"}
 
 ### Figure 2. Value of Median Residential Property Indifferent to Elimination of GHE
 
 
 ```{r create-muni_breakeven_points}
-
 muni_breakeven_points <- c2pins |>
   left_join(muni_rates) |>
   filter(exe_homeowner == 10000) %>% 
@@ -391,7 +387,13 @@ muni_breakeven_points %>%
   title = "Residential Property AV Breakeven Point", 
   caption = "Residential properties above these values would have their bills decrease if the GHE were eliminated
        (if they had claimed the GHE before)")
+```
 
+
+```{r}
+#|include: false
+
+## Doesn't make bars / doesn't work. idk why ?? I don't need it, I just don't know why it doesn't work. 
 muni_breakeven_points %>%       
   filter(clean_name %in% c("Chicago","Park Forest", "Phoenix", "Riverdale", "Winnetka")) |>
   ggplot(aes(y=nochange_av_muni, x = clean_name)) +
@@ -699,9 +701,10 @@ ggplot(data = ratios, aes(y = currbill_to_AV_25, x = currbill_to_AV_75, label = 
 ```
 
 ```{r}
-#| label: fig-pindistribution
+#| label: pindistribution
 #| fig-cap: "**Distribution of Assessed Values: Class 2 Properties vs Single-Family Properties** There is a difference in the assessed values depending on if you use all 200 level properties or only a subset of them. All figures and tables were created for both options when writing the report as a robustness check."
-#| out-width: 50 
+#| out-width: 50% 
+#| layout-ncol: 2
 
 cook_pins %>%
   filter(av < 300000) %>% # just to see the histogram better
@@ -711,7 +714,7 @@ cook_pins %>%
   labs(title = "Cook County Class 2 Residential PIN Distribution of AV", 
        x = "Assessed Value ($)", y="# of Pins", 
        caption = "Dropped PINs with AVs over $300,000 for better visual of histogram bins.") +
-  scale_x_continuous(label = scales::dollar)+
+  scale_x_continuous(label = scales::dollar) +
   scale_y_continuous(label = scales::comma)
 
 
@@ -733,8 +736,6 @@ singfam_pins %>%
 ## What would happen if the GHE value were increased?
 
 ### Figure 4. Effect of Changing the GHE on Progressivity
-
-**2 X 3 image of distribution for each \$10,000 increase in exemption amount** 
 
 ```{r casestudies-inred-MC2props}
 #| layout-ncol: 3
@@ -943,18 +944,18 @@ scenario_taxrates %>%
 cook_pins %>% 
   group_by(clean_name) %>% 
   summarize(
-    exe_homeowner = sum(exe_homeowner),
-    exe_senior = sum(exe_senior),
-    exe_freeze = sum(exe_freeze),
+    Homeowner = sum(exe_homeowner),
+    Senior = sum(exe_senior),
+    `Senior Freeze` = sum(exe_freeze),
    # exe_longtime_homeowner = sum(exe_longtime_homeowner),
-    exe_disabled = sum(exe_disabled),
+    Other = sum(exe_disabled),
     
   ) %>%
   filter(clean_name %in% c("Blue Island", "Markham", "Matteson", "Park Forest")) %>%
-  pivot_longer(cols = c(exe_homeowner:exe_disabled), names_to = "exe_type") %>%
+  pivot_longer(cols = c(Homeowner:Other), names_to = "Exemption Type") %>%
   ggplot() + 
-  geom_col(aes(x=clean_name, y = value, fill = exe_type), position = "dodge") +
-  scale_y_continuous(label = scales::dollar) + theme_classic() + labs(x = NA, y = "Exempt EAV")
+  geom_col(aes(x=clean_name, y = value, fill = `Exemption Type`), position = "dodge") +
+  scale_y_continuous(label = scales::dollar) + theme_classic() + labs(x = element_blank(), y = "Exempt EAV")
 ```
 
 
@@ -976,6 +977,6 @@ cook_pins %>%
   geom_col(aes(x=clean_name, y = value, fill = exe_type), position = "stack") +
   scale_y_continuous(label = scales::dollar) + 
   theme_classic() + 
-  labs(x = NA, y = "Non-TIF Increment EAV in Municipality")
+  labs(x = element_blank(), y = "Non-TIF Increment EAV in Municipality")
 ```
 
