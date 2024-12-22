@@ -53,33 +53,46 @@ muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/poli
 
 ```{r}
 #| label: tbl-exemptionsums
-#| caption: "Summary of homestead exemptions in Cook County (Tax Year 2021)"
+#| caption: "**Summary of Homestead Exemption Use in Cook County (Tax Year 2021)** Eq_AV is the 2021 equalization factor multiplied by the assessed value of all property and can be thought of as EAV pre-exemption. The general homestead exemption accounts for the vast majority of exempt EAV."
 
 year_examples <- c(2021)
 
-for(i in year_examples){
-  tbl <- muni_cl_sums |> 
-  filter(year == i) |>
-  group_by(year) |> 
-  summarize(AV = sum(muni_c_av), 
-            EAV = sum(muni_c_eav), 
-            Eq_AV = sum(muni_c_equalized_av),
-            'Taxed EAV' = sum(muni_c_current_taxable_eav),
-            'All Exemptions' = sum(muni_c_all_exemptions), 
-            'GHE' = sum(muni_c_exe_homeowner), 
-            'Senior Exemp.' = sum(muni_c_exe_senior), 
-            'Freeze Exemp.' = sum(muni_c_exe_freeze), 
-            'PINs in Muni' = sum(muni_c_pins_in_muni),
-            'PINs with Exemptions' = sum(muni_c_has_HO_exemp))  |> 
-  pivot_longer(cols = c(AV:'PINs with Exemptions'), 
-               names_to = "Totals", values_to = "Values")
+for (i in year_examples) {
+  tbl <- muni_cl_sums |>
+    filter(year == i) |>
+    group_by(year) |>
+    summarize(
+      AV = sum(muni_c_av),
+      EAV = sum(muni_c_eav),
+      Eq_AV = sum(muni_c_equalized_av),
+      'Taxed EAV' = sum(muni_c_current_taxable_eav),
+      'Exempt EAV' = sum(muni_c_all_exemptions),
+      'GHE' = sum(muni_c_exe_homeowner),
+      'Senior' = sum(muni_c_exe_senior),
+      'Freeze Freeze' = sum(muni_c_exe_freeze),
+      'PINs (total)' = sum(muni_c_pins_in_muni),
+      'PINs with Exemptions' = sum(muni_c_has_HO_exemp)
+    ) |>
+    pivot_longer(cols = c(AV:'PINs with Exemptions'),
+                 names_to = "Metric", values_to = "Total") |>
+    select(-year) |> 
+    mutate(
+      Total = case_when(
+        Metric %in% c("AV", "EAV", "Eq_AV", "Taxed EAV", "Exempt EAV", "GHE", "Senior", "Freeze Freeze") ~ 
+          paste0("$", format(round(Total / 1e6), big.mark = ","), "M"),
+        TRUE ~ format(Total, big.mark = ",")
+      )
+    )
 }
 
-tbl |> flextable::flextable()
+
+ft <- tbl |>
+  flextable() |>
+  set_caption("Summary of Homestead Exemption Use in Cook County (Tax Year 2021)")
+
+ft
 
 ```
-
-Eq_AV is the 2021 equalization factor multiplied by the assessed value of all property and can be thought of as "EAV pre-exemption." The general homestead exemption accounts for the vast majority of exempt EAV.
 
 ### Figure 3.
 
