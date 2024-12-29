@@ -9,7 +9,17 @@ format:
     tbl-cap-location: margin
     fig-cap-location: margin
     df-print: paged
+params: 
+  year: 2021
 ---
+
+Exemption Report - Tax Year `{r} params$year`
+
+<!--- Note to self: Incline Code cannotbe used in YAML so you cannot include the tax year in the title using the paramters. ---> 
+
+
+
+
 
 ```{r setup}
 #| output: false
@@ -78,7 +88,7 @@ for (i in year_examples) {
     select(-year) |> 
     mutate(
       Total = case_when(
-        Metric %in% c("AV", "EAV", "Eq_AV", "Taxed EAV", "Exempt EAV", "GHE", "Senior", "Freeze Freeze") ~ 
+        Metric %in% c("AV", "EAV", "Eq_AV", "Taxed EAV", "Exempt EAV", "GHE", "Senior", "Senior Freeze") ~ 
           paste0("$", format(round(Total / 1e6), big.mark = ","), "M"),
         TRUE ~ format(Total, big.mark = ",")
       )
@@ -87,8 +97,7 @@ for (i in year_examples) {
 
 
 ft <- tbl |>
-  flextable() |>
-  set_caption("Summary of Homestead Exemption Use in Cook County (Tax Year 2021)")
+  flextable() 
 
 ft
 
@@ -172,6 +181,9 @@ print(muni_sums |>
 
 The County-wide municipal-median percent of FMV exempt from property taxes in 2021 was 14.40% (*Muni Name*).
 
+<!--- Code median muni name as variable to add as inline text  --->
+
+
 The percent of municipal EAV exempt from property taxes are greatest across Cook County's south suburbs and lowest in the northermost suburbs of the county.
 
 
@@ -214,7 +226,7 @@ muni_cl_sums |>
 ```
 
 
-Exemption use varies between suburban Cook County (\$9.7B EAV) and the City of Chicago (\$7.0B EAV), which may point to broader socioeconomic patterns as well as residents' eligibility and update.
+Exemption use varies between suburban Cook County (\$9.7B EAV) and the City of Chicago (\$7.0B EAV), which may point to broader socioeconomic patterns as well as residents' eligibility and uptake.
 
 :::{.column-margin}
 ![](images/clipboard-1115901107.png)
@@ -258,8 +270,6 @@ Trends in the total EAV reductions due to homestead exemptions reflect both real
 ## Effect on Composite Tax Rates
 
 <!--- Do not use the eq_av variable from the joined pins csv. Delete or correct ASAP. --->
-
-***NOTE: I THINK WE WANT THIS CHUNK ON THE DATA PAGE***
 
 ```{r}
 #| label: recode-ptaxpins
@@ -349,6 +359,8 @@ ptax_pins <- ptax_pins |>
   select(tax_code, class, pin, fmv,
          untaxable_value_fmv, fmv_inTIF, fmv_tif_increment, fmv, total_billed, final_tax_to_dist, final_tax_to_tif, tax_code_rate, eav, equalized_av, av, everything())
 ```
+
+<!--- TODO: move rate change calculations to data creation page --->
 
 
 ```{r}
@@ -457,8 +469,7 @@ write_csv(muni_ratechange, "../Output/muni_ratechange_2023.csv")
 
 
 ```{r readin-muniratechange}
-#|eval: false
-#|
+ 
 muni_ratechange <- read_csv("../Output/muni_ratechange_2023.csv")
 
 muni_ratechange |> 
@@ -469,7 +480,7 @@ muni_ratechange |>
 
 ### Figure 6. Composite property tax rates with and without homestead exemptions, tax year 2021
 
-_Figure 6 will not be recreated but is just a bar  chart of the change in tax rate in the table below_
+_Figure 6 will not be recreated but is just a bar chart of the change in tax rate in the table below_
 
 ### Table 1. Change in composite property tax rates due to exemptions, tax year 2023.
 
@@ -1148,4 +1159,6 @@ ptax_pins |>
             median = median(eav),
             n = n()) 
 ```
+
+## Table 6?
 
