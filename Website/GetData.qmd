@@ -75,6 +75,101 @@ muni_MC_summary %>% filter(year == 2021 & major_class_code == 2) %>%
 
 ## Tax Rate and Tax Base Change
 
+<!--- Do not use the eq_av variable from the joined pins csv. Delete or correct ASAP. --->
+
+Some summary tables need to be calculated using the PIN level data:
+
+```{r}
+#| label: recode-ptaxpins
+
+cross_county_lines <- c("030440000", "030585000", "030890000", "030320000", "031280000",
+                        "030080000", "030560000", "031120000", "030280000", "030340000",
+                        "030150000","030050000", "030180000","030500000", "031210000")
+
+eq_factor <- 3.0027
+
+
+incentive_majorclasses <- c("6", "7A", "7B", "8A", "8B")
+
+commercial_classes <- c(401:435, 490, 491, 492, 496:499,
+                        500:535,590, 591, 592, 597:599, 
+                        700:799,
+                        800:835, 891, 892, 897, 899)  
+
+industrial_classes <- c(480:489,493, 
+                        550:589, 593,
+                        600:699,
+                        850:890, 893
+                        )
+
+ptax_pins <- read_csv("../Output/Dont_Upload/0_Joined_PIN_data_2023.csv") |> select(-c(eq_av, propclass_1dig))
+
+
+ptax_pins <- ptax_pins |> 
+  mutate(class_1dig = str_sub(class, 1,1),
+         class_group = case_when(
+          (class_1dig == 5 & class %in% commercial_classes) ~ "5A",
+          (class_1dig == 5 & class %in% industrial_classes) ~ "5B",
+          class_1dig == 7 &  class < 742 ~ "7A",
+          class_1dig == 7 &  class >= 742 ~ "7B",
+          (class_1dig == 8 & class %in% commercial_classes ) ~ "8A",
+          (class_1dig == 8 & class %in% industrial_classes ) ~ "8B",
+          TRUE ~ as.character(class_1dig))) |>
+  mutate(
+    # taxing district revenue = taxable eav * tax rate so rearrange the formula:
+    taxed_eav = final_tax_to_dist / tax_code_rate*100,
+    
+    total_value_eav = (final_tax_to_dist + final_tax_to_tif)/ tax_code_rate * 100 + all_exemptions + abatements,
+    
+    exempt_eav_inTIF = ifelse(in_tif == 1, all_exemptions, 0),
+    
+    exempt_eav = all_exemptions + abatements,
+    
+    taxed_av =  taxed_eav / eq_factor, # current value that taxing agencies can tax for their levies
+    
+    ## taxable AV = equalized assessed value net TIF increments, gross exemptions. 
+    ## Used for calculating untaxable value further below
+   # taxable_av = (final_tax_to_dist / tax_code_rate *100 + all_exemptions + abatements)/ eq_factor, 
+  
+    # taxable_eav_fromincents =  ifelse(class >=600 & class < 900, taxable_av * eq_factor, 0),
+
+      ## untaxable value = exempt EAV from abatements and exemptions + TIF increment
+    untaxable_value_eav = all_exemptions + abatements + 
+      ## TIF increment EAV above frozen EAV, which becomes TIF revenue
+      (final_tax_to_tif /  tax_code_rate*100) +
+      
+      ## difference between 25% and reduced level of assessment for incentive class properties. Excludes TIF increment when calculating the difference! 
+      ifelse(between(class, 600, 899), 
+             (taxed_av/loa*0.25 - taxed_av)*eq_factor, 0),
+   
+    untaxable_incent_eav = ifelse(between(class, 600, 899), 
+             (taxed_av/loa*0.25 - taxed_av)*eq_factor, 0),
+   
+  # Class 239 property values (farms) are unequalized and reflect different farm
+  # valuations (See CCAO Classification Document)
+    untaxable_value_eav = ifelse(class == 239, 
+                                 equalized_av-taxed_eav, untaxable_value_eav), 
+    
+    untaxable_value_av = untaxable_value_eav / eq_factor,
+    untaxable_value_fmv = untaxable_value_av / loa,
+
+    exempt_fmv = exempt_eav / eq_factor / loa, 
+    
+    fmv_inTIF = ifelse(in_tif==1, av/loa, 0),
+   
+    fmv_tif_increment = ifelse(final_tax_to_tif > 0, 
+                               ((final_tax_to_tif / (tax_code_rate/100)) / eq_factor ) / loa, 0),
+    fmv_incents_inTIF = ifelse(between(class, 600, 899) & in_tif == 1, 
+                               fmv, 0),
+    fmv_incents_tif_increment = ifelse(between(class, 600, 899) & final_tax_to_tif > 0 , 
+                               ((final_tax_to_tif / (tax_code_rate/100)) / eq_factor ) / loa, 0),
+    naive_rev_forgone =  untaxable_incent_eav * tax_code_rate/100) |>
+  select(tax_code, class, pin, fmv,
+         untaxable_value_fmv, fmv_inTIF, fmv_tif_increment, fmv, total_billed, final_tax_to_dist, final_tax_to_tif, tax_code_rate, eav, equalized_av, av, everything())
+```
+
+
+
 ```{r}
 #| label: create-muni_ratechange-csv
 #| eval: false
