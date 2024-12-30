@@ -108,7 +108,7 @@ ft
 ### Figure 3. using EAV
 
 
-The County-wide municipal-median percent of FMV exempt from property taxes in tax year `{r} i` was `{r} median_muni` with `{r} midpoint`.
+
 
 ```{r}
 #| label: fig-exemptionsums-withEAV
@@ -120,22 +120,22 @@ for(i in year_examples){
 
 median_exempt <- muni_sums |>
   filter(year==i)|>
-  mutate(muni_pct_fmv_exempt = (muni_eav - muni_eav_taxed) / muni_eav) |> 
-  select(muni_pct_eav_taxed, clean_name)
+  mutate(muni_pct_eav_exempt =(muni_eav - muni_eav_taxed) / muni_eav) |> 
+  select(muni_pct_eav_exempt, clean_name, agency_name)
 
 
-midpoint = scales::percent(median(median_exempt$muni_pct_eav_taxed), accuracy = 0.01)
+midpoint = scales::percent(median(median_exempt$muni_pct_eav_exempt), accuracy = 0.01)
 
 median_muni = median_exempt |>
-  arrange(muni_pct_eav_taxed) |>
-  filter(muni_pct_eav_taxed == median(muni_pct_eav_taxed)) |>
+  arrange(muni_pct_eav_exempt) |>
+  filter(muni_pct_eav_exempt == median(muni_pct_eav_exempt)) |>
   select(clean_name) |> as.character()
 
-print(muni_sums |>
-  filter(year==i)|>
+print(median_exempt |>
+ # filter(year==i)|>
     mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) |>
  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) |>
-  ggplot(aes(fill = muni_pct_eav_taxed)) + 
+  ggplot(aes(fill = muni_pct_eav_exempt)) + 
   geom_sf(aes(geometry = geometry), color = "black") + 
   theme_void()+ 
   labs(title = "Exempt EAV as a Percent of Municipality-Wide FMV") +
@@ -144,13 +144,14 @@ print(muni_sums |>
  +
     scale_fill_stepsn(colors = c("#ffffcc","#a1dab4" ,"#41b6c4","#2c7fb8", "#253494"),
                         show.limits=TRUE, 
-                    limits = c(0, max(muni_sums$muni_pct_eav_taxed)),
+                    limits = c(0, max(median_exempt$muni_pct_eav_exempt)),
                   breaks = c(0.075, 0.15, 0.225, 0.30),
                        na.value = "gray50",
                   #  nice.breaks = FALSE,
                         name = "% Exempt", label = scales::percent))
 }
 ```
+
 
 The County-wide municipal-median percent of **EAV** exempt from property taxes in tax year `{r} i` was `{r} median_muni` with `{r} midpoint`.
 
