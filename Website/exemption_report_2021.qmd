@@ -63,7 +63,7 @@ muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/poli
 
 ```{r}
 #| label: tbl-exemptionsums
-#| caption: "**Summary of Homestead Exemption Use in Cook County (Tax Year 2021)** Eq_AV is the 2021 equalization factor multiplied by the assessed value of all property and can be thought of as EAV pre-exemption. The general homestead exemption accounts for the vast majority of exempt EAV."
+#| tbl-cap: "**Summary of Homestead Exemption Use in Cook County (Tax Year 2021)** Eq_AV is the 2021 equalization factor multiplied by the assessed value of all property and can be thought of as EAV pre-exemption. The general homestead exemption accounts for the vast majority of exempt EAV. Dollar amounts in millions of "
 
 year_examples <- c(2021)
 
@@ -79,7 +79,7 @@ for (i in year_examples) {
       'Exempt EAV' = sum(muni_c_all_exemptions),
       'GHE' = sum(muni_c_exe_homeowner),
       'Senior' = sum(muni_c_exe_senior),
-      'Freeze Freeze' = sum(muni_c_exe_freeze),
+      'Senior Freeze' = sum(muni_c_exe_freeze),
       'PINs (total)' = sum(muni_c_pins_in_muni),
       'PINs with Exemptions' = sum(muni_c_has_HO_exemp)
     ) |>
@@ -89,7 +89,7 @@ for (i in year_examples) {
     mutate(
       Total = case_when(
         Metric %in% c("AV", "EAV", "Eq_AV", "Taxed EAV", "Exempt EAV", "GHE", "Senior", "Senior Freeze") ~ 
-          paste0("$", format(round(Total / 1e6), big.mark = ","), "M"),
+          paste0(format(round(Total / 1e6), big.mark = ","), " M"),
         TRUE ~ format(Total, big.mark = ",")
       )
     )
@@ -107,6 +107,8 @@ ft
 
 ```{r}
 #| eval: false
+#| include: false
+
 year_examples <- c(2021)
 
 for(i in year_examples){
@@ -144,17 +146,25 @@ print(muni_sums |>
 
 
 ```{r}
+#| label: fig-exemptionsums
+#| fig-cap: "**Summary of Homestead Exemption Use in Cook County (Tax Year 2021)** Eq_AV is the 2021 equalization factor multiplied by the assessed value of all property and can be thought of as EAV pre-exemption. The general homestead exemption accounts for the vast majority of exempt EAV."
+
 year_examples <- c(2021)
 
 for(i in year_examples){
 
 median_exempt <- muni_sums |>
   filter(year==i)|>
-  mutate(pct_fmv_exempt = muni_fmv_exempt / muni_fmv
-) |> 
-  select(pct_fmv_exempt)
+  mutate(pct_fmv_exempt = muni_fmv_exempt / muni_fmv) |> 
+  select(pct_fmv_exempt, clean_name)
+
 
 midpoint = scales::percent(median(median_exempt$pct_fmv_exempt), accuracy = 0.01)
+
+median_muni = median_exempt |>
+  arrange(pct_fmv_exempt) |>
+  filter(pct_fmv_exempt == median(pct_fmv_exempt)) |>
+  select(clean_name) |> as.character()
 
 print(muni_sums |>
   filter(year==i)|>
@@ -165,9 +175,7 @@ print(muni_sums |>
   geom_sf(aes(geometry = geometry), color = "black") + 
   theme_void()+ 
   labs(title = paste0(i), 
-       subtitle =  "Exempt FMV as a Percent of Municipality-Wide FMV"#,
-       #caption = sprintf("The County-wide municipal-median is %s", midpoint)
-       ) +
+       subtitle =  "Exempt FMV as a Percent of Municipality-Wide FMV") +
   theme(axis.ticks = element_blank(), 
         axis.text = element_blank())+
    scale_fill_steps(high = "darkblue", low = "pink",
@@ -179,19 +187,18 @@ print(muni_sums |>
 }
 ```
 
-The County-wide municipal-median percent of FMV exempt from property taxes in 2021 was 14.40% (*Muni Name*).
-
-<!--- Code median muni name as variable to add as inline text  --->
+The County-wide municipal-median percent of FMV exempt from property taxes in tax year `{r} i` was `{r} median_muni` with `{r} midpoint`.
 
 
-The percent of municipal EAV exempt from property taxes are greatest across Cook County's south suburbs and lowest in the northermost suburbs of the county.
+
+The percent of municipal EAV exempt from property taxes are greatest across Cook County's south suburbs and lowest in the northern most suburbs of the county.
 
 
 ### Figure 4. Exempt EAV: City vs. Suburbs
 
 ```{r}
-#| label: tbl-exemptiontotals_for2021
-#| tbl-cap: "**Exempt EAV in Cook County, Tax Year 2021** Exemption use varies between suburban Cook County ($9.7B EAV) and the City of Chicago ($7.0B EAV), which may point to broader socioeconomic patterns as well as residents' eligibility and update. Note: Our current calculations undervalue the disabled veterans exemption."
+#| label: fig-exemptiontotals_for2021
+#| fig-cap: "**Exempt EAV in Cook County, Tax Year 2021** Exemption use varies between suburban Cook County ($9.7B EAV) and the City of Chicago ($7.0B EAV), which may point to broader socioeconomic patterns as well as residents' eligibility and update. Note: Our current calculations undervalue the disabled veterans exemption."
 
 
 muni_cl_sums |> 
@@ -237,6 +244,9 @@ Exemption use varies between suburban Cook County (\$9.7B EAV) and the City of C
 ### Figure 5. Value of residential exemptions by type in Cook County over time, Tax Years 2006 - 2021
 
 ```{r}
+#| label: fig-exemptions-overtime
+#| fig-cap: "**Residential Exempt EAV in Cook County**"
+
 muni_cl_sums |> 
   select(year, muni_c_exe_homeowner:muni_c_exe_vet_dis) |>
   filter(year <= 2021) |>
