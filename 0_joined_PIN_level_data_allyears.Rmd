@@ -18,7 +18,9 @@ library(DBI)
 
 # Bring in data
 ```{r}
-nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
+nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx") %>%
+  mutate(agency_number = as.character(agency_number),
+         agency_number = str_pad(string = agency_number, width = 9, side = "left", pad ="0"))
 
 ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2023.0.0.db")
 
@@ -71,8 +73,7 @@ for(i in years){
   agency_dt<- dbGetQuery(ptaxsim_db_conn, paste('SELECT * FROM agency WHERE year = ', i, ';'))
   agency_dt <- agency_dt %>%  mutate_if(is.integer64, as.double)
   
-  tax_codes <- dbGetQuery(ptaxsim_db_conn, paste('SELECT DISTINCT tax_code_num, tax_code_rate FROM tax_code WHERE year = ', i, ';'))   |>   
-    mutate(tax_code_rate = tax_code_rate/100)
+  tax_codes <- dbGetQuery(ptaxsim_db_conn, paste('SELECT DISTINCT tax_code_num, tax_code_rate FROM tax_code WHERE year = ', i, ';'))  
 
   
   
@@ -92,22 +93,12 @@ for(i in years){
   ## All tax codes.
   ## tax codes within municipalities have additional info
   tc_muninames <- tax_codes %>%
-    left_join(muni_tax_codes) %>%
-    left_join(muni_agency_names) %>%
+    left_join(muni_tax_codes, by = c("tax_code_num", "tax_code_rate")) %>%
+    left_join(muni_agency_names, by = "agency_num") %>%
     select(-agency_rate) %>%
-    left_join(nicknames) %>%
-    select(-c(minor_type, short_name,
-              agency_number))
+    left_join(nicknames, by = c("agency_num" = "agency_number"))  |>   
+    mutate(tax_code_rate = tax_code_rate/100)#%>% select(-c(minor_type, short_name, agency_number))
   
- # tc_muninames <- tc_muninames |> select(tax_code_num, tax_code_rate, clean_name, Triad, Township)
-  
-  
-  
-  # 
-  # sql <- "SELECT * FROM pin WHERE tax_code_num IN ({tax_codes$tax_code_num*}) AND year = ?year"
-  # query <- sqlInterpolate(ptaxsim_db_conn, sql, year = i)
-  # cook_pins <- dbGetQuery(ptaxsim_db_conn, glue_sql(query, .con = ptaxsim_db_conn))
-  # 
   
 # PIN data from pin datatable in PTaxSim. Has exemption values and assessment values
 
@@ -148,7 +139,8 @@ pin_data <- pin_data |>
   mutate_if(is.integer64, as.double ) %>%
   left_join(ccao_loa, by = c("class" = "class_code")) %>%
   left_join(tif_distrib, by ="tax_code_num") |>
-  left_join(tc_muninames, by = c("tax_code_num")) |>
+    left_join(tc_muninames, by = c("tax_code_num")) |>
+
   
    mutate(
     incent_prop = ifelse(between(class, 600, 899), 1, 0),
@@ -177,6 +169,7 @@ pin_data <- pin_data |>
   mutate(taxable_eav_adj = ifelse(taxable_eav > 1000 & flag_missingdata == 1, 0 , taxable_eav)) |>
   mutate(exe_total_adj = rowSums(across(starts_with("exe_")))- exe_total) # don't double count the total value when summing the values
 
+  
 pin_data <- pin_data |>
   mutate(all_exemptions = exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner +
            exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 ,
@@ -203,19 +196,20 @@ pin_data <- pin_data |>
 
 ## Test Point -------------------------
 ## add a test and break here if there are any observations with CHECK ME
-pin_data %>% 
-
-  mutate(
-    av = av_clerk,
-    final_tax_to_dist = ifelse(in_tif == 0, (taxable_eav-all_exemptions)*tax_code_rate, 
-                               ifelse(in_tif == 1, (taxable_eav-all_exemptions)*tax_code_rate * (1-tax_code_distribution_pct), "CHECK ME")),
-    final_tax_to_tif = ifelse(in_tif == 1, (taxable_eav-all_exemptions)*tax_code_rate * tax_code_distribution_pct, 0),
-    
-    final_tax_to_dist_adj = ifelse(in_tif == 0, (taxable_eav_adj-all_exemptions)*tax_code_rate, 
-                               ifelse(in_tif == 1, (taxable_eav-all_exemptions)*tax_code_rate* (1-tax_code_distribution_pct), "CHECK ME")),
-    final_tax_to_tif_adj = ifelse(in_tif == 1, (taxable_eav_adj-all_exemptions)*tax_code_rate * tax_code_distribution_pct, 0)) |>
-  summarize(n_checkmes = sum(final_tax_to_dist == "CHECK ME"),
-            n_checkmesadj = sum(final_tax_to_dist_adj == "CHECK ME"))
+# pin_data %>% 
+# 
+#   mutate(
+#     av = av_clerk,
+#     final_tax_to_dist = ifelse(in_tif == 0, (taxable_eav-all_exemptions)*tax_code_rate, 
+#                                ifelse(in_tif == 1, (taxable_eav-all_exemptions)*tax_code_rate * (1-tax_code_distribution_pct), "CHECK ME")),
+#     final_tax_to_tif = ifelse(in_tif == 1, (taxable_eav-all_exemptions)*tax_code_rate * tax_code_distribution_pct, 0),
+#     
+#     final_tax_to_dist_adj = ifelse(in_tif == 0, (taxable_eav_adj-all_exemptions)*tax_code_rate, 
+#                                ifelse(in_tif == 1, (taxable_eav-all_exemptions)*tax_code_rate* (1-tax_code_distribution_pct), "CHECK ME")),
+#     final_tax_to_tif_adj = ifelse(in_tif == 1, (taxable_eav_adj-all_exemptions)*tax_code_rate * tax_code_distribution_pct, 0)) |>
+#   
+#   summarize(n_checkmes = sum(final_tax_to_dist == "CHECK ME"),
+#             n_checkmesadj = sum(final_tax_to_dist_adj == "CHECK ME"))
 
 
 # More pin variables ------------------------
@@ -284,22 +278,19 @@ pin_data <- pin_data %>%
     eav_incents_inTIF = fmv_incents_inTIF * loa * eq_factor
   )
 
-write_csv(pin_data, paste0("./Output/Dont_Upload/0_joined_PIN_data_", i, "_test", ".csv"), na=NA)
+write_csv(pin_data, file = paste0("./Output/Dont_Upload/0_joined_PIN_data_", i, "_test.csv"))
 
 
 
  # Tax Rate change -------------------------------------
 
-pin_data <- read_csv(paste0("./Output/Dont_Upload/0_joined_PIN_data_", i, "_test", ".csv") )
+pin_data <- read_csv(paste0("./Output/Dont_Upload/0_joined_PIN_data_", i, "_test.csv"))
 
 muni_ratechange <- pin_data |> 
-  mutate(class = as.numeric(class)) |>         # Allows for joining later
-  
   group_by(clean_name) |>
   
   summarize(
     classgroup_PC = n(),
-    # projects = n_distinct(both_ids), # mostly for industrial and commercial properties
     pins_withincents = sum(ifelse(class >= 600 & class < 900, 1,0)),
     fmv_incentive = sum(ifelse(class >=600 & class <900, fmv, 0), na.rm = TRUE),
     #fmv_taxed =  sum(taxed_fmv, na.rm=TRUE),
