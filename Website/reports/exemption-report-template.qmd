@@ -289,18 +289,6 @@ Trends in the total EAV reductions due to homestead exemptions reflect both real
 
 ## Effect on Composite Tax Rates
 
-```{r readin-muniratechange}
-#| tbl-cap: "Searchable table containing all municipalities and the extimated tax rate change from various policy scenarios."
-
-# muni_ratechange_2023.csv is made in the GetData.qmd file now 
-muni_ratechange <- read_csv(paste0("../../Output/muni_ratechange_", params$year, "_test.csv"))
-
-muni_ratechange |> 
-  select(clean_name, starts_with("change_")) |> 
-  DT::datatable(rownames = FALSE)
-
-```
-
 *Figure 6 will not be recreated but is just a bar chart of the change in tax rate in the table below*
 
 ### Table 1. Change in composite property tax rates due to exemptions, tax year `{r} params$year`.
@@ -309,14 +297,19 @@ muni_ratechange |>
 #| label: tbl-table1-datatable
 #| tbl-cap: "Searchable table containing all municipalities and the hypothetical tax rate change if exempt EAV became taxable."
 
+muni_ratechange <- read_csv(paste0("../../Output/muni_ratechange_", params$year, "_test.csv"))
+
+
 muni_ratechange |> 
   select(clean_name,  current_rate_avg, rate_noExe, change_noExe, final_tax_to_dist 
          ) |> 
+  mutate(change_noExe = change_noExe * 100) |>
   DT::datatable(rownames = FALSE, colnames = c('Municipality' = 'clean_name','Current Comp. Rate' = 'current_rate_avg', 'Hypothetical Rate' = 'rate_noExe',  'Composite Tax Rate Change'='change_noExe', 
 
                        'Composite Levy' = 'final_tax_to_dist'),
           caption = "Table 1 in Report for all Municipalities: Current and Hypothetical Composite Tax Rates if GHE $0") |>
-  formatCurrency('Composite Levy', digits = 0)
+  formatCurrency('Composite Levy', digits = 0) |>
+  formatPercentage(columns = c(2,3), digits = 2)
 ```
 
 ```{r}
@@ -327,6 +320,7 @@ muni_ratechange |>
   filter(!is.na(clean_name)) |> 
   select(clean_name,  current_rate_avg, rate_noExe, change_noExe 
 ) |>
+  mutate(across(c(current_rate_avg, rate_noExe, change_noExe ), ~.*100)) |>
   arrange(desc(change_noExe)) |>
   slice(c(1:5, 69:73, 121:125)) |>
     #slice(c(1:5, 58:62, 115:119)) |>
@@ -335,18 +329,19 @@ muni_ratechange |>
   border_remove() |>
   hline_top() |>
   hline(i = c(5,10)) |>
-
+  
   set_header_labels(
     clean_name = "Municipality", 
     current_rate_avg = "With Exemptions",
     rate_noExe = "Without Exemptions",
     change_noExe = "Percent Point Difference"
     
-    ) |>
+  ) |>
   align(j = 2, align = "right") |>
-align(j=2, align = "right", part = "header") |>
-set_table_properties( layout = "autofit") |> bold(i = 8) 
-
+  align(j=2, align = "right", part = "header") |>
+  set_table_properties( layout = "autofit") |> bold(i = 8)
+  
+  
 ```
 
 ### Figure 7. Map of Spatial Patterns in Composite Tax Rate Change
@@ -356,10 +351,9 @@ Change in composite tax rate if exempt EAV was added back to the the taxable tax
 ```{r}
 
 muni_ratechange  |>
-  left_join(nicknames, by = "clean_name") |>
-     #mutate(burden_current = ifelse(burden_current>1, 1, burden_current)) |>
+    mutate(across(c(current_rate_avg, rate_noExe, change_noExe ), ~.*100)) |>
 
-    # filter(major_class_code == 2) |>
+  left_join(nicknames, by = "clean_name") |>
   mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name),
          shpfile_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) |>
   full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) |>
@@ -391,8 +385,6 @@ muni_ratechange  |>
 *CMAP used a donut chart, we will use a bar chart that represents 100% on the x a axis. Values are currently an ungrouped table below*
 
 ```{r readin-taxcodes-andburden}
-
-
 #read_csv(paste0("../../Output/Dont_Upload/0_Joined_PIN_data_", params$year, ".csv") )
 
 pin_data <- read_csv(paste0("../../Output/Dont_Upload/0_joined_PIN_data_", params$year, "_test.csv"))
@@ -404,15 +396,26 @@ mc_burden <- read_csv(paste0("../../Output/muni_mc_burden_", params$year, "_test
 
 
 burden_shift <- read_csv(paste0("../../Output/muni_burden_shift_", params$year, "_test.csv"))
+```
 
+
+```{r}
+#| label: supporting-table-forfig8
 
 
 burden_c2 <- mc_burden |> 
   filter(class_1dig == 2) |> 
   select(clean_name, pct_taxbase, 
-         burden_shift,  pct_taxburden_current, hyp_pct_taxburden)# |> arrange(pct_eav)
+         burden_shift,  pct_taxburden_current, hyp_pct_taxburden)
 
-burden_shift
+burden_shift |>  
+  select(-c(muni_levy, muni_taxbase,))|>
+  DT::datatable(rownames = FALSE, 
+                colnames = c(
+                  'Municipality' = 'clean_name'),
+                caption = "Table 2 in Report for all Municipalities: Current and Hypothetical Composite Tax Rates if GHE $0") |>
+  formatCurrency(columns = c(3:6), digits = 0)
+
 ```
 
 
@@ -454,7 +457,7 @@ burden_shift |>
   mutate(pct_taxburden_current = pct_taxburden_current) |>
 pivot_wider(id_cols = clean_name, names_from = Group, values_from = pct_taxburden_current) |>
   arrange((`Single-family`)) |>
-  DT::datatable(rownames = FALSE, colnames = c('Municipality' = 'clean_name')) #|>formatPercentage(c(2,3,4))
+  DT::datatable(rownames = FALSE, colnames = c('Municipality' = 'clean_name')) |>formatPercentage(c(2,3,4))
 ```
 
 ```{r}
@@ -581,14 +584,13 @@ C2_munistats_filtered
 ## Grouped by if they have a $0 tax bill and had the GHE per muni
 ## Recalculating for Josh & Rachael
 muni_median_summarytable <- pin_data |> 
-  select(pin, class, tax_code_num, tax_bill_total, av_certified, exe_homeowner:exe_abate, clean_name, eq_av, all_exemptions, zero_bill, has_HO_exemp, taxed_eav) |>
+  select(pin, av, class, tax_code_num, tax_bill_total, av_certified, exe_homeowner:exe_abate, clean_name, eq_av, all_exemptions, zero_bill, has_HO_exemp, taxed_eav, final_tax_to_dist, final_tax_to_tif) |>
 
   filter(class >199 & class < 300) |> 
   
   # merge in muni residential median AV
   left_join(C2_munistats_filtered) |>
-  left_join(taxcodes_current) |>
-  
+  left_join(muni_ratechange) |>
   # +/- 500 from municpalities median residential AV
   filter(av < median_av+200 & av > median_av-200) |>
   
@@ -605,8 +607,9 @@ muni_median_summarytable <- pin_data |>
   
   arrange(av) |>
   
-  mutate(bill_current = (final_tax_to_dist + final_tax_to_tif),
-         bill_noexemps =  new_comp_TC_rate*(eq_av-all_exemptions+exe_homeowner),
+  mutate(#bill_current = (final_tax_to_dist + final_tax_to_tif),
+         bill_current = rate_current* taxed_eav,
+         bill_noexemps =  rate_noGHE*(eq_av-all_exemptions+exe_homeowner),
          bill_change = bill_noexemps - bill_current) |>
   # 
   group_by(clean_name, 
@@ -619,7 +622,7 @@ muni_median_summarytable <- pin_data |>
             bill_new = round(median(bill_noexemps)),
             bill_change = round(median(bill_change)),
             pincount=n(),
-            perceived_savings = round(median(all_exemptions*tax_code_rate))
+            perceived_savings = round(median(all_exemptions*rate_current))
             ) |> 
   
   # merge in clean_names variable
@@ -640,7 +643,9 @@ muni_taxrates
 
 muni_taxrates |> 
   left_join(nicknames) |> 
-  select(clean_name, muni_median_av, C2median_av, nochange_av )
+  select(clean_name, muni_median_av, C2median_av
+       #  , nochange_av
+         )
 ```
 
 ```{r error = TRUE}
@@ -718,7 +723,7 @@ mc_burden |>
                names_to = "type", values_to = "pct_burden") |> 
   inner_join(order) |>
   ggplot(aes(x = pct_burden*100, 
-             y= reorder(clean_name, -pct_taxburden_current)))+
+             y= reorder(clean_name, - pct_taxburden_current)))+
   # y= reorder(clean_name, burden_current)))+
   geom_vline(xintercept = 70.2, linetype = 3)+
   geom_line(aes(group = clean_name))+ 
@@ -739,10 +744,9 @@ mc_burden |>
   labs(title = "Change in Class 2 Residential Tax Burden", 
        subtitle = "Ordered by Current Tax Burden",
   x = "Share of Levy (%)", y = "" , 
-  caption = "Dotted line represents median Class 2 burden (___% of the levy). Residential Tax Burden is the 
-  share of the property tax collected that was paid for by property owners with Class 2 properties.") +
+  caption = paste0("Dotted line represents median Class 2 burden (", median_burden, "% of the levy). Residential Tax Burden is theshare of the property tax collected that was paid for by property owners with Class 2 properties.")) +
     geom_label(label = "Class 2 pays small share of \nlevy; very little residential", x=32, y = 13, label.size = 1, size = 3)+
-    geom_label(label = "Class 2 pays median share of \nlevy (____%), mix of land use", x=42, y = 7.5, label.size = 1, size = 3) +
+    geom_label(label = paste0("Class 2 pays median share of \nlevy )", median_burden, "%), mix of land use"), x=42, y = 7.5, label.size = 1, size = 3) +
     geom_label(label = "Class 2 pays nearly all of levy, \nhighly residential", x=70, y = 3, label.size = 1,size = 3)
 ```
 
@@ -763,11 +767,11 @@ muni_mc_sums |>
 #| error: true
 
 smallbills <- pin_data |> 
-  filter(class_1dig == 2 & eav < 150 ) |>
-  select(clean_name, class, eav, eq_av, av, fmv, total_billed, 
+  filter(class_1dig == 2 & taxed_eav < 150 ) |>
+  select(clean_name, class, taxed_eav, eq_av, av, fmv, tax_bill_total, 
          final_tax_to_dist, pin, everything()) |>
-  arrange(total_billed) |> arrange(desc(total_billed)) |>
-  filter(total_billed > 0)
+  arrange(tax_bill_total) |> arrange(desc(tax_bill_total)) |>
+  filter(tax_bill_total > 0)
 
 smallbills
 
@@ -786,8 +790,8 @@ smallbills |>
             exe_homeowner = sum(exe_homeowner, na.rm=T))
 
 smallbills |> 
-  select(clean_name, class, eav, eq_av, av, fmv, 
-         total_billed, final_tax_to_dist, pin)
+  select(clean_name, class, taxed_eav, eq_av, av, fmv, 
+         tax_bill_total, final_tax_to_dist, pin)
 ```
 
 ```{r}
@@ -795,8 +799,8 @@ smallbills |>
 
 
 zerobills <- pin_data |> 
-  filter(class_1dig == 2 & eav > 0 & total_billed == 0) |>
-  select(clean_name, class, eav, eq_av, av, fmv, total_billed, final_tax_to_dist, pin, exe_homeowner, exe_senior, exe_freeze, everything())  |>
+  filter(class_1dig == 2 & taxed_eav > 0 & tax_bill_total == 0) |>
+  select(clean_name, class, taxed_eav, eq_av, av, fmv, tax_bill_total, final_tax_to_dist, pin, exe_homeowner, exe_senior, exe_freeze, everything())  |>
   arrange(desc(exe_freeze))
 
 zerobills
@@ -829,12 +833,12 @@ zerobills |>
 #| error: true
 
 pin_data |> 
-  filter(class_1dig == 2 & eav > 0 & total_billed == 0) |>
-  select(clean_name, class, eav, eq_av, av, fmv, total_billed, final_tax_to_dist, pin, exe_homeowner, exe_senior, exe_freeze)  |>
+  filter(class_1dig == 2 & taxed_eav > 0 & tax_bill_total == 0) |>
+  select(clean_name, class, taxed_eav, eq_av, av, fmv, tax_bill_total, final_tax_to_dist, pin, exe_homeowner, exe_senior, exe_freeze)  |>
   arrange(desc(exe_freeze)) |>
-  summarize(max = max(eav),
-            min = min(eav),
-            median = median(eav),
+  summarize(max = max(taxed_eav),
+            min = min(taxed_eav),
+            median = median(taxed_eav),
             n = n()) 
 ```
 
