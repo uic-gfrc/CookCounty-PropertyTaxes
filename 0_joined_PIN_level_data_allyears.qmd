@@ -2,9 +2,11 @@
 title: "Create Joined PIN Level Data for each Tax Year"
 author: "AWM"
 date: "`r Sys.Date()`"
-output: 
-  html_document:
-      code_cold: TRUE
+format: 
+  html:
+    code-fold: true
+    df-print: paged
+
   
 ---
 
@@ -83,40 +85,31 @@ for(i in years){
 
   
   
-  
+  # identify tax codes taxed by municipalities:
   sql <- "SELECT * FROM tax_code WHERE agency_num IN ({muni_agency_names$agency_num*}) AND year = ?year"
   query <- sqlInterpolate(ptaxsim_db_conn, sql, year = i)
-  muni_tax_codes<- dbGetQuery(ptaxsim_db_conn, glue_sql(query, .con = ptaxsim_db_conn)) |> 
-    select(-year)
+  muni_tax_codes <- dbGetQuery(ptaxsim_db_conn, glue_sql(query, .con = ptaxsim_db_conn)) |> 
+    select(-year, -agency_rate, - tax_code_rate)
   
-  tif_distrib <- DBI::dbGetQuery(ptaxsim_db_conn, paste('SELECT * FROM tif_distribution WHERE year = ', i, ';')) 
+  # identify tax codes that collect tif revenue:
+  tif_distrib <- DBI::dbGetQuery(ptaxsim_db_conn, paste('SELECT * FROM tif_distribution WHERE year = ', i, ';')) |>
+    select(tax_code_num, tax_code_distribution_pct, tax_code_frozen_eav, tax_code_eav) %>%
+    mutate(tax_code_distribution_pct = tax_code_distribution_pct/100) # the tif share
   
-  tif_distrib <- tif_distrib %>%
-    select(tax_code_num, tax_code_distribution_pct) %>%
-    mutate(tax_code_distribution_pct = tax_code_distribution_pct/100)
   
-  
-  ## All tax codes.
-  ## tax codes within municipalities have additional info
+  # Combine tax code information
   tc_muninames <- tax_codes %>%
-    left_join(muni_tax_codes, by = c("tax_code_num", "tax_code_rate")) %>%
+    left_join(muni_tax_codes, by = c("tax_code_num")) %>%
     left_join(muni_agency_names, by = "agency_num") %>%
-    select(-agency_rate) %>%
     left_join(nicknames, by = c("agency_num" = "agency_number"))  |>   
     mutate(tax_code_rate = tax_code_rate/100)#%>% select(-c(minor_type, short_name, agency_number))
   
   
-# PIN data from pin datatable in PTaxSim. Has exemption values and assessment values
-
-sql <- "SELECT * FROM pin WHERE year = ?year"
-query <- sqlInterpolate(ptaxsim_db_conn, sql, year = i)
-pin_data <- dbGetQuery(ptaxsim_db_conn, glue_sql(query, .con = ptaxsim_db_conn))
-
-
-  # combine taxing agency names and agency type to data table that has eav and extension values
-  agency_data <- right_join(agency_dt, muni_agency_names) %>%
-    select(-c(cty_dupage_eav:cty_livingston_eav)) %>% # drop some of the unused variables
-    arrange(agency_num)
+  # PIN data from pin datatable in PTaxSim. Has total tax bill amount from Treasurer data,
+  # and exemption values and assessment values from Clerk data
+  sql <- "SELECT * FROM pin WHERE year = ?year"
+  query <- sqlInterpolate(ptaxsim_db_conn, sql, year = i)
+  pin_data <- dbGetQuery(ptaxsim_db_conn, glue_sql(query, .con = ptaxsim_db_conn))
   
   
   eq_factor <- read_csv("./Necessary_Files/eq_factor.csv") %>%
@@ -144,35 +137,43 @@ pin_data <- dbGetQuery(ptaxsim_db_conn, glue_sql(query, .con = ptaxsim_db_conn))
 pin_data <- pin_data |>
   mutate_if(is.integer64, as.double ) %>%
   left_join(ccao_loa, by = c("class" = "class_code")) %>%
+  left_join(tc_muninames, by = c("tax_code_num")) |>
   left_join(tif_distrib, by ="tax_code_num") |>
-    left_join(tc_muninames, by = c("tax_code_num")) |>
+    mutate( 
+      eq_av = av_clerk*eq_factor,
+      exe_total = rowSums(across(starts_with("exe_"))),
+      exe_total = ifelse(exe_total > eq_av, eq_av, exe_total),
+      taxed_eav = av_clerk*eq_factor - exe_total,
 
-  
-   mutate(
-    incent_prop = ifelse(between(class, 600, 899), 1, 0),
-    res_prop = ifelse(between(class, 200, 399), 1, 0),
-    c2_prop = ifelse(between(class, 200, 299), 1, 0),
-    
-    # for A and B property types of commercial and industrial properties
-    class_1dig = str_sub(class, 1, 1),
-    class_group = case_when(
-      (class_1dig == 5 & class %in% commercial_classes) ~ "5A",
-      (class_1dig == 5 & class %in% industrial_classes) ~ "5B",
-      class_1dig == 7 &  class < 742 ~ "7A",
-      class_1dig == 7 &  class >= 742 ~ "7B",
+      # create variables that appear from taxbill() function
+      tax_amt_exe = exe_total*tax_code_rate,
+      tax_amt_pre_exe = av_clerk*eq_factor*tax_code_rate,
+      tax_amt_post_exe = tax_amt_pre_exe-tax_amt_exe,
+      tax_amt_post_exe = ifelse(tax_amt_post_exe < 0, 0, tax_amt_post_exe),
+      final_tax_to_tif = ifelse(tax_code_frozen_eav < tax_code_eav,
+                                tax_amt_post_exe*tax_code_distribution_pct, 0),
+      final_tax_to_dist = tax_amt_post_exe - final_tax_to_tif,
+      
+      incent_prop = ifelse(between(class, 600, 899), 1, 0),
+      res_prop = ifelse(between(class, 200, 399), 1, 0),
+      c2_prop = ifelse(between(class, 200, 299), 1, 0),
+      
+      # for A and B property types of commercial and industrial properties
+      class_1dig = str_sub(class, 1, 1),
+      class_group = case_when(
+        (class_1dig == 5 & class %in% commercial_classes) ~ "5A",
+        (class_1dig == 5 & class %in% industrial_classes) ~ "5B",
+        class_1dig == 7 &  class < 742 ~ "7A",
+        class_1dig == 7 &  class >= 742 ~ "7B",
       (class_1dig == 8 & class %in% commercial_classes ) ~ "8A",
       (class_1dig == 8 & class %in% industrial_classes ) ~ "8B",
       TRUE ~ as.character(class_1dig))) %>%
   
-  # left_join(taxcode_rates, by = c("year", "tax_code_num")) |>
+    # NOTE: the number of $0 tax bills identified when using the tax_bill() command from ptaxsim is differnet than using the tax bill total value directly from the pin db table
   mutate(zero_bill = ifelse(tax_bill_total == 0, 1, 0)) |>
-  mutate(eq_av = av_clerk*eq_factor) |>
-  mutate(exe_total = rowSums(across(starts_with("exe_"))),
-         exe_total = ifelse(exe_total > eq_av, eq_av, exe_total)) |>
-  mutate(taxable_eav = eq_av - exe_total) |>
-  mutate(flag_missingdata = ifelse(taxable_eav > 1000 & tax_bill_total == 0 & c2_prop == 1, 1, 0)) |>
-  mutate(exe_missing_disvet = ifelse(taxable_eav > 1000 & tax_bill_total == 0 & c2_prop == 1, taxable_eav, 0)) |>
-  mutate(taxable_eav_adj = ifelse(taxable_eav > 1000 & flag_missingdata == 1, 0 , taxable_eav)) |>
+  mutate(flag_missingdata = ifelse(taxed_eav > 1000 & tax_bill_total == 0 & c2_prop == 1, 1, 0)) |>
+  mutate(exe_missing_disvet = ifelse(taxed_eav > 1000 & tax_bill_total == 0 & c2_prop == 1, taxed_eav, 0)) |>
+  mutate(taxed_eav_adj = ifelse(taxed_eav > 1000 & flag_missingdata == 1, 0 , taxed_eav)) |>
   mutate(exe_total_adj = rowSums(across(starts_with("exe_")))- exe_total) # don't double count the total value when summing the values
 
   
@@ -195,7 +196,8 @@ pin_data <- pin_data |>
     has_VR_exemp = ifelse(exe_vet_returning > 0, 1, 0),
     has_DV_exemp = ifelse(exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 > 0, 1, 0),
     has_AB_exemp = ifelse(exe_abate > 0, 1, 0),
-    in_tif = ifelse(tax_code_num %in% tif_distrib$tax_code_num, 1, 0)
+    in_tif = ifelse(tax_code_num %in% tif_distrib$tax_code_num, 1, 0),
+    in_tif_andpays_revtotif = ifelse(in_tif == 1 & tax_code_eav > tax_code_frozen_eav, 1, 0 )
   )
 
 
@@ -224,16 +226,13 @@ pin_data <- pin_data %>%
  
   mutate(
     av = av_clerk,
-    final_tax_to_dist = ifelse(in_tif == 0, (taxable_eav-all_exemptions)*tax_code_rate, 
-                               ifelse(in_tif == 1, (taxable_eav-all_exemptions)*tax_code_rate * (1-tax_code_distribution_pct), 0)),
-    final_tax_to_tif = ifelse(in_tif == 1, (taxable_eav-all_exemptions)*tax_code_rate * tax_code_distribution_pct, 0),
+    final_tax_to_dist_AWM = ifelse(in_tif == 0, (taxed_eav-all_exemptions)*tax_code_rate, 
+                               ifelse(in_tif == 1, (taxed_eav-all_exemptions)*tax_code_rate * (1-tax_code_distribution_pct), 0)),
+    final_tax_to_tif_AWM = ifelse(in_tif == 1, (taxed_eav-all_exemptions)*tax_code_rate * tax_code_distribution_pct, 0),
     
-    final_tax_to_dist_adj = ifelse(in_tif == 0, (taxable_eav_adj-all_exemptions)*tax_code_rate, 
-                               ifelse(in_tif == 1, (taxable_eav-all_exemptions)*tax_code_rate* (1-tax_code_distribution_pct), 0)),
-    final_tax_to_tif_adj = ifelse(in_tif == 1, (taxable_eav_adj-all_exemptions)*tax_code_rate * tax_code_distribution_pct, 0),
-
-    # taxing district revenue = taxable eav * tax rate so rearrange the formula:
-    taxed_eav = final_tax_to_dist / tax_code_rate,
+    final_tax_to_dist_adj_AWM = ifelse(in_tif == 0, (taxed_eav-all_exemptions)*tax_code_rate, 
+                               ifelse(in_tif == 1, (taxed_eav-all_exemptions)*tax_code_rate* (1-tax_code_distribution_pct), 0)),
+    final_tax_to_tif_adj_AWM = ifelse(in_tif == 1, (taxed_eav-all_exemptions)*tax_code_rate * tax_code_distribution_pct, 0),
     
     total_value_eav = ((final_tax_to_dist + final_tax_to_tif)/ tax_code_rate) + all_exemptions + abatements,
     
@@ -389,9 +388,8 @@ muni_ratechange <- pin_data |>
   mutate(across(contains("rate_"), round, digits = 2)) |>
   mutate(across(contains("change_"), round, digits = 2))
 
-muni_ratechange
-
 write_csv(muni_ratechange, paste0("./Output/muni_ratechange_", i, "_test.csv"))
+
 
 
 # Tax Code Calculations -------------------------
@@ -423,8 +421,6 @@ taxcodes_current <- pin_data |>
 taxcode_taxrates <- taxcodes_current |> 
   select(tax_code_num, cur_comp_TC_rate, new_comp_TC_rate, current_exemptions, HO_exemps)
 
-taxcodes_current
-
 write_csv(taxcodes_current, paste0("./Output/taxcodes_current_", i, "_test.csv"))
 
 
@@ -441,6 +437,7 @@ mc_burden <- pin_data |>
             hyp_group_taxes = sum( (taxed_eav + all_exemptions) * (new_comp_TC_rate), na.rm = T)
      )  |>
   mutate(across(c(group_taxbase:hyp_group_taxes), round, 0)) |>
+  ungroup()|>
   group_by(clean_name) |>
   
   mutate(
@@ -449,13 +446,11 @@ mc_burden <- pin_data |>
   ) |>
   ungroup() |>
   mutate(
-         pct_eav = group_taxbase / muni_taxbase,
+         pct_taxbase = group_taxbase / muni_taxbase,
          pct_taxburden_current = group_taxes_current / muni_levy,
          hyp_pct_taxburden = hyp_group_taxes / muni_levy) |>
   mutate(
-         burden_shift = (pct_taxburden_current - hyp_pct_taxburden)*100)
-
-mc_burden
+         burden_shift = (pct_taxburden_current - hyp_pct_taxburden))
 
 write_csv(mc_burden, paste0("./Output/muni_mc_burden_", i, "_test.csv"))
 
@@ -489,7 +484,7 @@ burden_shift <- pin_data |>
 
 write_csv(burden_shift, paste0("./Output/muni_burden_shift_", i, "_test.csv"))
 
-burden_shift
+
 
 }
 ```
@@ -502,4 +497,11 @@ Note: The EAV from the pin table is the original EAV (AV \* equalizer) without c
 taxable eav is the equalized final assessed value. 
 
 taxed eav is the amount of eav that is taxable by local taxing agencies (non-TIF districts)
+
+```{r}
+taxcodes_current
+mc_burden
+burden_shift
+muni_ratechange
+```
 
