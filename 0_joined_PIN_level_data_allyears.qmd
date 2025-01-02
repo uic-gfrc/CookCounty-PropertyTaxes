@@ -31,9 +31,9 @@ nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx") %>%
 
 ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2023.0.0.db")
 
-years <-(2021) # testing
+#years <-(2021) # testing
 
-#years <-(2021:2023)
+years <-(2021:2023)
 
 cross_county_lines <- c("030440000", "030585000", "030890000", "030320000", "031280000",
                         "030080000", "030560000", "031120000", "030280000", "030340000",
@@ -308,8 +308,7 @@ write_csv(pin_data, file = paste0("./Output/Dont_Upload/0_joined_PIN_data_", i, 
 
 
 
- # Tax Rate change -------------------------------------
- # calculates straight to municipality level. Less accurate than using tax code level summaries of change
+ # Composite Tax Rate Change for Municipalities -------------------------------------
 
 pin_data <- read_csv(paste0("./Output/Dont_Upload/0_joined_PIN_data_", i, "_test.csv"))
 
@@ -347,6 +346,7 @@ muni_ratechange <- pin_data |>
     fmv = sum(fmv, na.rm=TRUE),
     pins_in_class = n(),
     all_exemptions = sum(all_exemptions, na.rm=T),   # in EAV
+    exe_homeowner = sum(exe_homeowner),
     abatements = sum(exe_abate),            # in EAV
     eav_incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, taxed_av*eq_factor, 0), na.rm = TRUE),
     final_tax_to_dist = sum(final_tax_to_dist, na.rm=T),
@@ -364,7 +364,7 @@ muni_ratechange <- pin_data |>
   ) |>
   ungroup() |>
   mutate(
-
+    new_TEAV_noGHE = eav_taxed + exe_homeowner,
     new_TEAV_noExemps = eav_taxed + all_exemptions, # does not include abatements
     new_TEAV_noAbates = eav_taxed + abatements, # include only abatements, not other exemption types
 
@@ -381,6 +381,7 @@ muni_ratechange <- pin_data |>
     TEAV_neither = eav_taxed + all_exemptions + forgone_EAV_incent,
 
     rate_noExe = final_tax_to_dist / new_TEAV_noExemps,
+    rate_noGHE = final_tax_to_dist / new_TEAV_noGHE,
     rate_noAbate = final_tax_to_dist / new_TEAV_noAbates,
     rate_noInc = final_tax_to_dist / new_TEAV_noIncents,
     rate_neither = final_tax_to_dist / TEAV_neither,
@@ -402,216 +403,6 @@ muni_ratechange <- pin_data |>
 write_csv(muni_ratechange, paste0("./Output/muni_ratechange_", i, "_test.csv"))
 
 muni_rates <- muni_ratechange |> select(clean_name, current_rate_avg, rate_noExe, rate_current)
-
-# Tax Code Calculations -------------------------
-
-# taxcode_rate_scenarios <- pin_data |> 
-#   group_by(tax_code_num, tax_code_eav, tax_code_frozen_eav, tax_code_distribution_pct, clean_name) |>
-#   
-#   summarize(
-#     pincount = n(),
-#     pins_withincents = sum(ifelse(class >= 600 & class < 900, 1,0)),
-#     # fmv_incentive = sum(ifelse(class >=600 & class <900, fmv, 0), na.rm = TRUE),
-#     # #fmv_taxed =  sum(taxed_fmv, na.rm=TRUE),
-#     # fmv_incents_inTIFs = sum(ifelse(class >=600 & class <900 & final_tax_to_tif > 0, fmv, 0), na.rm = TRUE),
-#     # fmv_inTIF = sum(ifelse(final_tax_to_tif > 0, fmv, 0), na.rm=TRUE),
-#     # fmv_tif_increment = sum(fmv_tif_increment, na.rm=TRUE),
-#     # fmv_untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
-#     # fmv_exemptions = sum(all_exemptions/eq_factor/loa, na.rm=TRUE),
-#     # fmv_abatements = sum(exe_abate/eq_factor/loa, na.rm=TRUE),
-#     zero_bill = sum(zero_bill, na.rm=TRUE),
-#     # fmv_residential = sum(ifelse(class %in% c(200:399), fmv, 0), na.rm = TRUE),
-#     # fmv_C2 = sum(ifelse(class %in% c(200:299), fmv, 0), na.rm = TRUE),
-#     # 
-#     # fmv_industrial = sum(ifelse(class %in% industrial_classes, fmv, 0), na.rm = TRUE),
-#     # fmv_commercial = sum(ifelse(class %in% commercial_classes, fmv, 0), na.rm = TRUE),
-#     
-#     current_rate_avg = mean(tax_code_rate, na.rm=TRUE),
-#     av_taxed = sum(taxed_av, na.rm = TRUE),
-#     untaxable_value_av = sum(untaxable_value_av, na.rm=TRUE),
-#     av = sum(av_clerk), 
-#     eav_taxed = sum(taxed_av*eq_factor, na.rm=T), 
-#     final_tax_to_dist_AWM = sum(final_tax_to_dist_AWM, na.rm=TRUE),
-#     final_tax_to_tif_AWM = sum(final_tax_to_tif_AWM, na.rm=TRUE),
-#     eav_untaxable = sum(untaxable_value_eav, na.rm=TRUE),
-#     eav_tif_increment = sum(final_tax_to_tif/tax_code_rate, na.rm=TRUE),
-#     eav_max = sum(fmv*loa*eq_factor, na.rm=TRUE),
-#     pins_in_tc = n(),
-#     all_exemptions = sum(all_exemptions, na.rm=T),   # in EAV
-#     abatements = sum(exe_abate),            # in EAV
-#     eav_incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, taxed_av*eq_factor, 0), na.rm = TRUE),
-#     final_tax_to_dist = sum(final_tax_to_dist, na.rm=T),
-#     final_tax_to_tif = sum(final_tax_to_tif, na.rm=T),
-#     eav = sum(eq_av, na.rm=T),
-#     new_TEAV_noIncents = sum(ifelse(class >= 600 & class < 900,
-#                                     (taxed_av*eq_factor/loa)*0.25, taxed_av*eq_factor), na.rm=TRUE),
-#     new_TEAV_vacant_noIncents = sum(ifelse(class >=600 & class <900,
-#                                            0, taxed_av*eq_factor), na.rm=T)
-#   ) |>
-#   
-#   mutate(across(.cols = av_taxed:new_TEAV_vacant_noIncents, round)) |>
-#  
-#    mutate(
-#     new_TEAV_noExemps = eav_taxed + all_exemptions, # does not include abatements
-#     new_TEAV_noAbates = eav_taxed + abatements, # include only abatements, not other exemption types
-#     
-#     # amount of EAV from taxing an additional 15% of the AV if incentive properties didn't exist
-#     forgone_EAV_incent =  new_TEAV_noIncents - eav_taxed) |>
-# 
-#     mutate(
-#     # Absolute maximum TEAV: No Exemptions, no abatements, no TIFS, no Incentive properties
-#     # Commercial and industrial assessed at 25%
-#     TEAV_max = eav_taxed + all_exemptions + abatements + eav_tif_increment + forgone_EAV_incent,
-#     
-#     # no exemptions or incentive classifications:
-#     TEAV_neither = eav_taxed + all_exemptions + forgone_EAV_incent,
-#     
-#     ## revenue collected within tax district (held constant) / new tax base
-#     rate_noExe = final_tax_to_dist / new_TEAV_noExemps,
-#     rate_noAbate = final_tax_to_dist / new_TEAV_noAbates,
-#     rate_noInc = final_tax_to_dist / new_TEAV_noIncents ,
-#     rate_neither = final_tax_to_dist / TEAV_neither, 
-#     rate_noTIFs = final_tax_to_dist / (eav_taxed + eav_tif_increment),
-#     rate_vacant = final_tax_to_dist / new_TEAV_vacant_noIncents,
-#     rate_lowest = final_tax_to_dist / TEAV_max,
-#     rate_current = final_tax_to_dist / eav_taxed,
-#     
-#     # change_noInc = rate_current - rate_noInc,
-#     # change_neither = rate_current - rate_neither,
-#     # change_noTIF = rate_current - rate_noTIFs,
-#     # change_noExe = rate_current - rate_noExe,
-#     # change_vacant = rate_current - rate_vacant,
-#     # change_lowest = rate_current - rate_lowest
-#     )  |>
-#   mutate(across(contains("rate_"), ~ ifelse(. <=0, NA, .))) |>
-#   
-#   mutate(across(contains("rate_"), round, digits = 5)) |>
-#   
-#   mutate(across(contains("change_"), round, digits = 5)) |> 
-#   
-#   ungroup() |>
-#   select(-c(tax_code_eav, tax_code_frozen_eav, tax_code_distribution_pct))
-# 
-# write_csv(taxcode_rate_scenarios, paste0("./Output/taxcode_rate_scenarios", i, "_test.csv"))
-# 
-#  taxcode_taxrates <- taxcode_rate_scenarios |> 
-#    select(tax_code_num, current_rate_avg, rate_noExe:rate_current)
-# 
-#  
- 
- # muni_ratechange <- pin_data |> 
- #   left_join(taxcode_taxrates) |>
- #   group_by(clean_name) |>
- #  summarize(
- #    pincount = n(),
- #    pins_withincents = sum(ifelse(class >= 600 & class < 900, 1,0)),
- #    # fmv_incentive = sum(ifelse(class >=600 & class <900, fmv, 0), na.rm = TRUE),
- #    # fmv_incents_inTIFs = sum(ifelse(class >=600 & class <900 & final_tax_to_tif > 0, fmv, 0), na.rm = TRUE),
- #    # fmv_inTIF = sum(ifelse(final_tax_to_tif > 0, fmv, 0), na.rm=TRUE),
- #    # fmv_tif_increment = sum(fmv_tif_increment, na.rm=TRUE),
- #    # fmv_untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
- #    # fmv_exemptions = sum(all_exemptions/eq_factor/loa, na.rm=TRUE),
- #    # fmv_abatements = sum(exe_abate/eq_factor/loa, na.rm=TRUE),
- #    # zero_bill = sum(zero_bill, na.rm=TRUE),
- #    # fmv_residential = sum(ifelse(class %in% c(200:399), fmv, 0), na.rm = TRUE),
- #    # fmv_C2 = sum(ifelse(class %in% c(200:299), fmv, 0), na.rm = TRUE),
- #    # fmv_industrial = sum(ifelse(class %in% industrial_classes, fmv, 0), na.rm = TRUE),
- #    # fmv_commercial = sum(ifelse(class %in% commercial_classes, fmv, 0), na.rm = TRUE),
- #    rate_current = mean(rate_current, na.rm=TRUE),
- #    avg_C2_bill_noexe = mean(ifelse(between(class,200,299) & all_exemptions == 0, (final_tax_to_dist + final_tax_to_tif), NA), na.rm=TRUE),
- #    avg_C2_bill_withexe = mean(ifelse(between(class,200,299) & all_exemptions > 0, (final_tax_to_dist + final_tax_to_tif), NA), na.rm=TRUE),
- #    av_taxed = sum(taxed_av, na.rm = TRUE),
- #    untaxable_value_av = sum(untaxable_value_av, na.rm=TRUE),
- #    av = sum(av),
- #    eav_untaxable = sum(untaxable_value_eav, na.rm=TRUE),
- #    eav_max = sum(fmv*loa*eq_factor, na.rm=TRUE),
- #    fmv = sum(fmv, na.rm=TRUE),
- #    eav_incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, taxed_av*eq_factor, 0), na.rm = TRUE),
- #    final_tax_to_dist = sum(final_tax_to_dist, na.rm=T),
- #    final_tax_to_tif = sum(final_tax_to_tif, na.rm=T),
- #    eav = sum(eq_av, na.rm=T),
- #    new_TEAV_noIncents = sum(ifelse(class >=600 & class < 900,
- #                                    (taxed_av*eq_factor/loa)*0.25, taxed_av*eq_factor), na.rm=TRUE),
- #    new_TEAV_vacant_noIncents = sum(ifelse(class >=600 & class <900,
- #                                           0, taxed_av*eq_factor), na.rm=T),
- #        
- #    new_TEAV_noExemps = sum(taxed_eav + all_exemptions), # does not include abatements
- #    new_TEAV_noAbates = sum(taxed_eav + exe_abate), # include only abatements, not other exemption types
- #    
- # 
- #        # Absolute maximum TEAV: No Exemptions, no abatements, no TIFS, no Incentive properties
- #    # Commercial and industrial assessed at 25%
- # 
- #    # no exemptions or incentive classifications:
- #    forgone_EAV_incent = sum(ifelse(class >=600 & class < 900,
- #                                    (taxed_av*eq_factor/loa)*0.25, taxed_av*eq_factor)),
- # 
- #    TEAV_neither = sum(taxed_eav + all_exemptions + ifelse(class >=600 & class < 900,
- #                                    (taxed_av*eq_factor/loa)*0.25, taxed_av*eq_factor)),
- #    abatements = sum(exe_abate),            # in EAV
- #        eav_taxed = sum(taxed_av*eq_factor, na.rm=T), 
- #        # amount of EAV from taxing an additional 15% of the AV if incentive properties didn't exist
- #    eav_tif_increment = sum(final_tax_to_tif/tax_code_rate, na.rm=TRUE),
- #    TEAV_max = sum(taxed_eav + all_exemptions + exe_abate + eav_tif_increment + forgone_EAV_incent),
- #      
- #    rate_noExe = mean(rate_noExe, na.rm=T),
- #    rate_noAbate = mean(rate_noAbate, na.rm=T),
- #    rate_noInc = mean(rate_noInc, na.rm=T),
- #    rate_neither = mean(rate_neither, na.rm=T),
- #    rate_noTIFs = mean(rate_noTIFs, na.rm=T),
- #    rate_vacant = mean(rate_vacant, na.rm=T),
- #    rate_lowest = mean(rate_lowest, na.rm=T),
- #    rate_current = mean(rate_current, na.rm=T),
- #  
- #  ) |>
- #  mutate(
- #    change_noInc = rate_current - rate_noInc,
- #    change_neither = rate_current - rate_neither,
- #    change_noTIF = rate_current - rate_noTIFs,
- #    change_noExe = rate_current - rate_noExe,
- #    change_vacant = rate_current - rate_vacant,
- #    change_lowest = rate_current - rate_lowest
- #  )  |>
- #  mutate(across(contains("rate_"), round, digits = 4)) |>
- #  mutate(across(contains("change_"), round, digits = 4))
- # 
- # write_csv(muni_ratechange, paste0("./Output/muni_ratechange_", i, "_test.csv"))
-
- 
-## taxrates for just exemption scenario. remove for expanded version above soon.
-# taxcodes_current <- pin_data |> 
-#   group_by(tax_code_num) |>
-#   summarize(
-#     av = sum(av),
-#     taxed_eav = sum(taxed_eav),
-#     equalized_AV = sum(eq_av),
-#     pins_in_class = n(),
-#     current_exemptions = sum(all_exemptions),
-#     HO_exemps = sum(exe_homeowner),
-#     tax_code_rate = mean(tax_code_rate), 
-#     final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # used as LEVY amount!! 
-#     final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
-#     tax_amt_exe = sum(all_exemptions*tax_code_rate, na.rm = TRUE), 
-#     tax_amt_pre_exe = sum(av_clerk*eq_factor*tax_code_rate, na.rm = TRUE), 
-#     tax_amt_post_exe = sum((av_clerk*eq_factor-all_exemptions)*tax_code_rate, na.rm = TRUE),
-#     taxcode_levy = sum(),
-#     pincount = n()) |>
-#   
-#   mutate(total_bill_current = final_tax_to_dist + final_tax_to_tif) |>
-#   mutate(cur_comp_TC_rate = final_tax_to_dist/taxed_eav,
-#          cur_comp_TC_rate = ifelse(is.na(cur_comp_TC_rate), 0, cur_comp_TC_rate)) |>
-#   mutate(current_taxable_eav = taxed_eav,
-#          new_taxable_eav = current_taxable_eav + HO_exemps) |>
-#   mutate(new_comp_TC_rate = (final_tax_to_dist / new_taxable_eav)) |>
-#   mutate(new_comp_TC_rate = ifelse(is.nan(new_comp_TC_rate), cur_comp_TC_rate, new_comp_TC_rate)) |>
-#   select(tax_code_num, cur_comp_TC_rate, new_comp_TC_rate, current_taxable_eav, new_taxable_eav, everything())
-
-
- # taxcode_taxrates <- taxcodes_current |> 
- #   select(tax_code_num, cur_comp_TC_rate, new_comp_TC_rate, current_exemptions, HO_exemps, pincount)
-
-# write_csv(taxcodes_current, paste0("./Output/taxcodes_current_", i, "_test.csv"))
-
 
 # Tax Burden by municipality and major class ---------------
 
@@ -693,8 +484,8 @@ Note: The EAV from the pin table is the original EAV (AV \* equalizer) without c
 taxed eav is the amount of eav that is taxable by local taxing agencies (non-TIF districts). It is the post-exemption amount of EAV.
 
 ```{r}
-##| eval: false
-##| include: false
+#| eval: false
+#| include: false
 
 # check output
 
