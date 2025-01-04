@@ -1,7 +1,19 @@
 ---
-title: "Exemption Addendum"
-ubtitle: "Supporting Content for Extended Analysis of Selected Benefits and Costs of Homestead Exemptions in Illinois"
+title: "Extended Analysis of Selected Benefits and Costs of Homestead Exemptions in Cook County <br> Addendum to *The Current and Future Use of Homestead Exemptions in Cook County*"
+subtitle: "Supporting Content - Tax Year 2021"
+format: 
+  html:
+    code-fold: true
+    toc: true
+    toc-location: left
+    tbl-cap-location: margin
+    fig-cap-location: margin
+    df-print: paged
+params: 
+  year: 2021
 ---
+
+Addendum to Exemption Report - Tax Year `{r} params$year`
 
 ```{r setup, warning=FALSE, message=FALSE}
 #| code-fold: TRUE
@@ -276,18 +288,20 @@ C2_munistats %>% left_join(nicknames) %>%
 
 ```
 
+Many of the figures and tables in the Exemption Addendum (2024) refer to the "Alternative Scenario" (AS) and the "Status Quo" (SQ). The status quo is simply Cook County's current property tax regime. The alternative scenario, by way of contrast, sets the *general* homestead exemption (and only general homestead exemption) to zero.
 
-## Which taxpayers benefit the most from homestead exemptions?
+We believe this decision is a feature and not bug of the analysis in the Addendum, which has an emphasis on equity. The effects of changing the value of the most prevalent homestead exemption illuminate the effect of changing other exemptions.
+
+
+## Which taxpayers benefit the most and least from homestead exemptions?
 
 ### Table 1. Comparison of Tax Bills for Median Assessed Value (AV) Class 2 Properties in Selected Municpalities under the Status Quo and Alternative Scenario
 
-Assessed Value is used to identify the quartile breaks within each municipality for single-family properties. These break points will then be used to look at how the tax bill changes for properties with AVs at the 25th percentile, 50th percentile, and 75th percentile.
-
-The assessed value and original equalized assessed values come from the `pin` data table within PTAXSIM. This table also has every type of exemption that the property received and the amount of EAV that was exempt due to the exemption.
+!--- Can we say "smooth the values"? ---> 
 
 ```{r}
 #| label: tbl-taxbillchange
-#| tbl-cap: "**Figure 2** The median property was found for all Class 2 properties and used to calculate the hypothetical tax bill change for those that do and do not claim the GHE. It is important to note that almost all municipalities have a median AV for those that do claim the GHE that is quite different from those that do not claim the GHE."
+#| tbl-cap: "AV stands for \"assessed value\.\" \"Tax calculator reduction\" refers to the exemption values shown on the tax bill received by taxpayers. Values are estimated using an average of the properties with an AV within $1,000 of it's municipality's median AV to enlarge the number of observations. Thus, our calculations do not precisely represent the median." 
 
 tax_bill_change_HO <- c2pins %>% 
   filter(av > 0) %>% 
@@ -309,17 +323,9 @@ tax_bill_change_HO <- c2pins %>%
 tax_bill_change_HO |> filter(clean_name %in% c("Park Forest", "Phoenix", "Winnetka", "Riverdale"))
 ```
 
-_The table created from the code calculates the median AV for those with exemptions and those without exemptions. Usually these values are significantly different. In the Report, the table was simplified to show the save assessed value for both types of homeowners (See image of table pasted below)._ 
-
-
-![](images/clipboard-3760892845.png)
-
-
-_Notes: AV = Assessed Value. "Tax Calculator" reduction refers to the section of the tax bill received by property tax payers (See Figure 1). It does not take into account changes in property tax rates due to the larger taxbase that would come from having a larger tax base. Figures in columns titled Current Bill, Tax Bill without GHE, and "Tax Calculator" Reduction in Tax Liability are estimated using an average of the properties with AV within $1,000 of the municipality median in order to enlarge the number of observations therefore do not precisely represent the median figure._ 
-
-
-
 ### Figure 1. Examples of Actual Tax Bills
+
+!--- I don't think we need these. Or, we should link to the full tax bills. ---> 
 
 **Park Forest vs. Winnetka**
 
@@ -329,8 +335,9 @@ _Notes: AV = Assessed Value. "Tax Calculator" reduction refers to the section of
 
 ### Figure 2. Value of Median Residential Property Indifferent to Elimination of GHE
 
-
-```{r create-muni_breakeven_points}
+```{r}
+#| label: create-muni_breakeven_points
+#| fig-cap: "Break even points vary across municipalities, sometimes by orders of magnitude"
 muni_breakeven_points <- c2pins |>
   left_join(muni_rates) |>
   filter(exe_homeowner == 10000) %>% 
@@ -389,6 +396,7 @@ muni_breakeven_points %>%
        (if they had claimed the GHE before)")
 ```
 
+Of homeowners who take the GHE, those that gain the largest monetary benefit from the exemption in proportion to their home values are those who own below-average valued properties that are in a municipality with relatively high tax rates. Property owners who benefit the least from taking the exemption (again, relative to the value of their homes) are those with above-average valued homes in jurisdictions with low tax rates. Note that these are not the same homeowners who benefit the most in absolute dollar terms—that outcome depends on both the absolute and relative value of the property and the composition of properties within the jurisdiction. 
 
 ```{r}
 #|include: false
