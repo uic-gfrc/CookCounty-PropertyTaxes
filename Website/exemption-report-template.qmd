@@ -67,10 +67,8 @@ cross_county_lines <- c("030440000", "030585000", "030890000", "030320000", "031
 #| label: tbl-exemptionsums
 #| tbl-cap: !expr paste("**Summary of Homestead Exemption Use in Cook County** (Tax Year", params$year, "). Eq_AV is the", params$year,  "equalization factor multiplied by the assessed value of all property and can be thought of as EAV pre-exemption. The general homestead exemption accounts for the vast majority of exempt EAV. EAV shown in millions.")
 
-year_examples <- params$year
 
-for (i in year_examples) {
-  tbl <- muni_cl_sums |>
+tbl <- muni_cl_sums |>
     filter(year == i) |>
     group_by(year) |>
     summarize(
@@ -94,7 +92,6 @@ for (i in year_examples) {
         TRUE ~ format(Total, big.mark = ",")
       )
     )
-}
 
 
 ft <- tbl |>
@@ -135,14 +132,12 @@ print(median_exempt |>
         axis.text = element_blank())
  +
     scale_fill_stepsn(colors = c("#ffffcc",
-    #  "lightgreen",
                                  "lightblue",
                                  "#41b6c4", 
                                  "#253494",
                                  "navy"
                                  ),
                         show.limits=TRUE, 
-                   # limits = c(0, max(median_exempt$muni_pct_eav_exempt)),
                   breaks = c(0.075, 0.15, 0.225, 0.30, max(median_exempt$muni_pct_eav_exempt)),
                        na.value = "gray50",
                     nice.breaks = FALSE,
@@ -219,7 +214,7 @@ geom_sums
 
 ```{r}
 #| label: fig-exemptiontotals_cityburbs
-#| fig-cap: "**Exempt EAV in Cook County** Exemption use varies between suburban Cook County ( `{r} geo_sums$`Exempt EAV`[Geography==Suburbs]` EAV) and the City of Chicago (`{r} geo_sums$`Exempt EAV`[Geography==Suburbs]` EAV), which may point to broader socioeconomic patterns as well as residents' eligibility and update. Note: Our current calculations undervalue the disabled veterans exemption."
+#| fig-cap: !expr paste0("**Exempt EAV in Cook County** Exemption use varies between suburban Cook County(", geo_sums$`Exempt EAV`[Geography==Suburbs], "EAV) and the City of Chicago (", geo_sums$`Exempt EAV`[Geography==Suburbs], "EAV), which may point to broader socioeconomic patterns as well as residents' eligibility and update. Note: Our current calculations undervalue the disabled veterans exemption. Note: Our current calculations undervalue the disabled veterans exemption.")
 
 
 muni_cl_sums |> 
@@ -428,7 +423,7 @@ mc_burden |>
 
   filter(clean_name == "Dolton") |> 
   select(`Major Class`= class_1dig, `Current Tax Burden` = pct_taxburden_current, `Alt. Burden` = hyp_pct_taxburden) |> 
-  arrange(desc(`Current Tax Burden`)) %>%
+  arrange(desc(`Current Tax Burden`)) |>
   flextable::flextable()
 ```
 
@@ -455,7 +450,8 @@ burden_shift |>
   mutate(pct_taxburden_current = pct_taxburden_current) |>
 pivot_wider(id_cols = clean_name, names_from = Group, values_from = pct_taxburden_current) |>
   arrange((`Single-family`)) |>
-  DT::datatable(rownames = FALSE, colnames = c('Municipality' = 'clean_name')) |>formatPercentage(c(2,3,4))
+  DT::datatable(rownames = FALSE, colnames = c('Municipality' = 'clean_name')) |>
+  formatPercentage(c(2,3,4))
 ```
 
 ```{r}
