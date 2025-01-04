@@ -56,29 +56,34 @@ if (grepl("Website", current_dir)) {
 class_dict <- read_csv("../Necessary_Files/class_dict_singlefamcodes.csv") %>% 
   mutate(class_code = as.character(class_code)) # change variable type to character so the join works.
 
+eq_factor <- read_csv("../Necessary_Files/eq_factor.csv") %>% 
+  filter(year == i) |> select(eq_factor = eq_factor_final) |> as.numeric()
+
 
 muni_ratechange <- read_csv(paste0("../Output/muni_ratechange_", i, "_test.csv"))
 
 muni_rates <- muni_ratechange |> # keep just a couple variables to avoid join variable name conflicts later
-  select(clean_name, current_rate_avg, rate_noExe, rate_current)
+  select(clean_name, current_rate_avg, rate_noGHE, rate_current)
   
-pin_data <- read_csv(paste0("../Output/Dont_Upload/0_joined_PIN_data_", i, "_test.csv")) 
+pin_data <- read_csv(paste0("../Output/Dont_Upload/0_joined_PIN_data_", i, "_test.csv")) %>%
+  mutate(class = as.character(class))
 
 c2pins <- pin_data |> 
-  filter(class > 199 & class < 300)
+  filter(class > 199 & class < 300) |>
+  mutate(eav_postexemptions = taxed_eav)
 
 # All PINs - get AV and exemption amounts -----------------------------
 
 
 # create some variables that we need:
-# muni_rates <- cook_pins |> 
+# muni_rates <- pin_data |> 
 #   left_join(tax_codes) |>
 #   left_join(tc_muninames) |>
 #   left_join(tif_distribution) |>
 #   mutate(
 #     tax_code_distribution_pct = ifelse(is.na(tax_code_distribution_pct), 0, tax_code_distribution_pct),
 #     in_tif = ifelse(tax_code_num %in% tif_distribution$tax_code_num, 1, 0),
-#     has_HO_exe = ifelse(exe_homeowner > 0, 1, 0),
+#     has_HO_exemp = ifelse(exe_homeowner > 0, 1, 0),
 #     has_other_exe = ifelse(exe_senior + exe_freeze + exe_longtime_homeowner + exe_disabled +
 #                              exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 > 0, 1, 0 ),
 #     
@@ -121,7 +126,7 @@ c2pins <- pin_data |>
 #   mutate(
 #     tax_code_distribution_pct = ifelse(is.na(tax_code_distribution_pct), 0, tax_code_distribution_pct),
 #     in_tif = ifelse(tax_code_num %in% tif_distribution$tax_code_num, 1, 0),
-#     has_HO_exe = ifelse(exe_homeowner > 0, 1, 0),
+#     has_HO_exemp = ifelse(exe_homeowner > 0, 1, 0),
 #     has_other_exe = ifelse(exe_senior + exe_freeze + exe_longtime_homeowner + exe_disabled +
 #                              exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 +
 #                              exe_vet_dis_ge70 > 0, 1, 0 ),
@@ -163,7 +168,7 @@ c2pins <- pin_data |>
 #            .con = ptaxsim_db_conn))
 # 
 # c2pins <- c2pins |> 
-#   mutate(has_HO_exe = ifelse( exe_homeowner > 0, 1, 0),
+#   mutate(has_HO_exemp = ifelse( exe_homeowner > 0, 1, 0),
 #          has_other_exe = ifelse(exe_senior + exe_freeze + exe_longtime_homeowner + exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 > 0, 1, 0 )) %>% 
 #   left_join(tax_codes) |>
 #   left_join(tc_muninames) %>%
@@ -173,7 +178,7 @@ c2pins <- pin_data |>
 #   mutate(
 #     tax_code_distribution_pct = ifelse(is.na(tax_code_distribution_pct), 0, tax_code_distribution_pct),
 #     in_tif = ifelse(tax_code_num %in% tif_distribution$tax_code_num, 1, 0),
-#     has_HO_exe = ifelse(exe_homeowner > 0, 1, 0),
+#     has_HO_exemp = ifelse(exe_homeowner > 0, 1, 0),
 #     has_other_exe = ifelse(exe_senior + exe_freeze + exe_longtime_homeowner + exe_disabled +
 #                              exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + 
 #                              exe_vet_dis_ge70 > 0, 1, 0 ),
@@ -243,6 +248,7 @@ munis_ranked <- c2pins  %>%
 
 ```{r}
 #| include: false
+#| eval: false
 # #| tbl-cap: "Median AV Class 2 property by Municipality"
 
 C2_munistats %>%
@@ -266,13 +272,14 @@ We believe this decision is a feature and not bug of the analysis in the Addendu
 #| tbl-cap: "AV stands for \"assessed value\" \"Tax calculator reduction\" refers to the exemption values shown on the tax bill received by taxpayers. Values are estimated using an average of the properties with an AV within $1,000 of it's municipality's median AV to enlarge the number of observations. Thus, our calculations do not precisely represent the median." 
 
 tax_bill_change_HO <- c2pins %>% 
+  left_join(muni_rates) |>
   filter(av > 0) %>% 
   arrange(av) %>%
-  mutate(eq_av = av_clerk*eq_factor,
+  mutate(#eq_av = av_clerk*eq_factor,
          bill_current = (taxed_eav*tax_code_rate),
-         bill_noexemps =  tc_hyp_taxrate*(taxed_eav+exe_homeowner),
+         bill_noexemps =  rate_noGHE*(taxed_eav+exe_homeowner),
          bill_change = bill_noexemps - bill_current) %>%
-  group_by(clean_name, has_HO_exe) %>% 
+  group_by(clean_name, has_HO_exemp) %>% 
   summarize(median_AV = median(av),
             median_EAV = median(taxed_eav),
             median_bill_cur = round(median(bill_current)),
@@ -310,15 +317,15 @@ muni_breakeven_points <- c2pins |>
     median_AV = median(av),     # median class 2 AV for properties that did claim the GHE but not other exemptions
     bill_current = mean(eav_postexemptions * tax_code_rate), # money collected by non-TIF agencies
     
-    bill_noGHE = mean(tc_hyp_taxrate * (eav_postexemptions+exe_homeowner)), # this uses tax code tax rate
-    rate_change = mean(tax_code_rate - tc_hyp_taxrate),   # avg tax code level rate change 
-    muni_avg_rate_change = mean(muni_avg_rate - muni_hyp_taxrate),
-    nobillchange_propertyEAV = round(mean(exe_homeowner * 
-                                            (tax_code_rate / (tax_code_rate-tc_hyp_taxrate)))), #   
-    nobillchange_propertyEAV_muni = round(mean(exe_homeowner *
-                                                 (muni_avg_rate/(muni_avg_rate-muni_hyp_taxrate) )))
+    bill_noGHE = mean(rate_noGHE * (eav_postexemptions+exe_homeowner)), # this uses tax code tax rate
+   # rate_change = mean(tax_code_rate - tc_hyp_taxrate),   # avg tax code level rate change 
+    muni_avg_rate_change = mean(tax_code_rate - rate_noGHE),
+    # nobillchange_propertyEAV = round(mean(exe_homeowner * 
+    #                                         (tax_code_rate / (tax_code_rate-tc_hyp_taxrate)))), #   
+     nobillchange_propertyEAV_muni = round(mean(exe_homeowner *
+                                                 (rate_current/(rate_current-rate_noGHE) )))
   ) |> 
-  mutate(nochange_av = nobillchange_propertyEAV / eq_factor,
+  mutate(nochange_av = nobillchange_propertyEAV_muni / eq_factor,
          nochange_av_muni = nobillchange_propertyEAV_muni/ eq_factor,
          ) 
 
@@ -427,23 +434,23 @@ For the different exemption scenarios, we created new exemption variables for al
 ```{r increase-exemptions-hypotheticals}
 pin_data <- pin_data %>% 
   left_join(class_dict, by = c("class" = "class_code")) %>%
-    mutate(has_HO_exe = ifelse( exe_homeowner > 0, 1, 0),
-         has_other_exe = ifelse(exe_senior + exe_freeze + exe_longtime_homeowner + exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 > 0, 1, 0 )) %>% 
-  left_join(tax_codes) |>
-  left_join(tc_muninames) %>%
-  mutate(av = av_clerk) |>
-  left_join(tax_code_change) |>
-  left_join(tif_distribution) |>
+  #  mutate(has_HO_exemp = ifelse( exe_homeowner > 0, 1, 0),
+         # has_other_exe = ifelse(exe_senior + exe_freeze + exe_longtime_homeowner + exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 > 0, 1, 0 )) %>% 
+ # left_join(tax_codes) |>
+ # left_join(tc_muninames) %>%
+ # mutate(av = av_clerk) |>
+ # left_join(tax_code_change) |>
+ # left_join(tif_distribution) |>
   mutate(
-    tax_code_distribution_pct = ifelse(is.na(tax_code_distribution_pct), 0, tax_code_distribution_pct),
-    in_tif = ifelse(tax_code_num %in% tif_distribution$tax_code_num, 1, 0),
-    has_HO_exe = ifelse(exe_homeowner > 0, 1, 0),
-    has_other_exe = ifelse(exe_senior + exe_freeze + exe_longtime_homeowner + exe_disabled +
-                             exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + 
-                             exe_vet_dis_ge70 > 0, 1, 0 ),
-    all_exemptions = rowSums(across(starts_with("exe_"))),
-    final_tax_to_tif = tax_bill_total *  tax_code_distribution_pct,
-    final_tax_to_dist = tax_bill_total-final_tax_to_tif,
+    # tax_code_distribution_pct = ifelse(is.na(tax_code_distribution_pct), 0, tax_code_distribution_pct),
+    # in_tif = ifelse(tax_code_num %in% tif_distribution$tax_code_num, 1, 0),
+    # has_HO_exemp = ifelse(exe_homeowner > 0, 1, 0),
+    # has_other_exe = ifelse(exe_senior + exe_freeze + exe_longtime_homeowner + exe_disabled +
+    #                          exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + 
+    #                          exe_vet_dis_ge70 > 0, 1, 0 ),
+    # all_exemptions = rowSums(across(starts_with("exe_"))),
+    # final_tax_to_tif = tax_bill_total *  tax_code_distribution_pct,
+    # final_tax_to_dist = tax_bill_total-final_tax_to_tif,
     tif_increment_eav = final_tax_to_tif / tax_code_rate,
     
     nontif_eav_preexe = av_clerk*eq_factor - tif_increment_eav,
@@ -471,7 +478,7 @@ pin_data <- pin_data %>%
 
 
 # all pins in munis fully within cook county that are some form of single-family, detached home
-singfam_pins <- cook_pins %>% 
+singfam_pins <- pin_data %>% 
   filter(Option2 == "Single-Family")
 ```
 
@@ -480,8 +487,7 @@ singfam_pins <- cook_pins %>%
 ```{r scenario-calculations}
 
 # Calculates tax rates for all exemption scenarios.
-scenario_calcs <- cook_pins %>%    
-  left_join(nicknames) %>%
+scenario_calcs <- pin_data %>%    
   group_by(clean_name) %>%
 
     summarize(MuniLevy = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by munis with current exemptions in place
@@ -531,7 +537,7 @@ munis_billchange <- munis_ranked %>%
     left_join(scenario_taxrates) %>%
 
   mutate(
-    eav = eav_preexemptions,
+    eav = eq_av,
     exe_neg10 = 0,
          
       # exe_0 implies no additional or removed EAV. Current tax system. 
@@ -577,7 +583,7 @@ munis_billchange <- munis_ranked %>%
          zerodol_bills_ghe50 = ifelse(bill_plus40 < 5, 1, 0),
   ) %>%
   ungroup() |>
-  group_by(clean_name, rank, has_HO_exe) %>% 
+  group_by(clean_name, rank, has_HO_exemp) %>% 
   summarize(median_AV = round(median(av)),
             median_EAV = round(median(eav)),
             mean_bill_neg10 = round(mean(bill_neg10, na.rm=TRUE)),
@@ -604,14 +610,14 @@ munis_billchange <- munis_ranked %>%
 
   ) %>%
   mutate(clean_name = ifelse(clean_name == "Hazelcrest", "Hazel Crest", clean_name)) %>%
-  arrange(has_HO_exe, rank)
+  arrange(has_HO_exemp, rank)
 
 
 
 
 
 ratios <- munis_billchange %>% 
-  filter(has_HO_exe == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
+  filter(has_HO_exemp == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
   mutate(currbill_to_AV_25 = ifelse(rank == "q25", mean_bill_cur/median_AV, NA)) %>%
   mutate(currbill_to_AV_75 = ifelse(rank == "q75", mean_bill_cur/median_AV, NA)) %>% 
   group_by(clean_name) %>%
@@ -649,7 +655,7 @@ ggplot(data = ratios, aes(y = currbill_to_AV_25, x = currbill_to_AV_75, label = 
 #| out-width: 50% 
 #| layout-ncol: 2
 
-cook_pins %>%
+pin_data %>%
   filter(av < 300000) %>% # just to see the histogram better
   ggplot( aes(x=av)) +
   geom_histogram(bins = 50)  +
@@ -686,7 +692,7 @@ singfam_pins %>%
 #| column: page
 
 ratios <- munis_billchange %>% 
-  filter(has_HO_exe == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
+  filter(has_HO_exemp == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
   mutate(currbill_to_AV_25 = ifelse(rank == "q25", mean_bill_neg10/median_AV, NA)) %>%
   mutate(currbill_to_AV_75 = ifelse(rank == "q75", mean_bill_neg10/median_AV, NA)) %>% 
   group_by(clean_name) %>%
@@ -707,7 +713,7 @@ ggplot(data = ratios, aes(y = GHE_0_bill_to_AV_25, x = GHE_0_bill_to_AV_75, labe
   labs(title = "GHE = $0 EAV", x = "", y = "")
 
 ratios<- munis_billchange %>% 
-  filter(has_HO_exe == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
+  filter(has_HO_exemp == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
   mutate(currbill_to_AV_25 = ifelse(rank == "q25", mean_bill_cur/median_AV, NA)) %>%
   mutate(currbill_to_AV_75 = ifelse(rank == "q75", mean_bill_cur/median_AV, NA)) %>% 
   group_by(clean_name) %>%
@@ -733,7 +739,7 @@ ggplot(data = ratios, aes(y = currbill_to_AV_25, x = currbill_to_AV_75, label = 
 
 
 new_ratios<- munis_billchange %>% 
-  filter(has_HO_exe == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
+  filter(has_HO_exemp == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
   mutate(newbill_to_AV_25 = ifelse(rank == "q25", mean_bill_plus10/median_AV, NA)) %>%
   mutate(newbill_to_AV_75 = ifelse(rank == "q75", mean_bill_plus10/median_AV, NA)) %>% 
   group_by(clean_name) %>%
@@ -758,7 +764,7 @@ ggplot(data = new_ratios, aes(y = newbill_to_AV_25, x = newbill_to_AV_75, label 
 
 
 new_ratios<- munis_billchange %>% 
-  filter(has_HO_exe == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
+  filter(has_HO_exemp == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
   mutate(newbill_to_AV_25 = ifelse(rank == "q25", mean_bill_plus20/median_AV, NA)) %>%
   mutate(newbill_to_AV_75 = ifelse(rank == "q75", mean_bill_plus20/median_AV, NA)) %>% 
   group_by(clean_name) %>%
@@ -785,7 +791,7 @@ ggplot(data = new_ratios, aes(y = newbill_to_AV_25, x = newbill_to_AV_75, label 
                                         x = "", y = "")
 
 new_ratios<- munis_billchange %>% 
-  filter(has_HO_exe == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
+  filter(has_HO_exemp == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
   mutate(newbill_to_AV_25 = ifelse(rank == "q25", mean_bill_plus30/median_AV, NA)) %>%
   mutate(newbill_to_AV_75 = ifelse(rank == "q75", mean_bill_plus30/median_AV, NA)) %>% 
   group_by(clean_name) %>%
@@ -812,7 +818,7 @@ ggplot(data = new_ratios, aes(y = newbill_to_AV_25, x = newbill_to_AV_75, label 
 
 
 new_ratios<- munis_billchange %>% 
-  filter(has_HO_exe == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
+  filter(has_HO_exemp == 1 &  !is.na(rank)) %>% # claimed exemption in 2021
   mutate(newbill_to_AV_25 = ifelse(rank == "q25", mean_bill_plus40/median_AV, NA)) %>%
   mutate(newbill_to_AV_75 = ifelse(rank == "q75", mean_bill_plus40/median_AV, NA)) %>% 
   group_by(clean_name) %>%
@@ -884,7 +890,7 @@ scenario_taxrates %>%
 ### Figure 6. Exemptions by Value in Class 8 Municipalities
 
 ```{r}
-cook_pins %>% 
+pin_data %>% 
   group_by(clean_name) %>% 
   summarize(
     Homeowner = sum(exe_homeowner),
@@ -905,12 +911,12 @@ cook_pins %>%
 ### Figure 7. Exemption Share in Class 8 Municipalities
 
 ```{r}
-cook_pins %>% 
+pin_data %>% 
   group_by(clean_name) %>% 
   summarize(
     all_exemptions = sum(all_exemptions),
     eq_av = sum(av_clerk*eq_factor),
-    tif_increment_eav = sum(tif_increment_eav)
+    tif_increment_eav = sum(final_tax_to_tif/tax_code_rate)
   ) %>%
   mutate(taxable_eav = eq_av - tif_increment_eav - all_exemptions) |>
   filter(clean_name %in% c("Blue Island", "Markham", "Matteson", "Park Forest")) %>%
