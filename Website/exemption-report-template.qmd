@@ -1,8 +1,5 @@
-Replication Materials
-
 *Current and Future Uses of Homestead Exemptions in Cook County*
-
-*Tax Year `{r} params$year`*
+**Replication Materials**
 
 ```{r setup}
 #| output: false
@@ -16,8 +13,6 @@ library(glue)
 library(sf)
 library(DT)
 library(flextable)
-
-i = params$year
 
 nicknames <- readxl::read_excel("../Necessary_Files/muni_shortnames.xlsx")
 
@@ -44,7 +39,7 @@ muni_shp <- read_sf("../Necessary_Files/muni_shp.gpkg")
 
 
 tbl <- muni_cl_sums |>
-    filter(year == i) |>
+    filter(year == params$year) |>
     group_by(year) |>
     summarize(
       AV = sum(muni_c_av),
@@ -84,7 +79,7 @@ ft
 #| fig-cap: "**Share of EAV that is tax exempt due to homestead exemptions**"
 
 median_exempt <- muni_sums |>
-  filter(year==i)|>
+  filter(year== params$year)|>
   mutate(muni_pct_eav_exempt =(muni_eav - muni_eav_taxed) / muni_eav) |> 
   select(muni_pct_eav_exempt, clean_name, agency_name)
 
@@ -119,7 +114,7 @@ print(median_exempt |>
                         name = "% Exempt", label = scales::percent))
 ```
 
-The County-wide municipal-median percent of **EAV** exempt from property taxes in tax year `{r} i` was `{r} median_muni` with `{r} midpoint`.
+The County-wide municipal-median percent of **EAV** exempt from property taxes in tax year `r params$year` was `r median_muni` with `r midpoint`.
 
 #### Figure 3. Using FMV
 
@@ -128,7 +123,7 @@ The County-wide municipal-median percent of **EAV** exempt from property taxes i
 #| fig-cap: "**Share of FMV that is tax exempt due to Homestead Exemptions** Same as previous image but in different color scheme that indicates high and low instead of using a midpoint for the color gradient. "
 
 median_exempt <- muni_sums |>
-  filter(year==i)|>
+  filter(year == params$year)|>
   mutate(pct_fmv_exempt = muni_fmv_exempt / muni_fmv
 ) |> 
   select(pct_fmv_exempt, clean_name)
@@ -141,7 +136,7 @@ median_muni = median_exempt |>
   select(clean_name) |> as.character()
 
 print(muni_sums |>
-  filter(year==i)|>
+  filter(year == params$year)|>
   mutate(pct_fmv_exempt = muni_fmv_exempt / muni_fmv ) |>
     mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) |>
  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) |>
@@ -161,7 +156,7 @@ print(muni_sums |>
                         name = "% Exempt", label = scales::percent))
 ```
 
-The County-wide municipal-median percent of FMV exempt from property taxes in tax year `{r} i` was `{r} median_muni` with `{r} midpoint`.
+The County-wide municipal-median percent of FMV exempt from property taxes in tax year `r params$year` was `r median_muni` with `r midpoint`.
 
 The percent of municipal EAV exempt from property taxes are greatest across Cook County's south suburbs and lowest in the northern most suburbs of the county.
 
@@ -259,7 +254,7 @@ Trends in the total EAV reductions due to homestead exemptions reflect both real
 
 *Figure 6 will not be recreated but is just a bar chart of the change in tax rate in the table below*
 
-### Table 1. Change in composite property tax rates due to exemptions, tax year `{r} params$year`.
+### Table 1. Change in composite property tax rates due to exemptions, tax year `r params$year`.
 
 ```{r}
 #| label: tbl-table1-datatable
@@ -412,7 +407,7 @@ Was made in Excel. Not recoded for website yet.
 
 ![](images/clipboard-2818441573.png)
 
-*Table 2: Change in the share of property tax burden due to exemptions for single-family, multi-family, and commercial and industrial properties, tax year `{r} params$year`*
+*Table 2: Change in the share of property tax burden due to exemptions for single-family, multi-family, and commercial and industrial properties, tax year `r params$year`*
 
 ```{r}
 #| label: currenttaxburden
@@ -654,7 +649,7 @@ Municipalities with the largest and smallest reductions in tax base (as a share 
 
 ### Figure 10. Tax Burden Shift from Current GHE
 
-Share of municipal property tax levy paid by Class 2 properties with and without homestead exemptions, tax year `{r} params$year`
+Share of municipal property tax levy paid by Class 2 properties with and without homestead exemptions, tax year `r params$year`
 
 ```{r}
 #| label: fig-dotplotburdenshift
