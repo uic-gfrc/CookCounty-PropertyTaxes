@@ -1,6 +1,5 @@
 *Current and Future Uses of Homestead Exemptions in Cook County*
 **Replication Materials**
-
 ```{r setup}
 #| output: false
 
@@ -29,48 +28,59 @@ muni_cl_sums <- read_csv("../Output/ptaxsim_muni_class_summaries_2006to2023.csv"
 
 muni_shp <- read_sf("../Necessary_Files/muni_shp.gpkg")
 
+# # Create an empty data frame with a column named "year"
+# params <- data.frame(year = numeric(0))
+# 
+# # Add the value 2021 to the "year" column
+# params <- rbind(params, data.frame(year = 2021))
+
 ```
 
-### County-Wide Exemption Summary Statistics (Tax Year `r params$year`)
+## County-Wide Exemption Summary Statistics (Tax Year `r params$year`)
 
 ```{r}
 #| label: tbl-exemptionsums
-#| tbl-cap: !expr paste("**Summary of Homestead Exemption Use in Cook County** (Tax Year", params$year, "). Eq_AV is the", params$year,  "equalization factor multiplied by the assessed value of all property and can be thought of as EAV pre-exemption. The general homestead exemption accounts for the vast majority of exempt EAV. EAV shown in millions.")
+#| tbl-cap: !expr paste("**Summary of Homestead Exemption Use in Cook County** (Tax Year", params$year, ").
 
 
 tbl <- muni_cl_sums |>
     filter(year == params$year) |>
     group_by(year) |>
     summarize(
-      AV = sum(muni_c_av),
-      Eq_AV = sum(muni_c_equalized_av),
+      'PINs' = sum(muni_c_pins_in_muni),
+      'PINs (w/ exemps.)' = sum(muni_c_has_HO_exemp),
+      "EqAV" = sum(muni_c_equalized_av),
       'Taxed EAV' = sum(muni_c_current_taxable_eav),
       'Exempt EAV' = sum(muni_c_all_exemptions),
       'GHE' = sum(muni_c_exe_homeowner),
       'Senior' = sum(muni_c_exe_senior),
       'Senior Freeze' = sum(muni_c_exe_freeze),
-      'PINs (total)' = sum(muni_c_pins_in_muni),
-      'PINs with Exemptions' = sum(muni_c_has_HO_exemp)
-    ) |>
-    pivot_longer(cols = c(AV:'PINs with Exemptions'),
+      'Other Exemps.' = sum(muni_c_all_exemptions) - sum(muni_c_exe_senior) - sum(muni_c_exe_freeze)
+      ) |>
+    pivot_longer(cols = c('PINs':'Other Exemps.'),
                  names_to = "Metric", values_to = "Total") |>
     select(-year) |> 
     mutate(
       Total = case_when(
-        Metric %in% c("AV", "EAV", "Eq_AV", "Taxed EAV", "Exempt EAV", "GHE", "Senior", "Senior Freeze") ~ 
-          paste0(format(round(Total / 1e6), big.mark = ","), " M"),
+        Metric %in% c("Other Exemps.", "EAV", "EqAV", "Taxed EAV", "Exempt EAV", "GHE", "Senior", "Senior Freeze") ~ 
+          paste0(format(round(Total / 1e9, 2), big.mark = ","), " B"),
         TRUE ~ format(Total, big.mark = ",")
       )
     )
 
 
 ft <- tbl |>
-  flextable(cwidth = c(1, 1)) |>
-    align(j = 2, align = "right") |>
-align(j=2, align = "right", part = "header")
+    flextable(cwidth = c(1, 1)) |>
+    align(j = 2, align = "right", part = "header") |>  # Align header
+    align(j = 2, align = "right", part = "body") |>  # Align body
+    add_header_row(value = c("", "Total*"), top = TRUE, colwidths = c(1, 1)) |>  # Add header with colspan
+    footnote(i = 1, j = 2, value = as_paragraph("EAV in billions."), ref_symbols = "*") |>  # Footnote in new header
+    delete_part(part = "header")  # Remove the default header
 
 ft
 ```
+
+EqAV is the `r params$year` equalization factor multiplied by assessed value. Thus, Taxed EAV and Exempt EAV equal EqAV. It can be thought of as the "maximum available tax base" in a world without exemptions. 
 
 ### Figure 3. using EAV
 
