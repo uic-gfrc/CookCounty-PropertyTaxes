@@ -1,38 +1,23 @@
----
-format: 
-  html:
-    code-fold: true
-    toc: true
-    toc-location: left
-    tbl-cap-location: margin
-    fig-cap-location: margin
-    df-print: paged
-    code-tools: true
----
+Replication Materials
 
- Cook County's Use of Homestead Exemptions
+*Current and Future Uses of Homestead Exemptions in Cook County*
 
-## Exemption Report - Tax Year `{r} params$year`
+*Tax Year `{r} params$year`*
 
 ```{r setup}
 #| output: false
-
-
-library(tidyverse)
-library(httr)
-library(jsonlite)
-library(glue)
-library(sf)
-library(DT)
-library(flextable)
-
 
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 
 options(scipen = 999)
 
+library(tidyverse)
+library(glue)
+library(sf)
+library(DT)
+library(flextable)
 
-
+i = params$year
 
 nicknames <- readxl::read_excel("../Necessary_Files/muni_shortnames.xlsx")
 
@@ -47,17 +32,7 @@ muni_mc_sums <- read_csv("../Output/ptaxsim_muni_MC_2006to2023.csv") |>
 muni_cl_sums <- read_csv("../Output/ptaxsim_muni_class_summaries_2006to2023.csv") |>
   left_join(nicknames)
 
-# maps need shapefiles
-#muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/politicalBoundary/MapServer/2/query?outFields=*&where=1%3D1&f=geojson")
-
-# Save it locally. Uses gpkg instead of shp to preserve original column names
-#st_write(muni_shp, "../../Necessary_Files/muni_shp.gpkg", layer_options = "OVERWRITE=YES")
-
 muni_shp <- read_sf("../Necessary_Files/muni_shp.gpkg")
-
-cross_county_lines <- c("030440000", "030585000", "030890000", "030320000", "031280000",
-                        "030080000", "030560000", "031120000", "030280000", "030340000",
-                        "030150000","030050000", "030180000","030500000", "031210000")
 
 ```
 
