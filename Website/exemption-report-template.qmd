@@ -159,7 +159,7 @@ print(muni_sums |>
   theme(axis.ticks = element_blank(), 
         axis.text = element_blank())+
    scale_fill_steps2(high = "darkblue", low = "black",  mid = "beige",
-                       n.breaks = 7, show.limits=TRUE,
+                       n.breaks = 5, show.limits=TRUE,
                        na.value = NA,
                     nice.breaks = FALSE,
                    midpoint = median(median_exempt$pct_fmv_exempt),
@@ -185,16 +185,16 @@ geom_sums <- muni_cl_sums |>
          Geography = ifelse(is.na(clean_name), "Unincorporated", Geography),
          Geography = factor(Geography, levels = c("Suburbs", "City", "Unincorporated"))) |>
   group_by(Geography) |>
-  summarize("Exempt EAV" = sum(muni_c_all_exemptions, na.rm=TRUE)) |> 
+  summarize("ExemptEAV" = sum(muni_c_all_exemptions, na.rm=TRUE))
+
+geom_sums |> 
   flextable() |>
   flextable::set_caption(caption ="Includes all exemption types.")
-
-geom_sums
 ```
 
 ```{r}
 #| label: fig-exemptiontotals_cityburbs
-#| fig-cap: "**Exempt EAV in Cook County** Exemption use varies between suburban Cook County and the City of Chicago which may point to broader socioeconomic patterns as well as residents' eligibility and update. Note: Our current calculations undervalue the disabled veterans exemption. Note: Our current calculations undervalue the disabled veterans exemption."
+#| fig-cap: "**Exempt EAV in Cook County** Exemption use varies between suburban Cook County and the City of Chicago which may point to broader socioeconomic patterns as well as residents' eligibility and update. Note: Our current calculations undervalue the disabled veterans exemption."
 
 
 muni_cl_sums |> 
@@ -228,7 +228,7 @@ muni_cl_sums |>
   scale_fill_manual(values = c("blue3", "deepskyblue3", "gray") )
 ```
 
-Exemption use varies between suburban Cook County (\$9.7B EAV) and the City of Chicago (\$7.0B EAV), which may point to broader socioeconomic patterns as well as residents' eligibility and uptake.
+Exemption use varies between suburban Cook County (`r geom_sums$ExemptEAV[[1]]` EAV) and the City of Chicago (`r geom_sums$ExemptEAV[[2]]` EAV) , which may point to broader socioeconomic patterns as well as residents' eligibility and uptake.
 
 ### Figure 5. Value of residential exemptions by type in Cook County over time, Tax Years 2006 - `r params$year`
 
@@ -362,8 +362,6 @@ muni_ratechange  |>
 
 pin_data <- read_csv(paste0("../Output/Dont_Upload/0_joined_PIN_data_", params$year, "_test.csv"))
 
-#taxcodes_current <- read_csv(paste0("../../Output/taxcodes_current_", params$year, "_test.csv"))
-
 
 mc_burden <- read_csv(paste0("../Output/muni_mc_burden_", params$year, "_test.csv"))
 
@@ -378,16 +376,25 @@ burden_shift <- read_csv(paste0("../Output/muni_burden_shift_", params$year, "_t
 
 burden_c2 <- mc_burden |> 
   filter(class_1dig == 2) |> 
-  select(clean_name, pct_taxbase, 
+  select(clean_name, #pct_taxbase, 
          burden_shift,  pct_taxburden_current, hyp_pct_taxburden)
 
 burden_shift |>  
   select(-c(muni_levy, muni_taxbase,))|>
   DT::datatable(rownames = FALSE, 
                 colnames = c(
-                  'Municipality' = 'clean_name'),
-                caption = "Table 2 in Report for all Municipalities: Current and Hypothetical Composite Tax Rates if GHE $0") |>
-  formatCurrency(columns = c(3:6), digits = 0)
+                  'Municipality' = 'clean_name',
+                  'Current Taxbase' = 'group_taxbase', 
+                  'Hyp. Taxbase' = 'hyp_group_taxbase',  
+                  'Taxes Paid'='group_taxes_current', 
+                  'Hyp Taxes Paid' = 'hyp_group_taxes',
+                  'Share of Levy'='pct_taxburden_current',
+                  'Share of Taxbase' = 'pct_taxbase_current'
+                  ),
+                caption = "Table 2 in Report for all Municipalities: Current and Hypothetical Composite Tax Rates if GHE $0"
+      ) |>
+  formatCurrency(columns = c(3:6), digits = 0) |>
+  formatPercentage(columns = c(7,8), digits = 2)
 
 ```
 
@@ -421,7 +428,8 @@ Was made in Excel. Not recoded for website yet.
 
 ```{r}
 #| label: currenttaxburden
-#| tbl-cap: "**Supporting Table for Table 2** Current tax burden (levy paid by group / total levy billed by municipality) for all municipalities in Cook County, IL"
+#| tbl-subcap: "**Supporting Table for Table 2** Current tax burden (levy paid by group / total levy billed by municipality) for all municipalities in Cook County, IL"
+#| tbl-subcap: "**Supporting Table for Table 2** Change in tax burden if EAV that is current tax exempt due to homestead exemptions became taxable. Measured in percentage point change."
 
 
 ## Current tax burden 
@@ -432,12 +440,8 @@ pivot_wider(id_cols = clean_name, names_from = Group, values_from = pct_taxburde
   arrange((`Single-family`)) |>
   DT::datatable(rownames = FALSE, colnames = c('Municipality' = 'clean_name')) |>
   formatPercentage(c(2,3,4))
-```
 
-```{r}
-#| label: burden_change
-#| tbl-cap: "**Supporting Table for Table 2** Change in tax burden if EAV that is current tax exempt due to homestead exemptions became taxable. Measured in percentage point change."
-
+## burden change table
 burden_shift |>  
     select(clean_name, Group, burden_shift) |>
   mutate(burden_shift = round(burden_shift, digits =4)) |>
@@ -447,6 +451,24 @@ pivot_wider(id_cols=clean_name, names_from = Group, values_from = burden_shift) 
 ```
 
 ```{r}
+#| label: burden_change
+#| tbl-cap: "**Supporting Table for Table 2** Change in tax burden if EAV that is current tax exempt due to homestead exemptions became taxable. Measured in percentage point change."
+#| eval: false
+#| include: false
+
+## Delete if chunk above does both tables successfully.
+
+burden_shift |>  
+    select(clean_name, Group, burden_shift) |>
+  mutate(burden_shift = round(burden_shift, digits =4)) |>
+pivot_wider(id_cols=clean_name, names_from = Group, values_from = burden_shift) |>
+  arrange((`Single-family`)) |> 
+  DT::datatable(rownames = FALSE) 
+```
+
+> pct_taxbase and pct_taxburden_current should not be the same
+
+```{r}
 #| label: table2-fromreport-allmunis
 #| code-fold: true
 #| tbl-cap: "Table 2 in Exemption Report: Current Share of Taxable EAV and Share of Levy Paid by Class 2 Properties"
@@ -454,13 +476,12 @@ pivot_wider(id_cols=clean_name, names_from = Group, values_from = burden_shift) 
 datatable(burden_c2, rownames = FALSE,
           colnames = c('Municipality' = 'clean_name', 
                        'Burden Shift, Pct Pt Change' = 'burden_shift', 
-                       "C2 EAV/Muni EAV" = 'pct_taxbase', 
                        'Current Tax Burden\nC2 Tax Collected / Muni Levy' = 'pct_taxburden_current', 
                        "Hypothetical Tax Burden\nHyp. C2 Tax Collected / Muni Levy" = 'hyp_pct_taxburden'),
           caption = "Table 2 in Exemption Report: Current Share of Taxable EAV and Share of Levy Paid by Class 2 Properties"
            ) |>
-  formatPercentage(c(2,3,4,5), digits = 2) |>
-  formatRound(c(3), digits = 2)
+  formatPercentage(c(2,3,4), digits = 2) |>
+  formatRound(c(2), digits = 2)
 
 
 ```
@@ -499,7 +520,13 @@ Difference in taxbills for those that do and do not claim homeowner exemption
 <!---Used Cholton Taxbills file originally when making this for the exemption report. use pin_data, filter out munis we want that are major class 2, with assessed values of $15K ---->
 
 ```{r}
+#| eval: false
+#| include: false 
+
+
 # Descriptive stats calculated from all C2 properties.
+## can cause weird results in tax bill tables if properties that receive other exemption types are kept in the data frame
+
 C2_munistats <- pin_data |> 
   filter(class > 199 & class < 300) |>
   group_by(clean_name)  |>
@@ -550,22 +577,37 @@ summarize(
     C2_HO_exemps = sum(exe_homeowner, na.rm = TRUE),
   )
 
-C2_munistats_filtered 
+C2_munistats_filtered |>  
+  DT::datatable(rownames = FALSE, 
+                colnames = c(
+                  'Median AV*eq_factor' = 'median_eq_av',
+                  'Average Eq.AV' = 'avg_eq_av',
+                  'Median Taxed EAV' = 'median_taxed_eav', 
+                  'Median AV' = 'median_av',  
+                  'Average AV'='avg_av', 
+                  'Class 2 Hyp Taxes Paid' = 'avg_taxed_eav',
+                  'Class 2 Pin Count'='C2_pins_in_muni',
+                  'Class 2 Exempt EAV' = 'C2_current_exemptions'
+                  ),
+                caption = "Class 2 Descriptive Statistics"
+      ) |>
+  formatCurrency(columns = c(2:7, 9,10), digits = 0)
 
 ```
 
 ```{r}
 ## Grouped by if they have a $0 tax bill and had the GHE per muni
-## Recalculating for Josh & Rachael
+
 muni_median_summarytable <- pin_data |> 
   select(pin, av, class, tax_code_num, tax_bill_total, av_certified, exe_homeowner:exe_abate, clean_name, eq_av, all_exemptions, zero_bill, has_HO_exemp, taxed_eav, final_tax_to_dist, final_tax_to_tif) |>
 
-  filter(class >199 & class < 300) |> 
+  filter(class > 199 & class < 300) |> 
   
   # merge in muni residential median AV
-  left_join(C2_munistats_filtered) |>
-  left_join(muni_ratechange) |>
-  # +/- 500 from municpalities median residential AV
+  left_join(C2_munistats_filtered |> select(clean_name, median_av, median_eq_av, median_taxed_eav)) |>
+  
+  left_join(muni_ratechange |> select(clean_name, rate_noExe, rate_noGHE, rate_current)) |>
+  # +/- 500 from municipalities median residential AV
   filter(av < median_av+200 & av > median_av-200) |>
   
   # Removes properties that received other types of exemptions
@@ -606,7 +648,16 @@ muni_median_summarytable <- pin_data |>
          #everything() 
          ) #|> select(-c(agency_number, agency_name))
 
-muni_median_summarytable
+muni_median_summarytable |>
+  DT::datatable(rownames = FALSE, 
+                colnames = c(
+                  'Claims GHE' = 'has_HO_exemp',
+                  'Current Bill' = 'bill_cur',
+                  'Hyp. Bill' = 'bill_new', 
+                  'Bill Change' = 'bill_change',  
+                  'Perceived Savings'='perceived_savings'),
+                caption = "Change in Tax Bill if Exempt EAV from GHE were added back to tax base.")  |>
+  formatCurrency(columns = c(3:9), digits = 0)
 ```
 
 ```{r}
@@ -623,6 +674,7 @@ muni_taxrates |>
 ```
 
 ```{r error = TRUE}
+
 muni_median_summarytable |> 
   #left_join(muni_taxrates) |> 
   left_join(muni_ratechange) |>
@@ -643,12 +695,17 @@ pin_data |>
   arrange(av) |>
   
   summarize(
-            median_bill = median(total_, na.rm=TRUE),
+            median_bill = median(tax_bill_total, na.rm=TRUE),
             median_AV = median(av, na.rm= TRUE),
-            eav = median(eav, na.rm=TRUE),
+            eav = median(taxed_eav, na.rm=TRUE),
             # class = median(class),
             type = "Current Exemptions",
-            N = n())
+            N = n()) |>
+  rename(Municipality = clean_name,
+         `Claims GHE` = has_HO_exemp,
+        `Median Bill` =median_bill,
+        `Median AV` = median_AV,
+        `Median Taxed EAV` = eav)
 ```
 
 ### Table 4.
@@ -739,6 +796,7 @@ muni_mc_sums |>
 
 ```{r}
 #| error: true
+#| include: false
 
 smallbills <- pin_data |> 
   filter(class_1dig == 2 & taxed_eav < 150 ) |>
@@ -769,7 +827,8 @@ smallbills |>
 ```
 
 ```{r}
-#| error: TRUE
+#| include: false
+
 
 
 zerobills <- pin_data |> 
@@ -805,6 +864,8 @@ zerobills |>
 
 ```{r}
 #| error: true
+#| include: false
+
 
 pin_data |> 
   filter(class_1dig == 2 & taxed_eav > 0 & tax_bill_total == 0) |>
@@ -816,7 +877,10 @@ pin_data |>
             n = n()) 
 ```
 
-## Table 6?
+## Table 6
+
+Not recreated in code yet.
+
 
 ![](images/clipboard-2324688760.png)
 
