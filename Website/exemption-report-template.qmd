@@ -673,53 +673,23 @@ muni_median_summarytable |>
 ```
 
 ```{r}
-#| eval: false
-
-muni_taxrates 
-
-
-muni_taxrates |> 
-  left_join(nicknames) |> 
-  select(clean_name, muni_median_av, C2median_av
-       #  , nochange_av
-         )
-```
-
-```{r error = TRUE}
-
-muni_median_summarytable |> 
-  #left_join(muni_taxrates) |> 
-  left_join(muni_ratechange) |>
-  ungroup() |>
-  select(clean_name, has_HO_exemp, bill_cur, bill_new, bill_change, perceived_savings,  AV, `Taxable EAV`) #|>
-
-```
-
-```{r}
+#| label: tbl-Table3
 #| column: page
+#| tbl-cap: "Table 3. Estimated Bill Change if exempt EAV from the GHE were added to back to the tax base."
 
-#| error: true
 
-pin_data |> 
+muni_median_summarytable |>
   filter(clean_name %in% c("Chicago", "Dolton", "Glencoe")) |>
-  filter(between(av, 14500, 15000)) |>
-  filter(class_1dig == 2) |> 
-  filter(exe_senior == 0 & exe_freeze == 0 ) |>
-  group_by(clean_name, has_HO_exemp) |>
-  arrange(av) |>
-  
-  summarize(
-            median_bill = median(tax_bill_total, na.rm=TRUE),
-            median_AV = median(av, na.rm= TRUE),
-            eav = median(taxed_eav, na.rm=TRUE),
-            # class = median(class),
-            type = "Current Exemptions",
-            N = n()) |>
-  rename(Municipality = clean_name,
-         `Claims GHE` = has_HO_exemp,
-        `Median Bill` =median_bill,
-        `Median AV` = median_AV,
-        `Median Taxed EAV` = eav)
+  DT::datatable(rownames = FALSE, 
+                colnames = c(
+                  'Claims GHE' = 'has_HO_exemp',
+                  'Current Bill' = 'bill_cur',
+                  'Hyp. Bill' = 'bill_new', 
+                  'Bill Change' = 'bill_change',  
+                  'Perceived Savings'='perceived_savings'),
+                caption = "Change in Tax Bill if Exempt EAV from GHE were added back to tax base.")  |>
+  formatCurrency(columns = c(3:9), digits = 0)
+
 ```
 
 ### Table 4.
@@ -763,7 +733,6 @@ mc_burden |>
   ungroup() |> 
       select(clean_name, pct_taxburden_current, hyp_pct_taxburden, burden_shift) |>
   arrange(burden_shift) |>
- # mutate(  burden_noexemps = ifelse(burden_noexemps > 1, 1, burden_noexemps)) |>
   pivot_longer(c("pct_taxburden_current", "hyp_pct_taxburden"), 
                names_to = "type", values_to = "pct_burden") |> 
   inner_join(order) |>
@@ -789,11 +758,11 @@ mc_burden |>
   labs(title = "Change in Class 2 Residential Tax Burden", 
        subtitle = "Ordered by Current Tax Burden",
   x = "Share of Levy (%)", y = "" , 
-  caption = paste0("Dotted line represents median Class 2 burden (", round(median_burden*100), "% of the levy). \nResidential Tax Burden is theshare of the property tax collected that was paid for by property owners with Class 2 properties.")) +
+  caption = paste0("Dotted line represents median Class 2 burden (", round(median_burden*100), "% of the levy).  \nResidential Tax Burden is theshare of the property tax collected that was paid for by property owners with Class 2 properties.")) +
   
     geom_label(label = "Class 2 pays small share of \nlevy; very little residential", x=.32, y = 13, label.size = 1, size = 3)+
   
-    geom_label(label = paste0("Class 2 pays median share of \nlevy )", round(median_burden*100), "%), mix of land use"), x=.42, y = 7.5, label.size = 1, size = 3) +
+    geom_label(label = paste0("Class 2 pays median share of \nlevy (", round(median_burden*100), "%), mix of land use"), x=.42, y = 7.5, label.size = 1, size = 3) +
   
     geom_label(label = "Class 2 pays nearly all of levy, \nhighly residential", x=.70, y = 3, label.size = 1,size = 3)
 ```
@@ -801,6 +770,10 @@ mc_burden |>
 ### Figure 11. Zero Dollar Bills
 
 ```{r}
+#| label: fig-zerobills
+#| fig-cap: "Number of tax bills that were $0 shown here is different than the value shown in the exemption report. This is due to missing disabeled veteran exemption amounts that were not identified when writing the original report."
+
+
 muni_mc_sums |> 
   left_join(nicknames) |>
   filter(major_class_code == 2) |> 
