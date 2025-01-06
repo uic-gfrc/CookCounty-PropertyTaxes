@@ -757,43 +757,50 @@ mc_burden |>
   pivot_longer(c("pct_taxburden_current", "hyp_pct_taxburden"), 
                names_to = "type", values_to = "pct_burden") |> 
   inner_join(order) |>
-  ggplot(aes(x = pct_burden*100, 
+  ggplot(aes(x = pct_burden, 
              y= reorder(clean_name, - pct_taxburden_current)))+
   # y= reorder(clean_name, burden_current)))+
-  geom_vline(xintercept = 70.2, linetype = 3)+
+  geom_vline(xintercept = median_burden, linetype = 3)+
   geom_line(aes(group = clean_name))+ 
   geom_hline(yintercept = 5.5, linetype = 2)+
   geom_hline(yintercept = 10.5, linetype = 2)+
   geom_point(aes(color=type), size=3 )+
 
   theme_minimal() + 
-  theme(#legend.position = "none", 
+  theme( 
     legend.title = element_blank(),
     plot.title.position = "plot",
-    #   panel.background = element_rect(fill='transparent'), #transparent panel bg
-    plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
+ plot.background = element_rect(fill='transparent', color=NA) 
   )+
-  scale_color_brewer(palette="Paired", labels = c("Current Burden", "Burden if \nNo Exemptions" ), direction = 1)+
+  scale_color_brewer(palette="Paired", labels = c("Current Burden", "Burden if \nNo Exemptions" ), direction = 1) +
+  scale_x_continuous(labels = scales::percent) +
 
   
   labs(title = "Change in Class 2 Residential Tax Burden", 
        subtitle = "Ordered by Current Tax Burden",
   x = "Share of Levy (%)", y = "" , 
-  caption = paste0("Dotted line represents median Class 2 burden (", median_burden, "% of the levy). Residential Tax Burden is theshare of the property tax collected that was paid for by property owners with Class 2 properties.")) +
-    geom_label(label = "Class 2 pays small share of \nlevy; very little residential", x=32, y = 13, label.size = 1, size = 3)+
-    geom_label(label = paste0("Class 2 pays median share of \nlevy )", median_burden, "%), mix of land use"), x=42, y = 7.5, label.size = 1, size = 3) +
-    geom_label(label = "Class 2 pays nearly all of levy, \nhighly residential", x=70, y = 3, label.size = 1,size = 3)
+  caption = paste0("Dotted line represents median Class 2 burden (", round(median_burden*100), "% of the levy). \nResidential Tax Burden is theshare of the property tax collected that was paid for by property owners with Class 2 properties.")) +
+  
+    geom_label(label = "Class 2 pays small share of \nlevy; very little residential", x=.32, y = 13, label.size = 1, size = 3)+
+  
+    geom_label(label = paste0("Class 2 pays median share of \nlevy )", round(median_burden*100), "%), mix of land use"), x=.42, y = 7.5, label.size = 1, size = 3) +
+  
+    geom_label(label = "Class 2 pays nearly all of levy, \nhighly residential", x=.70, y = 3, label.size = 1,size = 3)
 ```
 
 ### Figure 11. Zero Dollar Bills
 
 ```{r}
-muni_mc_sums |>
+muni_mc_sums |> 
+  left_join(nicknames) |>
   filter(major_class_code == 2) |> 
-  group_by(year) |>
+  group_by(year, Triad) |>
   summarize(zerodollar_count = sum(zero_bill)) |> 
-  ggplot(aes(x=year, y = zerodollar_count)) + 
-  geom_bar(position = "stack", stat = "identity") + theme_minimal()
+  ggplot(aes(x=year, y = zerodollar_count, fill = Triad)) + 
+  geom_bar(position = "stack", stat = "identity") + theme_minimal()+
+  theme(legend.position = "top")+
+  labs(title = element_text("Number of $0 Taxbills")) +
+  scale_y_continuous(labels = scales::comma, limits = c(0, 35000), name = "" )
   
 
 ```
