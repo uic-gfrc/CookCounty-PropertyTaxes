@@ -686,11 +686,79 @@ muni_median_summarytable |>
                   'Current Bill' = 'bill_cur',
                   'Hyp. Bill' = 'bill_new', 
                   'Bill Change' = 'bill_change',  
-                  'Perceived Savings'='perceived_savings'),
-                caption = "Change in Tax Bill if Exempt EAV from GHE were added back to tax base.")  |>
+                  'Perceived Savings'='perceived_savings'))  |>
   formatCurrency(columns = c(3:9), digits = 0)
 
 ```
+
+```{r}
+
+
+cholton_15000_summarytable <- pin_data |> 
+  
+  select(pin, av, class, tax_code_num, tax_bill_total, av_certified, exe_homeowner:exe_abate, clean_name, eq_av, all_exemptions, zero_bill, has_HO_exemp, taxed_eav, final_tax_to_dist, final_tax_to_tif) |>
+  filter(clean_name %in% c("Chicago", "Dolton", "Glencoe")) |>
+  filter(between(av, 14800, 15200)) |>
+
+  filter(class > 199 & class < 300) |> 
+  
+  # merge in muni residential median AV
+  left_join(C2_munistats_filtered |> select(clean_name, median_av)) |>
+  
+  left_join(muni_ratechange |> select(clean_name, rate_noExe, rate_noGHE, rate_current)) |>
+  # +/- 500 from municipalities median residential AV
+  # Removes properties that received other types of exemptions
+  filter(exe_senior == 0 & 
+           exe_freeze == 0 & 
+           exe_longtime_homeowner == 0 & 
+           exe_disabled == 0 & 
+           exe_vet_returning == 0 & 
+           exe_vet_dis_lt50 == 0 & 
+           exe_vet_dis_50_69 == 0 & 
+           exe_vet_dis_ge70 == 0 & 
+           exe_abate == 0) |>
+  
+  arrange(av) |>
+  
+  mutate(
+         bill_current = rate_current* taxed_eav,
+         bill_noexemps =  rate_noGHE*(eq_av-all_exemptions+exe_homeowner),
+         bill_change = bill_noexemps - bill_current) |>
+  # 
+  group_by(clean_name, 
+           has_HO_exemp) |> 
+  
+  summarize(AV = median(av),
+    `Median AV in Muni` = first(median_av), # median_av was calculated earlier: C2 median AV for the muni 
+            `EqAV` = round(median(eq_av)),
+            `Taxed EAV` = round(median(taxed_eav)),
+            bill_cur = round(median(bill_current)),
+            bill_new = round(median(bill_noexemps)),
+            bill_change = round(median(bill_change)),
+            pincount=n(),
+            perceived_savings = round(median(all_exemptions*rate_current))
+            ) |> 
+  
+  # merge in clean_names variable
+  left_join(nicknames) |>
+  
+  select(clean_name, AV, has_HO_exemp, bill_cur, bill_new, bill_change, perceived_savings,  `Median AV in Muni`, `EqAV`, `Taxed EAV`
+         #everything() 
+         ) |>
+
+  DT::datatable(rownames = FALSE, 
+                colnames = c(
+                  'Claims GHE' = 'has_HO_exemp',
+                  'Current Bill' = 'bill_cur',
+                  'Hyp. Bill' = 'bill_new', 
+                  'Bill Change' = 'bill_change',  
+                  'Perceived Savings'='perceived_savings'),
+                caption = "Change in Tax Bill for Properties with an Assessed Value of $15,000.")  |>
+  formatCurrency(columns = c(2, 4:9), digits = 0)
+
+cholton_15000_summarytable
+```
+
 
 ### Table 4.
 
@@ -783,7 +851,7 @@ muni_mc_sums |>
   geom_bar(position = "stack", stat = "identity") + theme_minimal()+
   theme(legend.position = "top")+
   labs(title = element_text("Number of $0 Taxbills")) +
-  scale_y_continuous(labels = scales::comma, limits = c(0, 35000), name = "" )
+  scale_y_continuous(labels = scales::comma, limits = c(0, 35000), name = "")
   
 
 ```
@@ -877,6 +945,8 @@ Not recreated in code yet.
 
 
 ![](images/clipboard-2324688760.png)
+
+
 
 ### Additional notes
 
