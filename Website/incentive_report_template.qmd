@@ -98,7 +98,7 @@ pin_data <- pin_data %>% left_join(proj_xwalk)
 # original class_dict variables already in 0_joined data
 # but I do want the new-ish variables I created to be brought in:
 class_dict <- read_csv("../Necessary_Files/class_dict_expanded.csv") %>%
-  select(class_code, comparable_props, Alea_cat, incent_prop)
+  select(class_code, comparable_props, land_use=Alea_cat, incent_prop)
 
 # "Frankfort", "Homer Glen",  "Oak Brook", "East Dundee", "University Park",  "Bensenville", "Hinsdale", "Roselle", "Deer Park", "Deerfield"
 
@@ -578,6 +578,9 @@ labs(title= "Growth from 2011 to 2022", subtitle = "Change in Incentive Use by L
 ```
 
 ```{r}
+#| layout-ncol: 2
+#| layout-nrow: 2
+
 library(tidyverse)
 
 options(scipen = 999)
@@ -586,11 +589,11 @@ options(scipen = 999)
 
 ## Data prep
 
-muni_MC <- read_csv("../Output/ptaxsim_muni_class_summaries_2006-2022.csv") %>%
+muni_MC <- read_csv("../Output/ptaxsim_muni_class_summaries_2006to2023.csv") %>%
   select(year, clean_name, class, av = muni_c_av)
 
 class_dict <- read_csv("../Necessary_Files/class_dict_expanded.csv") %>%
-  select(class = class_code, class_1dig, assess_ratio, incent_prop, Alea_cat, major_class_code)
+  select(class = class_code, class_1dig, assess_ratio, incent_prop, land_use=Alea_cat, major_class_code)
 
 muni_MC <- muni_MC %>% 
   left_join(class_dict, by = c("class")) %>% 
@@ -613,14 +616,14 @@ class_8_df <- # left_join(muni_MC, class_dict, by = "class") %>%
   group_by(year) %>%   
   mutate(year_tb_tot = sum(FMV)) %>%           # tax base for all class 8 munis together, per year
   ungroup() %>%
-  filter(Alea_cat %in% c("Industrial", "Commercial")) %>%      ## drops all non-industrial and non-commercial classes to calculate the rest of the totals
+  filter(land_use %in% c("Industrial", "Commercial")) %>%      ## drops all non-industrial and non-commercial classes to calculate the rest of the totals
   group_by(year) %>%
   mutate(year_ind_comm_FMV = sum(FMV)) %>%    #  total commercial and industrial FMV for all class 8 munis together, per year
   ungroup() %>%
   group_by(year, clean_name) %>%
   mutate(muni_year_ind_comm_FMV = sum(FMV)) %>%   # calculates total FMV in each munis  each year
   ungroup() %>%
-  group_by(year, Alea_cat) %>%
+  group_by(year, land_use) %>%
   mutate(cat_year_FMV = sum(FMV)) %>%    # calculates FMV within each commercial vs industrial category for each year
   ungroup() %>%
   group_by(year, clean_name, class_1dig) %>%   # total fmv in class 5, 6, 7, and 8 per muni
@@ -635,14 +638,14 @@ class_8_df_outofCook <-
   group_by(year) %>%   
   mutate(year_tb_tot = sum(FMV)) %>%           # tax base for all class 8 munis together, per year
   ungroup() %>%
-  filter(Alea_cat %in% c("Industrial", "Commercial")) %>%      ## drops all non-industrial and non-commercial classes to calculate the rest of the totals
+  filter(land_use %in% c("Industrial", "Commercial")) %>%      ## drops all non-industrial and non-commercial classes to calculate the rest of the totals
   group_by(year) %>%
   mutate(year_ind_comm_FMV = sum(FMV)) %>%    #  total commercial and industrial FMV for all class 8 munis together, per year
   ungroup() %>%
   group_by(year, clean_name) %>%
   mutate(muni_year_ind_comm_FMV = sum(FMV)) %>%   # calculates total FMV in each munis  each year
   ungroup() %>%
-  group_by(year, Alea_cat) %>%
+  group_by(year, land_use) %>%
   mutate(cat_year_FMV = sum(FMV)) %>%    # calculates FMV within each commercial vs industrial category for each year
   ungroup() %>%
   group_by(year, clean_name, class_1dig) %>%   # total fmv in class 5, 6, 7, and 8 per muni
@@ -659,7 +662,7 @@ ggplot() +
   
   # industrial fmv
   geom_line(data = class_8_df %>%               
-              filter(Alea_cat == "Industrial") %>%
+              filter(land_use == "Industrial") %>%
               group_by(year) %>%
               # needed na.rm=TRUE, otherwise it didn't work. perc_industrial was not being calculated without it.
               summarize(perc_industrial =  sum(FMV/year_tb_tot, na.rm=TRUE)),   ## added this part
@@ -667,7 +670,7 @@ ggplot() +
   
   # commercial fmv
   geom_line(data = class_8_df %>%              
-              filter(Alea_cat == "Commercial") %>%
+              filter(land_use == "Commercial") %>%
               group_by(year) %>%
               summarize(perc_commercial =  sum(FMV/year_tb_tot, na.rm=TRUE)),   ## added this part
             aes(x = year, y = perc_commercial, color = "Commercial"), lwd = 1) +
@@ -715,7 +718,7 @@ ggplot() +
  
   # industrial fmv in cook county
   geom_line(data = class_8_df_outofCook %>%               # threw error here, missing x and y in aes()
-              filter(Alea_cat == "Industrial") %>%
+              filter(land_use == "Industrial") %>%
               group_by(year) %>%
               # needed na.rm=TRUE, otherwise it didn't work. perc_industrial was not being calculated without it.
               summarize(perc_industrial =  sum(FMV/year_tb_tot, na.rm=TRUE)),   ## added this part
@@ -723,7 +726,7 @@ ggplot() +
 
   # commercial fmv in cook county
 geom_line(data = class_8_df_outofCook %>%               # threw error here, missing x and y in aes()
-            filter(Alea_cat == "Commercial") %>%
+            filter(land_use == "Commercial") %>%
             group_by(year) %>%
             summarize(perc_commercial =  sum(FMV/year_tb_tot, na.rm=TRUE)),   ## added this part
           aes(x = year, y = perc_commercial, color = "Commercial"), lwd = 1) +
@@ -895,8 +898,8 @@ munilevel <- pin_data %>%
 #| tbl-cap: "Top 10 Municipalities using Industrial Incentives"
 
 landuse_incentshares <- pin_data %>% 
-  filter(Alea_cat != "Land") %>%
-  group_by(clean_name, Alea_cat) %>% 
+  filter(land_use != "Land") %>%
+  group_by(clean_name, land_use) %>% 
   summarize(pin_count = n(),
             incent_PC = sum(ifelse(class >=600 & class <=900, 1, 0), na.rm=TRUE),
             fmv_incentive = sum(ifelse(class >=600 & class <=900, fmv, 0), na.rm = TRUE),
@@ -912,11 +915,11 @@ pct_incent = scales::percent(pct_incent)
 )  
 
 indust_top10 <- landuse_incentshares %>%
-  select(clean_name, Alea_cat, fmv_incentive, incent_PC) %>% 
-  filter(Alea_cat == "Industrial") %>%
+  select(clean_name, land_use, fmv_incentive, incent_PC) %>% 
+  filter(land_use == "Industrial") %>%
   arrange(desc(fmv_incentive)) %>%
   head(10) %>% 
-  select(-Alea_cat)
+  select(-land_use)
 
 indust_top10 %>%
   flextable() %>% 
@@ -931,11 +934,11 @@ fmv_incentive = "FMV from Incentive\nClass Properties"
 #| tbl-cap: "Top 10 Municipalities using Commercial Incentives"
 
 commerc_top10 <- landuse_incentshares %>%
-  select(clean_name, Alea_cat, fmv_incentive, incent_PC) %>% 
-  filter(Alea_cat == "Commercial") %>%
+  select(clean_name, land_use, fmv_incentive, incent_PC) %>% 
+  filter(land_use == "Commercial") %>%
   arrange(desc(fmv_incentive)) %>%
   head(10) %>% 
-  select(-Alea_cat)
+  select(-land_use)
   
 commerc_top10 %>%
   flextable() %>% 
@@ -1062,7 +1065,7 @@ table_muni_percentages %>%
 #| tbl-cap: "PINs and value summarized by if the property has an incentive class or not in a municipality. AV Adjusted is the amount of assessed value that could be taxed if the property were assessed at 25% instead of the lower level of assessment of approximately 10%."
 
 table2 <- pin_data %>% 
-    filter(Alea_cat != "Land") %>%
+    filter(land_use != "Land") %>%
   group_by(clean_name, incent_prop) %>%   # projects can be counted twice if the project has incentive and normal commercial/industrial prop classes.
   summarize(pin_count = n(),
          project_count = n_distinct(keypin), 
@@ -1089,7 +1092,7 @@ muni_incent_share <- pin_data %>%
   # drop munis mostly outside of Cook and unincorporated PINs
 filter(!agency_num %in% cross_county_line & !is.na(clean_name) ) %>%
 
-  filter(Alea_cat == "Industrial" | Alea_cat == "Commercial") %>%
+  filter(land_use == "Industrial" | land_use == "Commercial") %>%
   group_by(clean_name, agency_num) %>% 
   summarize(pin_count = n(),
             incent_PC = sum(ifelse(class >=600 & class <900, 1, 0), na.rm=TRUE),
@@ -1246,26 +1249,31 @@ bold(i = 8) %>%
 
 ## Shifted Tax Revenue and Tax Burden
 
-Read in CCAO level of assessment rates for each property class. Read in Summary file for Municipalities from 2006 to 2022.
+Read in CCAO level of assessment rates for each property class. Read in Summary file for Municipalities from 2006 to `r params$year`.
 
 ```{r}
 muni_rate <- read_csv("../Output/ptaxsim_muni_level_2006-2022.csv") %>%
-  filter(year == 2022) %>%
+  filter(year == params$year) %>%
   left_join(nicknames) %>% 
   select(clean_name, muni_current_rate_avg, muni_pct_eav_taxed,# cur_comp_muni_rate
 ) %>%
   rename(cur_munilevel_rate = muni_current_rate_avg)
+
+muni_ratechange <- read_csv(paste0("../Output/muni_ratechange_", params$year, "_test.csv"))
 ```
 
 ## Not Taxed Value - PIN aggregated to County Level
 
 ```{r calculate-cook-altrates-fromPINlevel}
+
+cook_ratechange <- read_csv("../Output/ptaxsim_cook_level_2006to2023.csv") |> 
+  filter(year == params$year) 
+
 cook_ratechange <- pin_data %>%
   # left_join(muni_rate) %>%
   filter(!clean_name  %in% c("Frankfort", "Homer Glen",  "Oak Brook", "East Dundee",
                              "University Park",  "Bensenville", "Hinsdale", "Roselle",
                              "Deer Park", "Deerfield")) %>% 
-  filter(!agency_num %in% cross_county_lines & !is.na(clean_name) & clean_name!="Unincorporated" )  %>%
   #group_by(class_group) %>%
   summarize(
     
@@ -1326,16 +1334,15 @@ cook_ratechange <- pin_data %>%
     av = sum(av),
     eav_taxed = sum(taxed_av*eq_factor), 
     eav_untaxable = sum(untaxable_value_eav, na.rm=TRUE),
-    eav_max = sum(fmv*loa*eq_factor, na.rm=TRUE),
     fmv = sum(fmv, na.rm=TRUE),
     pins_in_class = n(),
     all_exemptions = sum(all_exemptions),   # in EAV
     abatements = sum(exe_abate),            # in EAV
-    eav_incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, eav, 0), na.rm = TRUE),
+    eav_incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, taxed_eav, 0), na.rm = TRUE),
 
     final_tax_to_dist = sum(final_tax_to_dist), ## Amount of Total Levy
     final_tax_to_tif = sum(final_tax_to_tif),
-    eav = sum(eav)) %>%
+    eq_av = sum(eq_av)) %>%
   mutate(
    reducedEAV_comind_incents =  new_TEAV_noIncents - eav_taxed,
    reducedEAV_commerc_incents  = new_TEAV_noCommercIncents - eav_taxed,
@@ -1454,6 +1461,9 @@ pin_data %>%
 ## Change in Composite Property Tax Rate Due to Incentives and other Policy Scenarios
 
 ```{r}
+#| eval: false
+#| include: false
+
 muni_ratechange <- pin_data %>%
   ungroup() |>
   # left_join(muni_rate) %>%
@@ -1501,12 +1511,12 @@ muni_ratechange <- pin_data %>%
     eav = sum(eav),
     new_TEAV_noIncents = sum(ifelse(class >=600 & class <900,
                                     (taxed_av*eq_factor/loa)*0.25, taxed_av*eq_factor), na.rm=TRUE),
-    
-    new_TEAV_noC6 = sum(ifelse( class >=600 & class <700, 
-                                (taxed_av*eq_factor/loa)*0.25 , taxed_av*eq_factor)),
-    new_TEAV_noC7 = sum(ifelse(class >=700 & class <800,
-                               (taxed_av*eq_factor/loa)*0.25, taxed_av*eq_factor)),
-    new_TEAV_noC8 = sum(ifelse(class >=800 & class <900, (taxed_av*eq_factor/loa)*0.25, taxed_av*eq_factor)),
+    # 
+    # new_TEAV_noC6 = sum(ifelse( class >=600 & class <700, 
+    #                             (taxed_av*eq_factor/loa)*0.25 , taxed_av*eq_factor)),
+    # new_TEAV_noC7 = sum(ifelse(class >=700 & class <800,
+    #                            (taxed_av*eq_factor/loa)*0.25, taxed_av*eq_factor)),
+    # new_TEAV_noC8 = sum(ifelse(class >=800 & class <900, (taxed_av*eq_factor/loa)*0.25, taxed_av*eq_factor)),
     
     new_TEAV_vacant_noIncents = sum(ifelse(class >=600 & class <900,
                                            0, taxed_av*eq_factor), na.rm=TRUE)) |> 
@@ -1831,13 +1841,13 @@ plot.title.position = "plot",
 # create order of dots
 order <- muni_ratechange %>%  
   as_tibble() %>% 
-  filter(change_noInc > .5) %>%
+  filter(change_noInc > .005) %>%
   arrange(rate_current) %>%
   select(clean_name, rate_current) %>% distinct()
 
 # make dot graph
 muni_ratechange %>% 
- filter(change_noInc > .5) %>%
+ filter(change_noInc > .005) %>%
   select(clean_name, rate_current, rate_noInc, rate_vacant) %>% 
   distinct() %>%
   arrange(rate_current) %>%
@@ -1904,7 +1914,7 @@ muni_ratechange %>%
     legend.position = "none"  )+
   scale_fill_manual(
     values = c("#BDD7E7", "#6BAED6", "#3182BD", "#EFF3FF",  "#08519C")) +
-  scale_x_continuous(limits = c(17, 35)) + 
+  scale_x_continuous(limits = c(.17, .35)) + 
   scale_y_discrete(
     expand = expand_scale(mult = c(.1, 1)) ,
            #        limits = c("Markham")#, breaks = "Markham"
@@ -1922,10 +1932,12 @@ muni_ratechange %>%
 ### Pin Counts
 
 ```{r}
-pin_data <-  read_csv("../Output/comm_ind_PINs_2006to2022_timeseries.csv") %>% 
-  mutate(class = as.numeric(class))
+#pin_data <-  read_csv("../Output/comm_ind_PINs_2006to2022_timeseries.csv") %>% 
+#  mutate(class = as.numeric(class))
 
 commind_together <- pin_data %>%
+ # left_join(class_dict) |>
+  rename(land_use=Alea_cat) |>
   filter(land_use %in% c("Industrial", "Commercial")) |>
   group_by(year) %>%
   summarize(
@@ -1936,6 +1948,8 @@ commind_together <- pin_data %>%
   
 
 table <- pin_data %>% 
+    rename(land_use=Alea_cat) |>
+
     filter(land_use %in% c("Industrial", "Commercial")) |>
 
   group_by(year, land_use) %>%
@@ -1964,6 +1978,8 @@ cbind(commind_together, table) %>%
 ```
 ```{r}
 pin_data %>% 
+    rename(land_use=Alea_cat) |>
+
   filter(land_use %in% c("Commercial", "Industrial")) %>%
  group_by(year, land_use) %>%
   summarize(
@@ -1971,14 +1987,18 @@ pin_data %>%
   ggplot() + 
   geom_col(aes(x=year, y = PC, fill = land_use)) + 
   scale_x_continuous(#limits = c(2006, 2022), 
-                                                                      breaks = c(2006, 2010, 2015, 2020, 2022)) + 
-  theme_classic() + theme(legend.position =  "bottom", legend.title = element_blank(), 
+                                                                      
+    breaks = c(2006, 2010, 2015, 2020, params$year)) + 
+  theme_classic() + 
+  theme(legend.position =  "bottom", legend.title = element_blank(), 
                           axis.title.x =   element_blank())
 ```
 
 
 ```{r}
 commind_together_fmv <- pin_data %>%
+    rename(land_use=Alea_cat) |>
+
   filter(land_use %in% c("Industrial", "Commercial")) |>
   group_by(year) %>%
   summarize(
@@ -2234,7 +2254,7 @@ group_by(year, incent_change) |>
 
 
 df_2011_incentchange %>% 
-  filter(year == 2022) %>%
+  filter(year == params$year) %>%
   select(incent_change, fmv_group_growth, base_year_fmv, group_year_fmv, everything(), -year)
 ```
 
@@ -2256,7 +2276,7 @@ group_by(incent_status) %>%
   mutate(
     base_year_fmv = group_year_fmv[year == min(year)],
     fmv_group_growth = (group_year_fmv / base_year_fmv) -1) |> 
-  filter(year == 2022)  %>%
+  filter(year == params$year)  %>%
   select(incent_status, fmv_group_growth, group_pin_count, everything(), -year)
 
 ```
@@ -2278,7 +2298,7 @@ comm_ind_pins %>%
     base_year_n = group_pin_count[year == min(year)],
     n_group_growth = group_pin_count/base_year_n -1,
     fmv_group_growth = (group_year_fmv / base_year_fmv) -1) %>%
-    filter(year == 2022) %>%   
+    filter(year == params$year) %>%   
   select(landuse_change, fmv_group_growth, group_pin_count)
 ```
 
@@ -2301,7 +2321,7 @@ df_2011_bal <- comm_ind_pins %>%
 
 df_2011_bal %>% 
   select(year, landuse_change, incent_status, fmv_group_growth, group_pin_count) %>% 
-  filter(year == 2022) %>%   
+  filter(year == params$year) %>%   
   select(-year)
 
 
@@ -2341,7 +2361,7 @@ df_2011_bal %>%
 
 ```{r}
 #| label: fig-growth-facetby-incentstatus
-#| fig-cap: "**Growth from 2011 to 2022.** Faceted by if a PIN changed landuse during the sample period. Indexed to fair market value during 2011"
+#| fig-cap: !expr paste0("Growth from 2011 to ", params$year,  ". Faceted by if a PIN changed landuse during the sample period. Indexed to fair market value during 2011")
 
 
 df_2011_bal %>%  
@@ -2354,7 +2374,7 @@ df_2011_bal %>%
   scale_y_continuous(breaks = c(-1, 0, 1, 2, 3, 4, 10), labels = scales::percent,) +
   scale_color_brewer(direction = -1) + 
 
-  labs(title= "Growth from 2011 to 2022", 
+  labs(title= paste0("Growth from 2011 to", params$year),
        subtitle = "Incentive Classification Status by Land Use Change",
        y = "FMV Growth since 2011", x = NULL,
        caption =  "Values are indexed to 2011 FMV") +
@@ -2364,7 +2384,7 @@ df_2011_bal %>%
 
 ```{r}
 #| label: fig-growth-facetby-incentstatus-clean
-#| fig-cap: "**Aggregate FMV Growth from 2011 to 2022** Faceted by if a PIN  incentive status during the sample period. Indexed to fair market value during 2011."
+#| fig-cap: !expr paste0("Aggregate FMV Growth from 2011 to", params$year, "Faceted by if a PIN  incentive status during the sample period. Indexed to fair market value during 2011.")
 
 df_2011_bal %>%  
   filter(landuse_change != "Excluded" & incent_status != "Excluded" & landuse_change != "Exempt Sometime") %>%
