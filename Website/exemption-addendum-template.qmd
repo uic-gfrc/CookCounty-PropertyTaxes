@@ -47,127 +47,6 @@ c2pins <- pin_data |>
   filter(class > 199 & class < 300) |>
   mutate(eav_postexemptions = taxed_eav)
 
-# All PINs - get AV and exemption amounts -----------------------------
-
-
-# create some variables that we need:
-# muni_rates <- pin_data |> 
-#   left_join(tax_codes) |>
-#   left_join(tc_muninames) |>
-#   left_join(tif_distribution) |>
-#   mutate(
-#     tax_code_distribution_pct = ifelse(is.na(tax_code_distribution_pct), 0, tax_code_distribution_pct),
-#     in_tif = ifelse(tax_code_num %in% tif_distribution$tax_code_num, 1, 0),
-#     has_HO_exemp = ifelse(exe_homeowner > 0, 1, 0),
-#     has_other_exe = ifelse(exe_senior + exe_freeze + exe_longtime_homeowner + exe_disabled +
-#                              exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 > 0, 1, 0 ),
-#     
-#     final_tax_to_tif = tax_bill_total *  tax_code_distribution_pct,   # TIF revenue
-#     final_tax_to_dist = tax_bill_total - final_tax_to_tif,      # local government revenue
-#    all_exemptions = rowSums(across(starts_with("exe_"))),
-#      tif_increment_eav = final_tax_to_tif / tax_code_rate,
-#      nontif_eav_preexe = av_clerk*eq_factor - tif_increment_eav,
-#      nontif_eav_postexe = av_clerk*eq_factor - tif_increment_eav - all_exemptions,
-#     current_taxbase = final_tax_to_dist / tax_code_rate, # should match nontif_eav_postexe amount
-# 
-#     eav_postexemptions = av_clerk*eq_factor - all_exemptions, # ignores tif distribution
-#     eav_preexemptions = av_clerk*eq_factor, # ignores tif distribution
-# 
-#   ) %>% 
-#   mutate(av = av_clerk)  |> # av used for calculations is the final av value from the clerk's office
-#   group_by(clean_name)|>
-#   summarize(
-#     tax_bill_total = sum(tax_bill_total), # TIF and local government revenue
-#     tif_increment_eav = sum(tif_increment_eav, na.rm=T),  # should be sum of frozen EAV
-#     muni_taxed_eav = sum(nontif_eav_postexe, na.rm=T),  # non-TIF and non-exempt EAV taxed by government agencies
-#     muni_exempt_eav_from_GHE = sum(exe_homeowner, na.rm=T),
-#     muni_levy = sum(final_tax_to_dist, na.rm=T),
-#     
-#     muni_min_rate = min(tax_code_rate),
-#     muni_median_rate = median(tax_code_rate),
-#     muni_avg_rate = mean(tax_code_rate, na.rm=T),
-#     muni_max_rate = max(tax_code_rate),
-#     final_tax_to_dist = sum(final_tax_to_dist, na.rm=T),
-#     final_tax_to_tif = sum(final_tax_to_tif, na.rm=T)) |>
-#   
-#   mutate(muni_hyp_taxbase = muni_taxed_eav + muni_exempt_eav_from_GHE,   
-#          muni_hyp_taxrate =  muni_levy / muni_hyp_taxbase)
-  
-# ## Tax code level "levies" and tax bases ----------------
-# tax_code_change <- pin_data |>
-#   # left_join(tax_codes) |>
-#   # left_join(tc_muninames) |>
-#    left_join(tif_distribution) |>
-#   mutate(
-#     tax_code_distribution_pct = ifelse(is.na(tax_code_distribution_pct), 0, tax_code_distribution_pct),
-#     in_tif = ifelse(tax_code_num %in% tif_distribution$tax_code_num, 1, 0),
-#     has_HO_exemp = ifelse(exe_homeowner > 0, 1, 0),
-#     has_other_exe = ifelse(exe_senior + exe_freeze + exe_longtime_homeowner + exe_disabled +
-#                              exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 +
-#                              exe_vet_dis_ge70 > 0, 1, 0 ),
-#     all_exemptions = rowSums(across(starts_with("exe_"))),
-#     final_tax_to_tif = tax_bill_total *  tax_code_distribution_pct/100,
-#     final_tax_to_dist = tax_bill_total - final_tax_to_tif,
-#     tif_increment_eav = final_tax_to_tif / tax_code_rate,
-# 
-#     nontif_eav_preexe = av_clerk*eq_factor - tif_increment_eav,
-#      nontif_eav_postexe = av_clerk*eq_factor - tif_increment_eav - all_exemptions,
-#     eav_postexemptions = av_clerk*eq_factor - all_exemptions,
-#     eav_preexemptions = av_clerk*eq_factor,
-#     total_bill = final_tax_to_tif + final_tax_to_dist
-#   ) %>%
-#   group_by(clean_name, tax_code_num, tax_code_rate) |>
-#   summarize(
-#     tc_pc = n(),
-#     tc_tax_bill_total = sum(tax_bill_total), # TIF and local government revenue at tax code level
-#     tc_eav_inTIF = sum(tif_increment_eav, na.rm=T),  # should be total taxcode eav - frozen EAV
-#     tc_taxed_eav = sum(nontif_eav_postexe, na.rm=T),  # non-TIF and non-exempt EAV taxed by government agencies
-#     tc_exempt_eav_from_GHE = sum(exe_homeowner, na.rm=T),
-#     tc_final_tax_to_dist = sum(final_tax_to_dist, na.rm=T),
-#     tc_final_tax_to_tif = sum(final_tax_to_tif, na.rm=T)) |>
-#   mutate(tc_hyp_taxbase = tc_taxed_eav + tc_exempt_eav_from_GHE,
-#          tc_hyp_taxrate =  tc_final_tax_to_dist / tc_hyp_taxbase)
-# 
-
-
-# Identify Class 2 Residential PINs ------------- 
-# c2pins <- DBI::dbGetQuery(
-#   ptaxsim_db_conn, 
-#   glue_sql("
-#              SELECT DISTINCT* 
-#              FROM pin 
-#              WHERE class > 199 AND class < 300
-#              AND year = 2021
-#              "
-#            , 
-#            .con = ptaxsim_db_conn))
-# 
-# c2pins <- c2pins |> 
-#   mutate(has_HO_exemp = ifelse( exe_homeowner > 0, 1, 0),
-#          has_other_exe = ifelse(exe_senior + exe_freeze + exe_longtime_homeowner + exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 > 0, 1, 0 )) %>% 
-#   left_join(tax_codes) |>
-#   left_join(tc_muninames) %>%
-#   mutate(av = av_clerk) |>
-#   left_join(tax_code_change) |>
-#   left_join(tif_distribution) |>
-#   mutate(
-#     tax_code_distribution_pct = ifelse(is.na(tax_code_distribution_pct), 0, tax_code_distribution_pct),
-#     in_tif = ifelse(tax_code_num %in% tif_distribution$tax_code_num, 1, 0),
-#     has_HO_exemp = ifelse(exe_homeowner > 0, 1, 0),
-#     has_other_exe = ifelse(exe_senior + exe_freeze + exe_longtime_homeowner + exe_disabled +
-#                              exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + 
-#                              exe_vet_dis_ge70 > 0, 1, 0 ),
-#     all_exemptions = rowSums(across(starts_with("exe_"))),
-#     final_tax_to_tif = tax_bill_total *  tax_code_distribution_pct/100,
-#     final_tax_to_dist = tax_bill_total-final_tax_to_tif,
-#     tif_increment_eav = final_tax_to_tif / tax_code_rate,
-#     
-#     nontif_eav_preexe = av_clerk*eq_factor - tif_increment_eav,
-#     nontif_eav_postexe = av_clerk*eq_factor - tif_increment_eav - all_exemptions,
-#     
-#     eav_postexemptions = av_clerk*eq_factor - all_exemptions,
-#     eav_preexemptions = av_clerk*eq_factor)
-
 ```
 
 ```{r}
@@ -264,7 +143,17 @@ tax_bill_change_HO <- c2pins %>%
             perceived_savings = median(exe_homeowner*tax_code_rate)
   )
 
-tax_bill_change_HO |> filter(clean_name %in% c("Park Forest", "Phoenix", "Winnetka", "Riverdale"))
+tax_bill_change_HO |> filter(clean_name %in% c("Park Forest", "Phoenix", "Winnetka", "Riverdale")) |>
+
+  DT::datatable(rownames = FALSE, 
+                colnames = c(
+                  'Claims GHE' = 'has_HO_exemp',
+                  'Current Bill' = 'bill_cur',
+                  'Hyp. Bill' = 'bill_new', 
+                  'Bill Change' = 'bill_change',  
+                  'Perceived Savings'='perceived_savings'),
+                caption = "Change in Tax Bill for Properties with an Assessed Value of $15,000.")  |>
+  formatCurrency(columns = c(2, 4:9), digits = 0)
 ```
 
 
@@ -285,7 +174,8 @@ muni_breakeven_points <- c2pins |>
            exe_vet_dis_lt50 == 0 & 
            exe_vet_dis_50_69 == 0 & 
            exe_vet_dis_ge70 == 0 & 
-           exe_abate == 0) %>%
+           exe_abate == 0  &
+           exe_missing_disvet == 0) %>%
   
   group_by(clean_name) %>%
   summarize(
@@ -465,7 +355,7 @@ singfam_pins <- pin_data %>%
 scenario_calcs <- pin_data %>%    
   group_by(clean_name) %>%
 
-    summarize(MuniLevy = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by munis with current exemptions in place
+    summarize(MuniLevy = round(sum(final_tax_to_dist, na.rm = TRUE)), # amount billed by munis with current exemptions in place
             current_nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate), na.rm = TRUE),
             current_TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate), na.rm=TRUE),  
             current_Exempt_EAV = sum(all_exemptions, na.rm=T), 
@@ -504,7 +394,16 @@ scenario_calcs <- pin_data %>%
 scenario_taxrates <- scenario_calcs %>%  
   select(clean_name, MuniLevy, tr_neg10:taxrate_noTIFs_orExemps) 
 
-scenario_taxrates
+scenario_taxrates |> mutate(across(.cols=(tr_neg10:taxrate_noTIFs_orExemps), round, digits=3)) |>
+  rename(Municipality = clean_name,
+        `Composite Levy` = MuniLevy,
+    `Rate if \nGHE=0K` = tr_neg10, 
+         `Current\nTax Rate`= tr_nochange, 
+         `Rate if\nGHE=20K`= tr_plus10, 
+         `Rate if\nGHE=30K` = tr_plus20, 
+         `Rate if\nGHE=40K` = tr_plus30, 
+         `Rate if\nGHE=50K` = tr_plus40) |> 
+  DT::datatable(rownames = FALSE)
 ```
 
 ```{r}
@@ -865,6 +764,9 @@ scenario_taxrates %>%
 ### Figure 6. Exemptions by Value in Class 8 Municipalities
 
 ```{r}
+#| label: fig-notadjusted-exemptEAV
+#| fig-cap: "Exempt EAV by Type in Select Municipalities. Shows values as calculated in original report that undercounted disabled veteran exemptions."
+#| 
 pin_data %>% 
   group_by(clean_name) %>% 
   summarize(
@@ -879,9 +781,32 @@ pin_data %>%
   pivot_longer(cols = c(Homeowner:Other), names_to = "Exemption Type") %>%
   ggplot() + 
   geom_col(aes(x=clean_name, y = value, fill = `Exemption Type`), position = "dodge") +
-  scale_y_continuous(label = scales::dollar) + theme_classic() + labs(x = element_blank(), y = "Exempt EAV")
+  scale_y_continuous(label = scales::dollar) + 
+  theme_classic() + 
+  labs(x = element_blank(), y = "Exempt EAV")
 ```
 
+```{r}
+#| label: fig-adjusted-missingDisVet
+#| fig-cap: "Exempt EAV by Type in Select Municipalities. Shows adjusted values of exemption amounts after finding data error."
+pin_data %>% 
+  group_by(clean_name) %>% 
+  summarize(
+    Homeowner = sum(exe_homeowner),
+    Senior = sum(exe_senior),
+    `Senior Freeze` = sum(exe_freeze),
+   # exe_longtime_homeowner = sum(exe_longtime_homeowner),
+    Other = sum(exe_missing_disvet+exe_disabled),
+    
+  ) %>%
+  filter(clean_name %in% c("Blue Island", "Markham", "Matteson", "Park Forest")) %>%
+  pivot_longer(cols = c(Homeowner:Other), names_to = "Exemption Type") %>%
+  ggplot() + 
+  geom_col(aes(x=clean_name, y = value, fill = `Exemption Type`), position = "dodge") +
+  scale_y_continuous(label = scales::dollar) + 
+  theme_classic() + 
+  labs(x = element_blank(), y = "Exempt EAV")
+```
 
 ### Figure 7. Exemption Share in Class 8 Municipalities
 
@@ -899,7 +824,7 @@ pin_data %>%
   filter(exe_type %in% c("taxable_eav", "all_exemptions"))|>
   ggplot() + 
   geom_col(aes(x=clean_name, y = value, fill = exe_type), position = "stack") +
-  scale_y_continuous(label = scales::dollar) + 
+  scale_y_continuous(label = scales::dollar, limits = c(0,600000000)) + 
   theme_classic() + 
   labs(x = element_blank(), y = "Non-TIF Increment EAV in Municipality")
 ```
