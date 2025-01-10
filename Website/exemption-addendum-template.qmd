@@ -9,7 +9,6 @@ format:
     df-print: paged
 ---
 
-Addendum to Exemption Report - Tax Year `{r} params$year`
 
 ```{r setup, warning=FALSE, message=FALSE}
 #| code-fold: TRUE
@@ -25,6 +24,11 @@ library(DT)
 
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 
+# # Create an empty data frame with a column named "year"
+# params <- data.frame(year = numeric(0))
+# 
+# # Add the value 2021 to the "year" column
+# params <- rbind(params, data.frame(year = 2021))
 
 i = params$year
 
@@ -48,6 +52,8 @@ c2pins <- pin_data |>
   mutate(eav_postexemptions = taxed_eav)
 
 ```
+
+Addendum to Exemption Report - Tax Year `{r} params$year`
 
 ```{r}
 #| label: medianproperty-bymuni
@@ -148,9 +154,9 @@ tax_bill_change_HO |> filter(clean_name %in% c("Park Forest", "Phoenix", "Winnet
   DT::datatable(rownames = FALSE, 
                 colnames = c(
                   'Claims GHE' = 'has_HO_exemp',
-                  'Current Bill' = 'bill_cur',
-                  'Hyp. Bill' = 'bill_new', 
-                  'Bill Change' = 'bill_change',  
+                  'Current Bill' = 'median_bill_cur',
+                  'Hyp. Bill' = 'median_bill_new', 
+                  'Bill Change' = 'median_change',  
                   'Perceived Savings'='perceived_savings'),
                 caption = "Change in Tax Bill for Properties with an Assessed Value of $15,000.")  |>
   formatCurrency(columns = c(2, 4:9), digits = 0)
@@ -807,6 +813,22 @@ pin_data %>%
   theme_classic() + 
   labs(x = element_blank(), y = "Exempt EAV")
 ```
+
+```{r}
+pin_data %>% 
+  group_by(clean_name) %>% 
+  summarize(
+    Homeowner = sum(exe_homeowner),
+    Senior = sum(exe_senior),
+    `Senior Freeze` = sum(exe_freeze),
+   # exe_longtime_homeowner = sum(exe_longtime_homeowner),
+    Other = sum(exe_missing_disvet+exe_disabled),
+    
+  ) %>%
+  arrange(desc(Other))
+ 
+```
+
 
 ### Figure 7. Exemption Share in Class 8 Municipalities
 
