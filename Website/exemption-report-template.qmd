@@ -1,5 +1,4 @@
-*Current and Future Uses of Homestead Exemptions in Cook County*
-**Replication Materials**
+*Current and Future Uses of Homestead Exemptions in Cook County* **Replication Materials**
 
 ```{r setup}
 #| output: false
@@ -56,7 +55,7 @@ tbl <- muni_cl_sums |>
       'GHE' = sum(muni_c_exe_homeowner),
       'Senior' = sum(muni_c_exe_senior),
       'Senior Freeze' = sum(muni_c_exe_freeze),
-      'Other Exemps.' = sum(muni_c_all_exemptions) - sum(muni_c_exe_senior) - sum(muni_c_exe_freeze)
+      'Other Exemps.' = sum(muni_c_all_exemptions -muni_c_exe_homeowner- muni_c_exe_senior - muni_c_exe_freeze )
       ) |>
     pivot_longer(cols = c('PINs':'Other Exemps.'),
                  names_to = "Metric", values_to = "Total") |>
@@ -82,7 +81,7 @@ ft <- tbl |>
 ft
 ```
 
-EqAV is the `r params$year` equalization factor multiplied by assessed value. Thus, Taxed EAV and Exempt EAV equal EqAV. It can be thought of as the "maximum available tax base" in a world without exemptions. 
+EqAV is the `r params$year` equalization factor multiplied by assessed value. Thus, Taxed EAV and Exempt EAV equal EqAV. It can be thought of as the "maximum available tax base" in a world without exemptions.
 
 ### Figure 3. using EAV
 
@@ -109,7 +108,7 @@ print(median_exempt |>
   ggplot(aes(fill = muni_pct_eav_exempt)) + 
   geom_sf(aes(geometry = geom), color = "black") + 
   theme_void()+ 
-  labs(title = "Exempt EAV as a Percent of Municipality-Wide FMV") +
+  labs(title = "Exempt EAV as a Percent of Municipality EAV") +
   theme(axis.ticks = element_blank(), 
         axis.text = element_blank())
  +
@@ -155,7 +154,7 @@ print(muni_sums |>
   ggplot(aes(fill = pct_fmv_exempt)) + 
   geom_sf(aes(geometry = geom), color = "black") + 
   theme_void()+ 
-  labs(title = "Exempt FMV as a Percent of Municipality-Wide FMV",
+  labs(title = "Exempt FMV as a Percent of Municipality FMV",
        caption = sprintf("The County-wide municipal-median is %s", midpoint)) +
     theme_void() + 
   theme(axis.ticks = element_blank(), 
@@ -197,6 +196,45 @@ geom_sums |>
 ```{r}
 #| label: fig-exemptiontotals_cityburbs
 #| fig-cap: "**Exempt EAV in Cook County** Exemption use varies between suburban Cook County and the City of Chicago which may point to broader socioeconomic patterns as well as residents' eligibility and update. Note: Our current calculations undervalue the disabled veterans exemption."
+
+
+muni_cl_sums |> 
+  filter(year == params$year) |> 
+  select(clean_name, muni_c_exe_homeowner:muni_c_exe_vet_dis) |>
+  mutate(clean_name = ifelse(is.na(clean_name), "Unincorporated", clean_name),
+    Geography = ifelse(clean_name == "Chicago", "City", "Suburbs"),
+         Geography = ifelse(is.na(clean_name), "Unincorporated", Geography),
+         Geography = factor(Geography, levels = c("Suburbs", "City", "Unincorporated"))) |>
+  group_by(Geography) |>
+  summarize("GHE" = sum(muni_c_exe_homeowner, na.rm=TRUE),
+            "Senior Homestead" = sum(muni_c_exe_senior, na.rm=TRUE),
+            "Senior Freeze" = sum(muni_c_exe_freeze, na.rm=TRUE),
+            "Other Exemptions" = sum(muni_c_exe_longtime_homeowner+muni_c_exe_disabled+muni_c_exe_vet_returning+ muni_c_exe_vet_dis_lt50 + muni_c_exe_vet_dis_50_69+muni_c_exe_vet_dis_ge70)) |>
+  
+  pivot_longer(cols = c(`GHE`:`Other Exemptions`), names_to = "Type" ) |>
+   mutate(Type = factor(Type, levels = c("GHE", "Senior Homestead", "Senior Freeze", "Other Exemptions" 
+                                         #"Senior Freeze", "Senior Homestead", "GHE"
+                                        )
+                                        )) |>
+  ggplot(aes(x=Type, y = value/1e9, fill = Geography
+             )) +
+  
+  geom_col( position = "dodge" ) +
+  geom_text(aes(label = round(value/1e9, digits=1)), vjust=-0.5, position = position_dodge(.9)) +
+  theme_minimal() +
+  labs(title = paste0("Exempt EAV in Cook County, Tax Year ", params$year), 
+       subtitle = "by Type and Geography", 
+       y = "EAV (Billions)", x = "Exemption Type") + 
+  scale_y_continuous(limits = c(0, 8)) +
+  scale_fill_manual(values = c("blue3", "deepskyblue3", "gray") )
+```
+
+```{r}
+#| label: fig-adjusted-exemptiontotals_cityburbs
+#| fig-cap: "Uses adjusted exemption total"
+#| eval: false
+#| include: false
+#| 
 
 
 muni_cl_sums |> 
@@ -373,7 +411,6 @@ mc_burden <- read_csv(paste0("../Output/muni_mc_burden_", params$year, "_test.cs
 burden_shift <- read_csv(paste0("../Output/muni_burden_shift_", params$year, "_test.csv"))
 ```
 
-
 ```{r}
 #| label: supporting-table-forfig8
 
@@ -385,6 +422,7 @@ burden_c2 <- mc_burden |>
 
 burden_shift |>  
   select(-c(muni_levy, muni_taxbase,))|>
+  select(clean_name, Group, pct_taxburden_current, hyp_pct_taxburden, everything()) |>
   DT::datatable(rownames = FALSE, 
                 colnames = c(
                   'Municipality' = 'clean_name',
@@ -393,7 +431,9 @@ burden_shift |>
                   'Taxes Paid'='group_taxes_current', 
                   'Hyp Taxes Paid' = 'hyp_group_taxes',
                   'Share of Levy'='pct_taxburden_current',
-                  'Share of Taxbase' = 'pct_taxbase_current'
+                  'Share of Taxbase' = 'pct_taxbase_current',
+              "Hyp. Share of Levy"  =  'hyp_pct_taxburden',
+              "Burden Shift" = 'burden_shift'
                   ),
                 caption = "Table 2 in Report for all Municipalities: Current and Hypothetical Composite Tax Rates if GHE $0"
       ) |>
@@ -401,7 +441,6 @@ burden_shift |>
   formatPercentage(columns = c(7,8), digits = 2)
 
 ```
-
 
 ```{r tbl-figure8}
 #| label: tbl-tableforFigure8
@@ -474,7 +513,6 @@ pivot_wider(id_cols=clean_name, names_from = Group, values_from = burden_shift) 
   arrange((`Single-family`)) |> 
   DT::datatable(rownames = FALSE) 
 ```
-
 
 ```{r}
 #| label: table2-fromreport-allmunis
@@ -759,7 +797,6 @@ cholton_15000_summarytable <- pin_data |>
 cholton_15000_summarytable
 ```
 
-
 ### Table 4.
 
 Municipalities with the largest and smallest reductions in tax base (as a share of residential EAV due to exemptions) and median property values
@@ -943,10 +980,7 @@ pin_data |>
 
 Not recreated in code yet.
 
-
 ![](images/clipboard-2324688760.png)
-
-
 
 ### Additional notes
 
