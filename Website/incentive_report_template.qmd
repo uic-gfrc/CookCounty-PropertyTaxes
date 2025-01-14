@@ -997,7 +997,7 @@ cross_county_line <- c("Frankfort", "Homer Glen",  "Oak Brook", "East Dundee", "
 table_muni_percentages %>%
   select(clean_name, pct_fmv_w_incentclass) |> 
   arrange(desc(pct_fmv_w_incentclass)) %>%
- # slice(c(1:5, 69:73, 121:125)) %>%
+  slice(c(1:5, 69:73, 121:125)) %>%
   #  slice(c(1:5, 58:62, 115:119)) %>%
 
   mutate(pct_fmv_w_incentclass = scales::percent(pct_fmv_w_incentclass, digits = 2)) %>%
@@ -1270,7 +1270,6 @@ cook_ratechange <- read_csv("../Output/ptaxsim_cook_level_2006to2023.csv") |>
   filter(year == params$year) 
 
 cook_ratechange <- pin_data %>%
-  # left_join(muni_rate) %>%
   filter(!clean_name  %in% c("Frankfort", "Homer Glen",  "Oak Brook", "East Dundee",
                              "University Park",  "Bensenville", "Hinsdale", "Roselle",
                              "Deer Park", "Deerfield")) %>% 
@@ -1385,8 +1384,16 @@ cook_ratechange <- pin_data %>%
 
 
 ```{r}
-cook_ratechange %>% 
-select("Current Composite Rate" = rate_current, "Rate if Incentive Props LoA is 25%" = rate_noInc, "Tax Rate Change" =  change_noInc) %>% flextable()
+cook_ratechange %>%
+
+select("Current Composite Rate" = rate_current, 
+       "Rate if Incentive Props LoA is 25%" = rate_noInc, 
+       "Tax Rate Change" =  change_noInc) %>% 
+
+  flextable() |>   fmt_pct(#j = 
+
+                            c('Current Composite Rate', 'Rate if Incentive Props LoA is 25%')
+)
 ```
 
 
