@@ -28,11 +28,11 @@ muni_cl_sums <- read_csv("../Output/ptaxsim_muni_class_summaries_2006to2023.csv"
 
 muni_shp <- read_sf("../Necessary_Files/muni_shp.gpkg")
 
-# Create an empty data frame with a column named "year"
-# params <- data.frame(year = numeric(0))
-
-# Add the value 2021 to the "year" column
-# params <- rbind(params, data.frame(year = 2021))
+# # Create an empty data frame with a column named "year"
+#  params <- data.frame(year = numeric(0))
+# 
+# # Add the value 2021 to the "year" column
+#  params <- rbind(params, data.frame(year = 2021))
 
 ```
 
@@ -547,6 +547,8 @@ Was made in Excel. Not recoded for website yet.
 #| - "Current tax burden (levy paid by group / total levy billed by municipality) for all municipalities in Cook County, IL"
 #| - " Change in tax burden if EAV that is current tax exempt due to homestead exemptions became taxable. Measured in percentage point change."
 #| column: page
+#| eval: false
+#| include: false
 
 
 ## Current tax burden 
@@ -568,14 +570,9 @@ pivot_wider(id_cols=clean_name, names_from = Group, values_from = burden_shift) 
 ```
 
 ```{r}
-#| label: burden_change
+#| label: tbl-burden_change
 #| column: page
 #| tbl-cap: "**Supporting Table for Table 2** Change in tax burden if EAV that is current tax exempt due to homestead exemptions became taxable. Measured in percentage point change."
-#| eval: false
-#| include: false
-
-
-## Delete if chunk above does both tables successfully.
 
 burden_shift |>  
     select(clean_name, Group, burden_shift) |>
@@ -583,6 +580,7 @@ burden_shift |>
 pivot_wider(id_cols=clean_name, names_from = Group, values_from = burden_shift) |>
   arrange((`Single-family`)) |> 
   DT::datatable(rownames = FALSE) 
+
 ```
 
 ```{r}
@@ -590,7 +588,9 @@ pivot_wider(id_cols=clean_name, names_from = Group, values_from = burden_shift) 
 #| code-fold: true
 #| tbl-cap: "Table 2 in Exemption Report: Current Share of Taxable EAV and Share of Levy Paid by Class 2 Properties"
 
-datatable(burden_c2, rownames = FALSE,
+burden_c2 |> 
+  mutate(burden_shift = burden_shift*100) |> # multiply by 100 to make it percentage point change without formatting to percent below.
+  datatable(rownames = FALSE,
           colnames = c('Municipality' = 'clean_name', 
                        'Burden Shift, Pct Pt Change' = 'burden_shift', 
                        'Current Tax Burden\nC2 Tax Collected / Muni Levy' = 'pct_taxburden_current', 
@@ -616,7 +616,6 @@ burden_c2 |>
   geom_sf(aes(geometry = geom), color = "black") + 
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
-  # scale_fill_gradientn(
    scale_fill_stepsn(colors = c("#ffffcc","#a1dab4" ,"#41b6c4","#2c7fb8", "#253494"),
                         show.limits=TRUE, 
                      limits = c(0,1),
@@ -635,33 +634,6 @@ burden_c2 |>
 Difference in taxbills for those that do and do not claim homeowner exemption
 
 <!---Used Cholton Taxbills file originally when making this for the exemption report. use pin_data, filter out munis we want that are major class 2, with assessed values of $15K ---->
-
-```{r}
-#| eval: false
-#| include: false 
-
-
-# Descriptive stats calculated from all C2 properties.
-## can cause weird results in tax bill tables if properties that receive other exemption types are kept in the data frame
-
-C2_munistats <- pin_data |> 
-  filter(class > 199 & class < 300) |>
-  group_by(clean_name)  |>
-  arrange(av) |>
-  summarize(
-    median_eq_av = round(median(eq_av)),
-    median_taxed_eav = round(median(eq_av-all_exemptions)),
-    median_av = round(median(av)), 
-    avg_av = round(mean(av)),
-    avg_eq_av = round(mean(eq_av)),
-    avg_taxed_eav = round(mean(eq_av-all_exemptions)),
-
-    C2_pins_in_muni = n(),
-    C2_current_exemptions = sum(all_exemptions, na.rm = TRUE),
-    C2_HO_exemps = sum(exe_homeowner, na.rm = TRUE),
-  )
-# C2_munistats
-```
 
 ```{r}
 #| tbl-cap: "Properties that received multiple exemptions were removed when calculating median and average values."
@@ -784,24 +756,24 @@ muni_median_summarytable |>
 ```{r}
 #| label: tbl-Table3
 #| column: page
-#| tbl-cap: "Table 3. Estimated Bill Change if exempt EAV from the GHE were added to back to the tax base."
+#| tbl-cap: "Table 3. Estimated Bill Change for a municipality's median valued property if exempt EAV from the GHE were added to back to the tax base. "
 
 
 muni_median_summarytable |>
   filter(clean_name %in% c("Chicago", "Dolton", "Glencoe")) |>
-  DT::datatable(rownames = FALSE, 
-                colnames = c(
+  mutate(across(bill_cur:`Taxed EAV`, scales::dollar )) |>
+ rename(Municipality = clean_name,
                   'Claims GHE' = 'has_HO_exemp',
                   'Current Bill' = 'bill_cur',
                   'Hyp. Bill' = 'bill_new', 
                   'Bill Change' = 'bill_change',  
-                  'Perceived Savings'='perceived_savings'))  |>
-  formatCurrency(columns = c(3:9), digits = 0)
-
+                  'Perceived Savings'='perceived_savings' )  |>
+  
+  flextable() 
 ```
 
 ```{r}
-
+#| tbl-cap: "Table that uses pins valued at ~$15,000. Creates unrealistic bill change for some municipalities if they do not have properties valued at 15K."
 
 cholton_15000_summarytable <- pin_data |> 
   
@@ -854,16 +826,24 @@ cholton_15000_summarytable <- pin_data |>
   select(clean_name, AV, has_HO_exemp, bill_cur, bill_new, bill_change, perceived_savings,  `Median AV in Muni`, `EqAV`, `Taxed EAV`
          #everything() 
          ) |>
-
-  DT::datatable(rownames = FALSE, 
-                colnames = c(
+  mutate(across(bill_cur:`Taxed EAV`, scales::dollar )) |>
+ rename(Municipality = clean_name,
                   'Claims GHE' = 'has_HO_exemp',
                   'Current Bill' = 'bill_cur',
                   'Hyp. Bill' = 'bill_new', 
                   'Bill Change' = 'bill_change',  
-                  'Perceived Savings'='perceived_savings'),
-                caption = "Change in Tax Bill for Properties with an Assessed Value of $15,000.")  |>
-  formatCurrency(columns = c(2, 4:9), digits = 0)
+                  'Perceived Savings'='perceived_savings' )  |>
+  
+  flextable()
+  # DT::datatable(rownames = FALSE, 
+  #               colnames = c(
+  #                 'Claims GHE' = 'has_HO_exemp',
+  #                 'Current Bill' = 'bill_cur',
+  #                 'Hyp. Bill' = 'bill_new', 
+  #                 'Bill Change' = 'bill_change',  
+  #                 'Perceived Savings'='perceived_savings'),
+  #               caption = "Change in Tax Bill for Properties with an Assessed Value of $15,000.")  |>
+  # formatCurrency(columns = c(2, 4:9), digits = 0)
 
 cholton_15000_summarytable
 ```
@@ -878,9 +858,14 @@ Municipalities with the largest and smallest reductions in tax base (as a share 
 muni_sums |> 
   filter(year == params$year) |>
   group_by(clean_name) |> 
-  summarize(pct_res_exempt = muni_fmv_exempt / muni_fmv_residential, ) |>  
-  arrange(desc(pct_res_exempt)) |>
-  left_join(C2_munistats_filtered) 
+  summarize(pct_res_exempt = muni_fmv_exempt / muni_fmv_residential) |>  
+  arrange(desc(pct_res_exempt) ) |>
+    left_join(C2_munistats_filtered) |> 
+  mutate(prop_value = median_av*10,
+         pct_res_exempt = scales::percent(pct_res_exempt, accuracy = 0.01) ) |>
+  mutate(across(c(median_eq_av:avg_taxed_eav, prop_value), scales::dollar)) |>
+  select(Municipality = clean_name, `Share Res. Exempt` = pct_res_exempt,
+         `Median Prop. Value` = prop_value, everything())
 ```
 
 ### Figure 10. Tax Burden Shift from Current GHE
@@ -950,6 +935,7 @@ mc_burden |>
     geom_label(label = paste0("Class 2 pays median share of \nlevy (", round(median_burden*100), "%), mix of land use"), x=.42, y = 7.5, label.size = 1, size = 3) +
   
     geom_label(label = "Class 2 pays nearly all of levy, \nhighly residential", x=.70, y = 3, label.size = 1,size = 3)
+
 ```
 
 ### Figure 11. Zero Dollar Bills
@@ -1058,8 +1044,6 @@ pin_data |>
 
 ## Table 6 - Cost of Covering Cook County's current Homestead Exemptions
 
-Not recreated in code yet.
-
 ![](images/clipboard-2324688760.png)
 
 
@@ -1070,6 +1054,7 @@ class8munis <- read_csv("../Output/datarequests_Class8Munis.csv")
 cross_county_lines <- c("030440000", "030585000", "030890000", "030320000", "031280000",
                         "030080000", "030560000", "031120000", "030280000", "030340000",
                         "030150000","030050000", "030180000","030500000", "031210000")
+
 
 tbl_southtriad_exemps <- muni_cl_sums |>
   filter(Triad == "South") |>
@@ -1135,17 +1120,6 @@ tbl <- muni_cl_sums |>
 tbl
 ```
 
-```{r}
-# naive cost:  uses current tax rate!
-cost <- pin_data %>% 
-  summarize(forgone_rev = sum(tax_amt_exe, na.rm = TRUE),
-            exempt_EAV = sum(tax_amt_exe/(tax_code_rate), na.rm = TRUE)
-  )
-```
-
-There is `r scales::comma(cost$exempt_EAV)` EAV that is exempt from property taxes.
-
-It would take `r scales::dollar(cost$forgone_rev)` to meet taxing agencies' levies and prevent the tax rate from changing.
 
 ```{r}
 taxcodes_current <- pin_data %>% 
@@ -1169,22 +1143,39 @@ taxcodes_current <- pin_data %>%
   
   mutate(total_bill_current = final_tax_to_dist + final_tax_to_tif) %>%
   rename(cur_comp_TC_rate = tax_code_rate) %>%
-  mutate(current_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100),
-         new_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100) + HO_exemps) %>%
-  mutate(new_comp_TC_rate = (final_tax_to_dist / new_taxable_eav)*100) %>%
-  mutate(new_comp_TC_rate = ifelse(is.nan(new_comp_TC_rate), cur_comp_TC_rate, new_comp_TC_rate)) %>%
-  select(tax_code_num, cur_comp_TC_rate, new_comp_TC_rate, current_taxable_eav, new_taxable_eav, everything())
+  mutate(current_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate),
+         new_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate) + HO_exemps,
+         new_taxable_eav2 = final_tax_to_dist/(cur_comp_TC_rate) + current_exemptions,
 
-naive_cost = taxcodes_current |> summarize(naive_cost = sum(cur_comp_TC_rate*taxed_eav))
-better_cost_est = taxcodes_current |> summarize(better_cost_est = sum(new_comp_TC_rate*(current_taxable_eav + HO_exemps)))
+         ) %>%
+  mutate(
+    new_comp_TC_rate = (final_tax_to_dist / new_taxable_eav),
+        new_comp_TC_rate2 = (final_tax_to_dist / new_taxable_eav2),
+
+         ) %>%
+  mutate(
+    new_comp_TC_rate = ifelse(is.nan(new_comp_TC_rate), cur_comp_TC_rate, new_comp_TC_rate),
+        new_comp_TC_rate2 = ifelse(is.nan(new_comp_TC_rate2), cur_comp_TC_rate, new_comp_TC_rate2),
+
+         ) %>%
+  select(tax_code_num, cur_comp_TC_rate, new_comp_TC_rate, current_taxable_eav, new_taxable_eav, new_taxable_eav2, new_comp_TC_rate2, everything())
+
+better_cost_est_ghe = taxcodes_current |> 
+  summarize(better_cost_est = sum(new_comp_TC_rate*(HO_exemps)))
+                                            
+better_cost_est_allexe = taxcodes_current |> 
+  summarize(better_cost_est = sum(new_comp_TC_rate2*(current_exemptions)))
+
 
 ```
 
 
-There is `r scales::comma(naive_cost$naive_cost)` EAV that is exempt from property taxes.
 
-It would take `r scales::dollar(better_cost_est$better_cost_est)` to fund the levies without the tax rate increasing from the hypothetical rate to the current rate.
+It would take `r scales::dollar(better_cost_est_ghe$better_cost_est)` to cover the cost of the GHE without the tax rate increasing from the hypothetical rate to the current rate.
 
+It would take `r scales::dollar(better_cost_est_allexe$better_cost_est)` to cover the cost of all exemption without the tax rate increasing from the hypothetical rate to the current rate.
+
+> Not finished for class 8 munis or south triad totals. But done the same way as GHE and all exemption scenarios.
 
 ```{r appendix-table, eval=FALSE, include=FALSE}
 
