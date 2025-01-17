@@ -21,8 +21,6 @@ library(DBI)
 
 ```
 
-# Bring in data
-
 ```{r}
 options(scipen = 999)
 nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx") %>%
@@ -66,7 +64,7 @@ for(i in years){
   
   year_variable = i
   
-  # PTAXSIM tables ---------------------------------------
+# PTAXSIM tables ------------------------------------------------
   
   ## Municipality taxing agencies only + Cicero
   muni_agency_names <- DBI::dbGetQuery(
@@ -195,7 +193,9 @@ pin_data <- pin_data |>
 
   
 pin_data <- pin_data |>
-  mutate(all_exemptions = exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner +
+  mutate(
+    # all exemptions calculated using original data in pin datatable
+    all_exemptions = exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner +
            exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 ,
          
          abatements = exe_abate, #abatements get their own variable
@@ -212,6 +212,8 @@ pin_data <- pin_data |>
     has_DI_exemp = ifelse(exe_disabled > 0, 1, 0),
     has_VR_exemp = ifelse(exe_vet_returning > 0, 1, 0),
     has_DV_exemp = ifelse(exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 > 0, 1, 0),
+    has_DV_exemp_adj = ifelse(exe_missing_disvet > 0 | (exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70) > 0, 1, 0),
+
     has_AB_exemp = ifelse(exe_abate > 0, 1, 0),
 )
 
@@ -270,7 +272,7 @@ pin_data <- pin_data %>%
       (final_tax_to_tif /  tax_code_rate) +
 
       ## difference between 25% and reduced level of assessment for incentive class properties. Excludes TIF increment when calculating the difference!
-     ifelse(between(class, 600, 899), (taxed_av/loa*0.25 - taxed_av)*eq_factor, 0),
+     ifelse(incent_prop==1, (taxed_av/loa*0.25 - taxed_av)*eq_factor, 0),
 
     #  manually adjust untaxable value of class 239 properties
     untaxable_value_eav = ifelse(class == 239,
@@ -424,7 +426,7 @@ mc_burden <- pin_data |>
   
   ## calculate taxbase from each major class 
   ## and the amount of taxes currently collected from each
-  summarize(group_taxbase= sum(taxed_eav, na.rm=T),
+  summarize(group_taxbase = sum(taxed_eav, na.rm=T),
             group_taxes_current = sum(taxed_eav*rate_current, na.rm=T),
             hyp_group_taxbase = sum(taxed_eav + all_exemptions, na.rm = T),
             hyp_group_taxes = sum( (taxed_eav + all_exemptions)*rate_noExe, na.rm = T),
@@ -472,6 +474,10 @@ burden_shift <- pin_data |>
   mutate(burden_shift = pct_taxburden_current - hyp_pct_taxburden)
 
 write_csv(burden_shift, paste0("./Output/muni_burden_shift_", i, "_test.csv"))
+
+
+
+
 
 }
 ```
