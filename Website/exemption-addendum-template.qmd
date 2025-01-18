@@ -845,12 +845,12 @@ pin_data %>%
   mutate(taxable_eav = eq_av - tif_increment_eav - all_exemptions) |>
   filter(clean_name %in% c("Blue Island", "Markham", "Matteson", "Park Forest")) %>%
   pivot_longer(cols = c(all_exemptions:taxable_eav), names_to = "exe_type") %>%
-  filter(exe_type %in% c("taxable_eav", "all_exemptions"))|>
+  filter(exe_type %in% c("taxable_eav", "all_exemptions")) |>
+  mutate(EAV = factor(exe_type, levels = c("taxable_eav", "all_exemptions"), labels = c("Taxed EAV", "Exempt EAV")) ) |>
   ggplot() + 
-  geom_col(aes(x=clean_name, y = value, fill = exe_type), position = "stack") +
+  geom_col(aes(x=clean_name, y = value, fill = EAV), position = "stack") +
   scale_y_continuous(label = scales::dollar, limits = c(0,600000000)) + 
   theme_classic() +
-  scale_fill_discrete(name = "EAV", labels = c("Exempt EAV", "Taxed EAV"), guide = guide_legend(reverse=TRUE)) +
   labs(x = element_blank(), y = "Non-TIF Increment EAV in Municipality")
 ```
 
@@ -870,11 +870,12 @@ pin_data %>%
   filter(clean_name %in% c("Blue Island", "Markham", "Matteson", "Park Forest")) %>%
   pivot_longer(cols = c(all_exemptions:taxable_eav), names_to = "exe_type") %>%
   filter(exe_type %in% c("taxable_eav", "all_exemptions"))|>
+  mutate(EAV = factor(exe_type, levels = c("taxable_eav", "all_exemptions"), labels = c("Taxed EAV", "Exempt EAV")) ) |>
   ggplot() + 
-  geom_col(aes(x=clean_name, y = value, fill = exe_type), position = "stack") +
+  geom_col(aes(x=clean_name, y = value, fill = EAV), position = "stack") +
   scale_y_continuous(label = scales::dollar, limits = c(0,600000000)) + 
   theme_classic() + 
-    scale_fill_discrete(name = "EAV", labels = c("Exempt EAV", "Taxed EAV"), guide = guide_legend(reverse=TRUE)) +
+  #  scale_fill_discrete(name = "EAV", labels = c("Exempt EAV", "Taxed EAV"), guide = guide_legend(reverse=TRUE)) +
   labs(x = element_blank(), y = "Non-TIF Increment EAV in Municipality")
 ```
 
