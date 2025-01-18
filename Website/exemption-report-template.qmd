@@ -268,7 +268,7 @@ muni_cl_sums |>
   scale_fill_manual(values = c("blue3", "deepskyblue3", "gray") )
 ```
 
-Exemption use varies between suburban Cook County (`r geom_sums$ExemptEAV[[1]]` EAV) and the City of Chicago (`r geom_sums$ExemptEAV[[2]]` EAV) , which may point to broader socioeconomic patterns as well as residents' eligibility and uptake.
+Exemption use varies between suburban Cook County (`r scales::comma(geom_sums$ExemptEAV[[1]])` EAV) and the City of Chicago (`r scales::comma(geom_sums$ExemptEAV[[2]])` EAV) , which may point to broader socioeconomic patterns as well as residents' eligibility and uptake.
 
 ### Figure 5. Value of residential exemptions by type in Cook County over time, Tax Years 2006 - `r params$year`
 
@@ -316,9 +316,8 @@ muni_ratechange <- read_csv(paste0("../Output/muni_ratechange_", params$year, "_
 
 
 muni_ratechange |> 
-  select(clean_name,  current_rate_avg, rate_noExe, change_noExe, final_tax_to_dist 
-         ) |> 
-  mutate(change_noExe = change_noExe * 100) |>
+  select(clean_name,  current_rate_avg, rate_noExe, change_noExe, final_tax_to_dist) |> 
+  mutate(change_noExe = round(change_noExe * 100, digits = 2)) |>
   DT::datatable(rownames = FALSE, colnames = c('Municipality' = 'clean_name','Current Comp. Rate' = 'current_rate_avg', 'Hypothetical Rate' = 'rate_noExe',  'Composite Tax Rate Change'='change_noExe', 
 
                        'Composite Levy' = 'final_tax_to_dist'),
@@ -484,7 +483,7 @@ mc_burden |>
 
 ```{r}
 #| label: supporting-table-forfig8
-
+#| column: page
 
 burden_c2 <- mc_burden |> 
   filter(class_1dig == 2) |> 
@@ -508,8 +507,8 @@ burden_shift |>
                   ),
                 caption = "Table 2 in Report for all Municipalities: Current and Hypothetical Composite Tax Rates if GHE $0"
       ) |>
-  formatCurrency(columns = c(3:6), digits = 0) |>
-  formatPercentage(columns = c(7,8), digits = 2)
+  formatCurrency(columns = c(5:8), digits = 0) |>
+  formatPercentage(columns = c(3,4,9,10), digits = 2)
 
 ```
 
@@ -959,73 +958,6 @@ muni_mc_sums |>
 
 ```
 
-```{r}
-#| error: true
-#| include: false
-
-smallbills <- pin_data |> 
-  filter(class_1dig == 2 & taxed_eav < 150 ) |>
-  select(clean_name, class, taxed_eav, eq_av, av, fmv, tax_bill_total, 
-         final_tax_to_dist, pin, everything()) |>
-  arrange(tax_bill_total) |> arrange(desc(tax_bill_total)) |>
-  filter(tax_bill_total > 0)
-
-smallbills
-
-smallbills |>
-  summarize(n = n(), 
-            exe_freeze = sum(exe_freeze, na.rm=T),
-            exe_senior = sum(exe_senior, na.rm=T),
-            exe_homeowner = sum(exe_homeowner, na.rm=T))
-
-
-smallbills |>
-  group_by(clean_name) |>
-  summarize(n = n(), 
-            exe_freeze = sum(exe_freeze, na.rm=T),
-            exe_senior = sum(exe_senior, na.rm=T),
-            exe_homeowner = sum(exe_homeowner, na.rm=T))
-
-smallbills |> 
-  select(clean_name, class, taxed_eav, eq_av, av, fmv, 
-         tax_bill_total, final_tax_to_dist, pin)
-```
-
-```{r}
-#| include: false
-
-
-
-zerobills <- pin_data |> 
-  filter(class_1dig == 2 & taxed_eav > 0 & tax_bill_total == 0) |>
-  select(clean_name, class, taxed_eav, eq_av, av, fmv, tax_bill_total, final_tax_to_dist, pin, exe_homeowner, exe_senior, exe_freeze, everything())  |>
-  arrange(desc(exe_freeze))
-
-zerobills
-
-
-options(scipen = 999)
-
-zerobills |> 
-  reframe(n = n(), total_eav = sum(taxed_eav + exempt_eav, na.rm=TRUE),
-          exe_homeowner = sum(exe_homeowner), exe_senior = sum(exe_senior), 
-          exe_freeze = sum(exe_freeze), taxed_eav = sum(taxed_eav, na.rm=TRUE), 
-          .by = clean_name) |> 
-  arrange(desc(exe_freeze))
-
-zerobills |> 
-  summarize(n = n(), total_eav = sum(taxed_eav + exempt_eav, na.rm=TRUE),
-          exe_homeowner = sum(exe_homeowner), exe_senior = sum(exe_senior), 
-          exe_freeze = sum(exe_freeze), taxed_eav = sum(taxed_eav, na.rm=TRUE)) |> 
-  arrange(desc(exe_freeze))
-
-zerobills |> 
-  group_by(Triad) |>
-  summarize(n = n(), total_eav = sum(taxed_eav + exempt_eav, na.rm=TRUE),
-          exe_homeowner = sum(exe_homeowner), exe_senior = sum(exe_senior), 
-          exe_freeze = sum(exe_freeze), taxed_eav = sum(taxed_eav, na.rm=TRUE)) |> 
-  arrange(desc(exe_freeze))
-```
 
 ```{r}
 #| error: true
@@ -1048,6 +980,8 @@ pin_data |>
 
 
 ```{r}
+#| tbl-cap: "**South Triad PIN Counts, Taxbase, & Exemptions**"
+
 class8munis <- read_csv("../Output/datarequests_Class8Munis.csv")
 
 
@@ -1055,73 +989,6 @@ cross_county_lines <- c("030440000", "030585000", "030890000", "030320000", "031
                         "030080000", "030560000", "031120000", "030280000", "030340000",
                         "030150000","030050000", "030180000","030500000", "031210000")
 
-
-tbl_southtriad_exemps <- muni_cl_sums |>
-  filter(Triad == "South") |>
-  filter(!clean_name %in% cross_county_lines) |>
-  filter(year == params$year) |>
-  group_by(year) |>
-  summarize(
-    'PINs' = sum(muni_c_pins_in_muni),
-    'PINs (w/ exemps.)' = sum(muni_c_has_HO_exemp),
-    "EqAV" = sum(muni_c_equalized_av),
-    'Taxed EAV' = sum(muni_c_current_taxable_eav),
-    'Exempt EAV' = sum(muni_c_all_exemptions),
-    'GHE' = sum(muni_c_exe_homeowner),
-    'Senior' = sum(muni_c_exe_senior),
-    'Senior Freeze' = sum(muni_c_exe_freeze),
-    'Other Exemps.' = sum(muni_c_all_exemptions - muni_c_exe_homeowner - muni_c_exe_senior - muni_c_exe_freeze )
-  ) |>
-  pivot_longer(cols = c('PINs':'Other Exemps.'),
-               names_to = "Metric", values_to = "Total") |>
-  select(-year)
-tbl_southtriad_exemps
-
-
-tbl_class8muni_exemps <- muni_cl_sums |>
-  filter(clean_name %in% class8munis$clean_name) |>
-  filter(!clean_name %in% cross_county_lines) |>
-  filter(year == params$year) |>
-  group_by(year) |>
-  summarize(
-    'PINs' = sum(muni_c_pins_in_muni),
-    'PINs (w/ exemps.)' = sum(muni_c_has_HO_exemp),
-    "EqAV" = sum(muni_c_equalized_av),
-    'Taxed EAV' = sum(muni_c_current_taxable_eav),
-    'Exempt EAV' = sum(muni_c_all_exemptions),
-    'GHE' = sum(muni_c_exe_homeowner),
-    'Senior' = sum(muni_c_exe_senior),
-    'Senior Freeze' = sum(muni_c_exe_freeze),
-    'Other Exemps.' = sum(muni_c_all_exemptions -muni_c_exe_homeowner- muni_c_exe_senior - muni_c_exe_freeze )
-  ) |>
-  pivot_longer(cols = c('PINs':'Other Exemps.'),
-               names_to = "Metric", values_to = "Total") |>
-  select(-year)
-tbl_class8muni_exemps
-
-tbl <- muni_cl_sums |>
-  filter(!clean_name %in% cross_county_lines) |>
-  filter(year == params$year) |>
-  group_by(year) |>
-  summarize(
-    'PINs' = sum(muni_c_pins_in_muni),
-    'PINs (w/ exemps.)' = sum(muni_c_has_HO_exemp),
-    "EqAV" = sum(muni_c_equalized_av),
-    'Taxed EAV' = sum(muni_c_current_taxable_eav),
-    'Exempt EAV' = sum(muni_c_all_exemptions),
-    'GHE' = sum(muni_c_exe_homeowner),
-    'Senior' = sum(muni_c_exe_senior),
-    'Senior Freeze' = sum(muni_c_exe_freeze),
-    'Other Exemps.' = sum(muni_c_all_exemptions - muni_c_exe_homeowner- muni_c_exe_senior - muni_c_exe_freeze )
-  ) |>
-  pivot_longer(cols = c('PINs':'Other Exemps.'),
-               names_to = "Metric", values_to = "Total") |>
-  select(-year) 
-tbl
-```
-
-
-```{r}
 taxcodes_current <- pin_data %>% 
   group_by(tax_code_num)  %>%
   summarize(
@@ -1167,6 +1034,79 @@ better_cost_est_allexe = taxcodes_current |>
   summarize(better_cost_est = sum(new_comp_TC_rate2*(current_exemptions)))
 
 
+
+tbl_southtriad_exemps <- muni_cl_sums |>
+  filter(Triad == "South") |>
+  filter(!clean_name %in% cross_county_lines) |>
+  filter(year == params$year) |>
+  group_by(year) |>
+  summarize(
+    'PINs' = sum(muni_c_pins_in_muni),
+    'PINs (w/ exemps.)' = sum(muni_c_has_HO_exemp),
+    "EqAV" = sum(muni_c_equalized_av),
+    'Taxed EAV' = sum(muni_c_current_taxable_eav),
+    'Exempt EAV' = sum(muni_c_all_exemptions),
+    'GHE' = sum(muni_c_exe_homeowner),
+    'Senior' = sum(muni_c_exe_senior),
+    'Senior Freeze' = sum(muni_c_exe_freeze),
+    'Other Exemps.' = sum(muni_c_all_exemptions - muni_c_exe_homeowner - muni_c_exe_senior - muni_c_exe_freeze )
+  ) |>
+  pivot_longer(cols = c('PINs':'Other Exemps.'),
+               names_to = "Metric", values_to = "Total") |>
+  select(-year)
+tbl_southtriad_exemps
+```
+
+
+```{r}
+#| tbl-cap: "**Municipalities Eligiblef or Class 8 Incentive Properties - PIN Counts, Taxbase, & Exemptions**"
+
+
+tbl_class8muni_exemps <- muni_cl_sums |>
+  filter(clean_name %in% class8munis$clean_name) |>
+  filter(!clean_name %in% cross_county_lines) |>
+  filter(year == params$year) |>
+  group_by(year) |>
+  summarize(
+    'PINs' = sum(muni_c_pins_in_muni),
+    'PINs (w/ exemps.)' = sum(muni_c_has_HO_exemp),
+    "EqAV" = sum(muni_c_equalized_av),
+    'Taxed EAV' = sum(muni_c_current_taxable_eav),
+    'Exempt EAV' = sum(muni_c_all_exemptions),
+    'GHE' = sum(muni_c_exe_homeowner),
+    'Senior' = sum(muni_c_exe_senior),
+    'Senior Freeze' = sum(muni_c_exe_freeze),
+    'Other Exemps.' = sum(muni_c_all_exemptions -muni_c_exe_homeowner- muni_c_exe_senior - muni_c_exe_freeze )
+  ) |>
+  pivot_longer(cols = c('PINs':'Other Exemps.'),
+               names_to = "Metric", values_to = "Total") |>
+  select(-year)
+tbl_class8muni_exemps
+```
+
+
+```{r}
+#| tbl-cap: "**PIN Counts, Taxbase, & Exemptions for Municipalities with a majority of their Taxbase within Cook County**"
+#| 
+tbl <- muni_cl_sums |>
+  filter(!clean_name %in% cross_county_lines) |>
+  filter(year == params$year) |>
+  group_by(year) |>
+  summarize(
+    'PINs' = sum(muni_c_pins_in_muni),
+    'PINs (w/ exemps.)' = sum(muni_c_has_HO_exemp),
+    "EqAV" = sum(muni_c_equalized_av),
+    'Taxed EAV' = sum(muni_c_current_taxable_eav),
+    'Exempt EAV' = sum(muni_c_all_exemptions),
+    'GHE' = sum(muni_c_exe_homeowner),
+    'Senior' = sum(muni_c_exe_senior),
+    'Senior Freeze' = sum(muni_c_exe_freeze),
+    'Other Exemps.' = sum(muni_c_all_exemptions - muni_c_exe_homeowner- muni_c_exe_senior - muni_c_exe_freeze )
+  ) |>
+  pivot_longer(cols = c('PINs':'Other Exemps.'),
+               names_to = "Metric", values_to = "Total") |>
+  select(-year) 
+tbl
 ```
 
 
@@ -1181,8 +1121,7 @@ It would take `r scales::dollar(better_cost_est_allexe$better_cost_est)` to cove
 
 # this is NOT the table in the appendix. The appendix does a situation where the total exemptions are 25% smaller. Calculations were done by Drucker in excel. Has not been coded in R yet for the website.
 
-
-  mc_burden |>
+mc_burden |>
     mutate(pct_taxburden_current = round(pct_taxburden_current * 100, digits = 2),
            group_taxbase = round(group_taxbase),
            change_revcollected = group_taxes_current- hyp_group_taxes ) |>
