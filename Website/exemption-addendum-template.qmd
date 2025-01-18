@@ -24,11 +24,11 @@ library(DT)
 
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 
-# Create an empty data frame with a column named "year"
-params <- data.frame(year = numeric(0))
-
-# Add the value 2021 to the "year" column
-params <- rbind(params, data.frame(year = 2021))
+# # Create an empty data frame with a column named "year"
+# params <- data.frame(year = numeric(0))
+# 
+# # Add the value 2021 to the "year" column
+# params <- rbind(params, data.frame(year = 2021))
 
 i = params$year
 
@@ -845,10 +845,13 @@ pin_data %>%
   mutate(taxable_eav = eq_av - tif_increment_eav - all_exemptions) |>
   filter(clean_name %in% c("Blue Island", "Markham", "Matteson", "Park Forest")) %>%
   pivot_longer(cols = c(all_exemptions:taxable_eav), names_to = "exe_type") %>%
+  # all exemptions includes ... all the exemption types. 
   filter(exe_type %in% c("taxable_eav", "all_exemptions")) |>
   mutate(EAV = factor(exe_type, levels = c("taxable_eav", "all_exemptions"), labels = c("Taxed EAV", "Exempt EAV")) ) |>
   ggplot() + 
   geom_col(aes(x=clean_name, y = value, fill = EAV), position = "stack") +
+    geom_text(aes(x=clean_name, y = value, label = scales::comma(value)), 
+            position = "stack",  vjust=1.1)+
   scale_y_continuous(label = scales::dollar, limits = c(0,600000000)) + 
   theme_classic() +
   labs(x = element_blank(), y = "Non-TIF Increment EAV in Municipality")
@@ -860,11 +863,36 @@ pin_data %>%
 pin_data %>% 
   group_by(clean_name) %>% 
   summarize(
-    #all_exemptions = sum(all_exemptions),
+    all_exemptions = sum(exe_total_adj),
+    eq_av = sum(av_clerk*eq_factor),
+    tif_increment_eav = sum(final_tax_to_tif/tax_code_rate)
+  ) %>%
+  mutate(taxable_eav = eq_av - tif_increment_eav - all_exemptions) |>
+  filter(clean_name %in% c("Blue Island", "Markham", "Matteson", "Park Forest")) %>%
+  pivot_longer(cols = c(all_exemptions:taxable_eav), names_to = "exe_type") %>%
+    # all exemptions includes all exemptions, but adjusted for missing disabled veteran exemptions 
+
+  filter(exe_type %in% c("taxable_eav", "all_exemptions"))|>
+  mutate(EAV = factor(exe_type, levels = c("taxable_eav", "all_exemptions"), labels = c("Taxed EAV", "Exempt EAV")) ) |>
+  ggplot() + 
+  geom_col(aes(x=clean_name, y = value, fill = EAV), position = "stack") +
+  scale_y_continuous(label = scales::dollar, limits = c(0,600000000)) + 
+  theme_classic() + 
+  geom_text(aes(x=clean_name, y = value, label = scales::comma(value)), 
+            position = "stack",  vjust=1.1)+
+  labs(x = element_blank(), y = "Non-TIF Increment EAV in Municipality")
+```
+
+```{r}
+#| fig-cap: "Uses final_tax_to_tif_AWM for TIF increment calculation. Has adjusted exemption values and calculating allvalues from the pin datatable instead of using ptaxsim::tax_bill() values. Would be more correct than original ways values were calculated."
+
+pin_data %>% 
+  group_by(clean_name) %>% 
+  summarize(
     all_exemptions = sum(exe_total_adj),
 
     eq_av = sum(av_clerk*eq_factor),
-    tif_increment_eav = sum(final_tax_to_tif/tax_code_rate)
+    tif_increment_eav = sum(final_tax_to_tif_AWM/tax_code_rate)
   ) %>%
   mutate(taxable_eav = eq_av - tif_increment_eav - all_exemptions) |>
   filter(clean_name %in% c("Blue Island", "Markham", "Matteson", "Park Forest")) %>%
@@ -873,9 +901,10 @@ pin_data %>%
   mutate(EAV = factor(exe_type, levels = c("taxable_eav", "all_exemptions"), labels = c("Taxed EAV", "Exempt EAV")) ) |>
   ggplot() + 
   geom_col(aes(x=clean_name, y = value, fill = EAV), position = "stack") +
+  geom_text(aes(x=clean_name, y = value, label = scales::comma(value)), 
+            position = "stack",  vjust=1.1)+
   scale_y_continuous(label = scales::dollar, limits = c(0,600000000)) + 
   theme_classic() + 
-  #  scale_fill_discrete(name = "EAV", labels = c("Exempt EAV", "Taxed EAV"), guide = guide_legend(reverse=TRUE)) +
   labs(x = element_blank(), y = "Non-TIF Increment EAV in Municipality")
 ```
 
@@ -908,8 +937,6 @@ milhomes_w_exemps <- munis_ranked %>%
 There are `r scales::comma(mil_homes_total$million_dollar_homes)` homes worth $1 million dollars in Cook County, IL.
 
 Of those homes, `r scales::comma(mil_homes_w_ghe$million_dollar_homes)` claim the GHE, which reduces 10,000 EAV from the properties equalized AV. 
-
-There are `r scales::comma(mil_home_count$million_dollar_homes)` million dollar homes that did claim the GHE.
 
 Amount of money that could be “transferred” to areas impacted by high tax rates =
 
