@@ -24,11 +24,11 @@ library(DT)
 
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 
-# # Create an empty data frame with a column named "year"
-# params <- data.frame(year = numeric(0))
-# 
-# # Add the value 2021 to the "year" column
-# params <- rbind(params, data.frame(year = 2021))
+# Create an empty data frame with a column named "year"
+params <- data.frame(year = numeric(0))
+
+# Add the value 2021 to the "year" column
+params <- rbind(params, data.frame(year = 2021))
 
 i = params$year
 
@@ -129,7 +129,7 @@ We believe this decision is a feature and not bug of the analysis in the Addendu
 
 ```{r}
 #| label: tbl-taxbillchange
-#| tbl-cap: "AV stands for \"assessed value\" \"Tax calculator reduction\" refers to the exemption values shown on the tax bill received by taxpayers. Values are estimated using an average of the properties with an AV within $1,000 of it's municipality's median AV to enlarge the number of observations. Thus, our calculations do not precisely represent the median." 
+#| tbl-cap: "**Change in Tax Bill for Properties with an Assessed Value of $15,000.** AV stands for \"assessed value\" \"Tax calculator reduction\" refers to the exemption values shown on the tax bill received by taxpayers. Values are estimated using an average of the properties with an AV within $1,000 of it's municipality's median AV to enlarge the number of observations. Thus, our calculations do not precisely represent the median." 
 
 tax_bill_change_HO <- c2pins %>% 
   left_join(muni_rates) |>
@@ -149,17 +149,16 @@ tax_bill_change_HO <- c2pins %>%
             perceived_savings = median(exe_homeowner*tax_code_rate)
   )
 
-tax_bill_change_HO |> filter(clean_name %in% c("Park Forest", "Phoenix", "Winnetka", "Riverdale")) |>
-
-  DT::datatable(rownames = FALSE, 
-                colnames = c(
+tax_bill_change_HO |> 
+  filter(clean_name %in% c("Park Forest", "Phoenix", "Winnetka", "Riverdale")) |>
+  mutate(across(c(median_AV:median_change, perceived_savings), scales::dollar) ) |>
+  rename( 'Municipality' = 'clean_name',
                   'Claims GHE' = 'has_HO_exemp',
                   'Current Bill' = 'median_bill_cur',
                   'Hyp. Bill' = 'median_bill_new', 
                   'Bill Change' = 'median_change',  
-                  'Perceived Savings'='perceived_savings'),
-                caption = "Change in Tax Bill for Properties with an Assessed Value of $15,000.")  |>
-  formatCurrency(columns = c(2, 4:9), digits = 0)
+                  'Perceived Savings'='perceived_savings') |>
+  flextable::flextable()
 ```
 
 
@@ -305,23 +304,8 @@ For the different exemption scenarios, we created new exemption variables for al
 ```{r increase-exemptions-hypotheticals}
 pin_data <- pin_data %>% 
   left_join(class_dict, by = c("class" = "class_code")) %>%
-  #  mutate(has_HO_exemp = ifelse( exe_homeowner > 0, 1, 0),
-         # has_other_exe = ifelse(exe_senior + exe_freeze + exe_longtime_homeowner + exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 > 0, 1, 0 )) %>% 
- # left_join(tax_codes) |>
- # left_join(tc_muninames) %>%
- # mutate(av = av_clerk) |>
- # left_join(tax_code_change) |>
- # left_join(tif_distribution) |>
   mutate(
-    # tax_code_distribution_pct = ifelse(is.na(tax_code_distribution_pct), 0, tax_code_distribution_pct),
-    # in_tif = ifelse(tax_code_num %in% tif_distribution$tax_code_num, 1, 0),
-    # has_HO_exemp = ifelse(exe_homeowner > 0, 1, 0),
-    # has_other_exe = ifelse(exe_senior + exe_freeze + exe_longtime_homeowner + exe_disabled +
-    #                          exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + 
-    #                          exe_vet_dis_ge70 > 0, 1, 0 ),
-    # all_exemptions = rowSums(across(starts_with("exe_"))),
-    # final_tax_to_tif = tax_bill_total *  tax_code_distribution_pct,
-    # final_tax_to_dist = tax_bill_total-final_tax_to_tif,
+ 
     tif_increment_eav = final_tax_to_tif / tax_code_rate,
     
     nontif_eav_preexe = av_clerk*eq_factor - tif_increment_eav,
@@ -400,7 +384,9 @@ scenario_calcs <- pin_data %>%
 scenario_taxrates <- scenario_calcs %>%  
   select(clean_name, MuniLevy, tr_neg10:taxrate_noTIFs_orExemps) 
 
-scenario_taxrates |> mutate(across(.cols=(tr_neg10:taxrate_noTIFs_orExemps), round, digits=3)) |>
+scenario_taxrates |> 
+  select(-c(tax_rate_current:taxrate_noTIFs_orExemps)) |>
+  #mutate(across(.cols=(tr_neg10:tr_plus40), s, accuracy = 0.01)) |>
   rename(Municipality = clean_name,
         `Composite Levy` = MuniLevy,
     `Rate if \nGHE=0K` = tr_neg10, 
@@ -409,7 +395,10 @@ scenario_taxrates |> mutate(across(.cols=(tr_neg10:taxrate_noTIFs_orExemps), rou
          `Rate if\nGHE=30K` = tr_plus20, 
          `Rate if\nGHE=40K` = tr_plus30, 
          `Rate if\nGHE=50K` = tr_plus40) |> 
-  DT::datatable(rownames = FALSE)
+  DT::datatable(rownames = FALSE)  |>
+  formatCurrency(columns = c(2), digits = 0) |>
+  formatPercentage(3:8, digits = 1)
+
 ```
 
 ```{r}
@@ -532,6 +521,9 @@ ggplot(data = ratios, aes(y = currbill_to_AV_25, x = currbill_to_AV_75, label = 
 ```{r}
 #| label: pindistribution
 #| fig-cap: "**Distribution of Assessed Values: Class 2 Properties vs Single-Family Properties** There is a difference in the assessed values depending on if you use all 200 level properties or only a subset of them. All figures and tables were created for both options when writing the report as a robustness check."
+#| fig-subcap: 
+#|   - "Major Class 2 Properties"
+#|   - "Single-family subgroup of C2 Properties"
 #| out-width: 50% 
 #| layout-ncol: 2
 
@@ -731,13 +723,16 @@ ggplot(data = new_ratios, aes(y = newbill_to_AV_25, x = newbill_to_AV_75, label 
 ```{r}
 scenario_taxrates %>% 
   filter(clean_name %in% c("Chicago", "Dolton", "Glencoe")) |>
+  mutate(across(starts_with("tr_"), scales::percent, accuracy = 0.01))|>
   select(Municipality = clean_name,
          "0 GHE" = tr_neg10,
          "10,000 GHE (Current)" = tr_nochange,
          "20,000 GHE" = tr_plus10,
          "30,000 GHE" = tr_plus20,
          "40,000 GHE" = tr_plus30,
-         "50,000 GHE" = tr_plus40)
+         "50,000 GHE" = tr_plus40) |>
+  flextable::flextable()
+
 ```
 
 
@@ -815,6 +810,8 @@ pin_data %>%
 ```
 
 ```{r}
+#| tbl-cap: "Exempt EAV by Exemption Type"
+#
 pin_data %>% 
   group_by(clean_name) %>% 
   summarize(
@@ -825,7 +822,11 @@ pin_data %>%
     Other = sum(exe_missing_disvet+exe_disabled),
     
   ) %>%
-  arrange(desc(Other))
+  ungroup()  |> 
+  mutate(across(Homeowner:Other, scales::comma)) |>
+  rename(Municipality = clean_name) |>
+  arrange(desc(Other)) |> 
+  DT::datatable(rownames = FALSE)
  
 ```
 
@@ -836,7 +837,32 @@ pin_data %>%
 pin_data %>% 
   group_by(clean_name) %>% 
   summarize(
-    all_exemptions = sum(all_exemptions),
+    all_exemptions = sum(exe_total),
+
+    eq_av = sum(av_clerk*eq_factor),
+    tif_increment_eav = sum(final_tax_to_tif/tax_code_rate)
+  ) %>%
+  mutate(taxable_eav = eq_av - tif_increment_eav - all_exemptions) |>
+  filter(clean_name %in% c("Blue Island", "Markham", "Matteson", "Park Forest")) %>%
+  pivot_longer(cols = c(all_exemptions:taxable_eav), names_to = "exe_type") %>%
+  filter(exe_type %in% c("taxable_eav", "all_exemptions"))|>
+  ggplot() + 
+  geom_col(aes(x=clean_name, y = value, fill = exe_type), position = "stack") +
+  scale_y_continuous(label = scales::dollar, limits = c(0,600000000)) + 
+  theme_classic() +
+  scale_fill_discrete(name = "EAV", labels = c("Exempt EAV", "Taxed EAV"), guide = guide_legend(reverse=TRUE)) +
+  labs(x = element_blank(), y = "Non-TIF Increment EAV in Municipality")
+```
+
+```{r}
+#| fig-cap: "With adjusted exemption values and calculating allvalues from the pin datatable instead of using ptaxsim::tax_bill() values. Would be more correct than original ways values were calculated."
+
+pin_data %>% 
+  group_by(clean_name) %>% 
+  summarize(
+    #all_exemptions = sum(all_exemptions),
+    all_exemptions = sum(exe_total_adj),
+
     eq_av = sum(av_clerk*eq_factor),
     tif_increment_eav = sum(final_tax_to_tif/tax_code_rate)
   ) %>%
@@ -848,6 +874,42 @@ pin_data %>%
   geom_col(aes(x=clean_name, y = value, fill = exe_type), position = "stack") +
   scale_y_continuous(label = scales::dollar, limits = c(0,600000000)) + 
   theme_classic() + 
+    scale_fill_discrete(name = "EAV", labels = c("Exempt EAV", "Taxed EAV"), guide = guide_legend(reverse=TRUE)) +
   labs(x = element_blank(), y = "Non-TIF Increment EAV in Municipality")
 ```
 
+### Million dollar homes
+
+Excluding home valued at $1 milliom from GHE eligibility. 
+
+```{r}
+
+mil_homes_total <- munis_ranked %>% mutate(mil_home = ifelse(class_1dig == 2 & av*10 > 1000000, 1, 0) ) %>% summarize(million_dollar_homes = sum(mil_home))
+
+mil_homes_w_ghe <- munis_ranked %>% mutate(mil_home = ifelse(class_1dig == 2 & av*10 > 1000000,1,0) ) %>% filter(has_HO_exemp == 1)  %>% summarize(million_dollar_homes = sum(mil_home))
+
+mil_home_count <- munis_ranked %>% 
+  mutate(mil_home = ifelse(class_1dig == 2 &av*10 > 1000000,1,0) ) %>%
+  filter(has_HO_exemp == 1) %>% 
+  summarize(million_dollar_homes = sum(mil_home))
+
+milhomes_w_exemps <- munis_ranked %>% 
+  mutate(mil_home = ifelse(class_1dig == 2 & av*10 > 1000000, 1, 0) ) %>%
+  filter(has_HO_exemp == 1 & mil_home == 1) %>% 
+  summarize(
+    exempt_eav  = sum(exe_total),
+    million_dollar_homes = sum(mil_home),
+    bonus_rev = sum(tax_code_rate*exe_homeowner))
+
+
+```
+
+There are `r scales::comma(mil_homes_total$million_dollar_homes)` homes worth $1 million dollars in Cook County, IL.
+
+Of those homes, `r scales::comma(mil_homes_w_ghe$million_dollar_homes)` claim the GHE, which reduces 10,000 EAV from the properties equalized AV. 
+
+There are `r scales::comma(mil_home_count$million_dollar_homes)` million dollar homes that did claim the GHE.
+
+Amount of money that could be “transferred” to areas impacted by high tax rates =
+
+Sum of (tax code rate * exempt EAV) =  `r scales::dollar(milhomes_w_exemps$bonus_rev)`
