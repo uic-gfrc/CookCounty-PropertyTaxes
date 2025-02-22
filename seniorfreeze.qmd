@@ -143,19 +143,6 @@ data |>
             HHWT = sum(HHWT),
             PERWT = sum(PERWT))
 
-# data |> 
-# #  group_by(SERIAL) |>  ## Household ID number
-#   summarize(multi_peep = n(),
-#             HHWT = mean(HHWT, na.rm=TRUE),
-#             owned = max(OWNERSHP),
-#             hhinc = max(HHINCOME, na.rm=TRUE),
-#             house_value = max(VALUEH),
-#             oldest = max(AGE),
-#             youngest = min(AGE), 
-#             PUMA = mean(PUMA, na.rm=TRUE)) |> 
-#   #filter(multi_peep > 1) |> 
-#   arrange(desc(multi_peep) )
-
 ```
 
 38,112 obs in data for Cook County downloaded from IPUMS. summed HHWT representing 5,029,986 households and 5,086,576 individuals. 
@@ -212,12 +199,12 @@ data %>% filter(YEAR == 2023) |>
 
 
 ```{r}
-HHdesign <- survey::svydesign(id = ~SERIAL, nest=TRUE, strata = ~STRATA, weights = ~HHWT, data = data) 
 
-inc_quantiles <- survey::svyquantile(~HHINCOME, design=HHdesign, 
-                    quantiles = c(0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1) ,
-                    na.rm=TRUE, ci = FALSE  )
-inc_quantiles
+
+# inc_quantiles <- survey::svyquantile(~HHINCOME, design=HHdesign, 
+#                     quantiles = c(0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1) ,
+#                     na.rm=TRUE, ci = FALSE  )
+# inc_quantiles
 # 
 #          0   0.1   0.2   0.3   0.4   0.5    0.6    0.7    0.8    0.9       1
 # [1,] -7900 21600 40000 58700 77000 97000 120000 148400 185000 261000 1744000
@@ -238,7 +225,10 @@ data <- data %>%
   #   HHINCOME >= 261000 ~ 10)
   # ) %>%
   mutate(
-    below_freeze = ifelse(HHINCOME >= 85000, "Not Eligible", "Eligible"),
+    below_freeze = ifelse(HHINCOME >= 65000, "Not Eligible", "Eligible"),
+
+    ## current senior freeze threshold!
+    new_freeze = ifelse(HHINCOME >= 85000, "Not Eligible", "Eligible"),
     ## Padding FIPS code for merging with spatial geometry later
    # countyFIP = str_pad(COUNTYFIP, 3, pad = "0")
     )
@@ -257,7 +247,42 @@ data <- data %>%
 #     INCEARN >= 500000 & INCEARN < 700000 ~ 9,
 #     INCEARN >= 700000 ~ 10)
 #   ) 
+
+HHdesign <- survey::svydesign(id = ~SERIAL, nest=TRUE, strata = ~STRATA, weights = ~HHWT, data = data) 
 ```
+
+## Current Policy - $65K
+```{r}
+incometable <- svytable(~ YEAR + PUMA + OWNERSHP  + age_cat + below_freeze, design = HHdesign)
+
+mapPUMAboth <- incometable %>% 
+  as_tibble() %>%
+  mutate(PUMA = str_pad(PUMA, 5, side= "left", pad = "0"),
+         ) |>
+  group_by(YEAR, PUMA) |>
+     mutate(
+       Prop = n/sum(n)) %>%
+     filter(below_freeze == "Eligible" & age_cat == "65+" & OWNERSHP == 1) %>%
+    inner_join(pumas, by = c("PUMA" = "puma", "YEAR"))
+
+
+figure5c <- ggplot(mapPUMAboth, aes(fill = Prop)) +
+  geom_sf(aes(geometry = geometry), color = "black")+ 
+  labs(title = "Share of all Own. Occ. Households 65+ w/ HH incomes < $65K",
+       subtitle = "Currently Eligible for Senior Freeze") + 
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+
+     scale_fill_binned(high = "darkblue", low = "white", 
+                       show.limits=TRUE,
+                       nice.breaks=FALSE,
+                       labels=scales::percent,
+                        name = "% with HH Inc < 65K ") +
+  facet_wrap(~YEAR)
+figure5c
+```
+
+## New Policy - $85K
 
 ```{r}
 HHdesign <- survey::svydesign(id = ~SERIAL, nest=TRUE, strata = ~STRATA, weights = ~HHWT, data = data) 
@@ -327,17 +352,17 @@ figure
 
 
 ```{r}
-incometable <- svytable(~ YEAR + PUMA + below_freeze, design = HHdesign)
+incometable <- svytable(~ YEAR + PUMA + new_freeze, design = HHdesign)
 
 mapPUMAboth <- incometable %>% 
   as_tibble() %>%
   mutate(PUMA = str_pad(PUMA, 5, side= "left", pad = "0"),
-        # below_freeze = ifelse(hhincdecile_w >= 5, "Not Eligible", "Eligible")
+        # new_freeze = ifelse(hhincdecile_w >= 5, "Not Eligible", "Eligible")
          ) |>
   group_by(YEAR, PUMA) |>
      mutate(
        Prop = n/sum(n)) %>%
-     filter(below_freeze == "Eligible")|>
+     filter(new_freeze == "Eligible")|>
   left_join(pumas, by = c("PUMA" = "puma", "YEAR" = "YEAR"))
  
 #mapPUMAboth %>% select(YEAR, countyFIP, PUMA, Prop, n, NAME10)
@@ -346,7 +371,7 @@ mapPUMAboth <- incometable %>%
 
 figure5c <- ggplot(mapPUMAboth, aes(fill = Prop)) +
   geom_sf(aes(geometry = geometry), color = "black")+ 
-  labs(title = "Share of ALL households below 77K") + 
+  labs(title = "Share of ALL households below 85K") + 
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
 
@@ -354,23 +379,23 @@ figure5c <- ggplot(mapPUMAboth, aes(fill = Prop)) +
                        show.limits=TRUE,
                        nice.breaks=FALSE,
                        labels=scales::percent,
-                        name = "% with HH Inc < 77K ") +
+                        name = "% with HH Inc < 85K ") +
   facet_wrap(~YEAR)
 figure5c
 ```
 
 ```{r}
-incometable <- svytable(~ YEAR + PUMA + age_cat + below_freeze, design = HHdesign)
+incometable <- svytable(~ YEAR + PUMA + age_cat + new_freeze, design = HHdesign)
 
 mapPUMAboth <- incometable %>% 
   as_tibble() %>%
   mutate(PUMA = str_pad(PUMA, 5, side= "left", pad = "0"),
-        # below_freeze = ifelse(hhincdecile_w >= 5, "Not Eligible", "Eligible")
+        # new_freeze = ifelse(hhincdecile_w >= 5, "Not Eligible", "Eligible")
          ) |>
   group_by(YEAR, PUMA) |>
      mutate(
        Prop = n/sum(n)) %>%
-     filter(below_freeze == "Eligible" & age_cat == "65+") %>%
+     filter(new_freeze == "Eligible" & age_cat == "65+") %>%
     inner_join(pumas, by = c("PUMA" = "puma", "YEAR"))
  
 #mapPUMAboth %>% select(YEAR, PUMA, Prop, n, age_cat)
@@ -392,9 +417,8 @@ figure5c
 ```
 
 
-
 ```{r}
-incometable <- svytable(~ YEAR + PUMA + OWNERSHP  + age_cat + below_freeze, design = HHdesign)
+incometable <- svytable(~ YEAR + PUMA + OWNERSHP  + age_cat + new_freeze, design = HHdesign)
 
 mapPUMAboth <- incometable %>% 
   as_tibble() %>%
@@ -403,7 +427,7 @@ mapPUMAboth <- incometable %>%
   group_by(YEAR, PUMA) |>
      mutate(
        Prop = n/sum(n)) %>%
-     filter(below_freeze == "Eligible" & age_cat == "65+" & OWNERSHP == 1) %>%
+     filter(new_freeze == "Eligible" & age_cat == "65+" & OWNERSHP == 1) %>%
     inner_join(pumas, by = c("PUMA" = "puma", "YEAR"))
 
 
@@ -422,6 +446,9 @@ figure5c <- ggplot(mapPUMAboth, aes(fill = Prop)) +
   facet_wrap(~YEAR)
 figure5c
 ```
+
+
+
 
 
 
