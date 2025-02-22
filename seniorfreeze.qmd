@@ -1,0 +1,362 @@
+---
+title: "Senior Freeze Proposed Policy Change"
+format: 
+  html:
+    toc: true
+    code-tools: true
+    code-fold: true
+    
+---
+
+"Low-income Senior Citizens Assessment Freeze Homestead Exemption (SCAFHE)
+A person qualifies for this exemption if the person
+
+- is at least 65 years old;  
+- has a total household income of $65,000 or less; and  
+- meets certain other qualifications.  
+
+This exemption "freezes" the senior citizen's property's equalized assessed value the year that the senior citizen qualifies for the exemption. The property's equalized assessed value does not increase as long as qualification for the exemption continues. The tax bill may still increase if any tax rates are increased or if improvements are added that increase the value of the property.
+
+This exemption allows senior citizens who meet the qualifications to elect to maintain the equalized assessed value (EAV) of their homes at the base year EAV and prevent any increase in that value due to inflation. The amount of the exemption benefit is determined each year based on (1) the property's current EAV minus the frozen base year value (the property's prior year's EAV for which the applicant first qualifies for the exemption), and (2) the applicant's total household maximum income limitation.
+
+Each year applicants must file a Form PTAX-340, Low-income Senior Citizens Assessment Freeze Homestead Exemption Application and Affidavit, with the Chief County Assessment Office.
+
+(35 ILCS 200/15-170)" 
+[Illinois.gov](https://tax.illinois.gov/localgovernments/property/taxrelief.html#:~:text=This%20program%20allows%20persons%2065,%247%2C500)%20on%20their%20principal%20residences)
+
+
+```{r warning=FALSE, message=FALSE}
+library(tidyverse)
+library(ipumsr)
+library(tigris)
+library(srvyr)
+library(naniar)
+library(survey)
+
+knitr::opts_chunk$set(message = FALSE)
+
+
+ddi <- read_ipums_ddi("inputs/usa_00025.xml")
+data <- read_ipums_micro(ddi)
+
+pumasIL <- pumas("IL", cb=T, year=2020) 
+
+
+data <- data |> 
+  mutate(
+    VALUEH = ifelse(VALUEH == 9999999, NA, VALUEH),
+    HHINCOME = ifelse(HHINCOME == 9999999 | HHINCOME == 9999998, NA, HHINCOME)
+  )
+
+data <- data %>% 
+  mutate(age_cat = 
+           
+           case_when(AGE < 24 ~ "16to24",
+                     AGE > 24 & AGE < 35 ~ "25to34",
+                     AGE > 34 & AGE < 45 ~ "35to44",
+                     AGE > 44 & AGE < 55 ~ "45to54",
+                     AGE > 54 & AGE < 65 ~ "55to64",
+                     AGE > 64 ~ "65+"),
+         sex_cat = case_when(SEX == 1 ~ "Male",
+                             SEX == 2 ~ "Female"))
+
+#check coding make sure it is the same for both censuses
+data <-  data %>% mutate(white = if_else(RACE ==1, 1, 0),
+                         black = if_else(RACE ==2, 1, 0), 
+                         asian = if_else(RACE %in% c(4,5,6), 1, 0),
+                         otherrace = if_else(RACE %in% c(3,7,8,9),1,0)) 
+
+# individual level, we want household level. so this is probably NOT what we want to be using.
+# dstrata <- survey::svydesign(id = ~CLUSTER, strata = ~STRATA, weights = ~PERWT, data = data) %>% 
+#   as_survey() %>%
+#   mutate(decile = ntile(INCEARN, 10),
+#          hhdecile = ntile(HHINCOME, 10))
+```
+
+```{r}
+# PUMA shapefiles
+
+cook_words <- c("Cook", "Chicago")
+
+pumasIL2020 <- pumas("IL", cb=T, year=2020) 
+
+pumasIL2020 <- pumasIL2020 |>
+  mutate(County = ifelse(
+    str_sub(GEOID20, 1, 5) == "17031", "Cook", NA)
+    )
+
+
+pumasIL2018 <- pumas("IL", cb=T, year=2018) 
+
+pumasIL2018 <- pumasIL2018 |>
+  mutate(County = ifelse(
+    (str_sub(GEOID10, 1, 5) == "17034" | 
+    str_sub(GEOID10, 1, 5) == "17035") == TRUE, "Cook", NA)    )
+
+```
+
+```{r}
+head(data$HHTYPE)
+summarytools::freq(data$HHTYPE)
+head(data$OWNERSHP)
+
+data |> 
+  group_by(SERIAL) |>  ## Household ID number
+  summarize(multi_peep = n(),
+            HHWT = mean(HHWT),
+            owned = max(OWNERSHP),
+            hhinc = max(HHINCOME),
+            house_value = max(VALUEH),
+            oldest = max(AGE),
+            youngest = min(AGE), 
+            PUMA = mean(PUMA)) |> 
+ # filter(multi_peep > 1) |> 
+  arrange(desc(multi_peep) )
+
+data |> 
+  #group_by(SERIAL) |>  ## Household ID number
+  summarize(obs = n(),
+            HHWT = sum(HHWT),
+            PERWT = sum(PERWT))
+
+# data |> 
+# #  group_by(SERIAL) |>  ## Household ID number
+#   summarize(multi_peep = n(),
+#             HHWT = mean(HHWT, na.rm=TRUE),
+#             owned = max(OWNERSHP),
+#             hhinc = max(HHINCOME, na.rm=TRUE),
+#             house_value = max(VALUEH),
+#             oldest = max(AGE),
+#             youngest = min(AGE), 
+#             PUMA = mean(PUMA, na.rm=TRUE)) |> 
+#   #filter(multi_peep > 1) |> 
+#   arrange(desc(multi_peep) )
+
+```
+38,112 obs in data for Cook County downloaded from IPUMS. summed HHWT representing 5,029,986 households and 5,086,576 individuals. 
+
+10,461 unweighted household observations with more than 1 person in them. 17,119 unweighted household observations in IPUMs data for Cook County. 
+
+```{r}
+obs_perPUMA<- data %>% 
+   group_by(PUMA, age_cat) %>% 
+   dplyr::summarize(weightedcount=sum(HHWT), #weighted 
+                    unweightedcount = n()) %>%
+  arrange(PUMA)
+obs_perPUMA
+obs_perPUMA |> select(-unweightedcount) |> pivot_wider(names_from = "age_cat", values_from = "weightedcount")
+
+
+# 1 = OWNED, 2 = RENTED, 3 = N/A
+obs_perPUMA<- data %>% 
+  filter(PERNUM == 1) |> # only use one person from each household, the "householder"?
+   group_by(PUMA, age_cat, OWNERSHP ) %>% 
+   dplyr::summarize(
+     hhs_wghted = sum(HHWT),
+     unweightedcount = n()) %>%
+  arrange(PUMA)
+
+obs_perPUMA
+```
+
+
+```{r}
+# INCEARN
+# AGE
+# VETSTAT
+# HHINCOME
+
+
+data %>%
+  filter()
+  ggplot() + geom_histogram(aes(x=HHINCOME, weight = HHWT))
+
+data %>%
+  ggplot() + geom_histogram(aes(x=INCEARN, weight = PERWT))
+```
+
+
+```{r}
+HHdesign <- survey::svydesign(id = ~SERIAL, nest=TRUE, strata = ~STRATA, weights = ~HHWT, data = data) 
+
+inc_quantiles <- survey::svyquantile(~HHINCOME, design=HHdesign, 
+                    quantiles = c(0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1) ,
+                    na.rm=TRUE, ci = FALSE  )
+inc_quantiles
+# 
+#          0   0.1   0.2   0.3   0.4   0.5    0.6    0.7    0.8    0.9       1
+# [1,] -7900 21600 40000 58700 77000 97000 120000 148400 185000 261000 1744000
+#          
+## numbers used for income breaks are calculated in Income Deciles section. 
+# created now so that the variable exists in the joined dataset before creating the survey design object
+data <- data %>% 
+  mutate(hhincdecile_w = case_when(
+    HHINCOME < 21600 ~ 1, 
+    HHINCOME >= 21600 & HHINCOME < 40000 ~ 2,
+    HHINCOME >= 40000 & HHINCOME < 58700 ~ 3,
+    HHINCOME >= 58700 & HHINCOME < 77000 ~ 4,
+    HHINCOME >= 77000 & HHINCOME < 97000 ~ 5,
+    HHINCOME >= 97000 & HHINCOME < 120000 ~ 6,
+    HHINCOME >= 120000 & HHINCOME < 148400 ~ 7,
+    HHINCOME >= 148400 & HHINCOME < 185000 ~ 8,
+    HHINCOME >= 185000 & HHINCOME < 261000 ~ 9,
+    HHINCOME >= 261000 ~ 10)
+  ) %>%
+  mutate(
+    above_freeze = ifelse(hhincdecile_w >= 5, "Not Eligible", "Eligible"),
+    ## Padding FIPS code for merging with spatial geometry later
+    PUMA = str_pad(PUMA, 5,side = "left", pad="0"),
+    countyFIP = str_pad(COUNTYFIP, 3, pad = "0"))
+#          
+# 
+# data <- data %>% 
+#   mutate(incdecile_w = case_when(
+#     INCEARN < 125000 ~ 1, 
+#     INCEARN >= 125000 & INCEARN < 185000 ~ 2,
+#     INCEARN >= 185000 & INCEARN < 227000 ~ 3,
+#     INCEARN >= 227000 & INCEARN < 260000 ~ 4,
+#     INCEARN >= 250000 & INCEARN < 300000 ~ 5,
+#     INCEARN >= 300000 & INCEARN < 350000 ~ 6,
+#     INCEARN >= 350000 & INCEARN < 400000 ~ 7,
+#     INCEARN >= 400000 & INCEARN < 500000 ~ 8,
+#     INCEARN >= 500000 & INCEARN < 700000 ~ 9,
+#     INCEARN >= 700000 ~ 10)
+#   ) 
+```
+
+```{r}
+HHdesign <- survey::svydesign(id = ~SERIAL, nest=TRUE, strata = ~STRATA, weights = ~HHWT, data = data) 
+
+agetable <- svytable(~ PUMA+ age_cat, design = HHdesign)
+
+
+mapPUMAboth <- agetable %>% 
+  as_tibble() %>%
+  mutate(PUMA = str_pad(PUMA, 5, side= "left", pad = "0")) |>
+  group_by(PUMA) %>% 
+     mutate(
+       Prop = n/sum(n)) %>%
+     filter(age_cat =="65+"
+            ) %>%
+    left_join(pumasIL2020, by = c("PUMA" = "PUMACE20"))
+ 
+#mapPUMAboth %>% select(YEAR, countyFIP, PUMA, Prop, n, NAME10)
+
+
+
+figure5c <- ggplot(mapPUMAboth, aes(fill = Prop)) +
+  geom_sf(aes(geometry = geometry), color = "black")+ 
+  labs(title = "Senior Households are up to 30% of all households in some areas", 
+       subtitle = "Percent of PUMA Households in 2023 that are 65+") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+
+     scale_fill_binned(
+                      high = "darkblue", low = "white", 
+                       show.limits=TRUE,
+                       nice.breaks=FALSE,
+                       labels=scales::percent,
+                        name = "% HH 65+")
+figure5c
+```
+
+
+```{r}
+incometable <- svytable(~ PUMA + above_freeze, design = HHdesign)
+
+mapPUMAboth <- incometable %>% 
+  as_tibble() %>%
+  mutate(PUMA = str_pad(PUMA, 5, side= "left", pad = "0"),
+        # above_freeze = ifelse(hhincdecile_w >= 5, "Not Eligible", "Eligible")
+         ) |>
+  group_by(PUMA) |>
+     mutate(
+       Prop = n/sum(n)) %>%
+     filter(above_freeze == "Eligible") %>%
+    inner_join(pumasIL, by = c("PUMA" = "PUMACE20"))
+ 
+#mapPUMAboth %>% select(YEAR, countyFIP, PUMA, Prop, n, NAME10)
+
+
+
+figure5c <- ggplot(mapPUMAboth, aes(fill = Prop)) +
+  geom_sf(aes(geometry = geometry), color = "black")+ 
+  labs(title = "Share of ALL households below 77K") + 
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+
+     scale_fill_binned(high = "darkblue", low = "white", 
+                       show.limits=TRUE,
+                       nice.breaks=FALSE,
+                       labels=scales::percent,
+                        name = "% with HH Inc < 77K ")
+figure5c
+```
+
+```{r}
+incometable <- svytable(~ PUMA + above_freeze + age_cat, design = HHdesign)
+
+mapPUMAboth <- incometable %>% 
+  as_tibble() %>%
+  mutate(PUMA = str_pad(PUMA, 5, side= "left", pad = "0"),
+        # above_freeze = ifelse(hhincdecile_w >= 5, "Not Eligible", "Eligible")
+         ) |>
+  group_by(PUMA) |>
+     mutate(
+       Prop = n/sum(n)) %>%
+     filter(above_freeze == "Eligible" & age_cat == "65+") %>%
+    inner_join(pumasIL, by = c("PUMA" = "PUMACE20"))
+ 
+#mapPUMAboth %>% select(YEAR, countyFIP, PUMA, Prop, n, NAME10)
+
+
+
+figure5c <- ggplot(mapPUMAboth, aes(fill = Prop)) +
+  geom_sf(aes(geometry = geometry), color = "black")+ 
+  labs(title = "Share of all households 65+ w/ HH incomes < $77K") + 
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+
+     scale_fill_binned(high = "darkblue", low = "white", 
+                       show.limits=TRUE,
+                       nice.breaks=FALSE,
+                       labels=scales::percent,
+                        name = "% with HH Inc < 77K ")
+figure5c
+```
+
+
+
+```{r}
+incometable <- svytable(~ PUMA + OWNERSHP + above_freeze + age_cat, design = HHdesign)
+
+mapPUMAboth <- incometable %>% 
+  as_tibble() %>%
+  mutate(PUMA = str_pad(PUMA, 5, side= "left", pad = "0"),
+         ) |>
+  group_by(PUMA) |>
+     mutate(
+       Prop = n/sum(n)) %>%
+     filter(above_freeze == "Eligible" & age_cat == "65+" & OWNERSHP == 1) %>%
+    inner_join(pumasIL, by = c("PUMA" = "PUMACE20"))
+
+
+figure5c <- ggplot(mapPUMAboth, aes(fill = Prop)) +
+  geom_sf(aes(geometry = geometry), color = "black")+ 
+  labs(title = "Share of all Own. Occ. Households 65+ w/ HH incomes < $77K",
+       subtitle = "Eligible for the Senior Freeze Exemption if Household Income increased to $77K") + 
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+
+     scale_fill_binned(high = "darkblue", low = "white", 
+                       show.limits=TRUE,
+                       nice.breaks=FALSE,
+                       labels=scales::percent,
+                        name = "% with HH Inc < 77K ")
+figure5c
+```
+
+
+
+
+
