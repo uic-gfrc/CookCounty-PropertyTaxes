@@ -218,9 +218,9 @@ data |> filter(YEAR == 2023) |>
 # created now so that the variable exists in the joined dataset before creating the survey design object
 data <- data |> 
   mutate(
+    ## current senior freeze threshold!
     below_freeze = ifelse(HHINCOME >= 65000, "Not Eligible", "Eligible"),
 
-    ## current senior freeze threshold!
     new_freeze = ifelse(HHINCOME >= 85000, "Not Eligible", "Eligible"),
     )
 
@@ -229,6 +229,102 @@ data <- data |>
 # multiple times for each person in the household
 HHdesign <- survey::svydesign(id = ~SERIAL, nest=TRUE, strata = ~STRATA, weights = ~HHWT, data = data|> filter(PERNUM==1)) 
 ```
+
+
+## Comparisons
+
+```{r}
+#| label: fig-current-income-threshold-during2018
+#| fig-cap: "Share of all Own. Occ. Households 65+ w/ HH incomes < $65K in 2018 compared to all Owner Occupied Households 65+ with household incomes less than 85K in 2023. Shows number of households eligible for the Low-Income Senior Freeze Exemption in 2018, when the income threshold was last updated and the percent that would be eligible if the income threshold were increased to $85,000 based on 2023 data."
+#| fig-height: 10
+#| fig-width: 16
+#| column: screen-inset
+#| layout-ncol: 2
+
+incometable <- svytable(~ YEAR + PUMA + OWNERSHP  + age_cat + below_freeze, design = HHdesign)
+
+mapPUMAboth <- incometable |> 
+  as_tibble() |>
+  mutate(PUMA = str_pad(PUMA, 5, side= "left", pad = "0"),
+  ) |>
+  group_by(YEAR, PUMA) |>
+  mutate(
+    Prop = n/sum(n),
+    Total = sum(n)
+  ) 
+
+mapPUMAboth <- mapPUMAboth |> 
+  filter(below_freeze == "Eligible" & age_cat == "65+" & OWNERSHP == 1 &
+         YEAR == 2018) |>
+  inner_join(pumas, by = c("PUMA" = "puma", "YEAR"))
+
+current_policy_in2018<- ggplot(mapPUMAboth, 
+                         aes(fill = Prop, 
+                             geometry = geometry,
+                             label = paste0(
+                               scales::percent(Prop, accuracy = 0.01), "\n",  
+                              scales::comma(n), " Eligible", "\n",
+                               scales::comma(Total), " Total HH")
+                               #" ", "frac(", n, ",", Total, ")"
+                         ))  +
+  geom_sf(color = "black")+ 
+  geom_sf_text(size = 3) +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+  scale_fill_binned(high = "darkblue", low = "white", 
+                    limits = c(0,0.25),
+                    show.limits=TRUE,
+                    nice.breaks=FALSE,
+                    labels=scales::percent,
+                    name = "% with HH Inc < 65K\n& Age 65+")
+
+current_policy_in2018
+
+
+
+incometable <- svytable(~ YEAR + PUMA + OWNERSHP  + age_cat + new_freeze, design = HHdesign)
+
+mapPUMAboth <- incometable |> 
+  as_tibble() |>
+  mutate(PUMA = str_pad(PUMA, 5, side= "left", pad = "0"),
+         ) |>
+  group_by(YEAR, PUMA) |>
+     mutate(
+       Prop = n/sum(n),
+       Total = sum(n)) |>
+     filter(new_freeze == "Eligible" & age_cat == "65+" & OWNERSHP == 1
+            & YEAR == 2023) |>
+    inner_join(pumas, by = c("PUMA" = "puma", "YEAR"))
+
+
+new_policy_in2023 <- ggplot(mapPUMAboth, 
+                         aes(fill = Prop, 
+                             geometry = geometry,
+                             label = paste0(
+                               scales::percent(Prop, accuracy = 0.01), "\n",  
+                                scales::comma(n), " Eligible", "\n",
+                               scales::comma(Total), " Total HH")
+                         ))  +
+  
+  geom_sf(aes(geometry = geometry), color = "black")+ 
+  geom_sf_text(size = 3) +
+#  labs(title = "Share of all Own. Occ. Households 65+ w/ HH incomes < $85K",
+ #      subtitle = "Eligible for the Senior Freeze Exemption if Household Income increased to $85K") + 
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+
+     scale_fill_binned(high = "darkblue", low = "white", 
+                       limits = c(0,0.25),
+
+                       show.limits=TRUE,
+                       nice.breaks=FALSE,
+                       labels=scales::percent,
+                        name = "% with HH Inc < 85K\n& Age 65+")
+new_policy_in2023
+```
+
+
+
 
 ## Current Policy - $65K
 
@@ -273,7 +369,7 @@ current_policy <- ggplot(mapPUMAboth,
                              geometry = geometry,
                              label = paste0(
                                scales::percent(Prop, accuracy = 0.01), "\n",  
-                              #  scales::comma(n), " Eligible", "\n",
+                              scales::comma(n), " Eligible", "\n",
                                scales::comma(Total), " Total HH")
                                #" ", "frac(", n, ",", Total, ")"
                          ))  +
@@ -294,6 +390,7 @@ current_policy <- ggplot(mapPUMAboth,
 
 current_policy
 ```
+
 
 ## New Policy - $85K
 
