@@ -21,11 +21,12 @@ This exemption allows senior citizens who meet the qualifications to elect to ma
 
 Each year applicants must file a Form PTAX-340, Low-income Senior Citizens Assessment Freeze Homestead Exemption Application and Affidavit, with the Chief County Assessment Office.
 
-(35 ILCS 200/15-170)" 
-[Illinois.gov](https://tax.illinois.gov/localgovernments/property/taxrelief.html#:~:text=This%20program%20allows%20persons%2065,%247%2C500)%20on%20their%20principal%20residences)
+[(35 ILCS 200/15-170)](http://www.ilga.gov/legislation/ilcs/fulltext.asp?DocName=003502000K15-170) 
+Additional Info - [Illinois.gov](https://tax.illinois.gov/localgovernments/property/taxrelief.html#:~:text=This%20program%20allows%20persons%2065%247%2C500)
 
 
-```{r warning=FALSE, message=FALSE}
+
+```{r warning=FALSE, message=FALSE, results='hide'}
 library(tidyverse)
 library(ipumsr)
 library(tigris)
@@ -33,7 +34,7 @@ library(srvyr)
 library(naniar)
 library(survey)
 
-knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
 
 # PUMA shapefiles
 pumasIL2020 <- pumas("IL", cb=T, year=2020) 
@@ -64,7 +65,8 @@ pumasIL2018 <- pumasIL2018 |>
 
 
 pumas <- rbind(pumasIL2018, pumasIL2020)  |>
-  mutate(uniqueid = paste0(puma, "_", YEAR)) |>
+  mutate(uniqueid = paste0(puma, "_", YEAR),
+           puma_area = str_remove_all(puma_area, " PUMA")) |>
   filter(County == "Cook")
 
 ddi <- read_ipums_ddi("inputs/usa_00026.xml")
@@ -94,7 +96,7 @@ data <- data |>
     HHINCOME = ifelse(HHINCOME == 9999999 | HHINCOME == 9999998, NA, HHINCOME)
   )
 
-data <- data %>% 
+data <- data |> 
   mutate(age_cat = 
            
            case_when(AGE < 24 ~ "16to24",
@@ -107,7 +109,7 @@ data <- data %>%
                              SEX == 2 ~ "Female"))
 
 # #check coding make sure it is the same for both censuses
-# data <-  data %>% mutate(white = if_else(RACE ==1, 1, 0),
+# data <-  data |> mutate(white = if_else(RACE ==1, 1, 0),
 #                          black = if_else(RACE ==2, 1, 0), 
 #                          asian = if_else(RACE %in% c(4,5,6), 1, 0),
 #                          otherrace = if_else(RACE %in% c(3,7,8,9),1,0)) 
@@ -131,8 +133,7 @@ data |>
             hhinc = max(HHINCOME),
             house_value = max(VALUEH),
             oldest = max(AGE),
-            youngest = min(AGE), 
-            PUMA = mean(PUMA)) |> 
+            youngest = min(AGE)) |> 
  # filter(multi_peep > 1) |> 
   arrange(desc(multi_peep) )
 
@@ -150,10 +151,10 @@ data |>
 10,461 unweighted household observations with more than 1 person in them. 17,119 unweighted household observations in IPUMs data for Cook County. 
 
 ```{r}
-obs_perPUMA <- data %>% 
-   group_by(YEAR, PUMA, age_cat) %>% 
+obs_perPUMA <- data |> 
+   group_by(YEAR, PUMA, age_cat) |> 
    dplyr::summarize(weightedcount=sum(HHWT), #weighted 
-                    unweightedcount = n()) %>%
+                    unweightedcount = n()) |>
   arrange(PUMA)
 obs_perPUMA
 
@@ -163,12 +164,12 @@ obs_perPUMA |>
 
 
 # 1 = OWNED, 2 = RENTED, 3 = N/A
-obs_perPUMA<- data %>% 
+obs_perPUMA<- data |> 
   filter(PERNUM == 1) |> # only use one person from each household, the "householder"?
-   group_by(PUMA, age_cat, OWNERSHP ) %>% 
+   group_by(PUMA, age_cat, OWNERSHP ) |> 
    dplyr::summarize(
      hhs_wghted = sum(HHWT),
-     unweightedcount = n()) %>%
+     unweightedcount = n()) |>
   arrange(PUMA)
 
 obs_perPUMA
@@ -183,23 +184,22 @@ obs_perPUMA
 # VETSTAT
 # HHINCOME
 
-data %>% filter(YEAR == 2018) |>
+data |> filter(YEAR == 2018) |>
   ggplot() + geom_histogram(aes(x=HHINCOME, weight = HHWT))
 
 
-data %>% filter(YEAR == 2023) |>
+data |> filter(YEAR == 2023) |>
   ggplot() + geom_histogram(aes(x=HHINCOME, weight = HHWT))
 
-data %>% filter(YEAR == 2018) |>
+data |> filter(YEAR == 2018) |>
   ggplot() + geom_histogram(aes(x=INCEARN, weight = PERWT))
 
-data %>% filter(YEAR == 2023) |>
+data |> filter(YEAR == 2023) |>
   ggplot() + geom_histogram(aes(x=INCEARN, weight = PERWT))
 ```
 
 
 ```{r}
-
 
 # inc_quantiles <- survey::svyquantile(~HHINCOME, design=HHdesign, 
 #                     quantiles = c(0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1) ,
@@ -211,98 +211,106 @@ data %>% filter(YEAR == 2023) |>
 #          
 ## numbers used for income breaks are calculated in Income Deciles section. 
 # created now so that the variable exists in the joined dataset before creating the survey design object
-data <- data %>% 
-  # mutate(hhincdecile_w = case_when(
-  #   HHINCOME < 21600 ~ 1, 
-  #   HHINCOME >= 21600 & HHINCOME < 40000 ~ 2,
-  #   HHINCOME >= 40000 & HHINCOME < 58700 ~ 3,
-  #   HHINCOME >= 58700 & HHINCOME < 77000 ~ 4,
-  #   HHINCOME >= 77000 & HHINCOME < 97000 ~ 5,
-  #   HHINCOME >= 97000 & HHINCOME < 120000 ~ 6,
-  #   HHINCOME >= 120000 & HHINCOME < 148400 ~ 7,
-  #   HHINCOME >= 148400 & HHINCOME < 185000 ~ 8,
-  #   HHINCOME >= 185000 & HHINCOME < 261000 ~ 9,
-  #   HHINCOME >= 261000 ~ 10)
-  # ) %>%
+data <- data |> 
   mutate(
     below_freeze = ifelse(HHINCOME >= 65000, "Not Eligible", "Eligible"),
 
     ## current senior freeze threshold!
     new_freeze = ifelse(HHINCOME >= 85000, "Not Eligible", "Eligible"),
-    ## Padding FIPS code for merging with spatial geometry later
-   # countyFIP = str_pad(COUNTYFIP, 3, pad = "0")
     )
-#          
-# 
-# data <- data %>% 
-#   mutate(incdecile_w = case_when(
-#     INCEARN < 125000 ~ 1, 
-#     INCEARN >= 125000 & INCEARN < 185000 ~ 2,
-#     INCEARN >= 185000 & INCEARN < 227000 ~ 3,
-#     INCEARN >= 227000 & INCEARN < 260000 ~ 4,
-#     INCEARN >= 250000 & INCEARN < 300000 ~ 5,
-#     INCEARN >= 300000 & INCEARN < 350000 ~ 6,
-#     INCEARN >= 350000 & INCEARN < 400000 ~ 7,
-#     INCEARN >= 400000 & INCEARN < 500000 ~ 8,
-#     INCEARN >= 500000 & INCEARN < 700000 ~ 9,
-#     INCEARN >= 700000 ~ 10)
-#   ) 
 
-HHdesign <- survey::svydesign(id = ~SERIAL, nest=TRUE, strata = ~STRATA, weights = ~HHWT, data = data) 
+
+# filter to household head only so households are counted 
+# multiple times for each person in the household
+HHdesign <- survey::svydesign(id = ~SERIAL, nest=TRUE, strata = ~STRATA, weights = ~HHWT, data = data|> filter(PERNUM==1)) 
 ```
 
 ## Current Policy - $65K
+
 ```{r}
 incometable <- svytable(~ YEAR + PUMA + OWNERSHP  + age_cat + below_freeze, design = HHdesign)
 
-mapPUMAboth <- incometable %>% 
-  as_tibble() %>%
+mapPUMAboth <- incometable |> 
+  as_tibble() |>
   mutate(PUMA = str_pad(PUMA, 5, side= "left", pad = "0"),
-         ) |>
+  ) |>
   group_by(YEAR, PUMA) |>
-     mutate(
-       Prop = n/sum(n)) %>%
-     filter(below_freeze == "Eligible" & age_cat == "65+" & OWNERSHP == 1) %>%
-    inner_join(pumas, by = c("PUMA" = "puma", "YEAR"))
+  mutate(
+    Prop = n/sum(n),
+    Total = sum(n)
+  ) 
+
+mapPUMAboth <- mapPUMAboth |> 
+  filter(below_freeze == "Eligible" & age_cat == "65+" & OWNERSHP == 1) |>
+  inner_join(pumas, by = c("PUMA" = "puma", "YEAR"))
+
+mapPUMAboth |> 
+  ungroup() |> 
+  group_by(puma_area) |> 
+  pivot_wider( id_cols = c(puma_area), names_from = "YEAR", values_from = "n") |> 
+  mutate(change = `2023`-`2018`) |>
+  select(change, puma_area# Prop, puma_area
+  ) |> 
+  arrange(desc(change))
+```
 
 
-figure5c <- ggplot(mapPUMAboth, aes(fill = Prop)) +
-  geom_sf(aes(geometry = geometry), color = "black")+ 
-  labs(title = "Share of all Own. Occ. Households 65+ w/ HH incomes < $65K",
-       subtitle = "Currently Eligible for Senior Freeze") + 
+```{r}
+#| label: fig-current-income-threshold
+#| fig-cap: "Share of all Own. Occ. Households 65+ w/ HH incomes < $65K. Shows number of households eligible for the Low-Income Senior Freeze Exemption in 2018, when the income threshold was last updated, and the number of households that are eligible in tax year 2023."
+#| fig-height: 10
+#| fig-width: 16
+#| column: screen-inset
+
+
+current_policy <- ggplot(mapPUMAboth, 
+                         aes(fill = Prop, 
+                             geometry = geometry,
+                             label = paste0(
+                               scales::percent(Prop, accuracy = 0.01), "\n",  
+                              #  scales::comma(n), " Eligible", "\n",
+                               scales::comma(Total), " Total HH")
+                               #" ", "frac(", n, ",", Total, ")"
+                         ))  +
+  geom_sf(color = "black")+ 
+  geom_sf_text(size = 3) +
+  #labs(title = "Share of all Own. Occ. Households 65+ w/ HH incomes < $65K",
+  #     subtitle = "Currently Eligible for Senior Freeze"#,
+       # caption = "n represents the number of households eligible") + 
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
-
-     scale_fill_binned(high = "darkblue", low = "white", 
-                       show.limits=TRUE,
-                       nice.breaks=FALSE,
-                       labels=scales::percent,
-                        name = "% with HH Inc < 65K ") +
+ # theme(legend.position = "bottom")+
+  scale_fill_binned(high = "darkblue", low = "white", 
+                    show.limits=TRUE,
+                    nice.breaks=FALSE,
+                    labels=scales::percent,
+                    name = "% with HH Inc < 65K ") +
   facet_wrap(~YEAR)
-figure5c
+
+current_policy
 ```
 
 ## New Policy - $85K
 
 ```{r}
-HHdesign <- survey::svydesign(id = ~SERIAL, nest=TRUE, strata = ~STRATA, weights = ~HHWT, data = data) 
+HHdesign <- survey::svydesign(id = ~SERIAL, nest=TRUE, strata = ~STRATA, weights = ~HHWT, data = data |> filter(PERNUM==1)) 
 
 agetable <- svytable(~YEAR + PUMA + age_cat, design = HHdesign)
 
 
-mapPUMAboth <- agetable %>% 
-  as_tibble() %>%
+mapPUMAboth <- agetable |> 
+  as_tibble() |>
   mutate(PUMA = str_pad(PUMA, 5, side= "left", pad = "0")) |>
-  group_by(YEAR, PUMA) %>% 
+  group_by(YEAR, PUMA) |> 
      mutate(
-       Prop = n/sum(n)) %>%
+       Prop = n/sum(n)) |>
      filter(age_cat =="65+") |>
   ungroup() |>
   left_join(pumas, by = c("PUMA" = "puma", "YEAR" = "YEAR"))
   
  
  
-#mapPUMAboth %>% select(YEAR, countyFIP, PUMA, Prop, n, NAME10)
+#mapPUMAboth |> select(YEAR, countyFIP, PUMA, Prop, n, NAME10)
 
 
 
@@ -321,51 +329,22 @@ figure <- ggplot(mapPUMAboth, aes(fill = Prop)) +
                         name = "% HH 65+") +
   facet_wrap(~YEAR)
 figure
-# mapPUMAboth <- agetable %>% 
-#   as_tibble() %>%
-#   mutate(PUMA = str_pad(PUMA, 5, side= "left", pad = "0")) |>
-#   group_by(YEAR, PUMA) %>% 
-#      mutate(
-#        Prop = n/sum(n)) %>%
-#      filter(age_cat =="65+") %>%
-#     left_join(pumasIL2018, by = c("PUMA" = "PUMACE10"))
-# 
-# figure2018 <- ggplot(mapPUMAboth, aes(fill = Prop)) +
-#   geom_sf(aes(geometry = geometry), color = "black")+ 
-#   labs(title = "Senior Households are up to 30% of all households in some areas", 
-#        subtitle = "Percent of PUMA Households in 2023 that are 65+") +
-#   theme_void() + 
-#   theme(axis.ticks = element_blank(), axis.text = element_blank())+
-# 
-#      scale_fill_binned(
-#                       high = "darkblue", low = "white", 
-#                        show.limits=TRUE,
-#                        nice.breaks=FALSE,
-#                        labels=scales::percent,
-#                         name = "% HH 65+") +
-#   facet_wrap(~YEAR)
-#  
-# figure2018
-# figure2023
-
 ```
 
 
 ```{r}
 incometable <- svytable(~ YEAR + PUMA + new_freeze, design = HHdesign)
 
-mapPUMAboth <- incometable %>% 
-  as_tibble() %>%
-  mutate(PUMA = str_pad(PUMA, 5, side= "left", pad = "0"),
-        # new_freeze = ifelse(hhincdecile_w >= 5, "Not Eligible", "Eligible")
-         ) |>
+mapPUMAboth <- incometable |> 
+  as_tibble() |>
+  mutate(PUMA = str_pad(PUMA, 5, side= "left", pad = "0")) |>
   group_by(YEAR, PUMA) |>
      mutate(
-       Prop = n/sum(n)) %>%
+       Prop = n/sum(n)) |>
      filter(new_freeze == "Eligible")|>
   left_join(pumas, by = c("PUMA" = "puma", "YEAR" = "YEAR"))
  
-#mapPUMAboth %>% select(YEAR, countyFIP, PUMA, Prop, n, NAME10)
+#mapPUMAboth |> select(YEAR, countyFIP, PUMA, Prop, n, NAME10)
 
 
 
@@ -387,18 +366,18 @@ figure5c
 ```{r}
 incometable <- svytable(~ YEAR + PUMA + age_cat + new_freeze, design = HHdesign)
 
-mapPUMAboth <- incometable %>% 
-  as_tibble() %>%
+mapPUMAboth <- incometable |> 
+  as_tibble() |>
   mutate(PUMA = str_pad(PUMA, 5, side= "left", pad = "0"),
         # new_freeze = ifelse(hhincdecile_w >= 5, "Not Eligible", "Eligible")
          ) |>
   group_by(YEAR, PUMA) |>
      mutate(
-       Prop = n/sum(n)) %>%
-     filter(new_freeze == "Eligible" & age_cat == "65+") %>%
+       Prop = n/sum(n)) |>
+     filter(new_freeze == "Eligible" & age_cat == "65+") |>
     inner_join(pumas, by = c("PUMA" = "puma", "YEAR"))
  
-#mapPUMAboth %>% select(YEAR, PUMA, Prop, n, age_cat)
+#mapPUMAboth |> select(YEAR, PUMA, Prop, n, age_cat)
 
 
 
@@ -418,20 +397,34 @@ figure5c
 
 
 ```{r}
+#| label: fig-proposed-income-threshold
+#| fig-cap: "Share of all Own. Occ. Households 65+ w/ HH incomes < $85K. Shows number of households eligible for the Low-Income Senior Freeze Exemption in 2018, when the income threshold was last updated, and the number of households that are eligible in tax year 2023."
+#| fig-height: 10
+#| fig-width: 16
+#| column: screen-inset
+
 incometable <- svytable(~ YEAR + PUMA + OWNERSHP  + age_cat + new_freeze, design = HHdesign)
 
-mapPUMAboth <- incometable %>% 
-  as_tibble() %>%
+mapPUMAboth <- incometable |> 
+  as_tibble() |>
   mutate(PUMA = str_pad(PUMA, 5, side= "left", pad = "0"),
          ) |>
   group_by(YEAR, PUMA) |>
      mutate(
-       Prop = n/sum(n)) %>%
-     filter(new_freeze == "Eligible" & age_cat == "65+" & OWNERSHP == 1) %>%
+       Prop = n/sum(n)) |>
+     filter(new_freeze == "Eligible" & age_cat == "65+" & OWNERSHP == 1) |>
     inner_join(pumas, by = c("PUMA" = "puma", "YEAR"))
 
 
-figure5c <- ggplot(mapPUMAboth, aes(fill = Prop)) +
+new_policy <- ggplot(mapPUMAboth, 
+                         aes(fill = Prop, 
+                             geometry = geometry,
+                             label = paste0(
+                               scales::percent(Prop, accuracy = 0.01), "\n",  
+                                scales::comma(n), " Eligible", "\n",
+                               scales::comma(Total), " Total HH")
+                         ))  +
+  
   geom_sf(aes(geometry = geometry), color = "black")+ 
   labs(title = "Share of all Own. Occ. Households 65+ w/ HH incomes < $85K",
        subtitle = "Eligible for the Senior Freeze Exemption if Household Income increased to $85K") + 
@@ -444,7 +437,7 @@ figure5c <- ggplot(mapPUMAboth, aes(fill = Prop)) +
                        labels=scales::percent,
                         name = "% with HH Inc < 85K ") +
   facet_wrap(~YEAR)
-figure5c
+new_policy
 ```
 
 
