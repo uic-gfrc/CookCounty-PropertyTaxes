@@ -326,9 +326,45 @@ new_policy_in2023
 
 
 
+
 ## Current Policy - $65K
 
 ```{r}
+#| label: tbl-changeinseniorhouseholds
+#| tbl-caption: "Change in Owner occupied senior households"
+
+incometable <- svytable(~ YEAR + PUMA + OWNERSHP  + age_cat, design = HHdesign)
+
+mapPUMAboth <- incometable |> 
+  as_tibble() |>
+  mutate(PUMA = str_pad(PUMA, 5, side= "left", pad = "0"),
+  ) |>
+  group_by(YEAR, PUMA) |>
+  mutate(
+    Prop = n/sum(n),
+    Total = sum(n)
+  ) 
+
+mapPUMAboth <- mapPUMAboth |> 
+  filter(age_cat == "65+" & OWNERSHP == 1) |>
+  inner_join(pumas, by = c("PUMA" = "puma", "YEAR"))
+
+mapPUMAboth |> 
+  ungroup() |> 
+  group_by(puma_area) |> 
+  pivot_wider( id_cols = c(puma_area), names_from = "YEAR", values_from = "n") |> 
+  mutate(change = `2018`-`2023`) |>
+  select(change, puma_area# Prop, puma_area
+  ) |> 
+  arrange(desc(change)) |> 
+  DT::datatable(rownames = FALSE)
+```
+
+
+```{r}
+#| label: tbl-currenteligible-change
+#| fig-caption: "Change in number of people eligible from 2018 to 2023, based on the $65,000 household income threshold  for the senior freeze."
+
 incometable <- svytable(~ YEAR + PUMA + OWNERSHP  + age_cat + below_freeze, design = HHdesign)
 
 mapPUMAboth <- incometable |> 
@@ -349,10 +385,11 @@ mapPUMAboth |>
   ungroup() |> 
   group_by(puma_area) |> 
   pivot_wider( id_cols = c(puma_area), names_from = "YEAR", values_from = "n") |> 
-  mutate(change = `2023`-`2018`) |>
+  mutate(change = `2018`-`2023`) |>
   select(change, puma_area# Prop, puma_area
   ) |> 
-  arrange(desc(change))
+  arrange(desc(change)) |> 
+  DT::datatable(rownames = FALSE)
 ```
 
 
