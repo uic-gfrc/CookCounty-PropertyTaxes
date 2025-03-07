@@ -60,7 +60,7 @@ max_year = max(cook_sums$year)
 
 
 
-## Time Trends - FMV Growth 2011-2023 
+## Time Trends - FMV Growth 2006-2023 
 
 ### Pin Counts
 
@@ -127,13 +127,9 @@ comm_ind_pins %>%
   ggplot() + 
   geom_col(aes(x=year, y = PC, fill = land_use)) + 
   scale_x_continuous(
-    limits = c(
-      #min(comm_ind_pins$year), params$year
-min_year-1, max_year + 1),                                      
-    breaks = c(min_year,
-               2010, 2015, 2020,
-              max_year
-               )) + 
+    limits = c(min_year - 1, max_year + 1),                                      
+    breaks = c(min_year, 2010, 2015, 2020, max_year
+              )) + 
   theme_classic() + 
   theme(legend.position =  "bottom", legend.title = element_blank(), 
                           axis.title.x =   element_blank())
@@ -192,8 +188,9 @@ comm_ind_pins %>%
   ggplot() + 
   geom_col(aes(x=year, y = fmv, fill = land_use)) + 
   scale_x_continuous(
-    limits = c(min(comm_ind_pins$year), params$year), 
-    breaks = c(min(comm_ind_pins$year), 2009, 2012, 2015, 2018, params$year)) + 
+     limits = c(min_year - 1, max_year + 1),                                      
+    breaks = c(min_year, 2010, 2015, 2020, max_year
+               )) + 
   theme_classic() +
   labs(y = "FMV ($ Billions)")+
   theme(legend.position =  "bottom", legend.title = element_blank(), 
@@ -224,8 +221,8 @@ comm_ind_pins %>%
   geom_line(aes(x=year, y =ratio_both_2011), lty = 1) + 
   theme_bw() + 
     scale_x_continuous(
-    limits = c(min(comm_ind_pins$year), params$year), 
-    breaks = c(min(comm_ind_pins$year), 2009,  2015, 2018, 2021, params$year))
+     limits = c(min_year - 1, max_year + 1),                                      
+    breaks = c(min_year, 2010, 2015, 2020, max_year)) + ggtitle("Number of PINs, Indexed to 2011")
 ```
 
 
@@ -245,9 +242,9 @@ comm_ind_pins %>%
   geom_line(aes(x=year, y = ratio_2011, group = land_use, color = land_use)) + 
   geom_line(aes(x=year, y =ratio_both_2011), lty = 1) + 
     scale_x_continuous(
-    limits = c(min(comm_ind_pins$year), params$year), 
-    breaks = c( 2009, 2012, 2015, 2018, 2021, params$year)) + 
-  theme_classic()
+limits = c(min_year - 1, max_year + 1),                                      
+    breaks = c(min_year, 2010, 2015, 2020, max_year)) + 
+  theme_classic() + ggtitle("FMV, Indexed to 2011")
 ```
 
 
@@ -263,7 +260,8 @@ pins_per_year <- comm_ind_pins %>%
             "Loses Incent" = sum(lose_incent, na.rm=TRUE),
             "PINs with Incent. Class." = sum(incent_prop=="Incentive"),
             "PINs in Sample" = n(),
-            "Became Exempt" = sum(became_exempt, na.rm=TRUE))
+          #  "Became Exempt" = sum(became_exempt, na.rm=TRUE)
+            )
 
 pins_per_year
 ```
@@ -374,6 +372,7 @@ comm_ind_pins %>%
 #| label: tbl-southtriadpins2023
 #| tbl-cap: "South Triad Number of PINs that became each major class type each year."
 #| layout-ncol: 3
+#| tbl-cap-location: top
 
 comm_ind_pins %>% 
   filter(becomes8 == 1 & Triad == "South") %>% 
@@ -392,6 +391,9 @@ comm_ind_pins %>%
 ```
 
 > note to self: status is coded incorrectly. There are 'Gains Incentive' PINs that are also Controls if they existed less than 12 years. Became_taxed is wrong too
+ 
+> Is this still true?? - AWM 3/6/2025 -- Looks like it was removed from the 2006 to 2023 file.
+
 
 ```{r}
 #| label: tbl-incentchange-2023indexed
@@ -514,8 +516,9 @@ df_2011_bal %>%
   scale_color_brewer(direction = -1) + 
   theme_bw()  +  
     scale_x_continuous(
-    limits = c(min(comm_ind_pins$year), params$year), 
-    breaks = c( 2009, 2012, 2015, 2018, 2021, params$year)) + 
+    limits = c(min_year - 1, max_year + 1),                                      
+    breaks = c(min_year, 2010, 2015, 2020, max_year
+              )) + 
   facet_wrap(~landuse_change)
 
 ```
@@ -555,7 +558,10 @@ df_2011_bal %>%
   geom_line(aes(x=year, y=fmv_group_growth, group = landuse_change, color = landuse_change)) +
   theme_bw()  +  
   facet_wrap(~incent_status, nrow = 1) +
-  scale_x_discrete(breaks = c(2012, params$year), ) + 
+  scale_x_discrete(
+    limits = c(min_year - 1, max_year + 1),                                      
+    breaks = c(min_year, 2010, 2015, 2020, max_year
+              )) + 
   scale_y_continuous(breaks = c(-1, 0, 1, 2, 3, 4, 10), labels = scales::percent,) +
   labs(title= "Growth from 2011", 
        subtitle = "Incentive Classification Status by Land Use Change",
@@ -581,7 +587,8 @@ params <- rbind(params, data.frame(year = 2022))
 year_count <- 12
 
 comm_ind_pins <- read_csv("../Output/comm_ind_PINs_2011to2022_timeseries.csv")
-
+min_year == 2011
+max_year == 2022
 ```
 
 ```{r}
@@ -624,7 +631,7 @@ cbind(commind_together, table) %>%
          "Share of Industrial" = pct_incent_Commercial,
          "C&I PIN Count" = proptype_pincount) %>% 
   mutate(Year = as.character(Year)) |>
-  mutate(across(contains("Share"), scales::percent, digits = 2)) |>
+  mutate(across(contains("Share"), scales::percent, accuracy = 0.01)) |>
   flextable() %>%
   add_header_row(values = c(" ", "Incent C&I", "Commercial", "Industrial","All C&I"), colwidths = c(1,2,2,2, 1))
 
@@ -638,8 +645,9 @@ comm_ind_pins %>%
   ggplot() + 
   geom_col(aes(x=year, y = PC, fill = land_use)) + 
   scale_x_continuous(
-    limits = c(min(comm_ind_pins$year), params$year),                                      
-    breaks = c(min(comm_ind_pins$year), 2010, 2015, 2020, params$year)) + 
+    limits = c(min_year - 1, max_year + 1),                                      
+    breaks = c(min_year, 2010, 2015, 2020, max_year
+              )) + 
   theme_classic() + 
   theme(legend.position =  "bottom", legend.title = element_blank(), 
                           axis.title.x =   element_blank())
@@ -651,8 +659,8 @@ commind_together_fmv <- comm_ind_pins %>%
   filter(land_use %in% c("Industrial", "Commercial")) |>
   group_by(year) %>%
   summarize(
-    fmv_CI = sum(fmv, na.rm=TRUE),
-    fmv_incent = sum(ifelse(incent_prop == "Incentive", fmv, 0))
+    fmv_incent = sum(ifelse(incent_prop == "Incentive", fmv, 0)),
+        fmv_CI = sum(fmv, na.rm=TRUE)
           )  %>% 
   mutate(pct_incent = (fmv_incent / fmv_CI))
 
@@ -663,10 +671,10 @@ table_fmv <- comm_ind_pins %>%
 
   group_by(year, land_use) %>%
   summarize(
+    fmv_incent = sum(ifelse(incent_prop == "Incentive", fmv, 0), na.rm=TRUE),
     fmv = sum(fmv, na.rm=TRUE),
-    fmv_incent = sum(ifelse(incent_prop == "Incentive", fmv, 0), na.rm=TRUE)
-          )  %>% 
-  mutate(pct_incent = (fmv_incent / fmv) / 10000) %>%  ## should standardize percentage formatting....
+ )  %>% 
+  mutate(pct_incent = (fmv_incent / fmv)) %>% 
   arrange(year) %>%
   select(year, land_use, fmv_incent, pct_incent) |>
   pivot_wider(id_cols = year, names_from = land_use, 
@@ -679,7 +687,7 @@ cbind(commind_together_fmv, table_fmv) %>%
 
          "Industrial Incent. FMV" = fmv_incent_Industrial, "Share of Industrial" = pct_incent_Industrial, fmv_CI) %>% 
     mutate(Year = as.character(Year)) %>%
-  mutate(across(contains("Share"), scales::percent, digits = 2)) |>
+  mutate(across(contains("Share"), scales::percent, accuracy = 0.01)) |>
 
   flextable() %>%
   add_header_row(values = c(" ", "Commercial & Industrial", "Commercial", "Industrial","All C&I"), colwidths = c(1,2,2,2, 1))
@@ -695,8 +703,9 @@ comm_ind_pins %>%
   ggplot() + 
   geom_col(aes(x=year, y = fmv, fill = land_use)) + 
   scale_x_continuous(
-    limits = c(min(comm_ind_pins$year), params$year), 
-    breaks = c(min(comm_ind_pins$year), 2009, 2012, 2015, 2018, params$year)) + 
+    limits = c(min_year - 1, max_year + 1),                                      
+    breaks = c(min_year, 2010, 2015, 2020, max_year
+              )) + 
   theme_classic() +
   labs(y = "FMV ($ Billions)")+
   theme(legend.position =  "bottom", legend.title = element_blank(), 
@@ -727,8 +736,9 @@ comm_ind_pins %>%
   geom_line(aes(x=year, y =ratio_both_2011), lty = 1) + 
   theme_bw() + 
     scale_x_continuous(
-    limits = c(min(comm_ind_pins$year), params$year), 
-    breaks = c(min(comm_ind_pins$year), 2009,  2015, 2018, 2021, params$year))
+    limits = c(min_year - 1, max_year + 1),                                      
+    breaks = c(min_year, 2010, 2015, 2020, max_year
+              )) 
 ```
 
 
@@ -748,8 +758,9 @@ comm_ind_pins %>%
   geom_line(aes(x=year, y = ratio_2011, group = land_use, color = land_use)) + 
   geom_line(aes(x=year, y =ratio_both_2011), lty = 1) + 
     scale_x_continuous(
-    limits = c(min(comm_ind_pins$year), params$year), 
-    breaks = c( 2009, 2012, 2015, 2018, 2021, params$year)) + 
+    limits = c(min_year - 1, max_year + 1),                                      
+    breaks = c(min_year, 2010, 2015, 2020, max_year
+              )) + 
   theme_classic()
 ```
 
@@ -1017,8 +1028,9 @@ df_2011_bal %>%
   scale_color_brewer(direction = -1) + 
   theme_bw()  +  
     scale_x_continuous(
-    limits = c(min(comm_ind_pins$year), params$year), 
-    breaks = c( 2009, 2012, 2015, 2018, 2021, params$year)) + 
+    limits = c(min_year - 1, max_year + 1),                                      
+    breaks = c(min_year, 2010, 2015, 2020, max_year
+              )) + 
   facet_wrap(~landuse_change)
 
 ```
