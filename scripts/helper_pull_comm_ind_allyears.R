@@ -61,7 +61,7 @@ tax_codes_muni <- DBI::dbGetQuery(
   SELECT DISTINCT year, agency_num, tax_code_num, tax_code_rate
   FROM tax_code
   WHERE agency_num IN ({muni_agency_names$agency_num*})
-  AND year <= 2022
+  AND year <= 2023
   ",
            .con = ptaxsim_db_conn
   ))
@@ -75,7 +75,7 @@ muni_pins <- DBI::dbGetQuery(
   FROM pin
   WHERE class > 399 AND class < 900
   AND tax_code_num IN ({tax_codes_muni$tax_code_num*})
-  AND year <= 2022
+  AND year <= 2023
 
   ",
     .con = ptaxsim_db_conn
@@ -98,6 +98,7 @@ tax_codes_muni <- tax_codes_muni %>%
 distinct_pins <- muni_pins |>
   select(pin) |>
   distinct(pin)
+# 120179 distinct PINs after 2023 update
 
 ## Use unique PIN list to get all obs. for all years they existed.
 ## ~1.8mil PINs
@@ -180,11 +181,11 @@ comm_ind_pins_ever <- comm_ind_pins_ever %>%
       TRUE ~ as.character(class_group))
 )
 
-#  Create 2006 to 2022 Timeseries ############################
-timespan = 17
+#  Create 2006 to 2023 Timeseries ############################
+timespan = 18
 
 comm_ind_pins <- comm_ind_pins_ever  %>%
-  filter(year != 2023) |>
+ # filter(year != 2023) |>
   group_by(pin) |>
   arrange(desc(year)) |>
   mutate(multi_muni = n_distinct(clean_name),
@@ -238,7 +239,7 @@ table(comm_ind_pins$years_exempt)
 table(comm_ind_pins$landuse_change )
 
 comm_ind_pins %>%
-  filter(year == 2022) %>%
+  filter(year == 2023) %>%
   reframe(n=n(), .by = landuse_change)
 
 
@@ -265,7 +266,7 @@ reassessment_years <- read_csv("./Necessary_Files/Triad_reassessment_years.csv")
 
 
 reassessments_long <- reassessment_years %>%
-  pivot_longer(cols = c(`2006`:`2022`), names_to = "year", values_to = "reassessed_year")
+  pivot_longer(cols = c(`2006`:`2023`), names_to = "year", values_to = "reassessed_year")
 
 
 
@@ -361,17 +362,17 @@ comm_ind_pins <- comm_ind_pins %>%
          landuse_change = ifelse(years_existed < timespan, "Excluded", landuse_change),
          landuse_change = ifelse(landuse_change == "Exempt Sometime", "Excluded", landuse_change))
 
-write_csv(comm_ind_pins, "./Output/comm_ind_PINs_2006to2022_timeseries.csv")
+write_csv(comm_ind_pins, "./Output/comm_ind_PINs_2006to2023_timeseries.csv")
 
 
 
 
-# Create 2011-2022 timeseries --------------------------------------------
+# Create 2011-2023 timeseries --------------------------------------------
 
-timespan = 12
+timespan = 13
 
 comm_ind_pins <- comm_ind_pins_ever  %>%
-  filter(between(year, 2011, 2022)) |>
+  filter(between(year, 2011, 2023)) |>
   group_by(pin) |>
   arrange(desc(year)) |>
   mutate(multi_muni = n_distinct(clean_name),
@@ -433,7 +434,7 @@ table(comm_ind_pins$years_exempt)
 table(comm_ind_pins$landuse_change )
 
 comm_ind_pins %>%
-  filter(year == 2022) %>%
+  filter(year == 2023) %>%
   reframe(n=n(), .by = landuse_change)
 
 
@@ -459,7 +460,7 @@ reassessment_years <- read_csv("./Necessary_Files/Triad_reassessment_years.csv")
 
 
 reassessments_long <- reassessment_years %>%
-  pivot_longer(cols = c(`2011`:`2022`), names_to = "year", values_to = "reassessed_year")
+  pivot_longer(cols = c(`2011`:`2023`), names_to = "year", values_to = "reassessed_year")
 
 
 
@@ -555,8 +556,16 @@ comm_ind_pins <- comm_ind_pins %>%
          landuse_change = ifelse(landuse_change == "Exempt Sometime", "Excluded", landuse_change))
 
 
-write_csv(comm_ind_pins, "./Output/comm_ind_PINs_2011to2022_timeseries.csv")
+write_csv(comm_ind_pins, "./Output/comm_ind_PINs_2011to2023_timeseries.csv")
 
+
+
+
+
+
+
+################################################################################
+# Ended up not using this because it dropped observations that we cared about. 
 
 # Create 2006 PIN level Panel Data ----------------------------------------
 #
