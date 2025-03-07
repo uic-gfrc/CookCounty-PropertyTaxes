@@ -54,17 +54,20 @@ params <- data.frame(year = numeric(0))
 # Add the value 2021 to the "year" column
 params <- rbind(params, data.frame(year = 2023))
 
+min_year = min(cook_sums$year)
+max_year = max(cook_sums$year)
 ```
 
 
 
 ## Time Trends - FMV Growth 2011-2023 
+
 ### Pin Counts
 
 ```{r}
 year_count <- 13
 
-comm_ind_pins <- read_csv("../Output/comm_ind_PINs_2011to2023_timeseries.csv")
+comm_ind_pins <- read_csv("../Output/comm_ind_PINs_2006to2023_timeseries.csv")
 
 ```
 
@@ -105,10 +108,12 @@ cbind(commind_together, table) %>%
          "Commercial Pin Count" = n_incent_Commercial, 
          "Share of Commercial" = pct_incent_Commercial,
          "Industrial Pin Count" = n_incent_Industrial, 
-         "Share of Industrial" = pct_incent_Commercial,
+         "Share of Industrial" = pct_incent_Industrial,
          "C&I PIN Count" = proptype_pincount) %>% 
   mutate(Year = as.character(Year)) |>
-  mutate(across(contains("Share"), scales::percent, digits = 2)) |>
+  mutate(across(contains("Share"), scales::percent, 
+                #digits = 2 ## doesn't work!! 
+                accuracy = 0.01)) |>
   flextable() %>%
   add_header_row(values = c(" ", "Incent C&I", "Commercial", "Industrial","All C&I"), colwidths = c(1,2,2,2, 1))
 
@@ -122,8 +127,13 @@ comm_ind_pins %>%
   ggplot() + 
   geom_col(aes(x=year, y = PC, fill = land_use)) + 
   scale_x_continuous(
-    limits = c(min(comm_ind_pins$year), params$year),                                      
-    breaks = c(min(comm_ind_pins$year), 2010, 2015, 2020, params$year)) + 
+    limits = c(
+      #min(comm_ind_pins$year), params$year
+min_year-1, max_year + 1),                                      
+    breaks = c(min_year,
+               2010, 2015, 2020,
+              max_year
+               )) + 
   theme_classic() + 
   theme(legend.position =  "bottom", legend.title = element_blank(), 
                           axis.title.x =   element_blank())
@@ -147,15 +157,18 @@ table_fmv <- comm_ind_pins %>%
 
   group_by(year, land_use) %>%
   summarize(
-    fmv = sum(fmv, na.rm=TRUE),
-    fmv_incent = sum(ifelse(incent_prop == "Incentive", fmv, 0), na.rm=TRUE)
+    fmv_incent = sum(ifelse(incent_prop == "Incentive", fmv, 0), na.rm=TRUE),
+        fmv = sum(fmv, na.rm=TRUE),
+
           )  %>% 
-  mutate(pct_incent = (fmv_incent / fmv) / 10000) %>%  ## should standardize percentage formatting....
+  mutate(pct_incent = (fmv_incent / fmv)) %>%  
+  
   arrange(year) %>%
   select(year, land_use, fmv_incent, pct_incent) |>
   pivot_wider(id_cols = year, names_from = land_use, 
              values_from = c(fmv_incent, pct_incent)) %>% ungroup() |>
   select(-year)
+
 
 cbind(commind_together_fmv, table_fmv) %>% 
   select(Year = year, "C&I Incentive FMV" = fmv_incent, "Share of C&I" = pct_incent,
@@ -163,7 +176,7 @@ cbind(commind_together_fmv, table_fmv) %>%
 
          "Industrial Incent. FMV" = fmv_incent_Industrial, "Share of Industrial" = pct_incent_Industrial, fmv_CI) %>% 
     mutate(Year = as.character(Year)) %>%
-  mutate(across(contains("Share"), scales::percent, digits = 2)) |>
+  mutate(across(contains("Share"), scales::percent, accuracy = 0.01)) |>
 
   flextable() %>%
   add_header_row(values = c(" ", "Commercial & Industrial", "Commercial", "Industrial","All C&I"), colwidths = c(1,2,2,2, 1))
