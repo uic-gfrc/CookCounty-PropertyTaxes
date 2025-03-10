@@ -313,19 +313,26 @@ for(i in years){
       cty_fmv_commercial = sum(ifelse(class %in% commercial_classes, fmv, 0), na.rm = TRUE),
       cty_fmv_comwithincent = sum(ifelse(class %in% commercial_classes & incent_prop == 1, fmv, 0), na.rm = TRUE),
       cty_fmv_com_incent_inTIF= sum(ifelse(class %in% commercial_classes & incent_prop == 1 & in_tif == 1, fmv, 0), na.rm = TRUE),
-      
-      cty_fmv_comandind = sum(ifelse(class %in% c(commercial_classes, industrial_classes) , fmv, 0), na.rm = TRUE),
+      cty_fmv_comandind = sum(ifelse(class %in% c(commercial_classes, industrial_classes), fmv, 0), na.rm = TRUE),
       
       cty_levy = sum(final_tax_to_dist, na.rm=TRUE),
       cty_current_rate_avg = mean(tax_code_rate, na.rm=TRUE),
       cty_avg_C2_bill_noexe = mean(ifelse(c2_prop == 1 & exe_total_adj == 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
       cty_avg_C2_bill_withexe = mean(ifelse(c2_prop == 1 & exe_total_adj > 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
+      
       cty_av_taxed = sum(taxed_av, na.rm = TRUE),
+      cty_av_taxed_commerc = sum(ifelse(class %in% commercial_classes, taxed_av, 0), na.rm = TRUE),
+      cty_av_taxed_indust = sum(ifelse(class %in% industrial_classes, taxed_av, 0), na.rm = TRUE),
       cty_untaxable_value_av = sum(untaxable_value_av, na.rm=TRUE),
       cty_av = sum(av, na.rm=TRUE),
+      
       cty_final_tax_to_dist = sum(final_tax_to_dist, na.rm=TRUE),
       cty_final_tax_to_tif = sum(final_tax_to_tif, na.rm=TRUE),
+      
       cty_taxed_eav = sum(taxed_eav, na.rm=TRUE),
+      cty_taxed_eav_commerc = sum(ifelse(class %in% commercial_classes, taxed_eav, 0), na.rm = TRUE),
+      cty_taxed_eav_indust = sum(ifelse(class %in% industrial_classes, taxed_eav, 0), na.rm = TRUE),
+      
       exempt_HO_eav = sum(exe_total_adj,na.rm=TRUE),
       total_value_eav = sum(eq_av, na.rm=TRUE),
       untaxable_value_eav = sum(untaxable_value_eav, na.rm=TRUE),
@@ -378,7 +385,7 @@ if(is.data.frame(county_sums)){county_sums <- rbind(county_sums, county_sums2)}e
       mean_av_c2 = mean(ifelse(c2_prop == 1, av, NA), na.rm=TRUE),
       # median_av_c2 = median(ifelse(c2_prop == 1, av, NA), na.rm=TRUE),
       # min_av_c2 = min(ifelse(c2_prop == 1, av, NA), na.rm=TRUE),
-      # quant25_c2_av = round(quantile(av, probs = q[1])[c2_prop==1]),
+      # quant25_c2_av = round(quantile(av, probs = q[1])[c2_prop==1]), ## breaks code
       # quant50_c2_av = round(quantile(av, probs = q[2])[c2_prop == 1]),
       # quant75_c2_av = round(quantile(av, probs = q[3])[c2_prop==1]),
       # max_av_c2 = max(ifelse(c2_prop == 1, av, NA)),
@@ -425,7 +432,13 @@ if(is.data.frame(county_sums)){county_sums <- rbind(county_sums, county_sums2)}e
       av_taxed = sum(taxed_av, na.rm = TRUE),
       untaxable_value_av = sum(untaxable_value_av, na.rm=TRUE),
       av = sum(av, na.rm=TRUE),
+      av_taxed_commerc = sum(ifelse(class %in% commercial_classes, taxed_av, 0), na.rm = TRUE),
+      av_taxed_indust = sum(ifelse(class %in% industrial_classes, taxed_av, 0), na.rm = TRUE),
+      
       taxed_eav = sum(taxed_eav, na.rm=TRUE),
+      cty_eav_taxed_commerc = sum(ifelse(class %in% commercial_classes, taxed_eav, 0), na.rm = TRUE),
+      cty_eav_taxed_indust = sum(ifelse(class %in% industrial_classes, taxed_eav, 0), na.rm = TRUE),
+      
       exempt_HO_eav = sum(exe_total_adj,na.rm=TRUE),
       total_value_eav = sum(eq_av, na.rm=TRUE),
       untaxable_value_eav = sum(untaxable_value_eav, na.rm=TRUE),
@@ -496,16 +509,20 @@ rm(muni_level_summary2)
     fmv_incents_inTIF = sum(ifelse(incent_prop == 1 & in_tif == 1, fmv, 0), na.rm = TRUE),
     fmv_untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
 
-    fmv = sum(fmv, na.rm=TRUE),
     fmv_residential = sum(ifelse(res_prop == 1, fmv, 0), na.rm = TRUE),
     fmv_industrial = sum(ifelse(class %in% industrial_classes, fmv, 0), na.rm = TRUE),
     fmv_indust_incent = sum(ifelse(class %in% industrial_classes & incent_prop == 1, fmv, 0), na.rm = TRUE),
     fmv_commercial = sum(ifelse(class %in% commercial_classes, fmv, 0), na.rm = TRUE),
     fmv_commerc_incent = sum(ifelse(class %in% commercial_classes & incent_prop == 1, fmv, 0), na.rm = TRUE),
+    fmv = sum(fmv, na.rm=TRUE), # HAS TO BE NEAR THE BOTTOM so that it doesn't use the summed values in the lines beneath it!!
+    
     zero_bill = sum(zero_bill, na.rm=TRUE),
     levy = sum(final_tax_to_dist, na.rm=TRUE),
     current_rate_avg = mean(tax_code_rate, na.rm=TRUE),
     eav_taxed = sum(taxed_av*eq_factor, na.rm=TRUE),
+    eav_taxed_commerc = sum(ifelse(class %in% commercial_classes, taxed_av, 0), na.rm = TRUE),
+    eav_taxed_indust = sum(ifelse(class %in% industrial_classes, taxed_av, 0), na.rm = TRUE),
+    
     min_TC_rate = min(tax_code_rate),
     max_TC_rate = max(tax_code_rate),
     avg_C2_bill_noexe = mean(ifelse(c2_prop == 1 & exe_total_adj == 0, (final_tax_to_dist + final_tax_to_tif), NA), na.rm=TRUE),
