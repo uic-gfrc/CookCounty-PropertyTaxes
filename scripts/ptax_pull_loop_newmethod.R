@@ -22,10 +22,11 @@ class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv") %>%
   select(class_code, major_class_code)  |> 
   mutate(class = as.character(class_code))
   
+options(scipen = 999)  # Park Forest has weird formatting if you don't do this. No, I never figured out WHY it has weird formatting.
 
-nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx") %>%
-  mutate(agency_number = as.character(agency_number),
-         agency_number = str_pad(string = agency_number, width = 9, side = "left", pad ="0"))
+nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx") |>
+ mutate(agency_number = as.character(as.numeric(agency_number)),
+       agency_number = str_pad(string = agency_number, width = 9, side = "left", pad ="0"))
 
  # Set years for loop to run.
 
@@ -70,7 +71,7 @@ for(i in years){
     WHERE minor_type = 'MUNI'
     OR agency_num = '020060000'
     "
-  )
+  ) 
 
 
   agency_dt<- dbGetQuery(ptaxsim_db_conn, paste('SELECT * FROM agency WHERE year = ', i, ';'))
@@ -97,6 +98,7 @@ for(i in years){
   tc_muninames <- tax_codes %>%
     left_join(muni_tax_codes, by = c("tax_code_num")) %>%
     left_join(muni_agency_names, by = "agency_num") %>%
+    mutate(agency_num = as.character(agency_num)) |>
     left_join(nicknames, by = c("agency_num" = "agency_number"))  |>  
     
     mutate(tax_code_rate = tax_code_rate/100)
@@ -140,6 +142,7 @@ for(i in years){
     left_join(ccao_loa, by = c("class" = "class_code")) %>%
     left_join(tc_muninames, by = c("tax_code_num")) |>
     left_join(tif_distrib, by ="tax_code_num") |>
+    mutate(tax_code_distribution_pct = ifelse(is.na(tax_code_distribution_pct), 0, tax_code_distribution_pct)) |>
     mutate(
       
       
@@ -369,6 +372,14 @@ if(is.data.frame(county_sums)){county_sums <- rbind(county_sums, county_sums2)}e
 
   ## Muni Level --------------------------------------------------------------
 
+  # municipalities that are normally dropped from analysis have less than 75% 
+  # of their taxed EAV in Cook County
+  # Frankfort, Homer Glen, Oak Brook, East Dundee, University Park, Bensenville- For sure drop these, less than 5% of taxed EAV in Cook County
+  # Municipalities that are frequently dropped but maybe somebody wants them left in sometimes:
+  # Hinsdale, Roselle, Deerfield, Elgin, Buffalo Grove - have less than 20ish % of EAV in Cook 
+  # Bartlett, Burr Ridge, Hanover Park, Steger, Barrington Hills, Barrington - have around 50% of EAV in Cook County
+  # Park Forest, Tinley Park - have around 75% of EAV in Cook
+  
   muni_level_summary2 <- pin_data %>%
     ungroup() %>%
     group_by(clean_name) %>%
