@@ -1,5 +1,4 @@
 ---
-title: "Incentive Classifications"
 subtitle: "Supporting Content for Cook County C&I Report"
 format: 
   html:
@@ -28,8 +27,7 @@ nicknames <- readxl::read_excel("../Necessary_Files/muni_shortnames.xlsx")
 
 cook_sums <- read_csv("../Output/ptaxsim_cook_level_2006to2023_new.csv") 
 
-muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006to2023_new.csv") |> 
- left_join(nicknames)
+muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006to2023_new.csv")
 
 
 muni_mc_sums <- read_csv("../Output/ptaxsim_muni_MC_2006to2023_new.csv") |>
@@ -40,13 +38,6 @@ muni_cl_sums <- read_csv("../Output/ptaxsim_muni_class_summaries_2006to2023.csv"
   left_join(nicknames)
 
 muni_shp <- read_sf("../Necessary_Files/muni_shp.gpkg")
-
-# Create an empty data frame with a column named "year"
-params <- data.frame(year = numeric(0))
-
-# Add the value 2021 to the "year" column
-params <- rbind(params, data.frame(year = 2022))
-
 
 
 
@@ -167,22 +158,6 @@ pin_data <- pin_data %>%
 
 ```
 
-```{r}
-#| label: tbl-incentivePINs2022-revshifted
-#| tbl-cap: "PIN level tax savings due to incentive classification. Also can be viewed as the shifted tax burden from PINs with incentive classification in 2022 to all other non-incentive PINs. Sorted from largest tax bill savings to smallest bill reduction."
-#| layout-ncol: 2
-
-pin_data %>% 
-  filter(naive_rev_forgone > 0) %>% 
-  select(pin, class, fmv, naive_rev_forgone, untaxable_incent_eav, taxed_eav, everything())
-
-pin_data %>%
-  filter(naive_rev_forgone > 0) %>% 
-  summarize(fmv = sum(fmv),                                                   
-            naive_rev_forgone = sum(naive_rev_forgone),                      
-            untaxable_incent_eav = sum(untaxable_incent_eav),                     
-            taxed_eav = sum(taxed_eav))
-```
 
 > Total Value should equal Current Taxable Value + non-Taxable Value where non-Taxable Value = Value in TIF Increment + Reduced Value from Policy Choices where Reduced Value = Tax Exempt Value from Homeowners exemptions or abatements + Reduced Taxable Value from lower levels of assessments due to incentive classifications:
 
@@ -360,7 +335,6 @@ table_cook <- table_cook %>%
   )
 ```
 
- > TO DO Update text in captions automatically based on calculations. Don't hard code in!
  
 ```{r}
 #| label: tbl-cooktotals-comandind
@@ -395,7 +369,7 @@ tbl %>%
   FitFlextableToPage()
 ```
 
-`{r} tbl$cty_pct_fmv_both_incent` of industrial and commercial PINs (aka \"revenue producing PINs\") FMV has an incentive classification (`{r} tbl$cty_pct_PC_both_incent` when using PIN counts). Of the PINs that have incentive classification, `{r} tbl$cty_pct_fmv_incentinTIF` of the FMV is located within a TIF ( `{r} tbl$cty_pct_PC_both_incent_inTIF` 43.9% when using PIN counts).
+`{r} tbl$cty_pct_fmv_both_incent` of industrial and commercial PINs (aka \"revenue producing PINs\") FMV has an incentive classification (`{r} tbl$cty_pct_PC_both_incent` when using PIN counts). Of the PINs that have incentive classification, `{r} tbl$cty_pct_fmv_incentinTIF` of the FMV is located within a TIF (`{r} tbl$cty_pct_PC_both_incent` when using PIN counts).
 
 `{r} tbl$cty_pct_fmv_incents_tif_increment` is in TIF Increment.
 
@@ -436,15 +410,14 @@ tbl %>%
 ```
 
 
-`{r} tbl$cty_pct_fmv_com_incent` of industrial and commercial PINs (aka \"revenue producing PINs\") FMV has an incentive classification (`{r} tbl$cty_pct_incent_ofcomPC` when using PIN counts). Of the PINs that have incentive classification, `{r} tbl$cty_pct_fmv_com_incent_inTIF` of the FMV is located within a TIF ( `{r} tbl$cty_pct_PC_com_incent_inTIF` when using PIN counts).
+`{r} tbl$cty_pct_fmv_com_incent` of commercial PIN FMV has an incentive classification (`{r} tbl$cty_pct_incent_ofcomPC` when using PIN counts). Of the PINs that have incentive classification, `{r} tbl$cty_pct_fmv_com_incent_inTIF` of the FMV is located within a TIF (`{r} tbl$cty_pct_PC_com_incent_inTIF` when using PIN counts).
 
-`{r} tbl$cty_pct_fmv_com_incents_tif_increment` is in TIF Increment.
 
 ```{r}
 #| label: tbl-cooktotals-industrial
 #| tbl-cap: "**Industrial PINs in Cook County** "
 
-cook_sums |>
+tbl <- cook_sums |>
   filter(year == params$year) |>
   mutate(cty_pct_fmv_ind_incent = cty_fmv_indwithincent / cty_fmv_industrial,
          cty_pct_fmv_ind_incent_inTIF = cty_fmv_ind_incent_inTIF / cty_fmv_indwithincent,
@@ -456,7 +429,9 @@ cook_sums |>
          
          cty_fmv_industrial, cty_pct_fmv_ind_incent,  
   ) %>%
-  mutate(across(contains("pct_"), scales::percent, accuracy = .01)) %>%
+  mutate(across(contains("pct_"), scales::percent, accuracy = .01)) 
+
+tbl %>%
   flextable() %>% 
   align(align = "right") %>% 
   set_header_labels(cty_fmv_industrial = 'Industrial FMV',
@@ -474,9 +449,8 @@ cook_sums |>
 
 ```
 
-  36.7% of industrial PINs FMV has an incentive classification (13.7% when using PIN counts). Of the Industrial PINs that have incentive classification, 35.7% of the FMV is located within a TIF (44% when using PIN counts).
-  
-  `{r} tbl$cty_pct_fmv_ind_incent` of industrial and commercial PINs (aka \"revenue producing PINs\") FMV has an incentive classification (`{r} tbl$cty_pct_incent_ofindPC` when using PIN counts). Of the PINs that have incentive classification, `{r} tbl$cty_pct_fmv_ind_incent_inTIF` of the FMV is located within a TIF ( `{r} tbl$cty_pct_PC_ind_incent_inTIF` when using PIN counts).
+
+`{r} tbl$cty_pct_fmv_ind_incent` of industrial FMV has an incentive classification (`{r} tbl$cty_pct_incent_ofindPC` when using PIN counts). Of the PINs that have incentive classification, `{r} tbl$cty_pct_fmv_ind_incent_inTIF` of the FMV is located within a TIF ( `{r} tbl$cty_pct_PC_ind_incent_inTIF` when using PIN counts).
   
   
 ```{r}
@@ -504,7 +478,8 @@ cook_sums |>
 #| tbl-cap: "**Untaxable AV in Cook County.**        Taxed AV represents the property value that was actually taxed by local taxing jurisdictions."
 
 cook_sums |>
-  filter(year == params$year) |>  select(cty_av, cty_av_taxed, cty_untaxable_value_av, cty_pct_av_taxed, cty_pct_av_untaxable ) %>%
+  filter(year == params$year) |>  
+  select(cty_av, cty_av_taxed, cty_untaxable_value_av, cty_pct_av_taxed, cty_pct_av_untaxable ) %>%
   mutate(across(contains("pct_"), scales::percent, accuracy = .01)) %>%
   flextable() %>% 
     align(align = "right") %>%  set_header_labels(
@@ -545,6 +520,8 @@ Untaxable EAV includes homeowner exemptions for 200 level properties, abatements
 
 ```{r}
 #| tbl-cap: "The Fair Market Value (FMV) is also called the Market Value for Assessment Purposes and can be calculated from the `av` / `loa`, or the Assessed Value divided by the Level of Assessment. However, the values used for the level of assessment are an approximation for incentive properties since we do not have the PIN level assessment ratios."
+
+cook_sums <- read_csv("../Output/ptaxsim_cook_level_2006to2023_new.csv") 
 
 cty_MC_table <- pin_data %>%
   group_by(class_group) %>%
@@ -593,6 +570,7 @@ cty_MC_table %>%
     "Project Count" = cty_MC_projects,
     "Avg Composite Tax Rate" = cty_MC_current_rate_avg, everything()) %>%
   mutate(across(contains("pct_"), scales::percent, accuracy = .01)) %>%
+    mutate(across(is.numeric & !contains("pct_"), round, digits = 0)) %>%
   flextable() %>% 
   align(align = "right") %>%
   set_header_labels(
@@ -609,236 +587,6 @@ cty_MC_table %>%
 ```
 
 
-```{r}
-#| layout-ncol: 2
-#| layout-nrow: 2
-
-library(tidyverse)
-
-options(scipen = 999)
-
-# Trends in Incentivized FMV as a percent of the base over time
-
-## Data prep
-
-muni_MC <- read_csv("../Output/ptaxsim_muni_class_summaries_2006to2023.csv") %>%
-  select(year, clean_name, class, av = muni_c_av)
-
-class_dict <- read_csv("../Necessary_Files/class_dict_expanded.csv") %>%
-  select(class = class_code, class_1dig, assess_ratio, incent_prop, land_use=Alea_cat, major_class_code)
-
-muni_MC <- muni_MC %>% 
-  left_join(class_dict, by = c("class")) %>% 
-  filter(class !=0) # drop exempt property types with 0 taxable value
-
-#class_8_munis <- read_csv("./Necessary_Files/datarequests_Class8Munis.csv")
-class_8_munis <- read_csv("../Output/datarequests_Class8Munis.csv")
-
-# changed from as.list to as.character
-class_8_munis <- as.character(class_8_munis$clean_name)
-
-
-
-# class 8 munis - at the year-class level
-class_8_df <- # left_join(muni_MC, class_dict, by = "class") %>%
-  muni_MC %>%
-  filter(clean_name %in% class_8_munis) %>%
-  filter(av != 0) %>%
-  mutate(FMV = av/assess_ratio) %>%
-  group_by(year) %>%   
-  mutate(year_tb_tot = sum(FMV)) %>%           # tax base for all class 8 munis together, per year
-  ungroup() %>%
-  filter(land_use %in% c("Industrial", "Commercial")) %>%      ## drops all non-industrial and non-commercial classes to calculate the rest of the totals
-  group_by(year) %>%
-  mutate(year_ind_comm_FMV = sum(FMV)) %>%    #  total commercial and industrial FMV for all class 8 munis together, per year
-  ungroup() %>%
-  group_by(year, clean_name) %>%
-  mutate(muni_year_ind_comm_FMV = sum(FMV)) %>%   # calculates total FMV in each munis  each year
-  ungroup() %>%
-  group_by(year, land_use) %>%
-  mutate(cat_year_FMV = sum(FMV)) %>%    # calculates FMV within each commercial vs industrial category for each year
-  ungroup() %>%
-  group_by(year, clean_name, class_1dig) %>%   # total fmv in class 5, 6, 7, and 8 per muni
-  mutate(year_muni_class_FMV = sum(FMV))
-
-## Added this for cook level totals:
-class_8_df_outofCook <- 
-  muni_MC %>%
- # filter(clean_name %in% class_8_munis) %>% ## keep all munis, use for cook county totals.
-  filter(av != 0) %>%
-  mutate(FMV = av/assess_ratio) %>%
-  group_by(year) %>%   
-  mutate(year_tb_tot = sum(FMV)) %>%           # tax base for all class 8 munis together, per year
-  ungroup() %>%
-  filter(land_use %in% c("Industrial", "Commercial")) %>%      ## drops all non-industrial and non-commercial classes to calculate the rest of the totals
-  group_by(year) %>%
-  mutate(year_ind_comm_FMV = sum(FMV)) %>%    #  total commercial and industrial FMV for all class 8 munis together, per year
-  ungroup() %>%
-  group_by(year, clean_name) %>%
-  mutate(muni_year_ind_comm_FMV = sum(FMV)) %>%   # calculates total FMV in each munis  each year
-  ungroup() %>%
-  group_by(year, land_use) %>%
-  mutate(cat_year_FMV = sum(FMV)) %>%    # calculates FMV within each commercial vs industrial category for each year
-  ungroup() %>%
-  group_by(year, clean_name, class_1dig) %>%   # total fmv in class 5, 6, 7, and 8 per muni
-  mutate(year_muni_class_FMV = sum(FMV))
-
-
-## Class 8 Townships Graph -------------------
- ## Alea Version: 
-ggplot() +
-  geom_line(data = class_8_df %>%
-              group_by(year) %>%
-              summarize(ind_comm_perc = mean(year_ind_comm_FMV/year_tb_tot)), 
-            aes(x = year, y = ind_comm_perc, color =  "Commercial+Industrial"), lwd = 1) +  
-  
-  # industrial fmv
-  geom_line(data = class_8_df %>%               
-              filter(land_use == "Industrial") %>%
-              group_by(year) %>%
-              # needed na.rm=TRUE, otherwise it didn't work. perc_industrial was not being calculated without it.
-              summarize(perc_industrial =  sum(FMV/year_tb_tot, na.rm=TRUE)),   ## added this part
-            aes(x = year, y = perc_industrial, color = "Industrial"), lwd = 1) +
-  
-  # commercial fmv
-  geom_line(data = class_8_df %>%              
-              filter(land_use == "Commercial") %>%
-              group_by(year) %>%
-              summarize(perc_commercial =  sum(FMV/year_tb_tot, na.rm=TRUE)),   ## added this part
-            aes(x = year, y = perc_commercial, color = "Commercial"), lwd = 1) +
-  geom_line(data = class_8_df %>%
-              filter(incent_prop == "Incentive") %>%
-              group_by(year) %>%
-              summarise(incent_perc = sum(FMV)/year_tb_tot),
-            aes(x = year, y = incent_perc, color = "Incentive Classes"), lwd = 1 ) +
-  geom_line(data = class_8_df %>%               # threw error here, missing x and y in aes()
-              filter(class_1dig == 8) %>% 
-              group_by(year) %>%
-              summarize(perc_8 =  sum(FMV/year_tb_tot)),   ## added this part
-            aes(x = year, y = perc_8, color = "Class 8"), lwd = 1) +        # was missing a + sign here
-  theme_classic() +
-  scale_x_continuous(name = "", breaks = seq(2006, 2022, by = 3), limits = c(2006, 2022), expand = c(0,0)) +
-  scale_y_continuous(name = "Percent of FMV", labels = scales::percent_format(), limits = c(0, 0.20),
-                     breaks = seq(0, 0.5, by = 0.05), expand = c(0,0))  +
- scale_color_manual(name = "", values = c("Commercial+Industrial" = "black", "Industrial" = "gray70", "Commercial" = "gray50",  "Incentive Classes" = "orange",  "Class 8" = "red" )) +
-  theme(legend.position = "bottom") + 
-  labs(title = "Property in the Class 8 Townships") + 
-  guides(color = guide_legend(nrow=2, byrow = TRUE))
-## Percentage out of Cook County ---------------------
- 
-## Alea Version for Cook Level: 
-ggplot() +
-  # Commercial + Industrial FMV in cook
-  geom_line(data = class_8_df_outofCook %>%
-              group_by(year) %>%  #didn't group by year before?
-              summarize(ind_comm_perc = mean(year_ind_comm_FMV/year_tb_tot)), 
-            aes(x = year, y = ind_comm_perc, color =  "Commercial+Industrial"), lwd = 1) +  
-  
-  # incentive class properties in cook
-  geom_line(data = class_8_df_outofCook %>%
-              filter(incent_prop == "Incentive") %>%
-              group_by(year) %>%
-              summarise(incent_perc = sum(FMV/year_tb_tot)),
-            aes(x = year, y = incent_perc, color = "Incentive Classes"), lwd = 1 ) +
- 
-  # FMV with class 8 property class in cook county
-   geom_line(data = class_8_df_outofCook %>%               # threw error here, missing x and y in aes()
-              filter(class_1dig == 8) %>% 
-              group_by(year) %>%
-              summarize(perc_8 =  sum(FMV/year_tb_tot)),   ## added this part
-            aes(x = year, y = perc_8, color = "Class 8"), lwd = 1) +        # was missing a + sign here
- 
-  # industrial fmv in cook county
-  geom_line(data = class_8_df_outofCook %>%               # threw error here, missing x and y in aes()
-              filter(land_use == "Industrial") %>%
-              group_by(year) %>%
-              # needed na.rm=TRUE, otherwise it didn't work. perc_industrial was not being calculated without it.
-              summarize(perc_industrial =  sum(FMV/year_tb_tot, na.rm=TRUE)),   ## added this part
-            aes(x = year, y = perc_industrial, color = "Industrial"), lwd = 1) +
-
-  # commercial fmv in cook county
-geom_line(data = class_8_df_outofCook %>%               # threw error here, missing x and y in aes()
-            filter(land_use == "Commercial") %>%
-            group_by(year) %>%
-            summarize(perc_commercial =  sum(FMV/year_tb_tot, na.rm=TRUE)),   ## added this part
-          aes(x = year, y = perc_commercial, color = "Commercial"), lwd = 1) +
-
-  # make it pretty:
-   theme_classic() +
-  scale_x_continuous(name = "", breaks = seq(2006, 2022, by = 3), limits = c(2006, 2022), expand = c(0,0)) +
-  scale_y_continuous(name = "Percent of County FMV", labels = scales::percent_format(),  limits = c(0, 0.20), 
-                     breaks = seq(0, 0.5, by = 0.05), expand = c(0,0))  +
-  scale_color_manual(name = "", values = c("Commercial+Industrial" = "black", "Industrial" = "gray80", "Commercial" = "gray40", "Incentive Classes" = "orange", "Class 8" =  "red")) +
-  theme(legend.position = "bottom") +
-  labs(title= "Cook County Commercial & Industrial FMV") + guides(color = guide_legend(nrow=2, byrow = TRUE))
-## Newest Addition for April 30th Presentation --------------------
-ggplot() +
-  # incentive class properties in cook
-  geom_line(data = class_8_df_outofCook %>%
-              filter(incent_prop == "Incentive") %>%
-              group_by(year) %>%
-              summarise(incent_perc = sum(FMV/year_ind_comm_FMV)),
-            aes(x = year, y = incent_perc, color = "Incentive Classes"), lwd = 1 ) +
-  
-  # FMV with class 8 property class in cook county
-  geom_line(data = class_8_df_outofCook %>%               
-              filter(class_1dig == 8) %>% 
-              group_by(year) %>%
-              summarize(perc_8 =  sum(FMV/year_ind_comm_FMV)),   
-            aes(x = year, y = perc_8, color = "Class 8"), lwd = 1) +       
-  # make it pretty:
-  theme_classic() +
-  scale_x_continuous(name = "", breaks = seq(2006, 2022, by = 3), limits = c(2006, 2022), expand = c(0,0)) +
-  scale_y_continuous(name = "Percent of Com+Ind FMV", labels = scales::percent_format(), limits = c(0, 0.25), 
-                     breaks = seq(0, 0.5, by = 0.05), expand = c(0,0))  +
-  scale_color_manual(name = "", values = c("Industrial" = "gray80", "Commercial" = "gray40", "Incentive Classes" = "orange", "Class 8" =  "red")) +
-  theme(legend.position = "bottom") +
-  labs(title= "Cook County", subtitle =  "Share of Commercial & Industrial FMV with Incentive Classification") + guides(color = guide_legend(nrow=2, byrow = TRUE))
-## Newest Addition for April 30th Presentation --------------------
-ggplot() +
-  # incentive class properties in cook
-  geom_line(data = class_8_df_outofCook %>%
-              filter(incent_prop == "Incentive") %>%
-              group_by(year) %>%
-              summarise(incent_perc = sum(FMV/year_ind_comm_FMV)),
-            aes(x = year, y = incent_perc, color = "Incentive Classes"), lwd = 1 ) +
-  # 
-  # # FMV with class 8 property class in cook county
-  # geom_line(data = class_8_df_outofCook %>%               
-  #             filter(class_1dig == 8) %>% 
-  #             group_by(year) %>%
-  #             summarize(perc_8 =  sum(FMV/year_ind_comm_FMV)),   
-  #           aes(x = year, y = perc_8, color = "Class 8"), lwd = 1) +       
-  # make it pretty:
-  theme_classic() +
-  scale_x_continuous(name = "", breaks = seq(2006, 2022, by = 3), limits = c(2006, 2022), expand = c(0,0)) +
-  scale_y_continuous(name = "Percent of Com+Ind FMV", labels = scales::percent_format(), limits = c(0, 0.25), 
-                     breaks = seq(0, 0.5, by = 0.05), expand = c(0,0))  +
-  scale_color_manual(name = "", values = c("Industrial" = "gray80", "Commercial" = "gray40", "Incentive Classes" = "orange")) +
-  theme(legend.position = "bottom") +
-  labs(title= "Cook County", subtitle =  "Share of Commercial & Industrial FMV with Incentive Classification") + guides(color = guide_legend(nrow=2, byrow = TRUE))
- ggplot() +
-   geom_line(data = class_8_df %>%
-               filter(incent_prop == "Incentive") %>%
-               group_by(year) %>%
-               summarise(incent_perc = sum(FMV/year_ind_comm_FMV)),
-             aes(x = year, y = incent_perc, color = "All Incentive Classes"), lwd = 1 ) +
-      geom_line(data = class_8_df %>%               
-               filter(class_1dig == 8) %>% 
-               group_by(year) %>%
-               summarize(perc_8 =  sum(FMV/year_ind_comm_FMV)), 
-             aes(x = year, y = perc_8, color = "Class 8"), lwd = 1) +        
-   # make it pretty:
-   theme_classic() +
-   scale_x_continuous(name = "", breaks = seq(2006, 2022, by = 3), limits = c(2006, 2022), expand = c(0,0)) +
-   scale_y_continuous(name = "Percent of Com&Ind FMV", labels = scales::percent_format(), # limits = c(0, 0.25), 
-                      breaks = seq(0, 0.5, by = 0.05), expand = c(0,0))  +
-   scale_color_manual(name = "", values = c("Commercial+Industrial" = "black", "Industrial" = "gray80", "Commercial" = "gray40", "All Incentive Classes" = "orange", "Class 8" =  "red")) +
-   theme(legend.position = "bottom") +
-   labs(title= "Class 8 Townships", subtitle =  "Share of Commercial & Industrial FMV with Incentive Classification") + guides(color = guide_legend(nrow=2, byrow = TRUE))
-```
-
-
 # Municipality Level Stats
 
 *Ignore stats for these Municipalities. Simple rounding errors may cause bizarre results for rate changes & other calculations. These municipalities are dropped from summary tables in this website but are included in exported files.*
@@ -848,78 +596,6 @@ ggplot() +
 -   Homer Glen has 3
 -   University Park has 4
 -   Oak Brook, Deer Park, Deerfield, & Bensenville each have less than 75 PINs in Cook County, IL
-
-```{r}
-#| eval: false
-#| include: false
-
-
-munilevel <- pin_data %>% 
-  group_by(clean_name) %>%
-  filter(clean_name != "Unincorporated" & !is.na(clean_name)) %>%
-  summarize(
-    muni_exempt_PC = sum(ifelse(class == 0 | class == "EX" | class == "RR", 1, 0), na.rm=TRUE),
-    muni_PC_total = n(),
-    muni_PC_residential = sum(ifelse(class %in% c(200:399), 1, 0), na.rm = TRUE),
-    muni_PC_industrial  = sum(ifelse(class %in% industrial_classes, 1, 0), na.rm = TRUE),
-    muni_PC_commercial = sum(ifelse(class %in% commercial_classes, 1, 0), na.rm = TRUE),
-    muni_PC_inTIF = sum(in_tif),
-    muni_PC_withincents = sum(ifelse(between(class, 600, 900), 1, 0), na.rm = TRUE),
-    muni_PC_incents_inTIFs = sum(ifelse(between(class, 600, 900) & in_tif == 1, 1, 0), na.rm = TRUE),
-    muni_PC_claimed_exe = sum(ifelse(all_exemptions > 0, 1, 0)),
-    
-    # Projects primarily apply to commercial and industrial property.
-    muni_projects = n_distinct(both_ids),
-    muni_fmv_incentive = sum(ifelse(class >=600 & class <=900, fmv, 0), na.rm = TRUE),
-    muni_fmv_commerc_incentive = sum(ifelse(class >=600 & class <=900 & class %in% commercial_classes, fmv, 0), na.rm = TRUE),
-    muni_fmv_indust_incentive = sum(ifelse(class >=600 & class <=900 & class %in% industrial_classes, fmv, 0), na.rm = TRUE),
-    # muni_fmv_taxed = sum(taxed_fmv, na.rm=TRUE),
-    muni_fmv_inTIF = sum(fmv_inTIF, na.rm=TRUE),
-    muni_fmv_exempt = sum(all_exemptions/eq_factor/loa, na.rm=TRUE),
-    muni_fmv_abated = sum(abatements/eq_factor/loa, na.rm = TRUE),
-    muni_fmv_tif_increment = sum(fmv_tif_increment, na.rm=TRUE),
-    muni_fmv_abates_inTIF = sum(ifelse(between(class, 600, 900) & in_tif == 1 & abatements >0 , fmv, 0), na.rm = TRUE),
-    muni_fmv_incents_inTIF = sum(ifelse(between(class, 600, 900) & in_tif == 1, fmv, 0), na.rm = TRUE),
-    muni_fmv_untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
-    
-    muni_fmv = sum(fmv, na.rm=TRUE), 
-    muni_fmv_residential = sum(ifelse(class %in% c(200:399), fmv, 0), na.rm = TRUE),
-    muni_fmv_industrial = sum(ifelse(class %in% industrial_classes, fmv, 0), na.rm = TRUE),
-    muni_fmv_commercial = sum(ifelse(class %in% commercial_classes, fmv, 0), na.rm = TRUE),
-    muni_zero_bill = sum(zero_bill, na.rm=TRUE),
-    muni_levy = sum(final_tax_to_dist),
-    muni_current_rate_avg = mean(tax_code_rate),
-    muni_eav_taxed = sum(taxed_av*eq_factor), 
-    
-    muni_min_TC_rate = min(tax_code_rate),
-    muni_max_TC_rate = max(tax_code_rate),
-    muni_avg_C2_bill_noexe = mean(ifelse(between(class,200,299) & all_exemptions == 0, (final_tax_to_dist + final_tax_to_tif), NA), na.rm=TRUE),
-    muni_avg_C2_bill_withexe = mean(ifelse(between(class,200,299) & all_exemptions > 0, (final_tax_to_dist+ final_tax_to_tif), NA), na.rm=TRUE),
-    muni_eav = sum(eav)) %>%
-  
-  mutate(
-    muni_range_TC_rate = muni_max_TC_rate - muni_min_TC_rate,
-    muni_effective_rate =  muni_levy / muni_fmv * 100, 
-    muni_pct_eav_taxed = muni_levy / muni_eav_taxed,
-    
-    #  pct_fmv_taxed = muni_fmv_taxed / muni_fmv,
-    pct_fmv_w_incentclass = muni_fmv_incentive / muni_fmv,
-    pct_fmv_indust_incent = muni_fmv_indust_incentive / muni_fmv_industrial,
-    pct_fmv_commerc_incent = muni_fmv_commerc_incentive / muni_fmv_commercial,
-    pct_fmv_inTIF = muni_fmv_inTIF / muni_fmv,
-    pct_fmv_in_tif_increment = muni_fmv_tif_increment / muni_fmv,
-    pct_fmv_untaxable_value = muni_fmv_untaxable_value / muni_fmv,
-    pct_fmv_incents_inTIFs = muni_fmv_incents_inTIF / muni_fmv ) %>%
-  mutate(across(starts_with("muni_fmv_"), round, digits = 0)) %>%
-  
-  mutate(across(contains(c("rate", "pct","bill")), round, digits = 3) ) %>%
-  
-  ungroup() %>%
-  select(clean_name, everything())
-
-
-
-```
 
 ## Frequency of Incentives 
 
@@ -1071,6 +747,8 @@ no_incentives <- no_incentives %>%
 #| column: margin
 
 table_muni_percentages %>%
+    left_join(nicknames) |>
+
   select(clean_name, pct_fmv_w_incentclass, shpfile_name) %>%
  filter(!is.na(clean_name) & clean_name != "Unincorporated" ) %>%
   full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) %>%
@@ -1646,11 +1324,11 @@ muni_ratechange_sliced %>%
 
 muni_ratechange %>% 
   select(clean_name, change_noInc) %>% 
-#mutate(change_noInc = round(change_noInc)) %>%
+ mutate(change_noInc = round(change_noInc*100, digits = 1)) %>%
   filter(clean_name != "Unincorporated") %>%
   left_join(nicknames) %>%
   full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
-  ggplot(aes(fill = change_noInc*100)) +
+  ggplot(aes(fill = change_noInc)) +
   geom_sf(aes(geometry = geom), color = "black") +
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
@@ -1672,12 +1350,12 @@ muni_ratechange %>%
 
 muni_ratechange %>% 
   select(clean_name, change_neither) %>% 
-mutate(change_neither = round(change_neither)) %>%
+ mutate(change_neither = round(change_neither*100, digits = 1)) %>%
   filter(clean_name != "Unincorporated") %>%
   left_join(nicknames) %>%
   full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) %>%
-
-  ggplot(aes(fill = change_neither*100)) +
+  
+  ggplot(aes(fill = change_neither)) +
   geom_sf(aes(geometry = geom), color = "black") +
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
@@ -1685,10 +1363,10 @@ mutate(change_neither = round(change_neither)) %>%
     low = "black", high = "brown",
     show.limits=TRUE,
     nice.breaks=FALSE,
-na.value = "gray50",
-    n =4,
+    na.value = "gray50",
+    n = 4,
     name = "Tax Rate Change\nin Percentage Pts") +
-   geom_sf_pattern(data = no_incentives, aes(geometry = geom), pattern = 'crosshatch', pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray40')
+  geom_sf_pattern(data = no_incentives, aes(geometry = geom), pattern = 'crosshatch', pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray40')
 ```
 
 ```{r}
@@ -1974,4 +1652,27 @@ muni_ratechange %>%
     y = "")
 ```
 
+### Revenue Shifting - experimental sums
+
+```{r}
+#| label: tbl-incentivePINs2022-revshifted
+#| tbl-cap: "PIN level tax savings due to incentive classification. Also can be viewed as the shifted tax burden from PINs with incentive classification in 2022 to all other non-incentive PINs. Sorted from largest tax bill savings to smallest bill reduction."
+#| layout-nrow: 2
+#| 
+
+pin_data %>% 
+  filter(naive_rev_forgone > 0) %>% 
+  select(pin, class, fmv, naive_rev_forgone, untaxable_incent_eav, taxed_eav, everything()) |>
+    mutate(across(is.numeric, round, digits = 0))
+
+
+pin_data %>%
+  filter(naive_rev_forgone > 0) %>% 
+  summarize(fmv = sum(fmv),                                                   
+            naive_rev_forgone = round(sum(naive_rev_forgone)),                      
+            untaxable_incent_eav = sum(untaxable_incent_eav),                     
+            taxed_eav = sum(taxed_eav)) |>
+  mutate(across(is.numeric, scales::comma, accuracy = 1))
+
+```
 
