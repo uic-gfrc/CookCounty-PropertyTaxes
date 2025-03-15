@@ -137,6 +137,9 @@ comm_ind_pins %>%
 
 
 ```{r}
+#| label: tbl-Report-Table2-allyears
+#| tbl-cap: "**Table 2 in Incentive Report**  Incentive FMV by Year, 2006 to 2023"
+
 commind_together_fmv <- comm_ind_pins %>%
   filter(land_use %in% c("Industrial", "Commercial")) |>
   group_by(year) %>%
@@ -154,43 +157,51 @@ table_fmv <- comm_ind_pins %>%
   group_by(year, land_use) %>%
   summarize(
     fmv_incent = sum(ifelse(incent_prop == "Incentive", fmv, 0), na.rm=TRUE),
-        fmv = sum(fmv, na.rm=TRUE),
-
-          )  %>% 
+    fmv = sum(fmv, na.rm=TRUE),
+    
+  )  %>% 
   mutate(pct_incent = (fmv_incent / fmv)) %>%  
   
   arrange(year) %>%
   select(year, land_use, fmv_incent, pct_incent) |>
   pivot_wider(id_cols = year, names_from = land_use, 
-             values_from = c(fmv_incent, pct_incent)) %>% ungroup() |>
+              values_from = c(fmv_incent, pct_incent)) %>% ungroup() |>
   select(-year)
 
 
 cbind(commind_together_fmv, table_fmv) %>% 
-  select(Year = year, "C&I Incentive FMV" = fmv_incent, "Share of C&I" = pct_incent,
-                  "Commercial Incent. FMV" = fmv_incent_Commercial, "Share of Commercial" = pct_incent_Commercial,
-
-         "Industrial Incent. FMV" = fmv_incent_Industrial, "Share of Industrial" = pct_incent_Industrial, fmv_CI) %>% 
-    mutate(Year = as.character(Year)) %>%
+  select(Year = year, 
+         "C&I Incentive FMV" = fmv_incent, 
+         "Share of C&I" = pct_incent,
+         "Commercial Incent. FMV" = fmv_incent_Commercial, 
+         "Share of Commercial" = pct_incent_Commercial,
+         "Industrial Incent. FMV" = fmv_incent_Industrial, 
+         "Share of Industrial" = pct_incent_Industrial, 
+         "C&I FMV" = fmv_CI) %>% 
+  mutate(Year = as.character(Year)) %>%
   mutate(across(contains("Share"), scales::percent, accuracy = 0.01)) |>
-
+  
   flextable() %>%
   add_header_row(values = c(" ", "Commercial & Industrial", "Commercial", "Industrial","All C&I"), colwidths = c(1,2,2,2, 1))
 ```
 
 
 ```{r}
+#| label: fig-Report-Figure3-allyears
+#| fig-cap: "**Figure 3 in Incentive Report**     Incentive FMV by Year"
+
+
 comm_ind_pins %>% 
   filter(land_use %in% c("Commercial", "Industrial")) %>%
- group_by(year, land_use) %>%
+  group_by(year, land_use) %>%
   summarize(
-  fmv = sum(ifelse(incent_prop=="Incentive", fmv/1000000000, 0) ))%>%
+    fmv = sum(ifelse(incent_prop=="Incentive", fmv/1000000000, 0) ))%>%
   ggplot() + 
   geom_col(aes(x=year, y = fmv, fill = land_use)) + 
   scale_x_continuous(
-     limits = c(min_year - 1, max_year + 1),                                      
-    breaks = c(min_year, 2010, 2015, 2020, max_year
-               )) + 
+    limits = c(min_year - 1, max_year + 1),                                  
+    breaks = c(min_year, 2010, 2015, 2020, max_year)) + 
+  scale_y_continuous(breaks = c(0, 5, 10, 15)) +
   theme_classic() +
   labs(y = "FMV ($ Billions)")+
   theme(legend.position =  "bottom", legend.title = element_blank(), 
@@ -198,7 +209,7 @@ comm_ind_pins %>%
 ```
 
 
-The file ~~`comm_ind_inmunis_timeseries_2006to2023.csv`~~ `comm_ind_PINs_2011to2023_timeseries.csv` contains all PINs that had an incentive property class for at least 1 year. It includes all observations for a property during the years that it existed, even if it is not an incentive class property in that year.
+The file ~~`comm_ind_inmunis_timeseries_2006to2023.csv`~~ `comm_ind_PINs_2011to2023_timeseries.csv` contains all PINs that had an incentive property class for at least 1 year. It includes all observations for a property during the years that it existed, even if it is not an incentive class property in that year. 
 
 Only includes PINs in incorporated areas.  
 
@@ -341,6 +352,236 @@ comm_ind_pins <- comm_ind_pins %>%
             #"Became Exempt" = sum(became_exempt, na.rm=TRUE)
           )
 classpins_per_year %>%  flextable::flextable()
+```
+
+
+```{r}
+#| layout-ncol: 2
+#| layout-nrow: 2
+
+library(tidyverse)
+
+options(scipen = 999)
+
+# Trends in Incentivized FMV as a percent of the base over time
+
+## Data prep
+
+muni_MC <- read_csv("../Output/ptaxsim_muni_class_summaries_2006to2023.csv") %>%
+  select(year, clean_name, class, av = muni_c_av)
+
+class_dict <- read_csv("../Necessary_Files/class_dict_expanded.csv") %>%
+  select(class = class_code, class_1dig, assess_ratio, incent_prop, land_use=Alea_cat, major_class_code)
+
+muni_MC <- muni_MC %>% 
+  left_join(class_dict, by = c("class")) %>% 
+  filter(class !=0) # drop exempt property types with 0 taxable value
+
+#class_8_munis <- read_csv("./Necessary_Files/datarequests_Class8Munis.csv")
+class_8_munis <- read_csv("../Output/datarequests_Class8Munis.csv")
+
+# changed from as.list to as.character
+class_8_munis <- as.character(class_8_munis$clean_name)
+
+
+
+# class 8 munis - at the year-class level
+class_8_df <- # left_join(muni_MC, class_dict, by = "class") %>%
+  muni_MC %>%
+  filter(clean_name %in% class_8_munis) %>%
+  filter(av != 0) %>%
+  mutate(FMV = av/assess_ratio) %>%
+  group_by(year) %>%   
+  mutate(year_tb_tot = sum(FMV)) %>%           # tax base for all class 8 munis together, per year
+  ungroup() %>%
+  filter(land_use %in% c("Industrial", "Commercial")) %>%      ## drops all non-industrial and non-commercial classes to calculate the rest of the totals
+  group_by(year) %>%
+  mutate(year_ind_comm_FMV = sum(FMV)) %>%    #  total commercial and industrial FMV for all class 8 munis together, per year
+  ungroup() %>%
+  group_by(year, clean_name) %>%
+  mutate(muni_year_ind_comm_FMV = sum(FMV)) %>%   # calculates total FMV in each munis  each year
+  ungroup() %>%
+  group_by(year, land_use) %>%
+  mutate(cat_year_FMV = sum(FMV)) %>%    # calculates FMV within each commercial vs industrial category for each year
+  ungroup() %>%
+  group_by(year, clean_name, class_1dig) %>%   # total fmv in class 5, 6, 7, and 8 per muni
+  mutate(year_muni_class_FMV = sum(FMV))
+
+## Added this for cook level totals:
+class_8_df_outofCook <- 
+  muni_MC %>%
+ # filter(clean_name %in% class_8_munis) %>% ## keep all munis, use for cook county totals.
+  filter(av != 0) %>%
+  mutate(FMV = av/assess_ratio) %>%
+  group_by(year) %>%   
+  mutate(year_tb_tot = sum(FMV)) %>%           # tax base for all class 8 munis together, per year
+  ungroup() %>%
+  filter(land_use %in% c("Industrial", "Commercial")) %>%      ## drops all non-industrial and non-commercial classes to calculate the rest of the totals
+  group_by(year) %>%
+  mutate(year_ind_comm_FMV = sum(FMV)) %>%    #  total commercial and industrial FMV for all class 8 munis together, per year
+  ungroup() %>%
+  group_by(year, clean_name) %>%
+  mutate(muni_year_ind_comm_FMV = sum(FMV)) %>%   # calculates total FMV in each munis  each year
+  ungroup() %>%
+  group_by(year, land_use) %>%
+  mutate(cat_year_FMV = sum(FMV)) %>%    # calculates FMV within each commercial vs industrial category for each year
+  ungroup() %>%
+  group_by(year, clean_name, class_1dig) %>%   # total fmv in class 5, 6, 7, and 8 per muni
+  mutate(year_muni_class_FMV = sum(FMV))
+
+
+## Class 8 Townships Graph -------------------
+ ## Alea Version: 
+ggplot() +
+  geom_line(data = class_8_df %>%
+              group_by(year) %>%
+              summarize(ind_comm_perc = mean(year_ind_comm_FMV/year_tb_tot)), 
+            aes(x = year, y = ind_comm_perc, color =  "Commercial+Industrial"), lwd = 1) +  
+  
+  # industrial fmv
+  geom_line(data = class_8_df %>%               
+              filter(land_use == "Industrial") %>%
+              group_by(year) %>%
+              # needed na.rm=TRUE, otherwise it didn't work. perc_industrial was not being calculated without it.
+              summarize(perc_industrial =  sum(FMV/year_tb_tot, na.rm=TRUE)),   ## added this part
+            aes(x = year, y = perc_industrial, color = "Industrial"), lwd = 1) +
+  
+  # commercial fmv
+  geom_line(data = class_8_df %>%              
+              filter(land_use == "Commercial") %>%
+              group_by(year) %>%
+              summarize(perc_commercial =  sum(FMV/year_tb_tot, na.rm=TRUE)),   ## added this part
+            aes(x = year, y = perc_commercial, color = "Commercial"), lwd = 1) +
+  geom_line(data = class_8_df %>%
+              filter(incent_prop == "Incentive") %>%
+              group_by(year) %>%
+              summarise(incent_perc = sum(FMV)/year_tb_tot),
+            aes(x = year, y = incent_perc, color = "Incentive Classes"), lwd = 1 ) +
+  geom_line(data = class_8_df %>%               # threw error here, missing x and y in aes()
+              filter(class_1dig == 8) %>% 
+              group_by(year) %>%
+              summarize(perc_8 =  sum(FMV/year_tb_tot)),   ## added this part
+            aes(x = year, y = perc_8, color = "Class 8"), lwd = 1) +        # was missing a + sign here
+  theme_classic() +
+  scale_x_continuous(name = "", breaks = seq(2006, 2022, by = 3), limits = c(2006, 2022), expand = c(0,0)) +
+  scale_y_continuous(name = "Percent of FMV", labels = scales::percent_format(), limits = c(0, 0.20),
+                     breaks = seq(0, 0.5, by = 0.05), expand = c(0,0))  +
+ scale_color_manual(name = "", values = c("Commercial+Industrial" = "black", "Industrial" = "gray70", "Commercial" = "gray50",  "Incentive Classes" = "orange",  "Class 8" = "red" )) +
+  theme(legend.position = "bottom") + 
+  labs(title = "Property in the Class 8 Townships") + 
+  guides(color = guide_legend(nrow=2, byrow = TRUE))
+## Percentage out of Cook County ---------------------
+ 
+## Alea Version for Cook Level: 
+ggplot() +
+  # Commercial + Industrial FMV in cook
+  geom_line(data = class_8_df_outofCook %>%
+              group_by(year) %>%  #didn't group by year before?
+              summarize(ind_comm_perc = mean(year_ind_comm_FMV/year_tb_tot)), 
+            aes(x = year, y = ind_comm_perc, color =  "Commercial+Industrial"), lwd = 1) +  
+  
+  # incentive class properties in cook
+  geom_line(data = class_8_df_outofCook %>%
+              filter(incent_prop == "Incentive") %>%
+              group_by(year) %>%
+              summarise(incent_perc = sum(FMV/year_tb_tot)),
+            aes(x = year, y = incent_perc, color = "Incentive Classes"), lwd = 1 ) +
+ 
+  # FMV with class 8 property class in cook county
+   geom_line(data = class_8_df_outofCook %>%               # threw error here, missing x and y in aes()
+              filter(class_1dig == 8) %>% 
+              group_by(year) %>%
+              summarize(perc_8 =  sum(FMV/year_tb_tot)),   ## added this part
+            aes(x = year, y = perc_8, color = "Class 8"), lwd = 1) +        # was missing a + sign here
+ 
+  # industrial fmv in cook county
+  geom_line(data = class_8_df_outofCook %>%               # threw error here, missing x and y in aes()
+              filter(land_use == "Industrial") %>%
+              group_by(year) %>%
+              # needed na.rm=TRUE, otherwise it didn't work. perc_industrial was not being calculated without it.
+              summarize(perc_industrial =  sum(FMV/year_tb_tot, na.rm=TRUE)),   ## added this part
+            aes(x = year, y = perc_industrial, color = "Industrial"), lwd = 1) +
+
+  # commercial fmv in cook county
+geom_line(data = class_8_df_outofCook %>%               # threw error here, missing x and y in aes()
+            filter(land_use == "Commercial") %>%
+            group_by(year) %>%
+            summarize(perc_commercial =  sum(FMV/year_tb_tot, na.rm=TRUE)),   ## added this part
+          aes(x = year, y = perc_commercial, color = "Commercial"), lwd = 1) +
+
+  # make it pretty:
+   theme_classic() +
+  scale_x_continuous(name = "", breaks = seq(2006, 2022, by = 3), limits = c(2006, 2022), expand = c(0,0)) +
+  scale_y_continuous(name = "Percent of County FMV", labels = scales::percent_format(),  limits = c(0, 0.20), 
+                     breaks = seq(0, 0.5, by = 0.05), expand = c(0,0))  +
+  scale_color_manual(name = "", values = c("Commercial+Industrial" = "black", "Industrial" = "gray80", "Commercial" = "gray40", "Incentive Classes" = "orange", "Class 8" =  "red")) +
+  theme(legend.position = "bottom") +
+  labs(title= "Cook County Commercial & Industrial FMV") + guides(color = guide_legend(nrow=2, byrow = TRUE))
+## Newest Addition for April 30th Presentation --------------------
+ggplot() +
+  # incentive class properties in cook
+  geom_line(data = class_8_df_outofCook %>%
+              filter(incent_prop == "Incentive") %>%
+              group_by(year) %>%
+              summarise(incent_perc = sum(FMV/year_ind_comm_FMV)),
+            aes(x = year, y = incent_perc, color = "Incentive Classes"), lwd = 1 ) +
+  
+  # FMV with class 8 property class in cook county
+  geom_line(data = class_8_df_outofCook %>%               
+              filter(class_1dig == 8) %>% 
+              group_by(year) %>%
+              summarize(perc_8 =  sum(FMV/year_ind_comm_FMV)),   
+            aes(x = year, y = perc_8, color = "Class 8"), lwd = 1) +       
+  # make it pretty:
+  theme_classic() +
+  scale_x_continuous(name = "", breaks = seq(2006, 2022, by = 3), limits = c(2006, 2022), expand = c(0,0)) +
+  scale_y_continuous(name = "Percent of Com+Ind FMV", labels = scales::percent_format(), limits = c(0, 0.25), 
+                     breaks = seq(0, 0.5, by = 0.05), expand = c(0,0))  +
+  scale_color_manual(name = "", values = c("Industrial" = "gray80", "Commercial" = "gray40", "Incentive Classes" = "orange", "Class 8" =  "red")) +
+  theme(legend.position = "bottom") +
+  labs(title= "Cook County", subtitle =  "Share of Commercial & Industrial FMV with Incentive Classification") + guides(color = guide_legend(nrow=2, byrow = TRUE))
+## Newest Addition for April 30th Presentation --------------------
+ggplot() +
+  # incentive class properties in cook
+  geom_line(data = class_8_df_outofCook %>%
+              filter(incent_prop == "Incentive") %>%
+              group_by(year) %>%
+              summarise(incent_perc = sum(FMV/year_ind_comm_FMV)),
+            aes(x = year, y = incent_perc, color = "Incentive Classes"), lwd = 1 ) +
+  # 
+  # # FMV with class 8 property class in cook county
+  # geom_line(data = class_8_df_outofCook %>%               
+  #             filter(class_1dig == 8) %>% 
+  #             group_by(year) %>%
+  #             summarize(perc_8 =  sum(FMV/year_ind_comm_FMV)),   
+  #           aes(x = year, y = perc_8, color = "Class 8"), lwd = 1) +       
+  # make it pretty:
+  theme_classic() +
+  scale_x_continuous(name = "", breaks = seq(2006, 2022, by = 3), limits = c(2006, 2022), expand = c(0,0)) +
+  scale_y_continuous(name = "Percent of Com+Ind FMV", labels = scales::percent_format(), limits = c(0, 0.25), 
+                     breaks = seq(0, 0.5, by = 0.05), expand = c(0,0))  +
+  scale_color_manual(name = "", values = c("Industrial" = "gray80", "Commercial" = "gray40", "Incentive Classes" = "orange")) +
+  theme(legend.position = "bottom") +
+  labs(title= "Cook County", subtitle =  "Share of Commercial & Industrial FMV with Incentive Classification") + guides(color = guide_legend(nrow=2, byrow = TRUE))
+ ggplot() +
+   geom_line(data = class_8_df %>%
+               filter(incent_prop == "Incentive") %>%
+               group_by(year) %>%
+               summarise(incent_perc = sum(FMV/year_ind_comm_FMV)),
+             aes(x = year, y = incent_perc, color = "All Incentive Classes"), lwd = 1 ) +
+      geom_line(data = class_8_df %>%               
+               filter(class_1dig == 8) %>% 
+               group_by(year) %>%
+               summarize(perc_8 =  sum(FMV/year_ind_comm_FMV)), 
+             aes(x = year, y = perc_8, color = "Class 8"), lwd = 1) +        
+   # make it pretty:
+   theme_classic() +
+   scale_x_continuous(name = "", breaks = seq(2006, 2022, by = 3), limits = c(2006, 2022), expand = c(0,0)) +
+   scale_y_continuous(name = "Percent of Com&Ind FMV", labels = scales::percent_format(), # limits = c(0, 0.25), 
+                      breaks = seq(0, 0.5, by = 0.05), expand = c(0,0))  +
+   scale_color_manual(name = "", values = c("Commercial+Industrial" = "black", "Industrial" = "gray80", "Commercial" = "gray40", "All Incentive Classes" = "orange", "Class 8" =  "red")) +
+   theme(legend.position = "bottom") +
+   labs(title= "Class 8 Townships", subtitle =  "Share of Commercial & Industrial FMV with Incentive Classification") + guides(color = guide_legend(nrow=2, byrow = TRUE))
 ```
 
 ### Explore PINs that became Class 8 or Other Incentive in South Triad
@@ -579,6 +820,7 @@ df_2011_bal %>%
 
 
 ## Trends for Incentive Report - FMV Growth 2011-2022
+
 ### Pin Counts
 
 ```{r}
@@ -641,7 +883,12 @@ cbind(commind_together, table) %>%
   add_header_row(values = c(" ", "Incent C&I", "Commercial", "Industrial","All C&I"), colwidths = c(1,2,2,2, 1))
 
 ```
+
 ```{r}
+#| label: fig-Report-Figure1
+#| fig-cap: "**Figure 1 in Incentive Report**     Incentive FMV by Year, 2011-2022 (Normalized to 2011 FMV)"
+
+
 comm_ind_pins %>% 
   filter(land_use %in% c("Commercial", "Industrial")) %>%
  group_by(year, land_use) %>%
@@ -660,6 +907,7 @@ comm_ind_pins %>%
 
 
 ```{r}
+
 commind_together_fmv <- comm_ind_pins %>%
   filter(land_use %in% c("Industrial", "Commercial")) |>
   group_by(year) %>%
@@ -698,8 +946,13 @@ cbind(commind_together_fmv, table_fmv) %>%
   add_header_row(values = c(" ", "Commercial & Industrial", "Commercial", "Industrial","All C&I"), colwidths = c(1,2,2,2, 1))
 ```
 
+### FMV
 
 ```{r}
+#| label: fig-Report-Figure2
+#| fig-cap: "**Figure 4 in Incentive Report**     Incentive FMV by Year, 2011-2022 (Normalized to 2011 FMV)"
+
+
 comm_ind_pins %>% 
   filter(land_use %in% c("Commercial", "Industrial")) %>%
  group_by(year, land_use) %>%
@@ -708,13 +961,13 @@ comm_ind_pins %>%
   ggplot() + 
   geom_col(aes(x=year, y = fmv, fill = land_use)) + 
   scale_x_continuous(
-    limits = c(min_year - 1, max_year + 1),                                      
-    breaks = c(min_year, 2010, 2015, 2020, max_year
+    limits = c(min_year - 1, max_year + 1),                         
+    breaks = c(min_year,  2015, 2020, max_year
               )) + 
   theme_classic() +
   labs(y = "FMV ($ Billions)")+
   theme(legend.position =  "bottom", legend.title = element_blank(), 
-                          axis.title.x =   element_blank())
+                          axis.title.x = element_blank())
 ```
 
 
@@ -725,6 +978,9 @@ Only includes PINs in incorporated areas.
 
 
 ```{r}
+#| label: fig-Report-Figure4
+#| fig-cap: "**Figure 2 in Incentive Report**     Incentive FMV by Year, 2011-2022 (Normalized to 2011 FMV)"
+
 comm_ind_pins %>%
   filter(incent_prop == "Incentive") %>%
   # group_by(year, land_use) %>%
@@ -742,7 +998,7 @@ comm_ind_pins %>%
   theme_bw() + 
     scale_x_continuous(
     limits = c(min_year - 1, max_year + 1),                                      
-    breaks = c(min_year, 2010, 2015, 2020, max_year
+    breaks = c(min_year, 2015, 2020, max_year
               )) 
 ```
 
