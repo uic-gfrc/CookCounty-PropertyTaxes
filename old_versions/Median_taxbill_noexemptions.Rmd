@@ -1,0 +1,1273 @@
+---
+title: "Change in Median tax bill if no exemptions"
+author: "Alea Wilbur"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    toc: yes
+    toc_float: yes
+    df_print: paged
+    code_folding: hide
+---
+
+# Setup
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+
+library(tidyverse)
+library(DBI)
+library(data.table)
+library(ggspatial)
+library(gstat)
+library(here)
+library(httr)
+library(jsonlite)
+library(ptaxsim)
+library(sf)
+library(stars)
+library(glue)
+
+# Create the DB connection with the default name expected by PTAXSIM functions
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
+
+# has all potential property classes for pins
+# downloaded from CCAO gitlab website
+## I used this to merge additional information to the pins and class data later on.
+class_dict <- read_csv("class_dict_expanded.csv")
+
+options(digits=4, scipen = 999)
+
+```
+
+
+```{r eval = FALSE, include = FALSE}
+munis <- c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX","VILLAGE OF DOLTON",
+           "VILLAGE OF HAZELCREST", "VILLAGE OF MIDLOTHIAN", "VILLAGE OF BEDFORD PARK",
+           "VILLAGE OF BRIDGEVIEW", "VILLAGE OF RIVER GROVE", "VILLAGE OF MC COOK",
+           "VILLAGE OF OAK PARK", "VILLAGE OF HOFFMAN ESTATES", "VILLAGE OF ROSEMONT",
+           "VILLAGE OF HODGKINS", "VILLAGE OF WINNETKA")
+
+munis$muni_name <- c("VILLAGE OF PARK FOREST", "VILLAGE OF PHOENIX","VILLAGE OF DOLTON",
+           "VILLAGE OF HAZELCREST", "VILLAGE OF MIDLOTHIAN", "VILLAGE OF BEDFORD PARK",
+           "VILLAGE OF BRIDGEVIEW", "VILLAGE OF RIVER GROVE", "VILLAGE OF MC COOK",
+           "VILLAGE OF OAK PARK", "VILLAGE OF HOFFMAN ESTATES", "VILLAGE OF ROSEMONT",
+           "VILLAGE OF HODGKINS", "VILLAGE OF WINNETKA")
+
+munis <- c("VILLAGE OF DOLTON")
+
+munis$muni_name <- c("VILLAGE OF DOLTON")
+```
+
+```{r agency-dt}
+# has EAV values, extensions by agency_num
+agency_dt <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT *
+  FROM agency
+  WHERE year = 2021
+  "
+)
+
+# grabs all unique muni names. Would be needed if creating a loop for calculating all munis
+# municipality names and their agency number
+# muni_agency_names <- DBI::dbGetQuery(
+#   ptaxsim_db_conn,
+#   glue_sql("
+#   SELECT DISTINCT agency_num, agency_name, minor_type
+#   FROM agency_info
+#   WHERE agency_name IN ({munis$muni_name*})
+#   ",
+#   .con = ptaxsim_db_conn
+#   )
+# )
+
+muni_agency_names <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT DISTINCT agency_num, agency_name, minor_type
+  FROM agency_info
+  WHERE minor_type = 'MUNI'
+  OR agency_num = '020060000'  
+
+  "
+)
+
+muni_agency_names <- muni_agency_names %>% 
+    mutate(first6 = str_sub(agency_num,1,6),
+         first5 = str_sub(agency_num,1,5)) %>% 
+  select(-minor_type)
+
+
+
+muni_tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT*
+  FROM tax_code
+  WHERE agency_num IN ({muni_agency_names$agency_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+)# %>% select(-agency_rate)
+
+
+nicknames <- readxl::read_excel("muni_shortnames.xlsx")
+
+#Makes a list of ALL taxing agencies, including TIFs, SSAs, etc.
+
+# all agency names, numbers, and types
+# includes TIF and non-TIF agencies
+all_taxing_agencies <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT agency_num, agency_name, major_type, minor_type
+  FROM agency_info
+  "
+  ) %>%
+  mutate(first6 = str_sub(agency_num,1,6),
+         first5 = str_sub(agency_num,1,5))
+
+all_taxing_agencies <- all_taxing_agencies %>% 
+  left_join(muni_agency_names, by = c("first5", "first6")) %>% 
+  rename(muni_name =  agency_name.y,
+        muni_num = agency_num.y,
+        agency_name = agency_name.x,
+        agency_num = agency_num.x)
+
+
+```
+
+## Current Values
+
+August 1st - Realized I don't want data grouped by pin and major_class. I want the actual class and I can always group it in later steps. Changing code to  group by pin, class, taxcode and recreating the csv files. 
+
+
+
+```{r}
+muni_pins <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql(
+  "SELECT DISTINCT pin, class, tax_code_num
+  FROM pin
+  WHERE tax_code_num IN ({muni_tax_codes$tax_code_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+))
+```
+
+
+```{r eval=FALSE}
+#all_muni_pins <-read_csv("all_muni_pins.csv")
+
+## Normal output from lookup_pin() command. Includes all types of exemptions
+# exe_dt <- lookup_pin(2021, muni_pins$pin) %>%
+#  setDT(key = c("year", "pin"))
+
+
+
+
+taxbills_current <- tax_bill(2021, 
+                  muni_pins$pin, 
+               #   pin_dt = exe_dt, # default option
+                  simplify = FALSE)
+
+class_dict$class_code <- as.character(class_dict$class_code)
+
+pin_bills_current <- taxbills_current %>%
+   #mutate(total_bill = final_tax_to_dist+final_tax_to_tif) %>%
+ group_by(pin, class, tax_code, #major_class_code, major_class_type
+           ) %>%
+  arrange(av) %>%
+  summarize(#total_billed = sum(total_bill, na.rm = TRUE),
+   av = first(av),
+   eav = first(eav),
+            final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE),
+            final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+            tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), # amount reduced on bill
+            tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), # bill before all exemptions
+            tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE), # bill after all exemptions
+        rpm_tif_to_cps = sum(rpm_tif_to_cps), # not used
+        rpm_tif_to_rpm = sum(rpm_tif_to_rpm), # not used
+         rpm_tif_to_dist = sum(rpm_tif_to_dist), # not used
+          tif_share = mean(tif_share)
+       ) 
+
+rm(taxbills_current)
+# 
+# # building level sums for valuation and exemptions
+# parcel_bills_current <- pin_bills_current %>%
+#   mutate(pin10 = str_sub(pin, 1, 10)) %>%
+#   group_by(pin10, class, tax_code, #major_class_code, major_class_type
+#            ) %>%
+#   summarize(#total_billed = sum(total_billed, na.rm = TRUE),
+#    # median_bill = median(total_bill, na.rm=TRUE),
+#    av = sum(av),
+#    eav = sum(eav),
+#             final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE),
+#             final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+#             tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), # revenue lost due to exemptions
+#             tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), # total rev before all exemptions
+#             tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE), # total rev after all exemptions
+#         rpm_tif_to_cps = sum(rpm_tif_to_cps), # not used
+#         rpm_tif_to_rpm = sum(rpm_tif_to_rpm), # not used
+#          rpm_tif_to_dist = sum(rpm_tif_to_dist), # not used
+#           tif_share = mean(tif_share), # not used
+#    pin14_count = n()
+#        ) %>%
+#   mutate(stage = "Parcel Sums With exemptions")
+
+pin_bills_current <- pin_bills_current %>%  
+  full_join(muni_tax_codes, 
+                      by = c("tax_code" = "tax_code_num")) %>%
+  left_join(muni_agency_names) %>%
+  left_join(nicknames) %>%
+
+  mutate(bill_total = final_tax_to_tif + final_tax_to_dist,
+Type = "With exemptions") 
+
+head(pin_bills_current)
+write.csv(pin_bills_current, "pin_level_current_taxbills.csv")
+
+
+```
+
+> tax amount pre exemption is the dollar amount that appears on property tax bills "before exemptions". It does not take into account the change in tax rate when holding the levy constant. Similar to the "direct effect" of eliminating exemptions but not adjusting the tax rates from the increase in taxable EAV.
+
+```{r eval=FALSE}
+pin_bills_current <- read_csv( "pin_level_current_taxbills.csv")
+bills_byClass_current <- pin_bills_current %>% 
+  #mutate(taxable_eav_preexemps = (final_tax_to_dist + tax_amt_exe)/(tax_code_rate/100),
+   #taxable_eav_postexemps = final_tax_to_dist  / (tax_code_rate/100)) %>%
+  group_by(clean_name, class) %>%
+  arrange(av) %>%
+  summarize(
+    median_bill = median(bill_total, na.rm=TRUE),
+   group_av = sum(av, na.rm=TRUE),
+   group_eav = sum(eav, na.rm=TRUE),
+   median_av = median(av, na.rm=TRUE),
+   median_eav = median(eav, na.rm = TRUE),
+    taxable_eav_preexemps = sum((final_tax_to_dist + tax_amt_exe)/(tax_code_rate/100)),
+   taxable_eav_postexemps = sum(final_tax_to_dist  / (tax_code_rate/100)),
+       total_original_eav = sum((final_tax_to_dist + tax_amt_exe + final_tax_to_tif)/(tax_code_rate/100)),
+            median_final_tax_to_dist = median(final_tax_to_dist, na.rm = FALSE),
+            median_final_tax_to_tif = median(final_tax_to_tif, na.rm = FALSE),
+           median_tax_amt_exe = median(tax_amt_exe, na.rm = FALSE), # revenue lost due to exemptions
+            median_tax_amt_pre_exe =median(tax_amt_pre_exe, na.rm = FALSE), # total rev before all exemptions
+            median_tax_amt_post_exe = median(tax_amt_post_exe, na.rm = TRUE), # total rev after all exemptions
+      total_billed = sum(bill_total, na.rm = TRUE),
+            final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE),
+            final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+            tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), # revenue lost due to exemptions
+            tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), # total rev before all exemptions
+            tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE), # total rev after all exemptions
+        rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE), # not used
+        rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm = TRUE), # not used
+         rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm = TRUE), # not used
+          tif_share = mean(tif_share, na.rm = TRUE), # not used
+   pin14_count = n()
+  ) 
+bills_byClass_current 
+
+bills_byClass_current <- bills_byClass_current %>% filter(class != "0")
+
+bills_byClass_current
+
+muni_totals <- bills_byClass_current %>% 
+  group_by(clean_name) %>% 
+  summarize(muni_taxable_eav_preexemps = sum(taxable_eav_preexemps),
+            muni_levy = sum(final_tax_to_dist),
+            muni_taxable_eav_postexemps = sum(taxable_eav_postexemps),
+            total_original_eav = sum(total_original_eav)) %>%
+  mutate(rate_pre = muni_levy/muni_taxable_eav_preexemps,
+         rate_post = muni_levy/muni_taxable_eav_postexemps)
+muni_totals
+```
+
+```{r currentbills-Aleacats}
+bills_byClass_current <- bills_byClass_current %>% 
+  left_join(class_dict, by = c("class" = "class_code"))
+bills_byClass_current <- bills_byClass_current %>% filter(class != "0")
+
+
+bills_byClass_current
+
+grouped_current <- bills_byClass_current %>% 
+  group_by(clean_name, Alea_cat) %>% 
+ # arrange(group_av) %>%
+  summarize(
+    muni_av = sum(group_av, na.rm=TRUE),
+    muni_eav = sum(group_eav, na.rm=TRUE),
+    median_bill = median(median_tax_amt_post_exe),
+    median_bill2 = median(median_tax_amt_post_exe, na.rm=TRUE),
+    median_AV = median(group_av, na.rm=TRUE),
+    eav = median(group_eav, na.rm=TRUE),
+    pin_count = sum(pin14_count))
+
+grouped_current
+```
+
+
+## Simulation: No Exemptions 
+
+NOT Needed!
+
+```{r eval = FALSE}
+
+# calculates total exemptions for each pin. 
+pin_dt_no_exe <- lookup_pin(2021, muni_pins$pin)
+
+pin_dt_no_exe[, tax_code := lookup_tax_code(year, pin)]
+
+exe_cols <- names(pin_dt_no_exe)[startsWith(names(pin_dt_no_exe), "exe_")]
+
+taxcode_sum_no_exe <- pin_dt_no_exe[,
+  .(exe_total = sum(rowSums(.SD))),
+  .SDcols = exe_cols,
+  by = .(year, tax_code)
+]
+
+# recalculate the base
+# change agency data table and their tax rate
+
+t_agency_dt_no_exe <- lookup_agency(2021, pin_dt_no_exe$tax_code)
+
+t_agency_dt_no_exe[
+  taxcode_sum_no_exe,
+  on = .(year, tax_code),
+  agency_total_eav := agency_total_eav + exe_total
+]
+
+
+# Changes all exemptions to 0 for all pins. 
+# This table will then go INSIDE of the taxbill() comand
+# for no exemptions simulation
+
+
+pin_dt_no_exe[, (exe_cols) := 0][, c("tax_code") := NULL]
+
+## plug the new tables into the tax_bill() command. Uses updated taxable eav for each agency,
+taxbills_no_exemps <- tax_bill(2021, 
+                  pin_vec = muni_pins$pin,
+                  agency_dt = t_agency_dt_no_exe,
+                  pin_dt = pin_dt_no_exe)[
+  , stage := "No exemptions" # makes a new variable for when we join current and hypothetical together in a graph and table
+]
+
+head(taxbills_no_exemps)
+
+class_dict$class_code <- as.character(class_dict$class_code)
+
+pin_bills_no_exemps <- taxbills_no_exemps %>%
+#  left_join(class_dict, by = c("class" = "class_code")) %>% # add major property types to pin data
+  group_by(pin, class, tax_code, av, eav #major_class_code, major_class_type
+           ) %>%
+ # mutate(total_bill = final_tax_to_dist+final_tax_to_tif) %>%
+  arrange(av) %>%
+  summarize(#total_billed = sum(total_bill, na.rm = TRUE),
+         #   av = first(av),
+  #  eav = first(eav),
+    final_tax = sum(final_tax),
+    summed_tax_rate = sum(agency_tax_rate)
+           # final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE),
+           # final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+          #  tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), # revenue lost due to exemptions
+         #   tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), # total rev before all exemptions
+        #    tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE), # total rev after all exemptions
+      #  rpm_tif_to_cps = sum(rpm_tif_to_cps), # not used
+      #  rpm_tif_to_rpm = sum(rpm_tif_to_rpm), # not used
+      #   rpm_tif_to_dist = sum(rpm_tif_to_dist), # not used
+         # tif_share = mean(tif_share)
+       ) #%>% mutate(stage = "Without exemptions")
+
+pin_bills_no_exemps <- pin_bills_no_exemps %>% 
+   #   mutate(tax_code_num = as.character(tax_code_num)) %>%
+    left_join(muni_tax_codes, by = c("tax_code" = "tax_code_num"))%>%
+  left_join(muni_agency_names) %>%
+  left_join(nicknames) %>%
+  mutate(
+    #bill_total = final_tax_to_tif + final_tax_to_dist,
+Type = "Without Exemptions") #%>% 
+
+write_csv(pin_bills_no_exemps, "pin level total bills-exemptions removed.csv")
+
+```
+
+### Difference between Current and Hypothetical
+
+```{r muni-bills, eval=FALSE}
+
+pin_bills_no_exemps <- read_csv("pin level total bills-exemptions removed.csv")
+
+pin_bills_current <- read_csv("pin level total bills.csv")
+
+bills_current <- pin_bills_current %>% 
+  group_by(clean_name) %>% 
+  arrange(av) %>%
+  summarize(amuni_av = sum(av, na.rm=TRUE),
+            muni_eav = sum(eav, na.rm=TRUE),
+            av = median(av, na.rm=TRUE),
+            exemptions = median(exemptions, na.rm=TRUE),
+            total_billed = sum(bill_total, na.rm=TRUE),
+            median_bill = median(bill_total, na.rm=TRUE),
+            median_AV = median(av, na.rm= TRUE),
+            eav = median(eav, na.rm=TRUE),
+            pin_count = n(),
+            type = "Current Exemptions")
+
+bills_current
+
+
+
+bills_noexemps <- pin_bills_no_exemps %>% 
+  group_by(clean_name) %>% 
+  arrange(av) %>%
+  summarize(muni_av = sum(av, na.rm=TRUE),
+            muni_eav = sum(eav, na.rm=TRUE),
+            av = median(av, na.rm=TRUE),
+            total_billed = sum(bill_total, na.rm=TRUE),
+            median_bill = median(bill_total, na.rm=TRUE),
+            median_AV = median(av, na.rm=TRUE),
+            eav = median(eav, na.rm=TRUE),
+            pin_count = n(),
+            type = "Without Exemptions")
+
+bills_noexemps
+
+
+
+
+```
+
+```{r class-bills, eval=FALSE}
+
+bills_noexemps2 <- pin_bills_no_exemps %>% 
+  group_by(clean_name, class) %>% 
+  arrange(av) %>%
+  summarize(
+    muni_av = sum(av, na.rm=TRUE),
+    muni_eav = sum(eav, na.rm=TRUE),
+    median_bill = median(final_tax, na.rm=TRUE),
+    median_AV = median(av, na.rm=TRUE),
+    eav = median(eav, na.rm=TRUE),
+    pin_count = n(),
+    type = "Without Exemptions")
+
+bills_noexemps2
+
+
+bills_noexemps2 <- pin_bills_no_exemps %>% 
+  mutate(major_class = str_sub(class, 1, 1)) %>%
+  group_by(clean_name, major_class) %>% 
+  arrange(av) %>%
+  summarize(
+    median_bill = median(final_tax, na.rm=TRUE),
+    median_AV = median(av, na.rm=TRUE),
+    eav = median(eav, na.rm=TRUE),
+    pin_count = n(),
+    type = "Without Exemptions")
+
+bills_noexemps2
+
+```
+
+
+# Simple tax bills:
+
+Uses default of simplify = TRUE. Works better for what we need (median tax bill and rate change). 
+
+```{r simple-pin-bills eval=FALSE}
+taxbills_current <- tax_bill(2021, muni_pins$pin)
+
+pin_bills_current <- taxbills_current %>%
+  group_by(pin, class, tax_code, av, eav) %>%
+  arrange(av) %>%
+  summarize(
+    final_tax = sum(final_tax),
+    summed_tax_rate = sum(agency_tax_rate)
+  ) %>%
+  mutate(stage = "With exemptions")
+
+head(pin_bills_current)
+
+pin_bills_current <- pin_bills_current %>% 
+  left_join(muni_tax_codes, by = c("tax_code" = "tax_code_num"))%>%
+  left_join(muni_agency_names) %>%
+  left_join(nicknames)
+```
+
+
+```{r simple-pin-bills, eval=FALSE, include=FALSE}
+### Does not change the composite tax rate enough
+### does not appear to hold levy constant. 
+# Taxable EAV becomes extra revenue?
+
+
+### now do the simulation calculations ### 
+pin_dt_no_exe <- lookup_pin(2021, muni_pins$pin)
+
+pin_dt_no_exe[, tax_code := lookup_tax_code(year, pin)]
+
+exe_cols <- names(pin_dt_no_exe)[startsWith(names(pin_dt_no_exe), "exe_")]
+
+taxcode_sum_no_exe <- pin_dt_no_exe[,
+  .(exe_total = sum(rowSums(.SD))),
+  .SDcols = exe_cols,
+  by = .(year, tax_code)
+]
+
+
+t_agency_dt_no_exe <- lookup_agency(2021, pin_dt_no_exe$tax_code)
+
+t_agency_dt_no_exe[
+  taxcode_sum_no_exe,
+  on = .(year, tax_code),
+  agency_total_eav := agency_total_eav + exe_total
+]
+
+
+# Changes all exemptions to 0 for all pins. 
+# This table will then go INSIDE of the taxbill() comand
+# for no exemptions simulation
+
+
+pin_dt_no_exe[, (exe_cols) := 0][, c("tax_code") := NULL]
+
+
+## plug the new tables into the tax_bill() command. Uses updated taxable eav for each agency,
+taxbills_no_exemps <- tax_bill(2021, 
+                  pin_vec = muni_pins$pin,
+                  agency_dt = t_agency_dt_no_exe,
+                  pin_dt = pin_dt_no_exe)[
+  , stage := "No exemptions" # makes a new variable for when we join current and hypotheticals together in a graph and table
+]
+
+head(taxbills_no_exemps)
+
+
+pin_bills_no_exemps <- taxbills_no_exemps %>%
+  group_by(pin, class, tax_code, av, eav #major_class_code, major_class_type
+           ) %>%
+  arrange(av) %>%
+  summarize(
+    final_tax = sum(final_tax),
+    summed_tax_rate = sum(agency_tax_rate)
+       ) 
+
+pin_bills_no_exemps <- pin_bills_no_exemps %>% 
+  left_join(muni_tax_codes, by = c("tax_code" = "tax_code_num"))%>%
+  left_join(muni_agency_names) %>%
+  left_join(nicknames)
+```
+
+
+```{r simple-muni-bills, eval=FALSE}
+bills_current <- pin_bills_current %>% 
+  group_by(clean_name) %>% 
+  arrange(av) %>%
+  summarize(av = sum(av, na.rm=TRUE),
+            eav = sum(eav, na.rm=TRUE),
+            total_billed = sum(final_tax, na.rm=TRUE),
+            median_bill = median(final_tax, na.rm=TRUE),
+            median_taxrate = median(summed_tax_rate, na.rm=TRUE),
+            median_av = median(av, na.rm= TRUE),
+            median_eav = median(eav, na.rm=TRUE),
+            pin_count = n(),
+            type = "Current Exemptions")
+
+bills_current
+
+
+
+# bills_noexemps <- pin_bills_no_exemps %>% 
+#   group_by(clean_name) %>% 
+#   arrange(av) %>%
+#   summarize(av = sum(av, na.rm=TRUE),
+#             eav = sum(eav, na.rm=TRUE),
+#             total_billed = sum(final_tax, na.rm=TRUE),
+#             median_bill = median(final_tax, na.rm=TRUE),
+#             median_taxrate = median(summed_tax_rate, na.rm=TRUE),
+#             median_av = median(av, na.rm= TRUE),
+#             median_eav = median(eav, na.rm=TRUE),
+#             pin_count = n(),
+#             type = "Without Exemptions")
+# 
+# bills_noexemps
+# 
+# 
+# bills_difference <- rbind(bills_current, bills_noexemps)  %>% arrange(clean_name) 
+# 
+# 
+# bills_difference %>% arrange(-median_taxrate)
+# 
+# difference_table_allpropertytypescombined <- bills_difference %>% 
+#   pivot_wider(id_cols = clean_name, names_from = type, values_from = median_bill) %>%
+#   mutate(Median_bill_difference = `Without Exemptions`-`Current Exemptions` )
+# ## has median change in taxbill if exemptions are removed. 
+# # Not the statistic we want since it blurs all the property classes together.
+# difference_table_allpropertytypescombined
+# 
+# difference_taxrate_allpropertytypescombined <- bills_difference %>% 
+#   pivot_wider(id_cols = clean_name, names_from = type, values_from = median_taxrate) %>%
+#   mutate(Median_bill_difference = `Without Exemptions`-`Current Exemptions` )
+# difference_taxrate_allpropertytypescombined
+
+```
+
+> Table above is the change in composite tax rate calculated an entirely new way!
+
+
+```{r simple-class-bills, eval=FALSE}
+bills_current <- pin_bills_current %>% 
+  group_by(clean_name, class) %>% 
+  arrange(av) %>%
+  summarize(av = sum(av, na.rm=TRUE),
+            eav = sum(eav, na.rm=TRUE),
+            total_billed = sum(final_tax, na.rm=TRUE),
+            median_bill = median(final_tax, na.rm=TRUE),
+            median_taxrate = median(summed_tax_rate, na.rm=TRUE),
+            median_av = median(av, na.rm= TRUE),
+            median_eav = median(eav, na.rm=TRUE),
+            pin_count = n(),
+            type = "Current Exemptions")
+
+bills_current
+
+write_csv(bills_current, "current_median_taxbill_by_propertyClass.csv")
+
+
+# 
+# bills_noexemps <- pin_bills_no_exemps %>% 
+#   group_by(clean_name, class) %>% 
+#   arrange(av) %>%
+#   summarize(av = sum(av, na.rm=TRUE),
+#             eav = sum(eav, na.rm=TRUE),
+#             total_billed = sum(final_tax, na.rm=TRUE),
+#             median_bill = median(final_tax, na.rm=TRUE),
+#             median_taxrate = median(summed_tax_rate, na.rm=TRUE),
+#             median_av = median(av, na.rm= TRUE),
+#             median_eav = median(eav, na.rm=TRUE),
+#             pin_count = n(),
+#             type = "Without Exemptions")
+# 
+# bills_noexemps
+# 
+# 
+# bills_difference <- rbind(bills_current, bills_noexemps)  %>% arrange(clean_name) 
+# 
+# 
+# bills_difference
+# 
+# 
+# 
+# #write_csv(bills_difference, "medianbill_Muni_by_3digit_PropertyClass.csv")
+
+
+```
+
+
+```{r}
+owner_occupied <- c("299", "202","203", "204", "205",
+                    "206", "207", "208","209",
+                    "210","234", "278", "295")
+
+owner_occupied$class <- c("299", "202","203", "204", "205",
+                    "206", "207", "208","209",
+                    "210","234", "278", "295")
+
+rental <- c("399", "300", "301", "313", "314",  
+            "315", "318", "391", "396", "397",
+            "901", "913", "914", "915", "918", 
+            "959", "991", "996", "997", "211", "212", "225")
+rental$class <- c("399", "300", "301", "313", "314",  
+            "315", "318", "391", "396", "397",
+            "901", "913", "914", "915", "918", 
+            "959", "991", "996", "997", "211", "212", "225")
+```
+
+
+```{r eval=FALSE}
+currentbills_grouped <- pin_bills_current %>% 
+  mutate(major_class = str_sub(class,1,1)) %>%
+  filter(major_class != "0") %>%
+  mutate(prop_group = case_when(
+             class %in% owner_occupied$class ~ "Owner Occupied",
+             class %in% rental$class ~ "Rental"))
+
+currentbills_grouped <- currentbills_grouped %>% 
+  mutate(prop_group = ifelse(major_class == "5" , "Commercial & Industrial", prop_group),
+         prop_group = ifelse( major_class %in% c("6", "7", "8"),"Incentive", prop_group),
+         prop_group = ifelse(is.na(prop_group), "Other", prop_group)
+  ) 
+
+currentbills_grouped2 <- currentbills_grouped %>%
+    arrange(av) %>%
+  group_by(clean_name, prop_group) %>%
+  summarize(group_av = sum(av),
+            group_eav = sum(eav), 
+            median_av = median(av),
+            median_eav = median(eav),
+            total_billed_pergroup=sum(final_tax),
+            median_bill_ingroup= median(final_tax),
+            pin_count=n(),
+            median_taxrate = median(summed_tax_rate),
+    
+            )
+#currentbills_grouped2 <- currentbills_grouped2 %>% 
+ # mutate(Type = "With Current Exemptions")
+
+head(currentbills_grouped2) 
+
+write.csv(currentbills_grouped2, "current_median_taxbills.csv")
+
+
+# noexemps_grouped <- pin_bills_no_exemps %>% 
+#   mutate(major_class = str_sub(class,1,1)) %>%
+#   filter(major_class != "0") %>%
+#   mutate(prop_group = ifelse(class %in% owner_occupied$class, "Owner Occupied", NA),
+#          prop_group = ifelse(class %in%  rental$class, "Rental", prop_group))
+#   
+#   # mutate(prop_group = case_when(
+#   #            class %in% owner_occupied$class ~ "Owner Occupied",
+#   #            class %in% rental$class ~ "Rental"))
+# 
+# noexemps_grouped <- noexemps_grouped %>% 
+#   mutate(prop_group = ifelse(major_class == "5" , "Commercial & Industrial", prop_group),
+#          prop_group = ifelse( major_class %in% c("6", "7", "8"),"Incentive", prop_group),
+#          prop_group = ifelse(is.na(prop_group), "Other", prop_group)
+#   ) 
+# 
+# noexemps_grouped2 <- noexemps_grouped %>%
+#     arrange(av) %>%
+#   group_by(clean_name, prop_group) %>%
+#   summarize(av = sum(av),
+#             eav = sum(eav), 
+#             total_billed=sum(final_tax),
+#             median_bill= median(final_tax),
+#             pin_count=n(),
+#             median_taxrate = median(summed_tax_rate),
+#     
+#             )
+# noexemps_grouped2<-noexemps_grouped2 %>% mutate(Type = "Without Exemptions")
+# 
+# head(noexemps_grouped2) 
+# 
+# grouped_difference <- rbind(currentbills_grouped2, noexemps_grouped2)  %>% arrange(clean_name) 
+# 
+# 
+# grouped_difference
+# 
+# grouped_bill_difference_table <- grouped_difference %>% 
+#   pivot_wider(id_cols = c(clean_name, prop_group, av, eav), names_from = Type, values_from = median_bill) %>%
+#   mutate(Median_bill_difference = `Without Exemptions` - `With Current Exemptions` ) %>%
+#   select(clean_name, prop_group, Median_bill_difference, everything())
+# 
+# grouped_bill_difference_table
+# 
+# write_csv(grouped_difference, "median_bill_change_August1.csv")
+# 
+# grouped_bill_ratedifference_table <- grouped_difference %>% 
+#   pivot_wider(id_cols = c(clean_name, prop_group, av, eav), names_from = Type, values_from = median_taxrate) %>%
+# # mutate(Rate_Change = `Without Exemptions` - `With Current Exemptions` ) %>%
+#   select(clean_name, prop_group, everything())
+# grouped_bill_ratedifference_table
+# 
+# grouped_difference %>% 
+#   pivot_wider(id_cols = c(clean_name, prop_group, eav), names_from = Type, values_from = total_billed) %>%
+# # mutate(Rate_Change = `Without Exemptions` - `With Current Exemptions` ) %>%
+#   select(clean_name, prop_group, everything())
+# 
+# grouped_difference %>% group_by(clean_name,Type) %>% 
+#   summarize(eav = sum(eav),
+#             total_billed = sum(total_billed),
+#             composite_rate = mean(median_taxrate),
+#             levy = total_billed / composite_rate)
+```
+
+> tax_bill command is not holding the levy constant. These median taxbill totals for the Without Exemptions scenario are not correct. They are similar to the "direct effect" of removing exemptions. 
+
+Now regroup and summarize the data using the owner-occupied, rental, nonresidential categories. Start with the pin level data again so the median is correct. 
+
+```{r simple-Aleacat-bills, eval=FALSE}
+class_dict$class_code <- as.character(class_dict$class_code)
+
+current_bills_byAlea_cats <- pin_bills_current %>% 
+  left_join(class_dict, by = c("class"= "class_code")) %>%
+  mutate(Alea_cats = ifelse(is.na(Alea_cats), "Non-Residential", Alea_cats),
+         Alea_cats = ifelse(Alea_cats == "Land", "Non-Residential", Alea_cats)) %>%
+  group_by(clean_name, Alea_cats) %>% 
+  summarize(
+            total_billed = sum(final_tax, na.rm=TRUE),
+            median_bill = median(final_tax, na.rm=TRUE),
+            median_av = median(av, na.rm= TRUE),
+            median_eav = median(eav, na.rm=TRUE),
+            pin_count = n(),
+            muni_eav = sum(eav),
+            muni_av = sum(av),
+              type = "With Current Exemptions") 
+
+current_bills_byAlea_cats
+
+# 
+# noexems_bills_byAlea_cats <- pin_bills_no_exemps %>% 
+#   left_join(class_dict, by = c("class"= "class_code")) %>%
+#   mutate(Alea_cats = ifelse(is.na(Alea_cats), "Non-Residential", Alea_cats),
+#          Alea_cats = ifelse(Alea_cats == "Land", "Non-Residential", Alea_cats)) %>%
+#   group_by(clean_name, Alea_cats) %>% 
+#   summarize(
+#             total_billed = sum(final_tax, na.rm=TRUE),
+#             median_bill = median(final_tax, na.rm=TRUE),
+#             median_av = median(av, na.rm= TRUE),
+#             median_eav = median(eav, na.rm=TRUE),
+#             pin_count = n(),
+#             muni_eav = sum(eav),
+#             muni_av = sum(av),
+#              type = "Without Exemptions") 
+# 
+# noexems_bills_byAlea_cats
+# 
+# bills_difference_byAlea_cats <- rbind(current_bills_byAlea_cats, noexems_bills_byAlea_cats)  %>% arrange(clean_name) 
+# 
+# bills_difference_byAlea_cats
+# 
+# #write_csv(bills_difference_byAlea_cats, "medianbill_Muni_byResidentialPropTypes.csv")
+# 
+# class_difference_table <- bills_difference_byAlea_cats %>% 
+#   pivot_wider(id_cols = c(clean_name, Alea_cats, muni_av, muni_eav), names_from = type, values_from = median_bill) %>%
+#   mutate(Median_bill_difference = `Without Exemptions` - `With Current Exemptions` ) %>%
+#   select(clean_name, Alea_cats, Median_bill_difference, everything())
+# 
+# class_difference_table
+# 
+# #write_csv(class_difference_table, "Owned_vs_Rental_vs_nonresidential_median_taxbill.csv")
+```
+
+
+```{r simple-majorclass-bills, eval=FALSE}
+class_1dig_table <-  bills_difference %>% 
+    mutate(major_class = str_sub(class,1,1)) %>%
+    group_by(clean_name, major_class, type) %>% 
+  arrange(av) %>%
+  summarize(
+            total_billed = sum(total_billed, na.rm=TRUE),
+            median_bill = median(median_bill, na.rm=TRUE),
+            median_taxrate = median(median_taxrate, na.rm=TRUE),
+            median_av = median(av, na.rm= TRUE),
+            median_eav = median(eav, na.rm=TRUE),
+            pin_count = sum(pin_count))  %>% 
+  ungroup() %>% arrange(clean_name, major_class)
+    
+class_1dig_table
+
+
+
+
+#write_csv(class_1dig_table, "medianbill_munis_by1digit_propertyclass.csv")
+
+```
+
+> Table above is the median bill for each 1 digit property class.
+
+
+
+```{r owneroccupied-v-rental, include=FALSE, eval=FALSE}
+
+### Code for when simplify = FALSE was in taxbill command. Not sure if it was giving me the right results. 
+
+
+bills_current_byClass <- pin_bills_current %>% 
+  group_by(clean_name, class) %>% 
+  arrange(av) %>%
+  summarize(av = median(av, na.rm=TRUE),
+            exemptions = median(tax_amt_exe, na.rm=TRUE),
+            total_billed = sum(bill_total, na.rm=TRUE),
+            median_bill = median(bill_total, na.rm=TRUE),
+            median_AV = median(av, na.rm= TRUE),
+            eav = median(eav, na.rm=TRUE),
+            pin_count = n(),
+            type = "Current Exemptions")
+
+bills_current_byClass
+
+bills_noexemps_byClass <- pin_bills_no_exemps %>% 
+  group_by(clean_name, class) %>% 
+  arrange(av) %>%
+  summarize(
+    av = median(av, na.rm=TRUE),
+    exemptions = median(tax_amt_exe, na.rm=TRUE),
+    total_billed = sum(bill_total, na.rm=TRUE),
+    median_bill = median(bill_total, na.rm=TRUE),
+    median_AV = median(av, na.rm=TRUE),
+    eav = median(eav, na.rm=TRUE),
+    pin_count = n(),
+    type = "Without Exemptions")
+
+bills_noexemps_byClass
+
+
+bills_difference_byClass <- rbind(bills_current_byClass, bills_noexemps_byClass)  %>% arrange(clean_name, class) 
+
+
+
+bills_difference_byClass <- bills_difference_byClass %>% 
+  left_join(class_dict, by = c("class"= "class_code")) %>%
+  group_by(clean_name, Alea_cats, type) %>% 
+  summarize(
+    av = median(av, na.rm=TRUE),
+    total_billed = sum(total_billed, na.rm=TRUE),
+    median_bill = median(median_bill, na.rm=TRUE),
+    eav = median(eav, na.rm=TRUE),
+    pin_count = sum(pin_count)) %>%
+  mutate(Alea_cats = ifelse(is.na(Alea_cats), "Non-Residential", Alea_cats))
+
+
+
+class_difference_table <- bills_difference_byClass %>% 
+  pivot_wider(id_cols = c(clean_name, Alea_cats, av, eav), names_from = type, values_from = median_bill) %>%
+  mutate(Median_bill_difference = `Without Exemptions` - `Current Exemptions` ) %>%
+  select(clean_name, Alea_cats, Median_bill_difference, everything())
+
+class_difference_table
+
+
+class_1dig_table <-  bills_difference_byClass%>% 
+  mutate(major_class = str_sub(class,1,1)) %>%
+  group_by(clean_name, major_class, type) %>% 
+  arrange(av) %>%
+  summarize(
+    av = median(av, na.rm=TRUE),
+    exemptions = median(exemptions, na.rm=TRUE),
+    total_billed = sum(total_billed, na.rm=TRUE),
+    median_bill = median(median_bill, na.rm=TRUE),
+    median_AV = median(median_AV, na.rm=TRUE),
+    median_eav = median(eav, na.rm=TRUE),
+    sum_AV=sum(av, na.rm = TRUE),
+    sum_EAV = sum(eav, na.rm = TRUE),
+    pin_count = sum(pin_count))
+
+```
+
+
+```{r median-bill-class2-oldway, eval=FALSE, include=FALSE}
+
+##  Code from when simplify was set to FALSE. Not sure if it gave right values or not. 
+
+
+## Old way that was used for July 27th presentation
+bills_byClass_current <- pin_bills_current %>% 
+  group_by(clean_name, major_class_code) %>%
+  arrange(av) %>%
+  summarize(total_billed = sum(bill_total, na.rm=TRUE),
+            median_bill = median(bill_total, na.rm=TRUE),
+            av = median(av, na.rm=TRUE),
+            eav = median(eav, na.rm=TRUE),
+            type = "Current Exemptions")
+bills_byClass_current
+
+bills_byClass_noexemps <- pin_bills_no_exemps %>% group_by(clean_name, major_class_code) %>%
+  arrange(av) %>%
+  summarize(total_billed = sum(bill_total, na.rm=TRUE),
+            median_bill = median(bill_total, na.rm=TRUE),
+                        av = median(av, na.rm=TRUE),
+            eav = median(eav, na.rm=TRUE),
+            type = "Without Exemptions")
+bills_byClass_noexemps
+
+
+bills_difference_byClass <- rbind(bills_byClass_current, bills_byClass_noexemps) %>% 
+  ungroup() %>% 
+  arrange(clean_name, major_class_code) 
+
+bills_difference_byClass
+
+bills_difference_byClass <- bills_difference_byClass %>% 
+  pivot_wider(id_cols = c(clean_name, major_class_code, av, eav), 
+              names_from = type, values_from = median_bill) %>%
+  mutate(Median_bill_difference = `Without Exemptions` - `Current Exemptions` ) %>%
+  select(clean_name, major_class_code, Median_bill_difference, everything())
+
+class_difference_table <- bills_difference_byClass %>% 
+  filter(major_class_code == 2) %>% 
+  select(clean_name, Median_bill_difference, `Current Exemptions`, `Without Exemptions`, major_class_code, everything())
+
+class_difference_table
+
+write_csv(bills_difference_byClass, "median_bill_byPropertyClass.csv")
+write_csv(class_difference_table, "residential_billchange.csv")
+```
+
+```{r}
+rm(exe_dt)
+rm(muni_pins)
+rm(taxbills_current)
+rm(taxbills_no_exemps)
+```
+
+
+
+
+# Composite Tax Rates
+
+```{r}
+TC_bills_current <- read_csv("TC_bills_current.csv") %>% 
+  mutate(tax_code = as.character(tax_code))
+
+class_dict$class_code <- as.character(class_dict$class_code)
+ 
+
+taxcodes_current <- full_join(TC_bills_current, muni_tax_codes, 
+                      by = c("tax_code" = "tax_code_num")) 
+
+Current_Taxrates <- taxcodes_current %>% 
+  left_join(muni_agency_names) %>%
+  left_join(nicknames, by = c("agency_name" = "agency_name")) %>%
+ # filter(!agency_num %in% cross_county_lines) %>%
+  group_by(clean_name, agency_name) %>% 
+  summarize(MuniLevy = sum(final_tax_to_dist, na.rm = TRUE), # amount billed by munis with current exemptions in place
+            nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
+            TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),  
+            Exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE), 
+            Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE)) %>%
+
+  mutate(tax_rate_current = MuniLevy/nonTIF_EAV_post_exemps,
+         nonTIF_EAV_pre_exemps = nonTIF_EAV_post_exemps + Exempt_EAV,
+         taxrate_new = MuniLevy/nonTIF_EAV_pre_exemps,
+         taxrate_change = tax_rate_current-taxrate_new) %>% 
+  select(clean_name, taxrate_change, tax_rate_current, taxrate_new, everything()) %>% 
+  arrange(desc(tax_rate_current))
+
+land_use <- taxcodes_current %>% 
+  left_join(muni_agency_names) %>% 
+  left_join(Current_Taxrates) %>%
+  mutate(ResidentialProps = ifelse(major_class_code %in% c("2", "3", "9"), "Residential", "Commercial"),
+         PropType = case_when(
+           major_class_code %in% c("3","9") ~ "Class 3&9: Rental",
+           major_class_code == "2" ~ "Class 2: Owner Occupied",
+           TRUE ~ "All Other Classes: Commercial-Industrial")) %>%
+  group_by(clean_name, PropType, agency_num, tax_rate_current, taxrate_new, taxrate_change, agency_name,) %>% 
+  
+  # All of the values calculated below are AFTER exemptions have been removed
+  summarize(taxrev_from_proptype = sum(final_tax_to_dist, na.rm = TRUE),
+            nonTIF_EAV = sum(final_tax_to_dist/(tax_code_rate/100), na.rm = TRUE),
+            TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate/100), na.rm=TRUE),
+            Exempt_EAV = sum(tax_amt_exe/(tax_code_rate/100), na.rm=TRUE),
+            Total_EAV = sum((tax_amt_exe+final_tax_to_dist+final_tax_to_tif)/(tax_code_rate/100), na.rm = TRUE) ) %>% ungroup()
+
+Current_Taxrates
+
+currentbills_grouped2  %>% left_join(Current_Taxrates) %>%
+  mutate(current_bill = tax_rate_current*median_eav,
+         without_exemps_bill = taxrate_new*median_eav,
+         bill_change = current_bill - without_exemps_bill) %>%
+  select(clean_name, prop_group, median_eav, bill_change, current_bill, without_exemps_bill, tax_rate_current, taxrate_new, everything())
+```
+
+```{r}
+bills_byClass <- bills_byClass_current %>% 
+  left_join(Current_Taxrates) %>% 
+  mutate(median_preexemp_taxbill_withtaxratechange = (taxrate_new * group_eav))
+
+bills_byClass 
+
+bills_byClass %>% select(clean_name, class, median_tax_amt_post_exe, median_preexemp_taxbill_withtaxratechange, median_tax_amt_pre_exe)
+```
+
+# Dolton and Other Pin Comparison
+
+```{r}
+# Chicago pin
+pin_bills_current %>% filter(pin == "20232000430000")
+```
+
+# Differently valued houses
+
+```{r}
+pin_bills_current <- read_csv( "pin level total bills.csv")
+head(pin_bills_current)
+```
+
+```{r}
+# owner_occupied <- c("299", "202","203", "204", "205",
+#                     "206", "207", "208","209",
+#                     "210","234", "278", "295")
+# 
+# owner_occupied$class <- c("299", "202","203", "204", "205",
+#                     "206", "207", "208","209",
+#                     "210","234", "278", "295")
+# 
+# rental <- c("399", "300", "301", "313", "314",  
+#             "315", "318", "391", "396", "397",
+#             "901", "913", "914", "915", "918", 
+#             "959", "991", "996", "997", "211", "212", "225")
+# rental$class <- c("399", "300", "301", "313", "314",  
+#             "315", "318", "391", "396", "397",
+#             "901", "913", "914", "915", "918", 
+#             "959", "991", "996", "997", "211", "212", "225")
+# 
+# 
+
+currentbills_grouped <- pin_bills_current %>% 
+  mutate(major_class = str_sub(class,1,1)) %>%
+  filter(major_class != "0") %>%
+  mutate(prop_group = case_when(
+             class %in% owner_occupied$class ~ "Owner Occupied",
+             class %in% rental$class ~ "Rental"))
+
+currentbills_grouped <- currentbills_grouped %>% 
+  mutate(prop_group = ifelse(major_class == "5" , "Commercial & Industrial", prop_group),
+         prop_group = ifelse( major_class %in% c("6", "7", "8"),"Incentive", prop_group),
+         prop_group = ifelse(is.na(prop_group), "Other", prop_group)
+  ) 
+
+currentbills_grouped2 <- currentbills_grouped %>%
+  arrange(av) %>%
+  group_by(clean_name, Alea_cat) %>% 
+  summarize(
+    median_bill = median(final_tax_to_dist+final_tax_to_tif),
+    median_av = median(av),
+    median_eav = median(eav),
+    summed_group_av = sum(av),
+    summed_group_eav = sum(eav),
+    propclass_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE),
+    propclass_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+    propclass_billreductions = sum(tax_amt_exe, na.rm = TRUE), # revenue lost due to exemptions
+    tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), # total rev before all exemptions
+    current_revenue_fromPropClass = sum(tax_amt_post_exe, na.rm = TRUE), # total rev after all exemptions
+    rpm_tif_to_cps = sum(rpm_tif_to_cps), # not used
+    rpm_tif_to_rpm = sum(rpm_tif_to_rpm), # not used
+    rpm_tif_to_dist = sum(rpm_tif_to_dist), # not used
+   # tif_share = mean(tif_share), # did not check for accuracy
+    pin14_count = n())
+  # parcel_count = count(pin10)
+  
+#currentbills_grouped2 <- currentbills_grouped2 %>% 
+ # mutate(Type = "With Current Exemptions")
+
+head(currentbills_grouped2)
+
+dolton <- currentbills_grouped2 %>% filter(clean_name == "Dolton")
+dolton
+
+```
+
+```{r}
+class278 <- pin_bills_current %>% 
+  filter(class == 278) %>% 
+  mutate(pin10 = str_sub(pin, 1, 10)) %>%
+  arrange(av) %>%
+  group_by(clean_name) %>% 
+  summarize(
+    median_bill = median(final_tax_to_dist+final_tax_to_tif),
+    median_av = median(av),
+    median_eav = median(eav),
+    summed_group_av = sum(av),
+    summed_group_eav = sum(eav),
+    propclass_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE),
+    propclass_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+    propclass_billreductions = sum(tax_amt_exe, na.rm = TRUE), # revenue lost due to exemptions
+    tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), # total rev before all exemptions
+    current_revenue_fromPropClass = sum(tax_amt_post_exe, na.rm = TRUE), # total rev after all exemptions
+    rpm_tif_to_cps = sum(rpm_tif_to_cps), # not used
+    rpm_tif_to_rpm = sum(rpm_tif_to_rpm), # not used
+    rpm_tif_to_dist = sum(rpm_tif_to_dist), # not used
+   # tif_share = mean(tif_share), # did not check for accuracy
+    pin14_count = n(),
+  # parcel_count = count(pin10)
+   )
+
+class278 %>% mutate(amount_per_pin = (propclass_tax_to_dist+propclass_tax_to_tif)/pin14_count) %>% select(clean_name, median_bill, median_av, pin14_count, everything()) %>% arrange(median_bill)
+
+
+class202 <- pin_bills_current %>% 
+  filter(class == 202) %>% 
+  mutate(pin10 = str_sub(pin, 1, 10)) %>%
+  arrange(av) %>%
+  group_by(clean_name) %>% 
+  summarize(
+    median_bill = median(final_tax_to_dist+final_tax_to_tif),
+    median_av = median(av),
+    median_eav = median(eav),
+    summed_group_av = sum(av),
+    summed_group_eav = sum(eav),
+    propclass_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE),
+    propclass_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+    propclass_billreductions = sum(tax_amt_exe, na.rm = TRUE), # revenue lost due to exemptions
+    tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), # total rev before all exemptions
+    current_revenue_fromPropClass = sum(tax_amt_post_exe, na.rm = TRUE), # total rev after all exemptions
+    rpm_tif_to_cps = sum(rpm_tif_to_cps), # not used
+    rpm_tif_to_rpm = sum(rpm_tif_to_rpm), # not used
+    rpm_tif_to_dist = sum(rpm_tif_to_dist), # not used
+   # tif_share = mean(tif_share), # did not check for accuracy
+    pin14_count = n(),
+  # parcel_count = count(pin10)
+   )
+
+class202 %>% mutate(amount_per_pin = (propclass_tax_to_dist+propclass_tax_to_tif)/pin14_count) %>% select(clean_name, median_bill, median_av, pin14_count, everything()) %>% arrange(median_bill)
+
+class295 <- pin_bills_current %>% 
+  filter(class == 295) %>% 
+  mutate(pin10 = str_sub(pin, 1, 10)) %>%
+  arrange(av) %>%
+  group_by(clean_name) %>% 
+  summarize(
+    median_bill = median(final_tax_to_dist+final_tax_to_tif),
+    median_av = median(av),
+    median_eav = median(eav),
+    summed_group_av = sum(av),
+    summed_group_eav = sum(eav),
+    propclass_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE),
+    propclass_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+    propclass_billreductions = sum(tax_amt_exe, na.rm = TRUE), # revenue lost due to exemptions
+    tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), # total rev before all exemptions
+    current_revenue_fromPropClass = sum(tax_amt_post_exe, na.rm = TRUE), # total rev after all exemptions
+    rpm_tif_to_cps = sum(rpm_tif_to_cps), # not used
+    rpm_tif_to_rpm = sum(rpm_tif_to_rpm), # not used
+    rpm_tif_to_dist = sum(rpm_tif_to_dist), # not used
+   # tif_share = mean(tif_share), # did not check for accuracy
+    pin14_count = n(),
+  # parcel_count = count(pin10)
+   )
+
+class295 %>% mutate(amount_per_pin = (propclass_tax_to_dist+propclass_tax_to_tif)/pin14_count) %>% select(clean_name, median_bill, median_av, pin14_count, everything()) %>% arrange(median_bill)
+```
+
+
+```{r}
+class295 %>% 
+  filter(clean_name != "Hinsdale") %>% # outlier, messes up visability of other dots
+  ggplot(aes(x=median_av, y = median_bill, label = clean_name)) + geom_point()+ 
+  geom_text() + 
+  theme_classic() + 
+  scale_y_continuous(labels = scales::dollar)+
+   scale_x_continuous(labels = scales::dollar) + 
+  labs(title = "Class 295: Individually Owned Townhouse or Rowhouse", x = "Median Assessed Value", y = "Median Tax Bill", 
+       caption = "Drops Hinsdale which was in far upper right hand corner of graph.")
+
+class202 %>% 
+  ggplot(aes(x=median_av, y = median_bill, label = clean_name)) + geom_point()+ 
+  geom_text() + 
+  theme_classic() + 
+  scale_y_continuous(labels = scales::dollar)+
+   scale_x_continuous(labels = scales::dollar) + 
+  labs(title = "Class 202: One Story Residence up to 999 sq. ft", x = "Median Assessed Value", y = "Median Tax Bill")
+
+class278 %>% 
+  ggplot(aes(x=median_av, y = median_bill, label = clean_name, )) + geom_point()+ 
+  geom_text() + 
+  theme_classic() + 
+  scale_y_continuous(labels = scales::dollar)+
+   scale_x_continuous(labels = scales::dollar) + 
+  labs(title = "Class 278: Two or More Story Story Residence", x = "Median Assessed Value", y = "Median Tax Bill")
+```
+
+```{r}
+current_grouped_medianbills <- read_csv("current_median_taxbills.csv")
+
+current_grouped_medianbills <- current_grouped_medianbills %>% 
+  left_join(Current_Taxrates) %>% 
+  mutate(currentBurdenShare = total_billed_pergroup/MuniLevy) %>% filter(clean_name == "Dolton")
+```
+
