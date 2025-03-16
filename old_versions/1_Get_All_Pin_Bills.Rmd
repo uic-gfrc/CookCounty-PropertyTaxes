@@ -1,0 +1,224 @@
+---
+title: "Calculate all Pin Bills for 2021"
+author: "Alea Wilbur"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    df_print: paged
+---
+
+# Get Pin and Tax Bill Data
+
+There are 1,865,694 pins in cook county and  22,972,902 partial tax bills (i.e. the amount charged by each taxing agency to each pin) when using the tax_bill() command for 2021 data.
+
+File 2 sums pin level bill totals, parcel level bill totals, and class and tax code sums. 
+
+
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, eval=FALSE)
+
+
+library(tidyverse)
+library(DBI)
+library(data.table)
+library(ggspatial)
+library(gstat)
+library(here)
+library(httr)
+library(jsonlite)
+library(ptaxsim)
+library(sf)
+library(stars)
+library(glue)
+
+# Create the DB connection with the default name expected by PTAXSIM functions
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
+
+
+
+```
+
+
+There are 4228 unique tax codes in Cook County in 2021.   
+
+```{r cook-pins}
+
+cook_agency_names <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT DISTINCT agency_num, agency_name
+  FROM agency_info
+  "
+)
+
+ 
+
+
+# has all tax codes and the taxing agency that taxes them. Tax code rates and agency rates. 
+cook_tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT*
+  FROM tax_code
+  WHERE agency_num IN ({cook_agency_names$agency_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+)  
+ 
+
+
+# There are 1,864,594 pins taxed by Cook County in 2021.
+cook_pins <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql(
+  "SELECT DISTINCT pin, class, tax_code_num
+  FROM pin
+  WHERE tax_code_num IN ({cook_tax_codes$tax_code_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+))
+```
+
+
+Uses tax_bill() to pull all bills for all pins in cook county:
+ 
+```{r cook-taxbills}
+# # Normal output from lookup_pin() command. 
+# # Includes all types of exemptions
+
+# exe_dt <- lookup_pin(2021, muni_pins$pin) %>%
+#   setDT(key = c("year", "pin"))
+
+
+
+taxbills_current <- tax_bill(2021,  
+                  cook_pins$pin, 
+                #  pin_dt = exe_dt, # default option, change for "no exemption" simulation
+                  simplify = FALSE)
+
+taxbills_current %>% write_csv("./Output/1_Get_All_Pins-CookPinTaxbills_2021_Actual.csv")
+
+head(taxbills_current)
+
+```
+## Pulling incorporated area taxbills only
+
+The code below is what we used originally to grab only pins that were taxed by municipalities. 
+
+Going forward, I am pulling all pins for Cook, summing totals based on property classes and tax codes, and then I will filter out the tax codes being taxed by the taxing agency of interest. (First focus was municipalities and next is probably schools.)
+
+
+
+```{r muni-only-pins, eval=FALSE}
+
+options(digits=4, scipen = 999)
+
+library(sf)
+library(jsonlite)
+library(httr)
+
+# link to the API output as a JSON file
+#muni_shp <- read_sf("https://gis.cookcountyil.gov/traditional/rest/services/politicalBoundary/MapServer/2/query?outFields=*&where=1%3D1&f=geojson")
+
+#muni_shp <- read_json("muni_shp.json")
+nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
+
+
+# Pull all agency names that exist, then use agency numbers associated with MUNI types to pull only the `muni_agency_names` object.
+# 
+# There are 1,878 taxing agencies. When grouped by minor_type, there are 134 muni agencies, 639 tif agencies, 30 townships, etc.
+# 
+# 
+# Using the agency numbers for each municipality, I pull all tax codes that have an agency_num included in the muni_agency_names object. By narrowing the agencies down to just Municipality types, this prevents duplicate tax_codes from being pulled.
+
+# grabs all unique muni names & numbs
+# don't forget Cicero
+muni_agency_names <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT DISTINCT agency_num, agency_name, minor_type
+  FROM agency_info
+  WHERE minor_type = 'MUNI'
+  OR agency_num = '020060000'  
+
+  "
+)
+
+muni_agency_names <- muni_agency_names %>% 
+    mutate(first6 = str_sub(agency_num,1,6),
+         first5 = str_sub(agency_num,1,5)) %>% 
+  select(-minor_type)
+
+
+
+#Makes a list of ALL taxing agencies, including TIFs, SSAs, etc.
+
+# all agency names, numbers, and types
+# includes TIF and non-TIF agencies
+all_taxing_agencies <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT agency_num, agency_name, major_type, minor_type
+  FROM agency_info
+  "
+) %>% mutate(first6 = str_sub(agency_num,1,6),
+         first5 = str_sub(agency_num,1,5))
+
+
+muni_agency_nums<- all_taxing_agencies %>% 
+  filter(minor_type %in% c("MUNI") | 
+           agency_num == "020060000") %>%
+   select(agency_num)
+
+
+
+# There are 3774 tax codes within Cook County that are taxed by Municipalities.  
+
+# list of all taxcodes in municipalities. 
+# This does NOT include unincorporated tax codes!!
+muni_tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT*
+  FROM tax_code
+  WHERE agency_num IN ({muni_agency_names$agency_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+)
+```
+
+
+```{r muni-taxbills, eval=FALSE}
+# Create list of all pins in Cook County
+muni_pins <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql(
+  "SELECT DISTINCT pin, class, tax_code_num
+  FROM pin
+  WHERE tax_code_num IN ({muni_tax_codes$tax_code_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+))
+
+
+
+# Normal output from lookup_pin() command. Includes all types of exemptions
+exe_dt <- lookup_pin(2021, muni_pins$pin) %>%
+  setDT(key = c("year", "pin"))
+
+
+taxbills_current <- tax_bill(2021, 
+                  muni_pins$pin, 
+                  pin_dt = exe_dt, # default option
+                  simplify = FALSE)
+
+taxbills_current %>% write_csv("./Output/1_Get_All_Pins-MuniPinTaxbills_2021_Actual.csv")
+
+head(taxbills_current)
+
+```
+

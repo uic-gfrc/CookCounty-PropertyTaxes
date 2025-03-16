@@ -1,0 +1,816 @@
+---
+title: 'Hypothetical Taxbills: Remove all Exemptions'
+author: "Alea Wilbur"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+    code_download: yes
+---
+
+
+```{r setup, warning=FALSE, message=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+
+library(tidyverse)
+library(data.table)
+library(gstat)
+library(ptaxsim)
+
+
+```
+
+
+> Most of the steps done in this file are done in a different in better way in 4B and 4C of the file. Will delete this file eventually, keeping it currently only as a reference for early attempts at summarizing impacts of removing exemptions on tax rates and the outcome for the "average home owner." 
+
+# Bring in data
+
+The tax code taxrates were made in file `2_...rmd` and the exemptions file were created in file `3_.....rmd`
+
+## Finding the "Median Property"
+
+The median assessed value is used to determine the `median property` for various groups (e.g. the municipality, the 1-digit major property class, and 3-digit property class). 
+
+The assessed value and original equalized assessed values come from the `pin` data table within PTAXSIM. This table also has every type of exemption that the property received and the amount of EAV that was exempt due to the exemption. 
+
+```{r}
+taxcode_taxrates <- read_csv("./Output/2_taxcode_taxrates.csv")
+
+pin_eav <- read_csv("./Output/3_Exemption_Details_output-all_cook_pin_exemptions_2021_actual.csv") %>%
+    filter(class_code !=0) %>%
+
+  mutate(exempt_EAV = exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner + 
+        exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 + exe_abate) %>%
+  mutate(zero_bill = ifelse(eav <= exempt_EAV, 1, 0))
+
+# table(pin_eav$zero_bill)
+
+table(pin_eav$major_class_code, pin_eav$zero_bill)
+
+pin_eav <- left_join(pin_eav, taxcode_taxrates, by = c("tax_code_num" = "tax_code"))
+
+# head(pin_eav)
+```
+
+
+> reminder: pin_eav dataframe does NOT consider TIF increments or TIF distribution percents. 
+
+
+> added filter for eav>0, should this be done?
+
+
+
+```{r}
+tax_bill_change <- pin_eav %>% 
+  filter(eav>0) %>% 
+  mutate(taxbase_current = eav-exempt_EAV, # TIF increment is NOT considered
+         taxbase_new = eav, # over estimated because eav above frozen EAV in TIF tax codes is still included
+         bill_current = tax_rate_current * (eav-exempt_EAV),
+         bill_noexemps =  taxrate_new * eav,
+         bill_change = bill_noexemps - bill_current,
+         bill_pct_change = bill_change/(bill_current),
+         cur_rev_collected = tax_rate_current * (eav-exempt_EAV), # includes TIF rev too
+         hyp_rev_collected = taxrate_new * (eav-exempt_EAV),  # revenue collected in hypothetical situation if all exemptions were provided, but tax rates were not raised from the decrease in taxable EAV (Levy held constant)
+         levy_gap = (tax_rate_current * (eav-exempt_EAV)) - (taxrate_new * (eav-exempt_EAV))) %>%
+  
+  select(pin, av, eav, tax_code_num, class_code, cur_rev_collected, hyp_rev_collected, levy_gap, bill_change, bill_pct_change, bill_current, bill_noexemps, clean_name, taxrate_change, taxbase_current, taxbase_new, taxrate_new, tax_rate_current, major_class_code, eav, exempt_EAV)
+
+
+tax_bill_change %>% arrange(-levy_gap) %>% head()
+
+tax_bill_change %>% arrange(-bill_change) %>% head()
+
+
+tax_bill_change %>% 
+  summarize(min=min(levy_gap, na.rm = TRUE),
+            max = max(levy_gap, na.rm=TRUE),
+            external_rev_needed = sum(levy_gap, na.rm=TRUE))
+
+
+# forgone revenue from 200 level properties
+tax_bill_change %>% 
+#  filter(class_code>=200 & class_code <300) %>%
+  filter(eav>0) %>%
+  summarize(min=min(levy_gap, na.rm = TRUE),
+            max = max(levy_gap, na.rm=TRUE),
+            external_rev_needed = sum(levy_gap, na.rm=TRUE))
+```
+
+
+This pin, "03194000060000", would have their tax bill decrease by $7.8 million with the hypothetical tax rate calculated from removing all tax exemptions. 
+
+To keep current tax exemptions (so tax bills do not increase from current levels) and prevent the unintended effect of exemptions (e.g. the increased tax rate from having less EAV to tax), $1.9 billion in external revenue would be necessary to meet the all taxing agencies current levies. 
+
+
+
+PIN with largest change is 1000 W. Fulton St. with a decreased tax bill of $5,767,895.
+
+- If the tax rates were the hypothetical rate from the "all exemptions removed" scenario, 1000 W. Fulton St would have their bill decrease by \$5.77 million due to the lower tax rate. Currently this pin pays over $22 million in property taxes.
+
+
+
+
+```{r}
+muni_class_stats <- tax_bill_change %>% 
+  group_by(clean_name, class_code) %>% 
+  arrange(taxbase_new)%>%
+  summarise(
+    median_bill_current = median(bill_current, na.rm=TRUE),
+    median_bill_noexemps = median(bill_noexemps, na.rm=TRUE),
+    median_AV = median(av, na.rm=TRUE),
+    median_eav = median(eav, na.rm=TRUE),
+    pin_count = n(),
+        group_eav = sum(taxbase_current, na.rm = TRUE),
+    group_eav_new = sum(taxbase_new,na.rm=TRUE),
+    group_av = sum(av, na.rm=TRUE) ) %>% 
+  mutate(bill_change = median_bill_noexemps - median_bill_current) %>%
+  mutate_at(vars(bill_change, median_bill_current:group_av), funs(round(., 0)))
+
+
+NEW_muni_class_stats <- tax_bill_change %>% 
+  group_by(clean_name, class_code) %>% 
+  arrange(av)%>%
+  summarise(
+    mean_bill_current = mean(bill_current, na.rm=TRUE),
+    mean_bill_noexemps = mean(bill_noexemps, na.rm=TRUE),
+    median_AV = median(av, na.rm=TRUE),
+    median_eav = median(eav, na.rm=TRUE),
+    pin_count = n(),
+    group_eav = sum(taxbase_current, na.rm = TRUE),
+    group_eav_new = sum(taxbase_new,na.rm=TRUE),
+    group_av = sum(av, na.rm=TRUE) ) %>% 
+  mutate(avg_bill_change = mean_bill_noexemps - mean_bill_current) %>%
+  mutate_at(vars(avg_bill_change, mean_bill_current:group_av), funs(round(., 0)))
+
+
+#write_csv(muni_class_stats, "4_Taxbill_Hypotheticals-taxbill_change_foreachPropClass_perMuni.csv")
+
+muni_class_stats %>% select(Municipality = clean_name, class_code, bill_change, everything())
+
+
+
+muni_majorclass_stats <- tax_bill_change %>% 
+  filter(class_code !=0) %>%
+    arrange(taxbase_new)%>%
+
+  group_by(clean_name, major_class_code) %>% 
+  summarise(
+    median_bill_current = median(bill_current, na.rm=TRUE),
+    median_bill_noexemps = median(bill_noexemps, na.rm=TRUE),
+    median_AV = median(av, na.rm=TRUE),
+    median_eav = median(eav, na.rm=TRUE),
+    pin_count = n(),
+    group_eav_current = sum(taxbase_current, na.rm = TRUE),
+    group_eav_new = sum(taxbase_new,na.rm=TRUE),
+    group_av = sum(av, na.rm=TRUE) ) %>% 
+  mutate(bill_change =median_bill_noexemps - median_bill_current ) %>%
+  mutate_at(vars(bill_change, median_bill_current:group_av), funs(round(., 0)))
+
+
+muni_majorclass_stats %>% select(Municipality = clean_name, major_class = major_class_code, bill_change, everything())
+
+#write_csv(muni_majorclass_stats, "4_Taxbill_Hypotheticals-taxbill_change_eachMajorClass_perMuni.csv")
+
+
+
+muni_rachelgroups_stats <- tax_bill_change %>% 
+  ungroup() %>%
+  mutate(grouped_classes = ifelse(major_class_code  == "2", "Class 2", NA),
+        grouped_classes = ifelse(major_class_code == "3", "Class 3", grouped_classes),
+        grouped_classes = ifelse(is.na(grouped_classes), "Other Classes", grouped_classes)
+       ) %>%
+  group_by(clean_name, grouped_classes) %>%
+  arrange(taxbase_new) %>%
+   summarise(
+    median_bill_current = median(bill_current, na.rm=TRUE),
+    median_bill_noexemps = median(bill_noexemps, na.rm=TRUE),
+    median_AV = median(av, na.rm=TRUE),
+    median_eav = median(eav, na.rm=TRUE),
+    pin_count = n(),
+    group_eav_current = sum(taxbase_current, na.rm = TRUE),
+    group_eav_new = sum(taxbase_new,na.rm=TRUE),
+    group_av = sum(av, na.rm=TRUE) ) %>% 
+  mutate(bill_change =  median_bill_noexemps - median_bill_current) %>% 
+  mutate_at(vars(bill_change, median_bill_current:group_av), funs(round(., 0)))
+
+muni_rachelgroups_stats %>% select(Municipality = clean_name,  grouped_classes, bill_change, everything())
+
+NEW_muni_rachelgroups_stats <- tax_bill_change %>% 
+  ungroup() %>%
+  mutate(grouped_classes = ifelse(major_class_code  == "2", "Class 2", NA),
+        grouped_classes = ifelse(major_class_code == "3", "Class 3", grouped_classes),
+        grouped_classes = ifelse(is.na(grouped_classes), "Other Classes", grouped_classes)
+       ) %>%
+  group_by(clean_name, grouped_classes) %>%
+  arrange(av)%>%
+  summarise(
+    mean_bill_current = mean(bill_current, na.rm=TRUE),
+    mean_bill_noexemps = mean(bill_noexemps, na.rm=TRUE),
+    median_AV = median(av, na.rm=TRUE),
+    median_eav = median(eav, na.rm=TRUE),
+    pin_count = n(),
+    group_eav = sum(taxbase_current, na.rm = TRUE),
+    group_eav_new = sum(taxbase_new,na.rm=TRUE),
+    group_av = sum(av, na.rm=TRUE) ) %>% 
+  mutate(avg_bill_change =  mean_bill_noexemps - mean_bill_current) %>% 
+  mutate_at(vars(avg_bill_change, mean_bill_current:group_av), funs(round(., 0)))
+
+NEW_muni_rachelgroups_stats %>% select(Municipality = clean_name,  grouped_classes, avg_bill_change, everything())
+
+#write_csv(muni_rachelgroups_stats, "4_Taxbill_Hypotheticals-taxbill_change_20230814.csv")
+```
+
+
+```{r, fig.show='hold', out.width="50%"}
+
+tax_bill_change %>% ungroup() %>%
+  filter(major_class_code == 2 & bill_current < 30000 & clean_name == "Dolton") %>% ggplot() +
+  geom_histogram(aes(x= bill_current, bins = 100))+
+    geom_vline(aes(xintercept=median(bill_current, na.rm=TRUE), color = "red")) +
+    theme_classic()+theme(legend.position = "none") + 
+
+  scale_x_continuous(limits = c(0,20000))
+
+
+tax_bill_change %>% ungroup() %>%
+  filter(major_class_code == 2 & bill_noexemps < 30000 & clean_name == "Dolton") %>% ggplot() +
+  geom_histogram(aes(x= bill_noexemps, bins = 100)) +
+  theme_classic() +
+  geom_vline(aes(xintercept=median(bill_noexemps, na.rm=TRUE), color = "red")) + theme(legend.position = "none") +
+    scale_x_continuous(limits = c(0,20000))
+```
+
+
+```{r, fig.show='hold', out.width="50%"}
+tax_bill_change %>% ungroup() %>%
+  filter(major_class_code == 2 & bill_current < 30000 & clean_name == "Chicago") %>% ggplot() +
+  geom_histogram(aes(x= bill_current, bins = 100))+
+    geom_vline(aes(xintercept=median(bill_current, na.rm=TRUE), color = "red")) +
+    theme_classic()+theme(legend.position = "none") + 
+
+  scale_x_continuous(limits = c(0,20000))
+
+
+tax_bill_change %>% ungroup() %>%
+  filter(major_class_code == 2 & bill_noexemps < 30000 & clean_name == "Chicago") %>% ggplot() +
+  geom_histogram(aes(x= bill_noexemps, bins = 100)) +
+  theme_classic() +
+  geom_vline(aes(xintercept=median(bill_noexemps, na.rm=TRUE), color = "red")) + theme(legend.position = "none") +
+    scale_x_continuous(limits = c(0,20000))
+```
+
+
+```{r bill-change}
+tax_bill_change %>%
+  filter(major_class_code == 2 & clean_name == "Dolton") %>% 
+  ggplot() +
+  geom_histogram(aes(x= bill_change, bins = 100))+
+    geom_vline(aes(xintercept=median(bill_change, na.rm=TRUE), color = "red")) +
+    theme_classic()+
+  theme(legend.position = "none") + 
+
+  scale_x_continuous(limits = c(-5000,5000)) +
+  scale_y_continuous(limits = c(0, 2000))+
+  labs(title="Dolton's Change in Tax Bills", subtitle = "Hypothetical Tax System with No Exemptions", x= "Change in Tax Bill ($)", y = "Number of Tax Bills")
+
+tax_bill_change %>%
+  filter(major_class_code == 2 & clean_name == "Chicago") %>% ggplot() +
+  geom_histogram(aes(x= bill_change, bins = 100))+
+    geom_vline(aes(xintercept=median(bill_change, na.rm=TRUE), color = "red")) +
+    theme_classic()+ theme(legend.position = "none") + 
+
+  scale_x_continuous(limits = c(-5000,5000)) +
+  scale_y_continuous(limits = c(0, 200000))+
+
+  labs(title="Chicago's Change in Tax Bills", subtitle= "Hypothetical Tax System with No Exemptions", x= "Change in Tax Bill ($)", y = "Number of Tax Bills")
+
+```
+
+
+
+**Class 3 Tax bills: **
+```{r, fig.show='hold', out.width="50%"}
+tax_bill_change %>% ungroup() %>%
+  filter(major_class_code == 3 #& bill_current < 20000
+         ) %>% ggplot() +
+  geom_histogram(aes(x= bill_current, bins = 50))+
+    geom_vline(aes(xintercept=median(bill_current, na.rm=TRUE), color = "red")) +
+    theme_classic()+theme(legend.position = "none") + 
+
+  scale_x_continuous(limits = c(0,100000))
+
+
+tax_bill_change %>% ungroup() %>%
+  filter(major_class_code == 3 #& bill_noexemps < 20000
+         ) %>% ggplot() +
+  geom_histogram(aes(x= bill_noexemps, bins = 50)) +
+  theme_classic() +
+  geom_vline(aes(xintercept=median(bill_noexemps, na.rm=TRUE), color = "red")) + theme(legend.position = "none") +
+    scale_x_continuous(limits = c(0,100000))
+```
+
+
+Class 2 bills in Chicago would only change $28 for the median Class 2 property.
+
+
+```{r}
+
+muni_rachelgroups_stats2 <- tax_bill_change %>% ungroup() %>%
+  mutate(grouped_classes = ifelse(major_class_code  == "2", "Class 2", NA),
+        grouped_classes = ifelse(major_class_code %in% c("3", "9"), "Class 3", grouped_classes),
+        grouped_classes = ifelse(is.na(grouped_classes), "Other Classes", grouped_classes)
+       ) %>%
+  group_by(clean_name, grouped_classes) %>%
+    arrange(taxbase_new) %>%
+
+   summarise(
+    median_bill_current = median(bill_current, na.rm=TRUE),
+    median_bill_noexemps = median(bill_noexemps, na.rm=TRUE),
+    median_AV = median(av, na.rm=TRUE),
+    median_eav = median(eav, na.rm=TRUE),
+    pin_count = n(),
+    group_eav_current = sum(taxbase_current, na.rm = TRUE),
+    group_eav_new = sum(taxbase_new,na.rm=TRUE),
+    group_av = sum(av, na.rm=TRUE) ) %>% 
+  mutate(bill_change =  median_bill_noexemps - median_bill_current) %>% 
+  mutate_at(vars(bill_change, median_bill_current:group_av), funs(round(., 0)))
+
+muni_rachelgroups_stats2 %>% select(clean_name,  grouped_classes, bill_change, everything())
+```
+
+
+### Alternate Property Categories
+
+Uses owner, renter, commercial and industrial.
+
+```{r}
+class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv") %>% 
+  mutate(class_code = as.character(class_code))
+
+muni_Alea_cat_stats <- tax_bill_change %>% 
+    filter(class_code !=0) %>%
+  mutate(class_code = as.character(class_code)) %>%
+  left_join(class_dict) %>%
+    arrange(taxbase_new)%>%
+
+  group_by(clean_name, Alea_cat) %>% 
+  summarise(
+    median_bill_current = median(bill_current, na.rm=TRUE),
+    median_bill_noexemps = median(bill_noexemps, na.rm=TRUE),
+    median_AV = median(av, na.rm=TRUE),
+    median_eav = median(eav, na.rm=TRUE),
+    pin_count = n(),
+    group_eav_current = sum(taxbase_current, na.rm = TRUE),
+    group_eav_new = sum(taxbase_new,na.rm=TRUE),
+    group_av = sum(av, na.rm=TRUE) ) %>% 
+  mutate(bill_change = median_bill_noexemps -  median_bill_current ) %>%
+  mutate_at(vars(bill_change, median_bill_current:group_av), funs(round(., 0)))
+
+
+muni_Alea_cat_stats %>% 
+  filter(Alea_cat == "Owner Occupied") %>% 
+  select(Municipality = clean_name, bill_change, everything()) %>% 
+  arrange(bill_change)
+```
+
+**Owner occupied tax bills:**
+
+```{r, fig.show='hold', out.width="50%"}
+tax_bill_change %>% 
+    filter(class_code !=0) %>%
+  mutate(class_code = as.character(class_code)) %>%
+  left_join(class_dict) %>%
+  filter(Alea_cat == "Owner Occupied" & bill_current < 30000) %>% ggplot() +
+  geom_histogram(aes(x= bill_current, bins = 100))+
+    geom_vline(aes(xintercept=median(bill_current, na.rm=TRUE), color = "red")) +
+    theme_classic()+theme(legend.position = "none") + 
+
+  scale_x_continuous(limits = c(0,30000))
+
+
+tax_bill_change %>% 
+    filter(class_code !=0) %>%
+  mutate(class_code = as.character(class_code)) %>%
+  left_join(class_dict) %>%
+  filter(Alea_cat == "Owner Occupied" & bill_noexemps < 30000) %>% ggplot() +
+  geom_histogram(aes(x= bill_noexemps, bins = 100)) +
+  theme_classic() +
+  geom_vline(aes(xintercept=median(bill_noexemps, na.rm=TRUE), color = "red")) + theme(legend.position = "none") +
+    scale_x_continuous(limits = c(0,30000))
+```
+```{r bill-change-OOcat}
+tax_bill_change %>% 
+    filter(class_code !=0) %>%
+  mutate(class_code = as.character(class_code)) %>%
+  left_join(class_dict) %>%
+  filter(Alea_cat == "Owner Occupied" & bill_current < 30000 & clean_name == "Dolton") %>% 
+  ggplot() +
+  geom_histogram(aes(x= bill_change, bins = 100))+
+    geom_vline(aes(xintercept=median(bill_change, na.rm=TRUE), color = "red")) +
+    theme_classic()+
+  theme(legend.position = "none") + 
+
+  scale_x_continuous(limits = c(-5000,5000)) +
+  scale_y_continuous(limits = c(0, 2000))+
+  labs(title="Dolton's Change in Tax Bills: Hypothetical Tax System with No Exemptions", x= "Tax Bill Change ($)", y = "Number of Tax Bills")
+
+tax_bill_change %>% 
+    filter(class_code !=0) %>%
+  mutate(class_code = as.character(class_code)) %>%
+  left_join(class_dict) %>%
+  filter(Alea_cat == "Owner Occupied" & bill_current < 30000 & clean_name == "Chicago") %>% ggplot() +
+  geom_histogram(aes(x= bill_change, bins = 100))+
+    geom_vline(aes(xintercept=median(bill_change, na.rm=TRUE), color = "red")) +
+    theme_classic()+ theme(legend.position = "none") + 
+
+  scale_x_continuous(limits = c(-5000,5000)) +
+  scale_y_continuous(limits = c(0, 200000))+
+
+  labs(title="Chicago's Change in Tax Bills: Hypothetical Tax System with No Exemptions", x= "Tax Bill Change ($)", y = "Number of Tax Bills")
+
+```
+
+
+
+# "Cost" of Exemptions
+
+```{r}
+library(DBI)
+library(ptaxsim)
+library(glue)
+# Create the DB connection with the default name expected by PTAXSIM functions
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
+
+
+
+muni_agency_names <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT DISTINCT agency_num, agency_name, minor_type
+  FROM agency_info
+  WHERE minor_type = 'MUNI'
+  OR agency_num = '020060000'  
+
+  "
+)
+
+muni_tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT*
+  FROM tax_code
+  WHERE agency_num IN ({muni_agency_names$agency_num*})
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+)
+nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
+
+
+
+tax_bill_change %>% arrange(-levy_gap) %>% head()
+
+tax_bill_change %>% arrange(-bill_change) %>% head()
+
+
+
+tax_bill_change %>% 
+    filter(tax_code_num %in% muni_tax_codes$tax_code_num) %>%
+    filter(class_code !=0) %>%
+  mutate(class_code = as.character(class_code)) %>%
+  left_join(nicknames) %>%
+  filter(Triad == "South" & bill_change > 0) %>%
+  arrange(bill_change) %>%
+  summarize(cost = sum(bill_change, na.rm=TRUE),
+            levygap = sum(levy_gap, na.rm=TRUE))
+
+
+tax_bill_change %>% 
+    filter(tax_code_num %in% muni_tax_codes$tax_code_num) %>%
+    filter(class_code !=0) %>%
+  mutate(class_code = as.character(class_code)) %>%
+  left_join(nicknames) %>%
+  filter(clean_name %in% c("Dolton", "Chicago", "Winnetka", "Park Forest") & bill_change > 0) %>%
+  arrange(bill_change) %>%
+  summarize(cost = sum(bill_change, na.rm=TRUE),
+            levygap = sum(levy_gap))
+
+
+tax_bill_change %>% 
+    filter(tax_code_num %in% muni_tax_codes$tax_code_num) %>%
+    filter(class_code !=0) %>%
+  mutate(class_code = as.character(class_code)) %>%
+  left_join(nicknames) %>%
+  filter(clean_name %in% c("Dolton", "Chicago", "Winnetka", "Park Forest")) %>%
+  arrange(bill_change) %>%
+  summarize(cost = sum(bill_change, na.rm=TRUE),
+            levygap = sum(levy_gap, na.rm = TRUE))
+
+tax_bill_change %>% 
+    filter(tax_code_num %in% muni_tax_codes$tax_code_num) %>%
+    filter(class_code !=0) %>%
+  mutate(class_code = as.character(class_code)) %>%
+  left_join(nicknames) %>%
+  filter(clean_name %in% c("Dolton", "Chicago", "Winnetka", "Park Forest")) %>%
+  arrange(bill_change) %>%
+  group_by(clean_name) %>%
+  summarize(cost = sum(bill_change, na.rm=TRUE),
+            levygap = sum(levy_gap, na.rm = TRUE))
+```
+
+Covering all changes in tax bills in the South triad would cost $211 million.  
+
+```{r}
+
+
+tax_bill_change %>% 
+  filter(tax_code_num %in% muni_tax_codes$tax_code_num) %>%
+  
+  filter(bill_pct_change > 0.15 | bill_current == 0) %>%
+  summarize(cur_rev_collected = sum(cur_rev_collected, na.rm=TRUE), # includes TIF rev too
+            hyp_rev_collected = sum(hyp_rev_collected, na.rm=TRUE),  # revenue collected in hypothetical situation if all exemptions were provided, but tax rates were not raised from the decrease in taxable EAV (Levy held constant)
+            levy_gap = cur_rev_collected - hyp_rev_collected, 
+            cost = sum(bill_change, na.rm=TRUE))
+
+
+tax_bill_change %>% 
+  filter(tax_code_num %in% muni_tax_codes$tax_code_num) %>%
+  filter(major_class_code == 2) %>% 
+  filter(bill_pct_change > 0.15) %>% 
+  arrange(bill_current) %>%
+  summarize(cost = sum(bill_change, na.rm=TRUE))
+
+tax_bill_change %>% 
+  filter(tax_code_num %in% muni_tax_codes$tax_code_num) %>%
+#  filter(major_class_code == 2) %>% 
+#  filter(class_code >= 200 & class_code <=299)%>%
+ # filter(bill_current== 0) %>% 
+  arrange(bill_current) %>%
+  summarize(cur_rev_collected = sum(cur_rev_collected, na.rm=TRUE), # includes TIF rev too
+            hyp_rev_collected = sum(hyp_rev_collected, na.rm=TRUE),  # revenue collected in hypothetical situation if all exemptions were provided, but tax rates were not raised from the decrease in taxable EAV (Levy held constant)
+            levy_gap = cur_rev_collected - hyp_rev_collected,
+            
+            cost = sum(bill_change, na.rm=TRUE))
+```
+```{r}
+tax_bill_change %>% 
+  filter(tax_code_num %in% muni_tax_codes$tax_code_num) %>%
+#  filter(major_class_code == 2) %>% 
+#  filter(class_code >= 200 & class_code <=299)%>%
+ # filter(bill_current== 0) %>% 
+  arrange(bill_current) %>%
+  group_by(clean_name) %>%
+  summarize(cur_rev_collected = 
+              sum(cur_rev_collected, na.rm=TRUE), # includes TIF rev too
+            hyp_rev_collected = sum(hyp_rev_collected, na.rm=TRUE),  # revenue collected in hypothetical situation if all exemptions were provided, but tax rates were not raised from the decrease in taxable EAV (Levy held constant)
+            levy_gap = cur_rev_collected - hyp_rev_collected,
+            
+            cost = sum(bill_change, na.rm=TRUE))
+  
+```
+
+
+```{r}
+tax_bill_change %>% 
+  filter(tax_code_num %in% muni_tax_codes$tax_code_num) %>%
+  #filter(major_class_code == 2) %>% 
+  filter(bill_current != 0 & bill_pct_change > 0.15) %>% 
+  arrange(bill_change)  %>%
+    summarize(cost = sum(bill_change, na.rm=TRUE))
+
+```
+
+
+Check this -> Paying for all tax bills that experienced a 15% increase from the elimination of exemptions or had a \$0 taxbill would cost $825,963,411.
+
+
+
+# Finding Similar Properties and their Taxbills
+
+```{r}
+library(glue)
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2021.0.4.db")
+
+# has EAV values, extensions by agency_num
+agency_dt <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT *
+  FROM agency
+  WHERE year = 2021
+  "
+)
+
+# grabs all unique muni names & numbs
+# don't forget Cicero
+muni_agency_names <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT DISTINCT agency_num, agency_name, minor_type
+  FROM agency_info
+  WHERE minor_type = 'MUNI'
+  OR agency_num = '020060000'  
+
+  "
+)
+
+
+# list of all taxcodes in municipalities. 
+# This does NOT include unincorporated tax codes!!
+doltchi_tax_codes <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  glue_sql("
+  SELECT*
+  FROM tax_code
+  WHERE (agency_num = '030210000' OR agency_num = '030310000')
+  AND year = 2021
+  ",
+  .con = ptaxsim_db_conn
+  )
+) %>% mutate(tax_code = as.character(tax_code_num))
+
+```
+
+```{r eval=FALSE}
+taxbills_current <- read_csv("./Output/1_Get_All_Pins-CookPinTaxbills_2021_Actual.csv")
+# 22,453,875 tax bills in 2021 in municipalities (incorporated areas). 
+# 22,972,902 tax bills in all of Cook County in 2021 (incorporated and unincorporated)
+# DOES INCLUDE unincorporated tax bills based on how we pulled the data in Step 1.
+
+
+
+# 1,825,816 billed properties with 14-digit PINs  for incorporated areras
+# 1,864,594 billed properties in Cook county (incorporated and unincorporated)
+# 
+pin14_bills_current <- taxbills_current %>%
+  group_by(tax_code, class, pin) %>%
+  
+  mutate(total_bill = final_tax_to_dist + final_tax_to_tif) %>% # from each taxing agency
+  
+  summarize(total_billed = sum(total_bill, na.rm = TRUE), # total on someone's property tax bill
+            av = first(av),
+            eav = first(eav),
+            pin_count_in_parcel = n(),
+            final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE),
+            final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+            tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), # revenue lost due to exemptions
+            tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), # total rev before all exemptions
+            tax_amt_post_exe = sum(tax_amt_post_exe, na.rm = TRUE), # total rev after all exemptions
+            rpm_tif_to_cps = sum(rpm_tif_to_cps, na.rm = TRUE), # not used
+            rpm_tif_to_rpm = sum(rpm_tif_to_rpm, na.rm=TRUE), # not used
+            rpm_tif_to_dist = sum(rpm_tif_to_dist, na.rm=TRUE), # not used
+            tif_share = mean(tif_share, na.rm=TRUE), # not used
+  )  %>% 
+  mutate(propclass_1dig = str_sub(class, 1, 1))
+
+head(pin14_bills_current)
+
+
+DoltonChicago <- pin14_bills_current %>% 
+  filter(tax_code %in% doltchi_tax_codes$tax_code_num) %>%
+  filter(class != "0")
+
+
+DoltonChicago <- DoltonChicago %>% 
+  mutate(tax_code = as.character(tax_code))%>%
+  left_join(doltchi_tax_codes) %>% 
+  group_by(agency_num, class) %>% arrange(av)
+```
+
+
+```{r}
+DoltonChicago <- read_csv("Cholton_taxbills.csv")
+nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")
+
+
+DoltonChicago <- DoltonChicago %>% mutate(tax_code = as.character(tax_code)) %>% left_join(doltchi_tax_codes, by = c("tax_code" = "tax_code")) 
+
+DoltonChicago <- DoltonChicago %>% left_join(muni_agency_names, by = c("agency_num.x" = "agency_num")) %>% rename(agency_num = agency_num.x)
+
+DoltonChicago %>% group_by(agency_num) %>% summarize(forgone_rev = sum(tax_amt_exe))
+
+class_dict <- read_csv("./Necessary Files/class_dict.csv")
+
+
+DoltonChicago %>% 
+  filter(class == "203") %>% 
+  group_by(agency_num, class) %>%
+  summarize(medianbilll = median(total_billed),
+            meanbill = mean(total_billed))
+
+
+## Chicago ##
+DoltonChicago %>% filter(agency_num == "030210000" & class == "203" & between(total_billed,3150,3152))
+# av - 19000, eav = 57000
+# had $670 "exempt" on their bill
+
+
+DoltonChicago %>% filter(agency_num == "030210000" & class == "203" & between(total_billed, 3050, 3250)) %>%
+  summarize(av = mean(av),
+            eav = mean(eav),
+            tax_amt_post_exe = mean(tax_amt_post_exe),
+            tax_amt_exe = mean(tax_amt_exe),
+            tax_amt_pre_exe = mean(tax_amt_pre_exe),
+            pin_count = n())
+
+
+## Dolton ## 
+
+# Chicago only has 2 pins that are similar to Dolton's median pin (which had a lot of matches)
+DoltonChicago %>% filter(agency_num == "030310000" & class == "203" & between(total_billed,3050,3250))
+
+DoltonChicago %>% filter(agency_num == "030310000" & class == "203" & between(total_billed,3050,3250)) %>%
+  summarize(av = mean(av),
+            eav = mean(eav),
+            tax_amt_post_exe = mean(tax_amt_post_exe),
+            tax_amt_exe = mean(tax_amt_exe),
+            tax_amt_pre_exe = mean(tax_amt_pre_exe),
+            pin_count = n()
+  )
+
+# av = 
+#exempt eav = 
+```
+
+```{r}
+DoltonChicago %>% 
+  
+  filter(agency_num == "030210000" & class == "203" & between(av,9000,11000)) %>%
+  summarize(
+          tax_amt_post_exe = mean(tax_amt_post_exe),
+      tax_amt_exe = mean(tax_amt_exe),
+            tax_amt_pre_exe = mean(tax_amt_pre_exe),
+            pin_count = n()
+  )
+
+DoltonChicago %>% 
+  filter(agency_num == "030310000" & class == "203" & between(av,9000,11000)) %>%
+    summarize(              
+      tax_amt_post_exe = mean(tax_amt_post_exe),
+      tax_amt_exe = mean(tax_amt_exe),
+            tax_amt_pre_exe = mean(tax_amt_pre_exe),
+            pin_count = n())
+```
+
+
+
+```{r}
+DoltonChicago <- DoltonChicago %>%   left_join(nicknames) %>%
+  mutate(total_bill_current = final_tax_to_dist + final_tax_to_tif) %>%
+  rename(cur_comp_TC_rate = tax_code_rate.x) %>%
+  mutate(exempt_eav = tax_amt_exe/(cur_comp_TC_rate/100),
+         current_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100),
+         new_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate/100) + exempt_eav) %>%
+  mutate(new_comp_TC_rate = (final_tax_to_dist / new_taxable_eav)*100) %>%
+  mutate(new_comp_TC_rate = ifelse(is.nan(new_comp_TC_rate), cur_comp_TC_rate, new_comp_TC_rate)) %>% mutate(
+    bill_current = (final_tax_to_dist + final_tax_to_tif),
+    bill_noexemps = new_comp_TC_rate/100*(current_taxable_eav + exempt_eav),
+    bill_change = bill_noexemps - bill_current)
+```
+
+```{r, fig.show='hold', out.width="50%"}
+DoltonChicago %>% 
+  filter(class>199 & class < 300 & clean_name == "Chicago") %>% ggplot() +
+  geom_histogram(aes(x= bill_current, bins = 100))+
+    geom_vline(aes(xintercept=median(bill_current, na.rm=TRUE), color = "red")) +
+    theme_classic()+theme(legend.position = "none") + 
+
+  scale_x_continuous(limits = c(0,20000))
+
+
+DoltonChicago %>% ungroup() %>%
+  filter(class>199 & class < 300  & bill_noexemps < 30000 & clean_name == "Chicago") %>% ggplot() +
+  geom_histogram(aes(x= bill_noexemps, bins = 100)) +
+  theme_classic() +
+  geom_vline(aes(xintercept=median(bill_noexemps, na.rm=TRUE), color = "red")) + theme(legend.position = "none") +
+    scale_x_continuous(limits = c(0,20000))
+```
+
+
+```{r bill-change2}
+DoltonChicago %>%
+  filter(class>199 & class < 300  & clean_name == "Dolton") %>% 
+  ggplot() +
+  geom_histogram(aes(x= bill_change, bins = 100))+
+    geom_vline(aes(xintercept=median(bill_change, na.rm=TRUE), color = "red")) +
+    theme_classic()+
+  theme(legend.position = "none") + 
+
+  scale_x_continuous(limits = c(-5000,5000)) +
+ # scale_y_continuous(limits = c(0, 2000))+
+  labs(title="Dolton's Change in Tax Bills", subtitle = "Hypothetical Tax System with No Exemptions", x= "Change in Tax Bill ($)", y = "Number of Tax Bills")
+
+DoltonChicago %>%
+  filter(class>199 & class < 300  & clean_name == "Chicago") %>% ggplot() +
+  geom_histogram(aes(x= bill_change, bins = 100))+
+    geom_vline(aes(xintercept=median(bill_change, na.rm=TRUE), color = "red")) +
+    theme_classic()+ theme(legend.position = "none") + 
+
+  scale_x_continuous(limits = c(-5000,5000)) +
+  scale_y_continuous(limits = c(0, 200000))+
+
+  labs(title="Chicago's Change in Tax Bills", subtitle= "Hypothetical Tax System with No Exemptions", x= "Change in Tax Bill ($)", y = "Number of Tax Bills")
+
+```
+
+
