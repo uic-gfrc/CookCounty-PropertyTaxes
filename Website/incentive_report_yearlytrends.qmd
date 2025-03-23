@@ -82,83 +82,18 @@ alea_theme <- function() {
 
 
 
-## Time Trends 
+## Time Trends - All Years
 
-### Pin Counts and FMV
+The file `comm_ind_inmunis_timeseries_2006to2023.csv` contains all PINs that had an incentive property class for at least 1 year. It includes all observations for a property during the years that it existed, even if it is not an incentive class property in that year. 
+
+Only includes PINs in incorporated areas. 
+
+### FMV
 
 ```{r}
 year_count <- 13
 
 comm_ind_pins <- read_csv("../Output/comm_ind_PINs_2006to2023_timeseries.csv")
-
-```
-
-```{r}
-
-commind_together <- comm_ind_pins  %>%
-  group_by(year) %>%
-  summarize(
-    proptype_pincount = n(),
-            n_incent = sum(ifelse(incent_prop == "Incentive", 1, 0)),
-            n_nonincent = sum(ifelse(incent_prop == "Non-Incentive", 1, 0)))  %>% 
-  mutate(pct_incent = n_incent / proptype_pincount)
-
-  
-
-table <- comm_ind_pins %>% 
-    filter(land_use %in% c("Industrial", "Commercial")) |>
-
-  group_by(year, land_use) %>%
-  summarize(
-    proptype_pincount = n(),
-            n_incent = sum(ifelse(incent_prop == "Incentive", 1, 0)),
-            n_nonincent = sum(ifelse(incent_prop == "Non-Incentive", 1, 0))) %>%
-  mutate(pct_incent = n_incent / proptype_pincount) %>%
-  arrange(year) %>%
-  mutate(year = as.character(year)) %>%
-filter(!land_use %in% c("Exempt", "Other Residential", "Owner Occupied", "Rental") ) %>% 
-  select(year, land_use, n_incent, pct_incent) |>
-  pivot_wider(id_cols = year, names_from = land_use, 
-              values_from = c(n_incent,pct_incent)) %>% ungroup() |>
-  select(-year)
-
-cbind(commind_together, table) %>% 
-  select(Year = year, 
-         "C&I Incentive Parcels" = n_incent, 
-         "Share of C&I" = pct_incent,
-         "Commercial Pin Count" = n_incent_Commercial, 
-         "Share of Commercial" = pct_incent_Commercial,
-         "Industrial Pin Count" = n_incent_Industrial, 
-         "Share of Industrial" = pct_incent_Industrial,
-         "C&I PIN Count" = proptype_pincount) %>% 
-  mutate(Year = as.character(Year)) |>
-  mutate(across(contains("Share"), scales::percent, 
-                #digits = 2 ## doesn't work!! 
-                accuracy = 0.01)) |>
-  flextable() %>%
-  add_header_row(values = c(" ", "Incent C&I", "Commercial", "Industrial","All C&I"), colwidths = c(1,2,2,2, 1)) |>
-  align(align = "right", part = "body" ) |>
-  align(align = "center", part = "header") |>
-  align(j = 1, align = c("left"), part = "all" )
-  
-
-```
-```{r}
-comm_ind_pins %>% 
-  filter(land_use %in% c("Commercial", "Industrial")) %>%
- group_by(year, land_use) %>%
-  summarize(
-  PC = sum(incent_prop=="Incentive") )%>%
-  ggplot() + 
-  geom_col(aes(x=year, y = PC, fill = land_use)) + 
-  scale_x_continuous(
-    limits = c(min_year - 1, max_year + 1),                                      
-    breaks = c(min_year, 2010, 2015, 2020, max_year
-              )) + 
-alea_theme() +
-  theme(legend.position =  "bottom", legend.title = element_blank(), 
-                          axis.title.x =   element_blank())+
-    scale_fill_manual(values = cmap_colors                      )
 
 ```
 
@@ -240,45 +175,6 @@ comm_ind_pins %>%
 ```
 
 
-The file ~~`comm_ind_inmunis_timeseries_2006to2023.csv`~~ `comm_ind_PINs_2011to2023_timeseries.csv` contains all PINs that had an incentive property class for at least 1 year. It includes all observations for a property during the years that it existed, even if it is not an incentive class property in that year. 
-
-Only includes PINs in incorporated areas.  
-
-
-
-```{r}
-#| label: fig-pincount
-#| eval: false
-#| include: false
-
-comm_ind_pins %>%
-  filter(incent_prop == "Incentive") %>%
-  # group_by(year, land_use) %>%
-  reframe(PC=n(), .by= c(year, land_use)) %>%
-  distinct() %>%
-   reframe(land_use, PC,
-     both_PC = sum(PC), .by=year) %>% distinct() %>% 
-  arrange(year) %>%
-  group_by(land_use) %>%
-  mutate(ratio_2011 = PC/ PC[year==2011],
-         ratio_both_2011 = both_PC/both_PC[year==2011]) %>% 
-  ggplot() +
-    scale_color_manual(values = c("#008FD5", "#ADE0EE", "#D0E4A4"))+
-  geom_line(aes(x=year, y = ratio_2011, group = land_use, color = land_use), lwd=1 ) + 
-  geom_line(aes(x=year, y =ratio_both_2011), lty = 
-              2, lwd = 1) + 
-  alea_theme() + 
-    scale_x_continuous(
-     limits = c(min_year - 1, max_year + 1),                              
-    breaks = c(min_year, 2010, 2015, 2020, max_year)) +
-  scale_y_continuous(name = "Percent of 2011 Pin Count", label = scales::percent) + 
-  labs(title = "Number of PINs, Indexed to 2011",
-       x = NULL,
-       caption = "Dashed line represents growth in the number of commercial and industrial PINs",
-       color = NULL)
-```
-
-
 ```{r}
 #| label: fig-fmvgrowth-allyears
 #| fig-cap: "**Similar to Figure 4 in Incentive Report**     Incentive FMV Growth, All Years. Indexed to 2011."
@@ -313,7 +209,115 @@ limits = c(min_year - 1, max_year + 1),
        but the number of PINs also increased over time. ")
 ```
 
- ### Change in Incentive Classification
+### PIN Counts
+
+```{r}
+commind_together <- comm_ind_pins  %>%
+  group_by(year) %>%
+  summarize(
+    proptype_pincount = n(),
+            n_incent = sum(ifelse(incent_prop == "Incentive", 1, 0)),
+            n_nonincent = sum(ifelse(incent_prop == "Non-Incentive", 1, 0)))  %>% 
+  mutate(pct_incent = n_incent / proptype_pincount)
+```
+
+```{r}
+#| label: pincounts-allyears
+#| column: margin
+
+
+comm_ind_pins %>% 
+  filter(land_use %in% c("Commercial", "Industrial")) %>%
+ group_by(year, land_use) %>%
+  summarize(
+  PC = sum(incent_prop=="Incentive") )%>%
+  ggplot() + 
+  geom_col(aes(x=year, y = PC, fill = land_use)) + 
+  scale_x_continuous(
+    limits = c(min_year - 1, max_year + 1),                                      
+    breaks = c(min_year, 2010, 2015, 2020, max_year
+              )) + 
+alea_theme() +
+  theme(legend.position =  "bottom", legend.title = element_blank(), 
+                          axis.title.x =   element_blank())+
+    scale_fill_manual(values = cmap_colors                      ) +
+  ggtitle("Count of Incentive PINs")
+
+```
+
+```{r}
+#| label: fig-pincount
+#| column: margin
+
+comm_ind_pins %>%
+  filter(incent_prop == "Incentive") %>%
+  reframe(PC=n(), .by= c(year, land_use)) %>%
+  distinct() %>%
+   reframe(land_use, PC,
+     both_PC = sum(PC), .by=year) %>% distinct() %>% 
+  arrange(year) %>%
+  group_by(land_use) %>%
+  mutate(ratio_2011 = PC/ PC[year==2011],
+         ratio_both_2011 = both_PC/both_PC[year==2011]) %>% 
+  ggplot() +
+    scale_color_manual(values = cmap_colors)+
+  geom_line(aes(x=year, y = ratio_2011, group = land_use, color = land_use), lwd=1 ) + 
+  geom_line(aes(x=year, y =ratio_both_2011), lty = 
+              2, lwd = 1) + 
+  alea_theme() + 
+    scale_x_continuous(
+     limits = c(min_year - 1, max_year + 1),                              
+    breaks = c(min_year, 2010, 2015, 2020, max_year)) +
+  scale_y_continuous(name = "Percent of 2011 Pin Count", label = scales::percent) + 
+  labs(title = "Number of PINs, Indexed to 2011",
+       x = NULL,
+       caption = "Dashed line represents growth in the number of commercial and industrial PINs",
+       color = NULL)
+```
+
+```{r}
+#| label: tbl-pincountsallyears
+#| tbl-cap: "Descriptive stats for PINs with incentive classigications - Using Count of PINs"
+table <- comm_ind_pins %>% 
+    filter(land_use %in% c("Industrial", "Commercial")) |>
+
+  group_by(year, land_use) %>%
+  summarize(
+    proptype_pincount = n(),
+            n_incent = sum(ifelse(incent_prop == "Incentive", 1, 0)),
+            n_nonincent = sum(ifelse(incent_prop == "Non-Incentive", 1, 0))) %>%
+  mutate(pct_incent = n_incent / proptype_pincount) %>%
+  arrange(year) %>%
+  mutate(year = as.character(year)) %>%
+filter(!land_use %in% c("Exempt", "Other Residential", "Owner Occupied", "Rental") ) %>% 
+  select(year, land_use, n_incent, pct_incent) |>
+  pivot_wider(id_cols = year, names_from = land_use, 
+              values_from = c(n_incent,pct_incent)) %>% ungroup() |>
+  select(-year)
+
+cbind(commind_together, table) %>% 
+  select(Year = year, 
+         "C&I Incentive Parcels" = n_incent, 
+         "Share of C&I" = pct_incent,
+         "Commercial Pin Count" = n_incent_Commercial, 
+         "Share of Commercial" = pct_incent_Commercial,
+         "Industrial Pin Count" = n_incent_Industrial, 
+         "Share of Industrial" = pct_incent_Industrial,
+         "C&I PIN Count" = proptype_pincount) %>% 
+  mutate(Year = as.character(Year)) |>
+  mutate(across(contains("Share"), scales::percent, 
+                #digits = 2 ## doesn't work!! 
+                accuracy = 0.01)) |>
+  flextable() %>%
+  add_header_row(values = c(" ", "Incent C&I", "Commercial", "Industrial","All C&I"), colwidths = c(1,2,2,2, 1)) |>
+  align(align = "right", part = "body" ) |>
+  align(align = "center", part = "header") |>
+  align(j = 1, align = c("left"), part = "all" )
+  
+
+```
+
+### Change in Incentive Classification
 
 ```{r}
 #| label: tbl-categorycountsforcomparison-2023
@@ -321,7 +325,8 @@ limits = c(min_year - 1, max_year + 1),
 
 
 pins_per_year <- comm_ind_pins %>% 
-  group_by(year) %>%
+  mutate(Year = as.character(year)) |>
+  group_by(Year) %>%
   summarize("Gains Incent" = sum(gain_incent, na.rm=TRUE),
             "Loses Incent" = sum(lose_incent, na.rm=TRUE),
             "PINs with Incent. Class." = sum(incent_prop=="Incentive"),
@@ -329,7 +334,7 @@ pins_per_year <- comm_ind_pins %>%
           #  "Became Exempt" = sum(became_exempt, na.rm=TRUE)
             )
 
-pins_per_year
+pins_per_year |> flextable()
 ```
 
 
@@ -641,6 +646,295 @@ ggplot() +
    labs(title= "Class 8 Townships", subtitle =  "Share of Commercial & Industrial FMV with Incentive Classification") + guides(color = guide_legend(nrow=2, byrow = TRUE))
 ```
 
+
+
+### Commercial and Industrial Growth
+
+```{r}
+#| label: tbl-incentchange-2023indexed
+#| tbl-cap: "Aggregate FMV Growth by Incentive Classification. `Changes Sometime` includes properties that gained or lost an incentive classification. `incent_status` in tables below breaks up Changes Sometime into more detailed categories. "
+
+df_2011_incentchange <- comm_ind_pins|>
+  group_by(year, incent_change) |>
+  summarize(
+    group_pin_count = n(),
+    group_year_fmv = sum(fmv, na.rm=TRUE),
+  ) |> ungroup() |>
+  group_by( incent_change) %>%
+  mutate(
+    base_year_fmv = group_year_fmv[year == min(year)],
+    fmv_group_growth = (group_year_fmv / base_year_fmv) -1)  
+
+
+
+df_2011_incentchange %>% 
+  filter(year == max_year) |>
+  select("Gains/Loses Incentive Classification" = incent_change, 
+         "FMV Growth" = fmv_group_growth, 
+         "2006 FMV\n(Billions)" = base_year_fmv, 
+         "Aggregate FMV\n(Billions)" = group_year_fmv, 
+         "PIN Count" = group_pin_count, 
+         -year) |>
+  mutate(across(contains("Growth"), scales::percent, accuracy = 0.01)) |>
+    mutate(across(2:3, ~ round((./1000000000), digits = 3)) )|>
+
+  flextable() %>%
+  align(align = "right", part = "body" ) |>
+  align(align = "center", part = "header") |>
+  align(j = 1, align = c("left"), part = "all" )
+```
+
+
+
+
+```{r}
+#| label: tbl-growthcalculations-byincentstatus-2023
+#| tbl-cap: "Aggregate FMV Growth by `incent_status`. Calculations for PINs counts in header of table in report. Always Had Incentive and Never Had Incentive should be identical to table above."
+
+comm_ind_pins %>%
+  ungroup() %>% 
+  group_by(year, incent_status) |>
+  summarize(
+    group_pin_count = n(),
+    group_year_fmv = sum(fmv, na.rm=TRUE)) |> 
+  ungroup() |>
+group_by(incent_status) %>%
+  mutate(
+    base_year_fmv = group_year_fmv[year == min(year)],
+    fmv_group_growth = (group_year_fmv / base_year_fmv) -1) |> 
+  filter(year == params$year)  %>%
+  select("Incentive Status" = incent_status, 
+         "FMV Growth" = fmv_group_growth, 
+         "2006 FMV\n(Billions)" = base_year_fmv, 
+         "Aggregate FMV\n(Billions)" = group_year_fmv, 
+         "PIN Count" = group_pin_count, 
+         -year) |>
+  mutate(across(contains("Growth"), scales::percent, accuracy = 0.01)) |>
+    mutate(across(2:3, ~ round((./1000000000), digits = 3)) )|>
+
+  flextable() %>%
+  align(align = "right", part = "body" ) |>
+  align(align = "center", part = "header") |>
+  align(j = 1, align = c("left"), part = "all" )
+
+```
+
+
+```{r}
+#| label: tbl-growthcalculations-bylandusechange-2023
+#| tbl-cap: !expr paste0("Aggregate FMV Growth from 2006 to ",  params$year, " by `landuse_change`." )
+
+comm_ind_pins %>%
+  group_by(year, landuse_change) |>
+  summarize(
+    group_pin_count = n(),
+    group_year_fmv = sum(fmv, na.rm=TRUE)) |> 
+  ungroup() |>
+  group_by(landuse_change) %>%
+  mutate(
+    base_year_fmv = group_year_fmv[year == min(year)],
+    base_year_n = group_pin_count[year == min(year)],
+    n_group_growth = group_pin_count/base_year_n -1,
+    fmv_group_growth = (group_year_fmv / base_year_fmv) -1) %>%
+    filter(year == params$year) %>%   
+
+  select("Changes Land Use" = landuse_change, 
+         "FMV Growth" = fmv_group_growth, 
+         "2006 FMV\n(Billions)" = base_year_fmv, 
+         "Aggregate FMV\n(Billions)" = group_year_fmv, 
+         "PIN Count" = group_pin_count, 
+         -year) |>
+  mutate(across(contains("Growth"), scales::percent, accuracy = 0.01)) |>
+    mutate(across(2:3, ~ round((./1000000000), digits = 3)) )|>
+
+  flextable() %>%
+  align(align = "right", part = "body" ) |>
+  align(align = "center", part = "header") |>
+  align(j = 1, align = c("left"), part = "all" )
+```
+
+```{r}
+#| label: create-df2011bal
+
+df_2011_bal <- comm_ind_pins %>%
+  group_by(year, landuse_change, incent_status) |>
+  summarize(
+    group_pin_count = n(),
+    group_year_fmv = sum(fmv, na.rm=TRUE)) |> 
+  ungroup() |>
+  group_by(landuse_change, incent_status) %>%
+  mutate(
+    base_year_fmv = group_year_fmv[year == min(year)],
+    base_year_n = group_pin_count[year == min(year)],
+    n_group_growth = group_pin_count/base_year_n -1,
+    fmv_group_growth = (group_year_fmv / base_year_fmv) -1) 
+```
+
+```{r}
+#| label: tbl-growthcalculations-landusechange-incentstatus-balanced-2023
+#| tbl-cap: !expr paste0("Growth from 2006 to ",  params$year, " - Change in Land Use by Incentive Class Status. Non-winsorized version of table.")
+
+
+df_2011_bal %>% 
+  select(year, landuse_change, incent_status, fmv_group_growth, group_pin_count) %>% 
+  filter(year == params$year) %>%   
+  select(
+   "Changes Land Use" = landuse_change,
+   "Incentive Status" = incent_status,
+         "FMV Growth" = fmv_group_growth, 
+         "PIN Count" = group_pin_count, 
+         -year) |>
+  mutate(across(contains("Growth"), scales::percent, accuracy = 0.01)) |>
+
+ DT::datatable(rownames = FALSE, options = list(dom = 'tp'))
+
+
+```
+
+
+
+```{r}
+#| label: fig-landusebyincentstatus-2023
+#| fig-cap: "Includes the 'Excluded' Category. For comparison only to show what was excluded in next image."
+#| column: margin
+
+
+df_2011_bal %>% 
+  mutate(year = as.numeric(year)) |>
+  ggplot() + 
+  geom_line(aes(x=year, fmv_group_growth, group = incent_status, color = incent_status), lwd = 1) +
+  theme_bw()  +  
+
+  scale_y_continuous(labels = scales::percent)+
+  scale_color_manual(values = cmap_colors) + 
+  scale_x_continuous(limits = c(2005, 2024),                                    
+                      breaks = c(2006,  2015, 2023)) + 
+  theme(    panel.background = ggplot2::element_blank(),
+            panel.grid.minor.x = ggplot2::element_blank(),
+            panel.grid.major.x = ggplot2::element_blank(),
+            
+            panel.grid.major.y = element_line(color = "grey"),
+            panel.grid.minor.y = element_line(color = "grey", 
+                                              linetype = "dashed"),
+            axis.ticks = element_line(color = "gray"),
+            axis.ticks.x = element_blank(),
+            legend.position = "bottom") +
+ 
+  labs(title = "FMV Growth for Properties with Incentives, Indexed to 2006", 
+       color = element_blank(),
+       x = element_blank(), y = "FMV Growth since 2006",
+       caption = "Broken into subcategories to keep sample size the same over time.") + facet_wrap(~landuse_change)
+```
+
+
+```{r}
+#| label: fig-landusebyincentstatus-clean-2023
+#| fig-cap: "Excludes the 'Excluded' Category and 'Exempt Sometime' properties."
+
+df_2011_bal %>% 
+  mutate(year = as.numeric(year)) |>
+  filter(incent_status != "Excluded" & landuse_change != "Excluded" & landuse_change != "Exempt Sometime") %>%
+  ggplot() + 
+  geom_line(aes(x=year, fmv_group_growth, group = incent_status, color = incent_status), lwd=1) + 
+  # labs( title = "FMV Growth Since 2011 by Land Use", 
+  #       caption = "PINs that did not exist during all years of the sample frame were excluded from the image (n=10,809)."
+  # ) + 
+  theme_bw()  +  
+
+  scale_y_continuous(labels = scales::percent)+
+  scale_color_manual(values = cmap_colors) + 
+
+  theme(    panel.background = ggplot2::element_blank(),
+            panel.grid.minor.x = ggplot2::element_blank(),
+            panel.grid.major.x = ggplot2::element_blank(),
+            
+            panel.grid.major.y = element_line(color = "grey"),
+            panel.grid.minor.y = element_line(color = "grey", 
+                                              linetype = "dashed"),
+            axis.ticks = element_line(color = "gray"),
+            axis.ticks.x = element_blank(),
+            legend.position = "bottom") +
+    facet_wrap(~landuse_change) +
+   scale_x_continuous(limits = c(2005, 2024),                                    
+                      breaks = c(2006, 2015, 2023)) + 
+  labs(title = "FMV Growth for Properties with Incentives, Indexed to 2006", 
+       color = element_blank(),
+       x = element_blank(), y = "FMV Growth since 2006",
+       caption = "Broken into subcategories to keep sample size the same over time.")
+
+```
+
+
+```{r}
+#| label: fig-growth-facetby-incentstatus-2023
+#| fig-cap: !expr paste0("Growth from 2006 to ", params$year,  ". Faceted by if a PIN changed landuse during the sample period. Indexed to fair market value during 2011. **Only for comparison to show what has been dropped in the next image.**")
+#| column: margin
+
+
+df_2011_bal %>%  
+  mutate(year = as.factor(year)) %>%
+  ggplot() + 
+  geom_line(aes(x=year, y=fmv_group_growth, 
+                group = landuse_change, color = landuse_change), lwd = 1) +
+  theme_bw()  +  
+  facet_wrap(~incent_status, nrow = 1) +
+  scale_x_discrete(#limits = c(2005, 2024), 
+                   breaks = c(2006, params$year)) + 
+  scale_y_continuous(labels = scales::percent) +
+  scale_color_manual(values = cmap_colors) + 
+
+  labs(title= paste0("Growth from 2006 to ", params$year),
+       subtitle = "Incentive Classification Status by Land Use Change",
+       y = "FMV Growth", x = NULL,
+       caption =  "Values are indexed to 2006 FMV") +
+    theme(    panel.background = ggplot2::element_blank(),
+            panel.grid.minor.x = ggplot2::element_blank(),
+            panel.grid.major.x = ggplot2::element_blank(),
+            
+            panel.grid.major.y = element_line(color = "grey"),
+            panel.grid.minor.y = element_line(color = "grey", 
+                                              linetype = "dashed"),
+            axis.ticks = element_line(color = "gray"),
+            axis.ticks.x = element_blank(),
+            legend.position = "bottom",
+            legend.title = element_blank())
+```
+
+
+```{r}
+#| label: fig-growth-facetby-incentstatus-clean-2023
+#| fig-cap: !expr paste0("Aggregate FMV Growth from 2006 to ", params$year, ". Faceted by PIN  incentive status during the sample period. Indexed to fair market value during 2006.")
+
+df_2011_bal %>%  
+  filter(landuse_change != "Excluded" & incent_status != "Excluded" & landuse_change != "Exempt Sometime") %>%
+  mutate(year = as.numeric(year)) %>%
+  ggplot() + 
+  geom_line(aes(x=year, y=fmv_group_growth, group = landuse_change, color = landuse_change), lwd = 1) +
+  theme_bw()  +  
+  facet_wrap(~incent_status, nrow = 1) +
+  scale_x_continuous(limits = c(min_year-1, max_year+1),
+                     breaks = c(min_year, 2015, max_year)) + 
+  scale_y_continuous(labels = scales::percent) +
+  scale_color_manual(values = cmap_colors) +
+  labs(title= "Growth from 2006", 
+       subtitle = "Incentive Classification Status by Land Use Change",
+       y = "FMV Growth since 2006", x = NULL,
+       caption =  paste0("Values are indexed to 2006 FMV. 
+                         Excludes PINs that were tax exempt some years or did not exist for all years between 2006 and ", params$year)) +
+  theme( panel.background = ggplot2::element_blank(),
+            panel.grid.minor.x = ggplot2::element_blank(),
+            panel.grid.major.x = ggplot2::element_blank(),
+            
+            panel.grid.major.y = element_line(color = "grey"),
+            panel.grid.minor.y = element_line(color = "grey", 
+                                              linetype = "dashed"),
+            axis.ticks = element_line(color = "gray"),
+            axis.ticks.x = element_blank(),
+            legend.position = "bottom",
+          legend.title = element_blank())
+
+```
+
 ### Explore PINs that became Class 8 or Other Incentive in South Triad
 
 ```{r}
@@ -690,207 +984,13 @@ comm_ind_pins %>%
   select(year, class, everything())
 ```
 
-<!--- > note to self: status is coded incorrectly. There are 'Gains Incentive' PINs that are also Controls if they existed less than 12 years. Became_taxed is wrong too
- 
-> Is this still true?? - AWM 3/6/2025 -- Looks like it was removed from the 2006 to 2023 file. ---> 
-
-
-```{r}
-#| label: tbl-incentchange-2023indexed
-#| tbl-cap: "Aggregate FMV Growth by Incentive Classification. `Changes Sometime` includes properties that gained or lost an incentive classification. `incent_status` in tables below breaks up Changes Sometime into more detailed categories. "
-
-df_2011_incentchange <- comm_ind_pins|>
-group_by(year, incent_change) |>
-  summarize(
-    group_pin_count = n(),
-    group_year_fmv = sum(fmv, na.rm=TRUE),
-  ) |> ungroup() |>
-  group_by( incent_change) %>%
-  mutate(
-    base_year_fmv = group_year_fmv[year == min(year)],
-    fmv_group_growth = (group_year_fmv / base_year_fmv) -1)  
-
-
-
-df_2011_incentchange %>% 
-  filter(year == max_year) |>
-  select(incent_change, fmv_group_growth, base_year_fmv, group_year_fmv, everything(), -year)
-```
-
-
-
-
-```{r}
-#| label: tbl-growthcalculations-byincentstatus-2023
-#| tbl-cap: "Aggregate FMV Growth by `incent_status`. Calculations for PINs counts in header of table in report."
-
-comm_ind_pins %>%
-  ungroup() %>% 
-  group_by(year, incent_status) |>
-  summarize(
-    group_pin_count = n(),
-    group_year_fmv = sum(fmv, na.rm=TRUE)) |> 
-  ungroup() |>
-group_by(incent_status) %>%
-  mutate(
-    base_year_fmv = group_year_fmv[year == min(year)],
-    fmv_group_growth = (group_year_fmv / base_year_fmv) -1) |> 
-  filter(year == params$year)  %>%
-  select(incent_status, fmv_group_growth, group_pin_count, everything(), -year)
-
-```
-
-
-```{r}
-#| label: tbl-growthcalculations-bylandusechange-2023
-#| tbl-cap: !expr paste0("Aggregate FMV Growth from 2011 to ",  params$year, " by `landuse_change`." )
-
-comm_ind_pins %>%
-  group_by(year, landuse_change) |>
-  summarize(
-    group_pin_count = n(),
-    group_year_fmv = sum(fmv, na.rm=TRUE)) |> 
-  ungroup() |>
-  group_by(landuse_change) %>%
-  mutate(
-    base_year_fmv = group_year_fmv[year == min(year)],
-    base_year_n = group_pin_count[year == min(year)],
-    n_group_growth = group_pin_count/base_year_n -1,
-    fmv_group_growth = (group_year_fmv / base_year_fmv) -1) %>%
-    filter(year == params$year) %>%   
-  select(landuse_change, fmv_group_growth, group_pin_count)
-```
-
-```{r}
-#| label: tbl-growthcalculations-landusechange-incentstatus-balanced-2023
-#| tbl-cap: !expr paste0("Growth from 2011 to ",  params$year, " - Change in Land Use by Incentive Class Status. Non-winsorized version of table used in Table X of report.")
-
-df_2011_bal <- comm_ind_pins %>%
-  group_by(year, landuse_change, incent_status) |>
-  summarize(
-    group_pin_count = n(),
-    group_year_fmv = sum(fmv, na.rm=TRUE)) |> 
-  ungroup() |>
-  group_by(landuse_change, incent_status) %>%
-  mutate(
-    base_year_fmv = group_year_fmv[year == min(year)],
-    base_year_n = group_pin_count[year == min(year)],
-    n_group_growth = group_pin_count/base_year_n -1,
-    fmv_group_growth = (group_year_fmv / base_year_fmv) -1) 
-
-df_2011_bal %>% 
-  select(year, landuse_change, incent_status, fmv_group_growth, group_pin_count) %>% 
-  filter(year == params$year) %>%   
-  select(-year)
-
-
-```
-
-
-
-```{r}
-#| label: fig-landusebyincentstatus-2023
-#| fig-cap: "Includes the 'Excluded' Category"
-
-df_2011_bal %>% 
-  ggplot() + 
-  geom_line(aes(x=year, fmv_group_growth, group = incent_status, color = incent_status)) + 
-  labs( title = "FMV Growth Since 2011 by Land Use",) + 
-  theme_bw()  +  
-  facet_wrap(~landuse_change)
-```
-
-
-```{r}
-#| label: fig-landusebyincentstatus-clean-2023
-#| fig-cap: "Excludes the 'Excluded' Category and 'Exempt Sometime' properties."
-
-df_2011_bal %>% 
-  mutate(year = as.numeric(year)) |>
-  filter(incent_status != "Excluded" & landuse_change != "Excluded" & landuse_change != "Exempt Sometime") %>%
-  ggplot() + 
-  geom_line(aes(x=year, fmv_group_growth, group = incent_status, color = incent_status), lwd=1) + 
-  # labs( title = "FMV Growth Since 2011 by Land Use", 
-  #       caption = "PINs that did not exist during all years of the sample frame were excluded from the image (n=10,809)."
-  # ) + 
-  theme_bw()  +  
-
-  scale_y_continuous(labels = scales::percent)+
-  scale_color_manual(values = cmap_colors) + 
-
-  theme(    panel.background = ggplot2::element_blank(),
-            panel.grid.minor.x = ggplot2::element_blank(),
-            panel.grid.major.x = ggplot2::element_blank(),
-            
-            panel.grid.major.y = element_line(color = "grey"),
-            panel.grid.minor.y = element_line(color = "grey", 
-                                              linetype = "dashed"),
-            axis.ticks = element_line(color = "gray"),
-            axis.ticks.x = element_blank(),
-            legend.position = "bottom") +
-    facet_wrap(~landuse_change) +
-   scale_x_continuous(limits = c(2005, 2024),                                    
-                      breaks = c(2006, 2010, 2015, 2020, 2023)) + 
-  labs(title = "FMV Growth for Properties with Incentives, Indexed to 2006", 
-       color = element_blank(),
-       x = element_blank(), y = "FMV Growth since 2006",
-       caption = "Broken into subcategories to keep sample size the same over time.")
-
-```
-
-
-```{r}
-#| label: fig-growth-facetby-incentstatus-2023
-#| fig-cap: !expr paste0("Growth from 2011 to ", params$year,  ". Faceted by if a PIN changed landuse during the sample period. Indexed to fair market value during 2011. **Only for comparison to show what has been dropped in the next image.**")
-
-
-df_2011_bal %>%  
-  mutate(year = as.factor(year)) %>%
-  ggplot() + 
-  geom_line(aes(x=year, y=fmv_group_growth, 
-                group = landuse_change, color = landuse_change), lwd = 1) +
-  theme_bw()  +  
-  facet_wrap(~incent_status, nrow = 1) +
-  scale_x_discrete(breaks = c(2012, params$year)) + 
-  scale_y_continuous(labels = scales::percent) +
-  scale_color_manual(values = cmap_colors) + 
-
-  labs(title= paste0("Growth from 2006 to ", params$year),
-       subtitle = "Incentive Classification Status by Land Use Change",
-       y = "FMV Growth", x = NULL,
-       caption =  "Values are indexed to 2006 FMV") +
-  theme(legend.title = element_blank(), legend.position = "bottom")
-```
-
-
-```{r}
-#| label: fig-growth-facetby-incentstatus-clean-2023
-#| fig-cap: !expr paste0("Aggregate FMV Growth from 2006 to ", params$year, ". Faceted by PIN  incentive status during the sample period. Indexed to fair market value during 2006.")
-
-df_2011_bal %>%  
-  filter(landuse_change != "Excluded" & incent_status != "Excluded" & landuse_change != "Exempt Sometime") %>%
-  mutate(year = as.numeric(year)) %>%
-  ggplot() + 
-  geom_line(aes(x=year, y=fmv_group_growth, group = landuse_change, color = landuse_change), lwd = 1) +
-  theme_bw()  +  
-  facet_wrap(~incent_status, nrow = 1) +
-  scale_x_continuous(limits = c(min_year-1, max_year+1),
-                     breaks = c(min_year, 2015, max_year)) + 
-  scale_y_continuous(labels = scales::percent) +
-  scale_color_manual(values = cmap_colors) +
-  labs(title= "Growth from 2006", 
-       subtitle = "Incentive Classification Status by Land Use Change",
-       y = "FMV Growth since 2006", x = NULL,
-       caption =  paste0("Values are indexed to 2006 FMV. 
-                         Excludes PINs that were tax exempt some years or did not exist for all years between 2006 and ", params$year)) +
-  theme(legend.title = element_blank(), legend.position = "bottom")
-
-```
-
 
 ## Trends for Incentive Report - FMV Growth 2011-2022
 
-### Pin Counts
+The file `comm_ind_PINs_2011to2022_timeseries.csv` contains all PINs that had an incentive property class for at least 1 year. It includes all observations for a property during the years that it existed, even if it is not an incentive class property in that year.
+
+Only includes PINs in incorporated areas.  
+
 
 ```{r}
 # Create an empty data frame with a column named "year"
@@ -907,79 +1007,7 @@ min_year = 2011
 max_year = 2022
 ```
 
-```{r}
-
-commind_together <- comm_ind_pins  %>%
-#  left_join(class_dict |> select(class, land_use)) |>
- # filter(land_use %in% c("Industrial", "Commercial")) |>
-  group_by(year) %>%
-  summarize(
-    proptype_pincount = n(),
-            n_incent = sum(ifelse(incent_prop == "Incentive", 1, 0)),
-            n_nonincent = sum(ifelse(incent_prop == "Non-Incentive", 1, 0)))  %>% mutate(pct_incent = n_incent / proptype_pincount)
-
-  
-
-table <- comm_ind_pins %>% 
-    filter(land_use %in% c("Industrial", "Commercial")) |>
-
-  group_by(year, land_use) %>%
-  summarize(
-    proptype_pincount = n(),
-            n_incent = sum(ifelse(incent_prop == "Incentive", 1, 0)),
-            n_nonincent = sum(ifelse(incent_prop == "Non-Incentive", 1, 0))) %>%
-  mutate(pct_incent = n_incent / proptype_pincount) %>%
-  arrange(year) %>%
-  mutate(year = as.character(year)) %>%
-filter(!land_use %in% c("Exempt", "Other Residential", "Owner Occupied", "Rental") ) %>% 
-  select(year, land_use, n_incent, pct_incent) |>
-  pivot_wider(id_cols = year, names_from = land_use, 
-              values_from = c(n_incent,pct_incent)) %>% ungroup() |>
-  select(-year)
-
-cbind(commind_together, table) %>% 
-  select(Year = year, 
-         "C&I Incentive Parcels" = n_incent, 
-         "Share of C&I" = pct_incent,
-         "Commercial Pin Count" = n_incent_Commercial, 
-         "Share of Commercial" = pct_incent_Commercial,
-         "Industrial Pin Count" = n_incent_Industrial, 
-         "Share of Industrial" = pct_incent_Commercial,
-         "C&I PIN Count" = proptype_pincount) %>% 
-  mutate(Year = as.character(Year)) |>
-  mutate(across(contains("Share"), scales::percent, accuracy = 0.01)) |>
-  flextable() %>%
-  add_header_row(values = c(" ", "Incent C&I", "Commercial", "Industrial","All C&I"), colwidths = c(1,2,2,2, 1)) |>
-  align(align = "right", part = "body" ) |>
-  align(align = "center", part = "header") |>
-  align(j = 1, align = c("left"), part = "all" )
-
-```
-
-```{r}
-#| label: fig-Report-AppendixFig1
-#| fig-cap: "**Appendix Figure 1 in Incentive Report**     Incentive FMV by Year, 2011-2022 (Normalized to 2011 FMV)"
-
-
-comm_ind_pins %>% 
-  filter(land_use %in% c("Commercial", "Industrial")) %>%
- group_by(year, land_use) %>%
-  summarize(
-  PC = sum(incent_prop=="Incentive") )%>%
-  ggplot() + 
-  geom_col(aes(x=year, y = PC, fill = land_use)) + 
-  scale_x_continuous(
-    limits = c(min_year - 1, max_year + 1),                                      
-    breaks = c(min_year, 2015, 2020, max_year
-              )) + 
-  alea_theme() + 
-  theme(legend.position =  "bottom",
-        legend.title = element_blank(),
-                          axis.title.x = element_blank()
-        ) +
-  scale_fill_manual(values = cmap_colors)
-```
-
+### FMV
 
 ```{r}
 #| label: tbl-Report-Table2
@@ -1028,7 +1056,6 @@ cbind(commind_together_fmv, table_fmv) %>%
   align(j = 1, align = c("left"), part = "all" )
 ```
 
-### FMV
 
 ```{r}
 #| label: fig-Report-Figure1
@@ -1052,46 +1079,6 @@ comm_ind_pins %>%
                           axis.title.x = element_blank()) +
   scale_fill_manual(values = cmap_colors)
 ```
-
-
-The file ~~`comm_ind_inmunis_timeseries_2006to2022.csv`~~ `comm_ind_PINs_2011to2022_timeseries.csv` contains all PINs that had an incentive property class for at least 1 year. It includes all observations for a property during the years that it existed, even if it is not an incentive class property in that year.
-
-Only includes PINs in incorporated areas.  
-
-
-
-```{r}
-#| label: fig-Report-Appendix-PC2
-#| fig-cap: "**Appendix Figure 2 in Incentive Report**     Incentive Pins by Year, 2011-2022 (Normalized to 2011 Pin Count)"
-
-comm_ind_pins %>%
-  filter(incent_prop == "Incentive") %>%
-  # group_by(year, land_use) %>%
-  reframe(PC=n(), .by= c(year, land_use)) %>%
-  distinct() %>%
-   reframe(land_use, PC,
-     both_PC = sum(PC), .by=year) %>% distinct() %>% 
-  arrange(year) %>%
-  group_by(land_use) %>%
-  mutate(ratio_2011 = PC/ PC[year==2011],
-         ratio_both_2011 = both_PC/both_PC[year==2011]) %>% 
-  ggplot() +
-  geom_line(aes(x=year, y = ratio_2011, group = land_use, color = land_use), lwd=1) + 
-  geom_line(aes(x=year, y =ratio_both_2011), lty = 2, lwd = 1) + 
-  theme_bw() + 
-  scale_x_continuous(
-    limits = c(min_year - 1, max_year + 1),                                      
-    breaks = c(min_year,  max_year)
-    ) +
-  scale_color_manual(values = cmap_colors) +
-    labs(x=element_blank(), 
-         y = "Percent of 2011 Pin Counts",
-         color = element_blank(),
-       caption = "Dashed line represents all properties with incentive classification."
-       )
-
-```
-
 
 ```{r}
 #| label: fig-Report-Figure2
@@ -1125,6 +1112,118 @@ comm_ind_pins %>%
 ```
 
 
+
+### PIN Counts
+
+```{r}
+commind_together <- comm_ind_pins  %>%
+#  left_join(class_dict |> select(class, land_use)) |>
+ # filter(land_use %in% c("Industrial", "Commercial")) |>
+  group_by(year) %>%
+  summarize(
+    proptype_pincount = n(),
+            n_incent = sum(ifelse(incent_prop == "Incentive", 1, 0)),
+            n_nonincent = sum(ifelse(incent_prop == "Non-Incentive", 1, 0)))  %>% mutate(pct_incent = n_incent / proptype_pincount)
+```
+
+```{r}
+#| label: fig-Report-AppendixFig1
+#| fig-cap: "**Appendix Figure 1 in Incentive Report**     Incentive FMV by Year, 2011-2022 (Normalized to 2011 FMV)"
+#| column: margin
+
+
+comm_ind_pins %>% 
+  filter(land_use %in% c("Commercial", "Industrial")) %>%
+ group_by(year, land_use) %>%
+  summarize(
+  PC = sum(incent_prop=="Incentive") )%>%
+  ggplot() + 
+  geom_col(aes(x=year, y = PC, fill = land_use)) + 
+  scale_x_continuous(
+    limits = c(min_year - 1, max_year + 1),                                      
+    breaks = c(min_year, 2015, 2020, max_year
+              )) + 
+  alea_theme() + 
+  theme(legend.position =  "bottom",
+        legend.title = element_blank(),
+                          axis.title.x = element_blank()
+        ) +
+  scale_fill_manual(values = cmap_colors)
+```
+
+```{r}
+#| label: fig-Report-Appendix-PC2
+#| fig-cap: "**Appendix Figure 2 in Incentive Report**     Incentive Pins by Year, 2011-2022 (Normalized to 2011 Pin Count)"
+
+comm_ind_pins %>%
+ mutate(year = as.numeric(year) ) |>
+  filter(incent_prop == "Incentive") %>%
+  reframe(PC=n(), .by= c(year, land_use)) %>%
+  distinct() %>%
+   reframe(land_use, PC,
+     both_PC = sum(PC), .by=year) %>% distinct() %>% 
+  arrange(year) %>%
+  group_by(land_use) %>%
+  mutate(ratio_2011 = PC/ PC[year==2011],
+         ratio_both_2011 = both_PC/both_PC[year==2011]) %>% 
+
+  ggplot() +
+  geom_line(aes(x=year, y = ratio_2011, group = land_use, color = land_use), lwd=1 ) + 
+  geom_line(aes(x=year, y =ratio_both_2011), lty = 
+              2, lwd = 1) + 
+  alea_theme() + 
+    scale_x_continuous(
+     limits = c(min_year - 1, max_year + 1),                              
+    breaks = c(min_year, 2010, 2015, 2020, max_year)) +
+  scale_y_continuous(name = "Percent of 2011 Pin Count", label = scales::percent) + 
+      scale_color_manual(values = cmap_colors)+
+
+  labs(title = "Number of PINs, Indexed to 2011",
+       x = NULL,
+       caption = "Dashed line represents growth in the number of commercial and industrial PINs",
+       color = NULL)
+
+```
+
+```{r}
+table <- comm_ind_pins %>% 
+    filter(land_use %in% c("Industrial", "Commercial")) |>
+
+  group_by(year, land_use) %>%
+  summarize(
+    proptype_pincount = n(),
+            n_incent = sum(ifelse(incent_prop == "Incentive", 1, 0)),
+            n_nonincent = sum(ifelse(incent_prop == "Non-Incentive", 1, 0))) %>%
+  mutate(pct_incent = n_incent / proptype_pincount) %>%
+  arrange(year) %>%
+  mutate(year = as.character(year)) %>%
+filter(!land_use %in% c("Exempt", "Other Residential", "Owner Occupied", "Rental") ) %>% 
+  select(year, land_use, n_incent, pct_incent) |>
+  pivot_wider(id_cols = year, names_from = land_use, 
+              values_from = c(n_incent,pct_incent)) %>% ungroup() |>
+  select(-year)
+
+cbind(commind_together, table) %>% 
+  select(Year = year, 
+         "C&I Incentive Parcels" = n_incent, 
+         "Share of C&I" = pct_incent,
+         "Commercial Pin Count" = n_incent_Commercial, 
+         "Share of Commercial" = pct_incent_Commercial,
+         "Industrial Pin Count" = n_incent_Industrial, 
+         "Share of Industrial" = pct_incent_Commercial,
+         "C&I PIN Count" = proptype_pincount) %>% 
+  mutate(Year = as.character(Year)) |>
+  mutate(across(contains("Share"), scales::percent, accuracy = 0.01)) |>
+  flextable() %>%
+  add_header_row(values = c(" ", "Incent C&I", "Commercial", "Industrial","All C&I"), colwidths = c(1,2,2,2, 1)) |>
+  align(align = "right", part = "body" ) |>
+  align(align = "center", part = "header") |>
+  align(j = 1, align = c("left"), part = "all" )
+
+```
+
+
+### Change in Incentive Classification
 
 ```{r}
 #| label: tbl-categorycountsforcomparison
@@ -1181,94 +1280,51 @@ df_2011_class8change %>%
 #| label: tbl-class8eachyear
 #| tbl-cap: "Number of PINs that became each major class type each year."
 
-comm_ind_pins <- comm_ind_pins %>% 
-  group_by(pin) |>
-  mutate(class8years = sum(class_1dig == 8),
-         class8_change = case_when(
-           class8years == year_count ~ "Always Class 8",
-           class8years == 0 ~ "Never Class 8",
-           sum(lag(class_1dig) != 8 & class_1dig == 8) > 0 ~ "Becomes Class 8",
-           sum(class_1dig != 8 & lag(class_1dig) == 8 ) > 0 ~ "Leaves Class 8",
-           TRUE ~ "Other"),
-         becomes8 = ifelse(lag(class_1dig) != 8 & class_1dig == 8, 1, 0),
-         becomes7 = ifelse(lag(class_1dig) != 7 & class_1dig == 7, 1, 0),
-         becomes6 = ifelse(lag(class_1dig) != 6 & class_1dig == 6, 1, 0),
-         switches_to8 = ifelse(sum(incent_prop == "Incentive")> 1 & becomes8 ==1, 1, 0),
-         # is_exempt = ifelse(class %in% c("0", "EX"), 1, 0),
-         #  was_exempt = ifelse(lag(class) %in% c("0","EX"), 1, 0)
-  ) %>%
-        ungroup()
+# comm_ind_pins <- comm_ind_pins %>% 
+#   group_by(pin) |>
+#   mutate(class8years = sum(class_1dig == 8),
+#          class8_change = case_when(
+#            class8years == year_count ~ "Always Class 8",
+#            class8years == 0 ~ "Never Class 8",
+#            sum(lag(class_1dig) != 8 & class_1dig == 8) > 0 ~ "Becomes Class 8",
+#            sum(class_1dig != 8 & lag(class_1dig) == 8 ) > 0 ~ "Leaves Class 8",
+#            TRUE ~ "Other"),
+#          becomes8 = ifelse(lag(class_1dig) != 8 & class_1dig == 8, 1, 0),
+#          becomes7 = ifelse(lag(class_1dig) != 7 & class_1dig == 7, 1, 0),
+#          becomes6 = ifelse(lag(class_1dig) != 6 & class_1dig == 6, 1, 0),
+#          switches_to8 = ifelse(sum(incent_prop == "Incentive")> 1 & becomes8 ==1, 1, 0),
+#          # is_exempt = ifelse(class %in% c("0", "EX"), 1, 0),
+#          #  was_exempt = ifelse(lag(class) %in% c("0","EX"), 1, 0)
+#   ) %>%
+#         ungroup()
 
- classpins_per_year <- comm_ind_pins |>
-   group_by(year) %>%
-  summarize("Becomes 8" = sum(becomes8==1, na.rm=TRUE),
-            "Total 8" = sum(class_1dig == 8),
-
-            "6 or 7 to 8" = sum(switches_to8 == 1, na.rm=TRUE),
-
-            "Becomes 7" = sum(becomes7 == 1, na.rm=TRUE),
-            "Total 7" = sum(class_1dig == 7),
-
-            "Becomes 6" = sum(becomes6 == 1, na.rm=TRUE),
-            "Total 6" = sum(class_1dig == 6),
-            "PINs with Incent. Class." = sum(incent_prop=="Incentive"),
-          #  "Tax Exempt" = sum(is_exempt),
-            "PINs in Sample" = n(),
-            #"Became Exempt" = sum(became_exempt, na.rm=TRUE)
-          )
-classpins_per_year %>%  flextable::flextable()
-```
-
-### Explore PINs that became Class 8 or Other Incentive in South Triad
-
-```{r}
-#| label: tbl-class8eachyearsouthtriad
-#| tbl-cap: "Number of PINs that became each major class 8 in the South triad."
-#| 
-# comm_ind_pins %>% 
-#   filter(class8_change == "Becomes Class 8") %>% 
-#   left_join(bor, by = c("pin", "year" = "tax_year")) %>%
-#   filter(!is.na(appellant)) %>%
-#   
-#   arrange(pin, desc(year)) %>%
-#   select(year, appellant, project_id, class.x, everything())
-
-# example of PIN that was class 8 and then became un-incentivized in 2017
-# comm_ind_pins %>% filter(pin == "16271000330000")
-
-
-comm_ind_pins %>% 
-  filter(class8_change == "Becomes Class 8" & Triad == "South") %>% 
-  arrange(pin) %>%
-  select(year, class, everything())
+ # classpins_per_year <- comm_ind_pins |>
+ #   group_by(year) %>%
+ #  summarize("Becomes 8" = sum(becomes8==1, na.rm=TRUE),
+ #            "Total 8" = sum(class_1dig == 8),
+ # 
+ #            "6 or 7 to 8" = sum(switches_to8 == 1, na.rm=TRUE),
+ # 
+ #            "Becomes 7" = sum(becomes7 == 1, na.rm=TRUE),
+ #            "Total 7" = sum(class_1dig == 7),
+ # 
+ #            "Becomes 6" = sum(becomes6 == 1, na.rm=TRUE),
+ #            "Total 6" = sum(class_1dig == 6),
+ #            "PINs with Incent. Class." = sum(incent_prop=="Incentive"),
+ #          #  "Tax Exempt" = sum(is_exempt),
+ #            "PINs in Sample" = n(),
+ #            #"Became Exempt" = sum(became_exempt, na.rm=TRUE)
+ #          )
+ 
+classpins_per_year %>%  filter(year > 2011 & year < 2023) |> flextable::flextable()
 ```
 
 
-```{r}
-#| label: tbl-southtriadpins
-#| tbl-cap: "South Triad Number of PINs that became each major class type each year."
-#| layout-ncol: 3
-
-comm_ind_pins %>% 
-  filter(becomes8 == 1 & Triad == "South") %>% 
-  arrange(pin) %>%
-  select(year, class, everything())
-
-comm_ind_pins %>% 
-  filter(becomes7== 1& Triad == "South") %>% 
-  arrange(pin) %>%
-  select(year, class, everything())
-
-comm_ind_pins %>% 
-  filter(becomes6 == 1 & Triad == "South") %>% 
-  arrange(pin) %>%
-  select(year, class, everything())
-```
-
+### Commercial and Industrial Growth
 
 ```{r}
 #| label: tbl-incentchange-2022indexed
-#| tbl-cap: "Aggregate FMV Growth by Incentive Classification. `Changes Sometime` includes properties that gained or lost an incentive classification. `incent_status` in tables below breaks up Changes Sometime into more detailed categories. "
+#| tbl-cap: "Aggregate FMV Growth by Incentive Classification. `Changes Sometime` includes properties that gained or lost an incentive classification. `incent_status` in tables below breaks up Changes Sometime into more detailed categories."
 
 df_2011_incentchange <- comm_ind_pins|>
 group_by(year, incent_change) |>
@@ -1285,8 +1341,20 @@ group_by(year, incent_change) |>
 
 df_2011_incentchange %>% 
   #filter(year == params$year) %>%
-  filter(year == 2023) |>
-  select(incent_change, fmv_group_growth, base_year_fmv, group_year_fmv, everything(), -year)
+  filter(year == max_year) |>
+  select("Gains/Loses Incentive Classification" = incent_change, 
+         "FMV Growth" = fmv_group_growth, 
+         "2011 FMV\n(Billions)" = base_year_fmv, 
+         "Aggregate FMV\n(Billions)" = group_year_fmv, 
+         "PIN Count" = group_pin_count, 
+         -year) |>
+  mutate(across(contains("Growth"), scales::percent, accuracy = 0.01)) |>
+    mutate(across(2:3, ~ round((./1000000000), digits = 3)) )|>
+
+  flextable() %>%
+  align(align = "right", part = "body" ) |>
+  align(align = "center", part = "header") |>
+  align(j = 1, align = c("left"), part = "all" )
 ```
 
 
@@ -1308,7 +1376,19 @@ group_by(incent_status) %>%
     base_year_fmv = group_year_fmv[year == min(year)],
     fmv_group_growth = (group_year_fmv / base_year_fmv) -1) |> 
   filter(year == params$year)  %>%
-  select(incent_status, fmv_group_growth, group_pin_count, everything(), -year)
+  select("Incentive Status" = incent_status, 
+         "FMV Growth" = fmv_group_growth, 
+         "2011 FMV\n(Billions)" = base_year_fmv, 
+         "Aggregate FMV\n(Billions)" = group_year_fmv, 
+         "PIN Count" = group_pin_count, 
+         -year) |>
+  mutate(across(contains("Growth"), scales::percent, accuracy = 0.01)) |>
+    mutate(across(2:3, ~ round((./1000000000), digits = 3)) )|>
+
+  flextable() %>%
+  align(align = "right", part = "body" ) |>
+  align(align = "center", part = "header") |>
+  align(j = 1, align = c("left"), part = "all" )
 
 ```
 
@@ -1330,13 +1410,22 @@ comm_ind_pins %>%
     n_group_growth = group_pin_count/base_year_n -1,
     fmv_group_growth = (group_year_fmv / base_year_fmv) -1) %>%
     filter(year == params$year) %>%   
-  select(landuse_change, fmv_group_growth, group_pin_count)
+  select("Changes Land Use" = landuse_change, 
+         "FMV Growth" = fmv_group_growth, 
+         "2011 FMV\n(Billions)" = base_year_fmv, 
+         "Aggregate FMV\n(Billions)" = group_year_fmv, 
+         "PIN Count" = group_pin_count, 
+         -year) |>
+  mutate(across(contains("Growth"), scales::percent, accuracy = 0.01)) |>
+    mutate(across(2:3, ~ round((./1000000000), digits = 3)) )|>
+
+  flextable() %>%
+  align(align = "right", part = "body" ) |>
+  align(align = "center", part = "header") |>
+  align(j = 1, align = c("left"), part = "all" )
 ```
 
-```{r}
-#| label: tbl-growthcalculations-landusechange-incentstatus-balanced
-#| tbl-cap: !expr paste0("Growth from 2011 to ",  params$year, " - Change in Land Use by Incentive Class Status. Non-winsorized version of table used in Table X of report.")
-
+```{r create-df-2011-bal-20112022}
 df_2011_bal <- comm_ind_pins %>%
   group_by(year, landuse_change, incent_status) |>
   summarize(
@@ -1348,12 +1437,26 @@ df_2011_bal <- comm_ind_pins %>%
     base_year_fmv = group_year_fmv[year == min(year)],
     base_year_n = group_pin_count[year == min(year)],
     n_group_growth = group_pin_count/base_year_n -1,
-    fmv_group_growth = (group_year_fmv / base_year_fmv) -1) 
+    fmv_group_growth = (group_year_fmv / base_year_fmv) -1) |>
+  mutate(year = as.numeric(year))
+```
+
+
+```{r}
+#| label: tbl-growthcalculations-landusechange-incentstatus-balanced
+#| tbl-cap: !expr paste0("Growth from 2011 to ",  params$year, " - Change in Land Use by Incentive Class Status. Non-winsorized version of table.")
+
 
 df_2011_bal %>% 
   select(year, landuse_change, incent_status, fmv_group_growth, group_pin_count) %>% 
   filter(year == params$year) %>%   
-  select(-year)
+select("Changes Land Use" = landuse_change,
+       "Incentive Status" = incent_status,
+         "FMV Growth" = fmv_group_growth, 
+         "PIN Count" = group_pin_count, 
+         -year) |>
+  mutate(across(contains("Growth"), scales::percent, accuracy = 0.01)) |>
+ DT::datatable(rownames = FALSE, options = list(dom = 'tp'))
 
 
 ```
@@ -1363,14 +1466,28 @@ df_2011_bal %>%
 ```{r}
 #| label: fig-landusebyincentstatus
 #| fig-cap: "Includes the 'Excluded' Category"
+#| column: margin
 
 df_2011_bal %>% 
   ggplot() + 
-  geom_line(aes(x=year, fmv_group_growth, group = incent_status, color = incent_status)) + 
-  labs( title = "FMV Growth Since 2011 by Land Use",) + 
-  theme_bw()  +    scale_color_manual(values = cmap_colors) + 
-
-  facet_wrap(~landuse_change)
+  geom_line(aes(x=year, fmv_group_growth, group = incent_status, color = incent_status), lwd=1) + 
+  labs( title = "FMV Growth Since 2011 by Land Use & Incentive Status", x = element_blank(),
+        y = "FMV Growth since 2011", color = element_blank()) + 
+  theme_bw()  +    
+  scale_color_manual(values = cmap_colors) + 
+  theme(    panel.background = ggplot2::element_blank(),
+            panel.grid.minor.x = ggplot2::element_blank(),
+            panel.grid.major.x = ggplot2::element_blank(),
+            
+            panel.grid.major.y = element_line(color = "grey"),
+            panel.grid.minor.y = element_line(color = "grey", 
+                                              linetype = "dashed"),
+            axis.ticks = element_line(color = "gray"),
+            axis.ticks.x = element_blank(),
+            legend.position = "bottom") +
+    facet_wrap(~landuse_change)+
+   scale_x_continuous(limits = c(2010, 2024),                                    
+                      breaks = c(2011, 2017, 2023)) 
 ```
 
 
@@ -1381,16 +1498,29 @@ df_2011_bal %>%
 df_2011_bal %>% 
   filter(incent_status != "Excluded" & landuse_change != "Excluded" & landuse_change != "Exempt Sometime") %>%
   ggplot() + 
-  geom_line(aes(x=year, fmv_group_growth, group = incent_status, color = incent_status)) + 
+  geom_line(aes(x=year, fmv_group_growth, group = incent_status, color = incent_status),lwd=1) + 
   labs( title = "FMV Growth Since 2011 by Land Use", 
-        caption = "PINs that did not exist during all years of the sample frame were excluded from the image (n=10,809)."
-        ) + 
+        caption = "PINs that did not exist during all years of the sample frame were excluded from the image (n=10,809).",
+        x = element_blank(),
+         y = "FMV Growth since 2011"
+  ) + 
   scale_color_manual(values = cmap_colors) + 
   theme_bw()  +  
-    scale_x_continuous(
+  scale_y_continuous(labels = scales::percent) + 
+  scale_x_continuous(
     limits = c(min_year - 1, max_year + 1),                                      
-    breaks = c(min_year, 2010, 2015, 2020, max_year
-              )) + 
+    breaks = c(min_year, max_year)) + 
+  theme(    panel.background = ggplot2::element_blank(),
+            panel.grid.minor.x = ggplot2::element_blank(),
+            panel.grid.major.x = ggplot2::element_blank(),
+            
+            panel.grid.major.y = element_line(color = "grey"),
+            panel.grid.minor.y = element_line(color = "grey", 
+                                              linetype = "dashed"),
+            axis.ticks = element_line(color = "gray"),
+            axis.ticks.x = element_blank(),
+            legend.position = "bottom", 
+            legend.title = element_blank()) +
   facet_wrap(~landuse_change)
 
 ```
@@ -1398,25 +1528,35 @@ df_2011_bal %>%
 
 ```{r}
 #| label: fig-growth-facetby-incentstatus
-#| fig-cap: !expr paste0("Growth from 2011 to ", params$year,  ". Faceted by if a PIN changed landuse during the sample period. Indexed to fair market value during 2011")
+#| fig-cap: !expr paste0("Growth from 2011 to ", params$year,  ". Faceted by if a PIN changed landuse during the sample period. Indexed to fair market value during 2011. For comparison only.")
+#| column: margin
 
 
 df_2011_bal %>%  
   mutate(year = as.factor(year)) %>%
   ggplot() + 
-  geom_line(aes(x=year, y=fmv_group_growth, group = landuse_change, color = landuse_change)) +
+  geom_line(aes(x=year, y=fmv_group_growth, group = landuse_change, color = landuse_change), lwd=1) +
   theme_bw()  +  
   facet_wrap(~incent_status, nrow = 1) +
   scale_x_discrete(breaks = c(2012, params$year)) + 
-  scale_y_continuous( 
-                     labels = scales::percent,) +
+  scale_y_continuous(labels = scales::percent) +
   scale_color_manual(values = cmap_colors) + 
 
   labs(title= paste0("Growth from 2011 to ", params$year),
        subtitle = "Incentive Classification Status by Land Use Change",
        y = "FMV Growth since 2011", x = NULL,
        caption =  "Values are indexed to 2011 FMV") +
-  theme(legend.title = element_blank(), legend.position = "bottom")
+    theme(  panel.background = ggplot2::element_blank(),
+            panel.grid.minor.x = ggplot2::element_blank(),
+            panel.grid.major.x = ggplot2::element_blank(),
+            
+            panel.grid.major.y = element_line(color = "grey"),
+            panel.grid.minor.y = element_line(color = "grey", 
+                                              linetype = "dashed"),
+            axis.ticks = element_line(color = "gray"),
+            axis.ticks.x = element_blank(),
+            legend.position = "bottom",
+            legend.title = element_blank())
 ```
 
 
@@ -1431,14 +1571,22 @@ df_2011_bal %>%
   geom_line(aes(x=year, y=fmv_group_growth, group = landuse_change, color = fct_reorder2(landuse_change, year, fmv_group_growth)), lwd=1) +
   theme_bw()  +  
   facet_wrap(~incent_status, nrow = 1) +
-  scale_x_discrete(limits = c(min_year-1, max_year+1)
-  #  breaks = c(2012, params$year)
+  scale_x_continuous(limits = c(min_year-1, max_year+1), breaks = c(min_year, max_year)
                    ) + 
   labs(title= "Growth from 2011", 
        subtitle = "Incentive Classification Status by Land Use Change",
        y = "FMV Growth since 2011", x = NULL,
        caption =  paste0("Values are indexed to 2011 FMV. \nExcludes PINs that were tax exempt some years \nor did not exist for all years between 2011 and ", params$year)) +
-  theme(legend.title = element_blank(), legend.position = "bottom") +
+  theme(    panel.background = ggplot2::element_blank(),
+            panel.grid.minor.x = ggplot2::element_blank(),
+            panel.grid.major.x = ggplot2::element_blank(),
+            
+            panel.grid.major.y = element_line(color = "grey"),
+            panel.grid.minor.y = element_line(color = "grey", 
+                                              linetype = "dashed"),
+            axis.ticks = element_line(color = "gray"),
+            axis.ticks.x = element_blank(),
+            legend.position = "bottom", legend.title = element_blank()) +
   scale_color_manual(values = cmap_colors) +
   scale_y_continuous(labels = scales::percent) 
 
@@ -1478,6 +1626,7 @@ cook_mc |>
                       breaks = c(min_year, 2016, max_year)) + 
   scale_color_manual(values = cmap_colors) + theme(legend.position = "bottom")
 ```
+
 ```{r}
 #| label: fig-Report-Figure4
 #| fig-cap: "**Figure 4 from Incentive Report**"
@@ -1515,6 +1664,55 @@ cook_mc |>
   
 ```
 
+
+```{r}
+#| label: tbl-class8eachyearsouthtriad
+#| tbl-cap: "Number of PINs that became each major class 8 in the South triad."
+#| eval: false
+#| include: false
+#| 
+#| 
+# comm_ind_pins %>% 
+#   filter(class8_change == "Becomes Class 8") %>% 
+#   left_join(bor, by = c("pin", "year" = "tax_year")) %>%
+#   filter(!is.na(appellant)) %>%
+#   
+#   arrange(pin, desc(year)) %>%
+#   select(year, appellant, project_id, class.x, everything())
+
+# example of PIN that was class 8 and then became un-incentivized in 2017
+# comm_ind_pins %>% filter(pin == "16271000330000")
+
+
+comm_ind_pins %>% 
+  filter(class8_change == "Becomes Class 8" & Triad == "South") %>% 
+  arrange(pin) %>%
+  select(year, class, everything())
+```
+
+
+```{r}
+#| label: tbl-southtriadpins
+#| tbl-cap: "South Triad Number of PINs that became each major class type each year."
+#| layout-ncol: 3
+#| eval: false
+#| include: false
+
+comm_ind_pins %>% 
+  filter(becomes8 == 1 & Triad == "South") %>% 
+  arrange(pin) %>%
+  select(year, class, everything())
+
+comm_ind_pins %>% 
+  filter(becomes7== 1& Triad == "South") %>% 
+  arrange(pin) %>%
+  select(year, class, everything())
+
+comm_ind_pins %>% 
+  filter(becomes6 == 1 & Triad == "South") %>% 
+  arrange(pin) %>%
+  select(year, class, everything())
+```
 
 
 ## Export Tables
