@@ -140,7 +140,13 @@ pin_data <- pin_data |>
   left_join(ccao_loa, by = c("class" = "class_code")) %>%
   left_join(tc_muninames, by = c("tax_code_num")) |>
   left_join(tif_distrib, by ="tax_code_num") |>
+        mutate(tax_code_distribution_pct = ifelse(is.na(tax_code_distribution_pct), 0, tax_code_distribution_pct)) |>
+
     mutate(
+      incent_prop = ifelse(between(class, 600, 899), 1, 0),
+      res_prop = ifelse(between(class, 200, 399), 1, 0),
+      c2_prop = ifelse(between(class, 200, 299), 1, 0),
+      
       in_tif = ifelse(tax_code_num %in% tif_distrib$tax_code_num, 1, 0),
       tif_tax_code_frozen_eav = ifelse(is.na(tax_code_frozen_eav), 0, tax_code_frozen_eav),
       tif_tax_code_eav = ifelse(is.na(tax_code_eav), 0, tax_code_eav), # only TIF taxcodes
@@ -176,36 +182,36 @@ pin_data <- pin_data |>
         (class_1dig == 5 & class %in% industrial_classes) ~ "5B",
         class_1dig == 7 &  class < 742 ~ "7A",
         class_1dig == 7 &  class >= 742 ~ "7B",
-      (class_1dig == 8 & class %in% commercial_classes ) ~ "8A",
-      (class_1dig == 8 & class %in% industrial_classes ) ~ "8B",
-      TRUE ~ as.character(class_1dig))) %>%
-  
+        (class_1dig == 8 & class %in% commercial_classes ) ~ "8A",
+        (class_1dig == 8 & class %in% industrial_classes ) ~ "8B",
+        TRUE ~ as.character(class_1dig))) %>%
+    
     # NOTE: the number of $0 tax bills identified when using the tax_bill() command from ptaxsim is differnet than using the tax bill total value directly from the pin db table
-  mutate(zero_bill = ifelse(tax_bill_total == 0, 1, 0)) |>
-  mutate(flag_missingdata = ifelse(taxed_eav > 1000 & tax_bill_total == 0 & c2_prop == 1, 1, 0)) |>
-  mutate(exe_missing_disvet = ifelse(taxed_eav > 1000 & tax_bill_total == 0 & c2_prop == 1, taxed_eav, 0)) |>
-  mutate(taxed_eav_adj = ifelse(taxed_eav > 1000 & flag_missingdata == 1, 0 , taxed_eav),
-         taxed_eav_AWM = tax_bill_total / tax_code_rate,
-         taxed_eav_TIFincrement = taxed_eav_AWM *tax_code_distribution_pct,
-         taxed_eav_nonTIF = taxed_eav_AWM*(1-tax_code_distribution_pct)
-         ) |>
-  mutate(exe_total_adj = rowSums(across(starts_with("exe_")))- exe_total) # don't double count the total value when summing the values
-
+    mutate(zero_bill = ifelse(tax_bill_total == 0, 1, 0)) |>
+    mutate(flag_missingdata = ifelse(taxed_eav > 1000 & tax_bill_total == 0 & c2_prop == 1, 1, 0)) |>
+    mutate(exe_missing_disvet = ifelse(taxed_eav > 1000 & tax_bill_total == 0 & c2_prop == 1, taxed_eav, 0)) |>
+    mutate(taxed_eav_adj = ifelse(taxed_eav > 1000 & flag_missingdata == 1, 0 , taxed_eav),
+           taxed_eav_AWM = tax_bill_total / tax_code_rate,
+           taxed_eav_TIFincrement = taxed_eav_AWM *tax_code_distribution_pct,
+           taxed_eav_nonTIF = taxed_eav_AWM*(1-tax_code_distribution_pct)
+    ) |>
+    mutate(exe_total_adj = rowSums(across(starts_with("exe_")))- exe_total) # don't double count the total value when summing the values
   
-pin_data <- pin_data |>
-  mutate(
-    # all exemptions calculated using original data in pin datatable
-    all_exemptions = exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner +
-           exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 ,
-         
-         abatements = exe_abate, #abatements get their own variable
-         fmv = av_clerk / loa,
-         fmv = ifelse(is.na(fmv), 0, fmv)) %>%
   
-  # Create binary variables for exemptions
-  
-  mutate(# zero_bill = ifelse(eav <= all_exemptions, 1, 0),  ## old way of creating zero bill but has missing vet exemptions data problem
-    has_HO_exemp = ifelse(exe_homeowner > 0, 1, 0),
+  pin_data <- pin_data |>
+    mutate(
+      # all exemptions calculated using original data in pin datatable
+      all_exemptions = exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner +
+        exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 ,
+      
+      abatements = exe_abate, #abatements get their own variable
+      fmv = av_clerk / loa,
+      fmv = ifelse(is.na(fmv), 0, fmv)) %>%
+    
+    # Create binary variables for exemptions
+    
+    mutate(# zero_bill = ifelse(eav <= all_exemptions, 1, 0),  ## old way of creating zero bill but has missing vet exemptions data problem
+      has_HO_exemp = ifelse(exe_homeowner > 0, 1, 0),
     has_SF_exemp = ifelse(exe_senior > 0, 1, 0),
     has_FR_exemp = ifelse(exe_freeze > 0, 1, 0),
     has_LTHO_exemp = ifelse(exe_longtime_homeowner > 0, 1, 0),
