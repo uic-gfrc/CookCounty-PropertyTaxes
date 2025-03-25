@@ -733,7 +733,7 @@ filter(!agency_num %in% cross_county_line & !is.na(clean_name) ) %>%
 #   set_table_properties( layout = "autofit")
 
 muni_count <- n_distinct(muni_incent_share$clean_name)
-no_incents <- n_distinct(table_muni_percentages$clean_name[table_muni_percentages$pct_fmv_w_incentclass == 0])
+no_incents <- n_distinct(muni_incent_share$clean_name[muni_incent_share$pct_fmv_w_incent == 0])
 median = round(muni_count/2)
 median_5 = c( (median-2) : (median+2) )
 bottom_5 = c( (muni_count-4) : muni_count )
@@ -747,7 +747,8 @@ filter(!agency_num %in% cross_county_lines) %>%
   select(clean_name, pct_fmv_w_incentclass) |> 
   arrange(desc(pct_fmv_w_incentclass)) %>%
   mutate(pct_fmv_w_incentclass = scales::percent(pct_fmv_w_incentclass, accuracy = 0.01 ) ) %>%
-  slice(c(1:5, 58:62, 115:119))
+  slice(c(1:5, median_5#, bottom_5
+          ))
   
 muni_incentshare_slice %>%
   flextable() %>% 
@@ -757,6 +758,7 @@ muni_incentshare_slice %>%
   hline(i = c(5,10)) %>%
   set_header_labels(clean_name = "Municipality", pct_fmv_w_incentclass = "% FMV with\nIncent. Class.") %>%
 #add_header_row(values = c("County Wide", "3.25%"), top = FALSE) %>%   align(j = 2, align = "right" ) %>%
+   add_footer_lines(top = FALSE, values = c("There are 27 municipalities that do not use incentives and have a majority of their taxable EAV within Cook County.") ) %>%
 bold(i = 8) %>%
   set_table_properties( layout = "autofit")
 ```
@@ -807,11 +809,17 @@ indust_share_full <- muni_sums  %>%
   mutate(pct_fmv_indust_incent =  muni_fmv_indust_incent/muni_fmv_industrial,
          pct_fmv_indust_incent = ifelse(is.na(pct_fmv_indust_incent), 0, pct_fmv_indust_incent)) %>%
   select(clean_name, pct_fmv_indust_incent) |> 
-  arrange(desc(pct_fmv_indust_incent)) %>%
-  mutate(pct_fmv_indust_incent = scales::percent(pct_fmv_indust_incent, accuracy = 0.01 ) ) 
+  arrange(desc(pct_fmv_indust_incent)) 
+
+muni_count <- n_distinct(indust_share_full$clean_name)
+no_incents <- n_distinct(indust_share_full$clean_name[indust_share_full$pct_fmv_indust_incent == 0])
+median = round(muni_count/2)
+median_5 = c( (median-2) : (median+2) )
+bottom_5 = c( (muni_count-4) : muni_count )
 
 indust_share <- indust_share_full %>%
-  slice(c(1:5, 58:62, 115:119))
+  slice(c(1:5, median_5)) %>%
+  mutate(pct_fmv_indust_incent = scales::percent(pct_fmv_indust_incent, accuracy = 0.01 ) ) 
 
 indust_share %>%
   flextable() %>% 
@@ -820,6 +828,8 @@ indust_share %>%
   hline_top() %>%
   hline(i = c(5,10)) %>%
   set_header_labels(clean_name = "Municipality", pct_fmv_indust_incent = "% FMV with\nIncent. Class.") %>%
+     add_footer_lines(top = FALSE, values = paste0("There are ", no_incents, "  municipalities that do not use incentives and have a majority of their taxable EAV within Cook County.") ) %>%
+
 bold(i = 8) %>%
   set_table_properties( layout = "autofit")
 ```
@@ -837,11 +847,17 @@ commerc_share_full <- muni_sums  %>%
   mutate(pct_fmv_commerc_incent =  muni_fmv_commerc_incent/muni_fmv_commercial,
     pct_fmv_commerc_incent = ifelse(is.na(pct_fmv_commerc_incent), 0, pct_fmv_commerc_incent)) %>%
   select(clean_name, pct_fmv_commerc_incent) |> 
-  arrange(desc(pct_fmv_commerc_incent)) %>%
-  mutate(pct_fmv_commerc_incent = scales::percent(pct_fmv_commerc_incent, accuracy = 0.01 ) ) 
+  arrange(desc(pct_fmv_commerc_incent))
+
+muni_count <- n_distinct(commerc_share_full$clean_name)
+no_incents <- n_distinct(commerc_share_full$clean_name[commerc_share_full$pct_fmv_commerc_incent == 0])
+median = round(muni_count/2)
+median_5 = c( (median-2) : (median+2) )
+bottom_5 = c( (muni_count-4) : muni_count )
 
 commerc_share <- commerc_share_full %>%
-  slice(c(1:5, 58:62, 115:119))
+  slice(c(1:5, median_5))  %>%
+  mutate(pct_fmv_commerc_incent = scales::percent(pct_fmv_commerc_incent, accuracy = 0.01 ) ) 
 
 commerc_share %>%
   flextable() %>% 
@@ -850,7 +866,9 @@ commerc_share %>%
   hline_top() %>%
   hline(i = c(5,10)) %>%
   set_header_labels(clean_name = "Municipality", pct_fmv_commerc_incent = "% FMV with\nIncent. Class.") %>%
-bold(i = 8) %>%
+  add_footer_lines(top = FALSE, values = paste0("There are ", no_incents, "  municipalities that do not use incentives and have a majority of their taxable EAV within Cook County.") ) %>%
+  
+  bold(i = 8) %>%
   set_table_properties( layout = "autofit")
 ```
 
@@ -882,9 +900,10 @@ muni_ratechange <- read_csv(paste0("../Output/muni_ratechange_", params$year, "_
 ```{r old-calculate-cook-altrates-fromPINlevel}
 
 cook_ratechange <- pin_data %>%
-  filter(!clean_name  %in% c("Frankfort", "Homer Glen",  "Oak Brook", "East Dundee",
-                             "University Park",  "Bensenville", "Hinsdale", "Roselle",
-                             "Deer Park", "Deerfield")) %>% 
+  filter(!clean_name  %in% c("Frankfort", "Homer Glen",  "Oak Brook", "East Dundee","University Park", 
+                             "Bensenville", "Hinsdale", "Roselle",
+                             "Deer Park", "Deerfield",
+                             "Buffalo Grove",  "Bartlett",  "Burr Ridge", "Hanover Park", "Steger")) %>% 
   #group_by(class_group) %>%
   summarize(
     
@@ -1026,7 +1045,8 @@ $15 Billion EAV is tax exempt due to homeowners exemptions. All incentive proper
 ```{r}
 
 cook_ratechange %>% 
-select(contains("forgonerev") ) %>% flextable()
+  select(contains("forgonerev") ) %>% 
+  flextable()
 ```
 
 ### Naive Revenue Shift
@@ -1068,7 +1088,14 @@ pin_data %>%
    # if incentive properties had no tax value (i.e. owners left, or fully tax exempt)
    # also equal to the current amount collected from incentive properties
      forgonerev_vacant = sum(ifelse(class >= 600 & class < 900,  taxed_av*eq_factor * tax_code_rate/100, 0), na.rm = TRUE)
-   )
+   )|>
+  rename(
+    `C&I Incentives` = forgonerev_from_comind_incents,
+    `Commercial Incentive`= forgonerev_commerc_incents,
+    `Industrial Incentive` = forgonerev_indust_incents,
+    `TIFs` = forgonerev_TIFs,
+    `Incent Props become Vacant` = forgonerev_vacant
+  )
          
 
 
