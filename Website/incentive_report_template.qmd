@@ -689,7 +689,7 @@ datatable(table2,
 
 ```{r}
 #| label: tbl-muni-comind-shareofFMV
-#| tbl-cap: "Municipalities with the largest share of Commercial and Industrial property with incentive classification. Uses values obtained from PTAXSIM, and levels of assessment from CCAO's Github. There are 27 municipalities that do not use incentives and have a majority of their taxable EAV within Cook County."
+#| tbl-cap: "Municipalities with the largest share of Commercial and Industrial property with incentive classification. Uses values obtained from PTAXSIM, and levels of assessment from CCAO's Github."
 
 
 muni_incent_share <- pin_data |> 
@@ -738,7 +738,7 @@ muni_incentshare_slice |>
   hline_top() |>
   hline(i = c(5,10)) |>
   set_header_labels(clean_name = "Municipality", pct_fmv_w_incentclass = "% FMV with\nIncent. Class.") |>
-  add_footer_lines(top = FALSE, values = c("There are 27 municipalities that do not use incentives and have a majority of their taxable EAV within Cook County.") ) |>
+  add_footer_lines(top = FALSE, values = c(paste0("There are ", no_incents, "municipalities that do not use incentives and have a majority of their taxable EAV within Cook County.") )) |>
   bold(i = 8) |>
   set_table_properties( layout = "autofit")
 ```
@@ -844,7 +844,7 @@ figure7B |>
 
 ```{r}
 #| label: tbl-commercialsharewithincentive
-#| tbl-cap: "Percent of Commercial FMV within each Municipality that has incentive classification. 49 municipalities do not use commercial incentives."
+#| tbl-cap: "Percent of Commercial FMV within each Municipality that has incentive classification."
 #| 
 commerc_share_full <- muni_sums  |>
   
@@ -918,11 +918,12 @@ Read in CCAO level of assessment rates for each property class. Read in Summary 
 muni_rate <- read_csv("../Output/ptaxsim_muni_level_2006to2023.csv") |>
   filter(year == params$year) |>
   left_join(nicknames) |> 
-  select(clean_name, muni_current_rate_avg, muni_pct_eav_taxed,# cur_comp_muni_rate
-) |>
-  rename(cur_munilevel_rate = muni_current_rate_avg) |> filter(!clean_name %in% cross_county_line)
+  select(clean_name, muni_current_rate_avg, muni_pct_eav_taxed) |>
+  rename(cur_munilevel_rate = muni_current_rate_avg) |> 
+  filter(!clean_name %in% cross_county_line)
 
-muni_ratechange <- read_csv(paste0("../Output/muni_ratechange_", params$year, "_test.csv")) |> filter(!clean_name %in% cross_county_line)
+muni_ratechange <- read_csv(paste0("../Output/muni_ratechange_", params$year, "_test.csv")) |> 
+  filter(!clean_name %in% cross_county_line)
 ```
 
 ## Not Taxed Value - PIN aggregated to County Level
@@ -1058,10 +1059,15 @@ select("Current Composite Rate" = rate_current,
 
 
 ```{r}
+#| label: tbl-EAVchange-fromIncents
+#| tbl-cap: "Change in taxable EAV due to Incentive Classification"
+
 cook_ratechange |> 
-select("Commerc. EAV w/Incent" = reducedEAV_commerc_incents, "Indust EAV w/ Incent" = reducedEAV_indust_incents,
+select("Commerc. EAV w/Incent" = reducedEAV_commerc_incents, 
+       "Indust EAV w/ Incent" = reducedEAV_indust_incents,
        "CommInd EAV w/ Incent" = reducedEAV_comind_incents,
-       "Homeowner Exemption Exempt EAV" = all_exemptions) |> flextable()
+       "Homeowner Exemption Exempt EAV" = all_exemptions) |> 
+  flextable()
 
 
 ```
@@ -1074,8 +1080,10 @@ $15 Billion EAV is tax exempt due to homeowners exemptions. All incentive proper
 
 ```{r}
 
-cook_ratechange |> 
-  select(contains("forgonerev") ) |> 
+table7 <- cook_ratechange |> 
+  select(contains("forgonerev") ) 
+
+table7 |> 
   flextable()
 ```
 
@@ -1086,7 +1094,7 @@ Uses old current tax rate and multiplies it by the new taxbase.
 
 ```{r}
 
-pin_data |>
+burden_shift <- pin_data |>
   filter(!agency_num %in% cross_county_lines & 
            !is.na(clean_name) & clean_name!="Unincorporated" )  |>
   summarize(
@@ -1095,34 +1103,39 @@ pin_data |>
   
     # more accurate but still uses current tax rate instead of recalculated tax rate:
     forgonerev_from_exemptions  = sum(ifelse(class >= 200 & class < 300,
-          (((av*eq_factor) - (taxed_av*eq_factor))) * tax_code_rate/100, 0), na.rm=TRUE),
+          (((av*eq_factor) - (taxed_av*eq_factor))) * tax_code_rate, 0), na.rm=TRUE),
 
    # amount of EAV from taxing an additional 15% of the AV if incentive properties didn't exist
    # using current tax rate for each property at the tax code level
     forgonerev_from_comind_incents  = sum(ifelse(class >= 600 & class < 900,
-          (((taxed_av*eq_factor)*0.25 - (taxed_av*eq_factor))) * tax_code_rate/100, 0), na.rm=TRUE),
+          (((taxed_av*eq_factor)*0.25 - (taxed_av*eq_factor))) * tax_code_rate, 0), na.rm=TRUE),
 
     forgonerev_commerc_incents  = sum(ifelse(class >= 600 & class < 900 & class %in% commercial_classes,
-          (((taxed_av*eq_factor)*0.25 - (taxed_av*eq_factor))) * tax_code_rate/100, 0), na.rm=TRUE),
+          (((taxed_av*eq_factor)*0.25 - (taxed_av*eq_factor))) * tax_code_rate, 0), na.rm=TRUE),
 
     forgonerev_indust_incents  = sum(ifelse(class >= 600 & class < 900 & class %in% industrial_classes,
-         (((taxed_av*eq_factor)*0.25 - (taxed_av*eq_factor))) * tax_code_rate/100, 0), na.rm=TRUE),
+         (((taxed_av*eq_factor)*0.25 - (taxed_av*eq_factor))) * tax_code_rate, 0), na.rm=TRUE),
    
     #  forgonerev_noTIFs = rate_current/100 * ,
        # TIF increment above the frozen EAV
-    forgonerev_TIFs = sum(fmv_tif_increment * loa * eq_factor*tax_code_rate/100, na.rm=TRUE),
+    forgonerev_TIFs = sum(fmv_tif_increment * loa * eq_factor*tax_code_rate, na.rm=TRUE),
    
    # if incentive properties had no tax value (i.e. owners left, or fully tax exempt)
    # also equal to the current amount collected from incentive properties
-     forgonerev_vacant = sum(ifelse(class >= 600 & class < 900,  taxed_av*eq_factor * tax_code_rate/100, 0), na.rm = TRUE)
+     forgonerev_vacant = sum(ifelse(class >= 600 & class < 900,  taxed_av*eq_factor * tax_code_rate, 0), na.rm = TRUE)
    )|>
   rename(
+    `Naive Est. Homeowner Exemptions` = mostnaive_forgone_tax_amt_exe,
+
+    `Homeowner Exemptions` = forgonerev_from_exemptions,
     `C&I Incentives` = forgonerev_from_comind_incents,
     `Commercial Incentive`= forgonerev_commerc_incents,
     `Industrial Incentive` = forgonerev_indust_incents,
     `TIFs` = forgonerev_TIFs,
     `Incent Props become Vacant` = forgonerev_vacant
-  )
+  ) 
+
+burden_shift |> flextable()
          
 
 
@@ -1132,7 +1145,7 @@ pin_data |>
 
 ## Change in Composite Property Tax Rate Due to Incentives and other Policy Scenarios
 
-```{r}
+```{r old-muniratechange}
 #| eval: false
 #| include: false
 
@@ -1237,11 +1250,10 @@ muni_ratechange <- pin_data |>
 
 ```{r}
 #| label: tbl-munialtrates-frompinlevel
-#| tbl-cap: "**Composite Tax Rate Change** from hypothetical scenario of taxing incentive property at 25% of their FMV instead of 10% of their FMV. There are 26 municipalities that do not use incentives and have a majority of their taxable EAV within Cook County."
+#| tbl-cap: "**Composite Tax Rate Change** from hypothetical scenario of taxing incentive property at 25% of their FMV instead of 10% of their FMV."
 
 
-muni_ratechange_sliced <- muni_ratechange |> 
-  filter(clean_name %in% cross_county_line) |>
+muni_ratechange_full <- muni_ratechange |> 
   # mutate(change_noInc = rate_current - rate_noInc,
   #   change_neither = rate_current - rate_neither,
   #   change_noTIF = rate_current - rate_noTIFs,
@@ -1251,22 +1263,22 @@ muni_ratechange_sliced <- muni_ratechange |>
   # )  |>
      mutate(across(contains("rate_"), round, digits = 2))|>
   select(clean_name, rate_current, rate_noInc, change_noInc) |> 
-  arrange(desc(change_noInc) ) |>
-  mutate(across(c(rate_current, rate_noInc, change_noInc), round, digits=2))
+  arrange(desc(change_noInc) ) #|>
+ # mutate(across(c(rate_current, rate_noInc, change_noInc), round, digits=2))
 
 
 
-muni_count <- n_distinct(muni_ratechange_sliced$clean_name)
-no_incents <- n_distinct(muni_ratechange_sliced$clean_name[muni_ratechange_sliced$change_noInc == 0])
+muni_count <- n_distinct(muni_ratechange_full$clean_name)
+no_incents <- n_distinct(muni_ratechange_full$clean_name[muni_ratechange_full$change_noInc == 0])
 median = round(muni_count/2)
 median_5 = c( (median-2) : (median+2) )
 bottom_5 = c( (muni_count-4) : muni_count )
 
-muni_ratechange_sliced <- muni_ratechange_sliced|>
+table8 <- muni_ratechange_full|>
   mutate(change_noInc = abs(round(change_noInc, digits = 2)) ) |> 
   slice(c(1:5, median_5)) 
 
-muni_ratechange_sliced |>
+table8  |>
   flextable() |> 
   border_remove() |>
   hline_top() |>
@@ -1535,7 +1547,7 @@ order <- muni_ratechange |>
   select(clean_name, rate_current) |> distinct()
 
 # make dot graph
-muni_ratechange |> 
+figure9_data <- muni_ratechange |> 
  filter(change_noInc > .005) |>
   select(clean_name, rate_current, rate_noInc, rate_vacant) |> 
   distinct() |>
@@ -1545,7 +1557,9 @@ muni_ratechange |>
                  "rate_vacant"
                  ), 
                names_to = "type", values_to = "tax_rate") |> 
-  inner_join(order) |>
+  inner_join(order) 
+
+figure9_data|>
   ggplot(aes(x = tax_rate, y= reorder(clean_name, rate_current)))+
   geom_line(aes(group = clean_name))+ 
   geom_point(aes(fill=type), size=3, pch = 21, color = "black" )+
@@ -1637,5 +1651,67 @@ pin_data |>
             taxed_eav = sum(taxed_eav)) |>
   mutate(across(is.numeric, scales::comma, accuracy = 1))
 
+```
+
+## Export Tables
+
+```{r}
+library(readxl)
+
+# tablelist <- list(
+#   "Muni Stats" = munilevel,
+#   "Muni Rate Change" = muni_ratechange,
+#   
+#   "Cook Sums" = table_cook,
+#   "Cook Class Sums" = cty_MC_table,
+#   "Cook Rate Change" = cook_ratechange
+# )
+
+#writexl::write_xlsx(tablelist, "Output/calculations_report_content_20240927.xlsx")
+# 
+# readme <- c(
+# 
+#   "Muni names and share of FMV with incentive property",
+#   "Muni names and share of FMV with incentive property",
+#   "Muni names and share of FMV with incentive property",
+#   
+#   "Muni Share_all includes all municipalities and their share of FMV with incentives out of all FMV in the municipality.",
+#   "IndustShare_all is same as Indust_share but includes all munis.",
+#   "CommercShare_all is same as Commerc_share but includes all munis.") %>% 
+#   as.data.frame()
+
+paper_tables <- list(
+  # "README"= readme,
+  # Table 2 is from yearly trends.  Incentive FMV by year
+  # Figure 1 is from yearly trends.  Bar Chart - Aggregate Incentive FMV by year
+  # Figure 2 is from yearly trends.  Line Chart - Indexed Incentive FMV
+  # Figure 3 is from yearly trends.  Line Chart - FMV for single and multi family vs C&I FMV
+  # Figure 5. Line Chart - Increase in FMV indexed to 2011 for Select property types
+
+
+  "Table 3" = commerc_top10,
+  "Table 4" = indust_top10,
+  # Table 5 is from yearly trends file
+
+  "Figure 7A" = figure7,
+  "Figure 7B" = figure7B,
+  "figure 7C" = figure7C,
+  # Table 6 is from yearly trends file
+  
+  "Table 8" = muni_ratechange, # if assessment ratio was 25% instead of 10%
+  "Table 9" = muni_ratechange, # if properties with incentives were vacant (i.e. 0 FMV)
+
+ "Figure 9 data" = figure9_data,   # dot plot 
+   # Figure X is from yearly trends. FMV Growth by Incent Class and Land Use
+   # Table X is from yearly trends. Table for figure X
+   # Table X+1 is from yearly trends. Change from vacant land to incentive PIN
+   # Table X+2. Regression models
+  "Muni Share_all" = muni_incent_share,
+  "IndustShare_all" = indust_share_full,
+  "Commerc_Share_all" = commerc_share_full
+  
+)
+
+writexl::write_xlsx(paper_tables, "../Output/incentive_report_tables_2025_03_25.xlsx")
 ```
 
