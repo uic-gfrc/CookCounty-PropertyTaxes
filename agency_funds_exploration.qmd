@@ -1,0 +1,66 @@
+---
+title: "Agency Funds"
+format: html
+---
+
+```{r}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+options(scipen=999)
+
+library(tidyverse)
+library(ptaxsim)
+library(DBI)
+```
+
+```{r}
+# #| eval: false
+
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), 
+  "C:/Users/aleaw/Documents/PhD Fall 2021 - Spring 2022/Merriman RA/ptax/ptaxsim.db/ptaxsim-2023.0.0.db")
+
+taxcodes <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT *
+  FROM tax_code
+  "
+  )
+
+agency_fund <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT *
+  FROM agency_fund
+  "
+  )
+
+
+agency_names <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT DISTINCT *
+  FROM agency_info
+  "
+  )
+
+
+agency_fund_info <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT *
+  FROM agency_fund_info
+  "
+  )
+
+agency_funds <- left_join(agency_fund, agency_fund_info)
+
+agency_funds <- left_join(agency_funds, agency_names)
+agency_funds <- left_join(agency_funds, taxcodes, by = c("agency_num", "year"))
+
+agency_funds %>% write_csv("agency_funds.csv")
+```
+
+```{r}
+agency_funds <- read_csv("agency_funds.csv")
+agency_funds <- agency_funds |> filter(year > 2020)
+table(agency_funds$fund_name, agency_funds$year)
+```
+
+
+
