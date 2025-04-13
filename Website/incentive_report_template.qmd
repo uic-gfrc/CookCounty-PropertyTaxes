@@ -8,8 +8,7 @@ format:
     tbl-cap-location: margin
     fig-cap-location: margin
     df-print: paged
-params:
-  year: 2022
+
 ---
 
 ```{r setup}
@@ -83,6 +82,28 @@ industrial_classes <- c(480:489,493,
                         )
 cmap_colors = c("#1e478e", "#6dae4f", "#d3b42b", "#008fd5", "#ca3428", 
                 "#ade0ee", "#3e6730", "#d0e4a4")
+
+# All have less than 50 percent of their taxed EAV within Cook County
+cross_county_lines <- c(
+  # very small amounts in Cook County, like less than 15%:
+  # Deer Park, "Frankfort", "Homer Glen",  "Oak Brook", "East Dundee", "University Park",  
+ "030270000", "030440000", "030585000", "030890000", "030320000", "031280000",
+  
+  # 
+  # "Bensenville", "Hinsdale", "Roselle", "Deerfield", Elgin, 
+  "030080000", "030560000", "031120000",  "030280000",  "030340000", "030270000",
+ 
+  # Closer to ~50% in Cook County
+  # Buffalo Grove,  Bartlett,  Burr Ridge, Hanover Park, Steger 
+  "030150000","030050000", "030180000","030500000", "031210000"
+  )
+
+cross_county_line <- c(
+  "Deer Park", "Frankfort", "Homer Glen",  "Oak Brook", "East Dundee", "University Park",  
+  "Bensenville", "Hinsdale", "Roselle", "Deerfield", "Elgin",
+  "Buffalo Grove",  "Bartlett",  "Burr Ridge", "Hanover Park", "Steger"
+                    )
+
 ```
 
 
@@ -115,28 +136,6 @@ pin_data <- pin_data |> left_join(proj_xwalk)
 class_dict <- read_csv("../Necessary_Files/class_dict_expanded.csv") |>
   select(class_code, comparable_props, land_use=Alea_cat)
 
-# All have less than 50 percent of their taxed EAV within Cook County
-cross_county_lines <- c(
-  # very small amounts in Cook County, like less than 15%:
-  # "Frankfort", "Homer Glen",  "Oak Brook", "East Dundee", "University Park",  
-  "030440000", "030585000", "030890000", "030320000", "031280000",
-  
-  # 
-  # "Bensenville", "Hinsdale", "Roselle", "Deerfield", Elgin, 
-  "030080000", "030560000", "031120000",  "030280000",  "030340000", "030270000"
- 
-  # Closer to ~50% in Cook County
-  # Buffalo Grove,  Bartlett,  Burr Ridge, Hanover Park, Steger 
-  #"030150000","030050000", "030180000","030500000", "031210000"
-  )
-
-
-
-cross_county_line <- c(
-  "Frankfort", "Homer Glen",  "Oak Brook", "East Dundee", "University Park",  
-  "Bensenville", "Hinsdale", "Roselle", "Deerfield", "Elgin"
-  # "Buffalo Grove",  "Bartlett",  "Burr Ridge", "Hanover Park", "Steger"
-                    )
 
 pin_data <- pin_data |> 
   left_join(class_dict, by =  c("class" = "class_code")) |>
@@ -694,7 +693,7 @@ datatable(table2,
 
 muni_incent_share <- pin_data |> 
   # drop munis mostly outside of Cook and unincorporated PINs
-filter(#!agency_num %in% cross_county_line & 
+filter(!agency_num %in% cross_county_line & 
          !is.na(clean_name) ) |>
 
   filter(land_use == "Industrial" | land_use == "Commercial") |>
@@ -709,10 +708,9 @@ filter(#!agency_num %in% cross_county_line &
   mutate(
     fmv_w_incent = ifelse(fmv_w_incent == 0, NA, fmv_w_incent),
     pct_fmv_w_incent = fmv_w_incent/comind_fmv,
-    pct_fmv_w_incent = ifelse(is.na(pct_fmv_w_incent), 0, pct_fmv_w_incent)
+    pct_fmv_w_incent = ifelse(is.na(pct_fmv_w_incent), 0, pct_fmv_w_incent)) |>  
+  select(clean_name, pct_fmv_w_incent, agency_num, fmv_w_incent, comind_fmv) 
 
-
-) 
 
 muni_count <- n_distinct(muni_incent_share$clean_name)
 no_incents <- n_distinct(muni_incent_share$clean_name[muni_incent_share$pct_fmv_w_incent == 0])
@@ -723,10 +721,12 @@ bottom_5 = c( (muni_count-4) : muni_count )
 
 muni_incentshare_slice <- muni_incent_share  |>
   ungroup() |>
+  
   filter(!agency_num %in% cross_county_lines) |>
   mutate(pct_fmv_w_incentclass = fmv_w_incent/comind_fmv,
          pct_fmv_w_incentclass = ifelse(is.na(pct_fmv_w_incentclass), 0, pct_fmv_w_incentclass)) |>
-  select(clean_name, pct_fmv_w_incentclass) |> 
+    select(clean_name, pct_fmv_w_incentclass) |>
+
   arrange(desc(pct_fmv_w_incentclass)) |>
   mutate(pct_fmv_w_incentclass = scales::percent(pct_fmv_w_incentclass, accuracy = 0.01 ) ) |>
   slice(c(1:5, median_5))
@@ -738,7 +738,7 @@ muni_incentshare_slice |>
   hline_top() |>
   hline(i = c(5,10)) |>
   set_header_labels(clean_name = "Municipality", pct_fmv_w_incentclass = "% FMV with\nIncent. Class.") |>
-  add_footer_lines(top = FALSE, values = c(paste0("There are ", no_incents, "municipalities that do not use incentives and have a majority of their taxable EAV within Cook County.") )) |>
+  add_footer_lines(top = FALSE, values = c(paste0("There are ", no_incents, " municipalities that do not use incentives and have a majority of their taxable EAV within Cook County.") )) |>
   bold(i = 8) |>
   set_table_properties( layout = "autofit")
 ```
@@ -815,6 +815,7 @@ indust_share |>
 #| label: fig-Figure7B-shareofIndFMV
 #| fig-cap: "Share of Industrial FMV that has an incentive property class."
 
+indust_max = max(indust_share_full$pct_fmv_indust_incent)
 figure7B <- indust_share_full |>
   select(clean_name, pct_fmv_indust_incent) |>
   left_join(nicknames)|>
@@ -895,6 +896,7 @@ figure7C |>
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
   scale_fill_steps2(
     high = "brown", low = "black",
+    limits = c(0, indust_max),
     show.limits=TRUE,
     nice.breaks=FALSE,
     na.value="gray",
@@ -964,7 +966,7 @@ cook_ratechange <- pin_data |>
                                        0, taxed_av*eq_factor), na.rm=TRUE),
     
     new_TEAV_noExemps = sum(taxed_av*eq_factor + all_exemptions, na.rm=TRUE), # does not include abatements
-    new_TEAV_noAbates = sum(taxed_av*eq_factor + abatements, na.rm=TRUE), # include only abatements, not other exemption types
+    new_TEAV_noAbates = sum(taxed_av*eq_factor + exe_abate, na.rm=TRUE), # include only abatements, not other exemption types
   
     # TIF increment above the frozen EAV
     forgone_TIF_EAV = sum(fmv_tif_increment * loa * eq_factor, na.rm=TRUE),
@@ -977,7 +979,7 @@ cook_ratechange <- pin_data |>
     fmv_incents_inTIFs = sum(ifelse(incent_prop == 1 & final_tax_to_tif > 0, fmv, 0), na.rm = TRUE),
     fmv_inTIF = sum(fmv_inTIF, na.rm=TRUE),
     fmv_tif_increment = sum(fmv_tif_increment, na.rm=TRUE),
-    fmv_untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
+ #   fmv_untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
     fmv_exemptions = sum(all_exemptions/eq_factor/loa, na.rm=TRUE),
     fmv_abatements = sum(exe_abate/eq_factor/loa, na.rm=TRUE),
     zero_bill = sum(zero_bill, na.rm=TRUE),
@@ -1249,36 +1251,26 @@ muni_ratechange <- pin_data |>
 ## Tables - Difference in Composite Tax Rates
 
 ```{r}
-#| label: tbl-munialtrates-frompinlevel
+#| label: tbl-Table8-munialtrates-frompinlevel
 #| tbl-cap: "**Composite Tax Rate Change** from hypothetical scenario of taxing incentive property at 25% of their FMV instead of 10% of their FMV."
 
 
 muni_ratechange_full <- muni_ratechange |> 
-  # mutate(change_noInc = rate_current - rate_noInc,
-  #   change_neither = rate_current - rate_neither,
-  #   change_noTIF = rate_current - rate_noTIFs,
-  #   change_noExe = rate_current - rate_noExe,
-  #   change_vacant = rate_current - rate_vacant,
-  #   change_lowest = rate_current - rate_lowest
-  # )  |>
-     mutate(across(contains("rate_"), round, digits = 2))|>
   select(clean_name, rate_current, rate_noInc, change_noInc) |> 
-  arrange(desc(change_noInc) ) #|>
- # mutate(across(c(rate_current, rate_noInc, change_noInc), round, digits=2))
-
+  arrange(desc(change_noInc) )
 
 
 muni_count <- n_distinct(muni_ratechange_full$clean_name)
-no_incents <- n_distinct(muni_ratechange_full$clean_name[muni_ratechange_full$change_noInc == 0])
+no_incents <- n_distinct(muni_ratechange_full$clean_name[muni_ratechange_full$change_noInc < 0.0001])
 median = round(muni_count/2)
 median_5 = c( (median-2) : (median+2) )
 bottom_5 = c( (muni_count-4) : muni_count )
 
 table8 <- muni_ratechange_full|>
-  mutate(change_noInc = abs(round(change_noInc, digits = 2)) ) |> 
   slice(c(1:5, median_5)) 
 
 table8  |>
+  mutate(across(is.numeric, scales::percent, accuracy = 0.01) ) |>
   flextable() |> 
   border_remove() |>
   hline_top() |>
@@ -1286,8 +1278,10 @@ table8  |>
   set_header_labels(clean_name = "Municipality", rate_current = "Current Comp.\nTax Rate", rate_noInc = "Tax Rate if No\nIncent. Class.",
                     change_noInc = "Rate Change") |>
   bold(i = 8) |>
-  add_footer_lines(paste0("There are ", muni_count,  " municipalities that do not use incentives and have a majority of their taxable EAV within Cook County."), top = FALSE) |>
-  set_table_properties( layout = "autofit")
+  add_footer_lines(paste0("There are ", no_incents,  " municipalities that do not use incentives and have a majority of their taxable EAV within Cook County."), top = FALSE) |>
+  set_table_properties( layout = "autofit") |>
+    align(j = 2:4, align = "right", part = c("all"))
+
 ```
 
 ```{r}
@@ -1317,8 +1311,46 @@ muni_ratechange |>
 ```
 
 ```{r}
+#| label: tbl-Table9-munialtrates-frompinlevel
+#| tbl-cap: "**Composite Tax Rate Change** Maximum increase in composite property tax rate due to incentives. (five largest and five median). Scenario from if properties that currently receive incentives lost all their value (i.e. most extreme scenario for if we didn't have incentives and nobody used the land so it had no value.)"
+
+
+muni_ratechange_full <- muni_ratechange |> 
+  mutate(change_vacant=rate_vacant-rate_current)|>
+  select(clean_name, rate_current, rate_vacant, change_vacant) |> 
+  arrange(desc(change_vacant))
+
+
+muni_count <- n_distinct(muni_ratechange_full$clean_name)
+no_incents <- n_distinct(muni_ratechange_full$clean_name[abs(muni_ratechange_full$change_vacant) < 0.0001])
+median = round(muni_count/2)
+median_5 = c( (median-2) : (median+2) )
+bottom_5 = c( (muni_count-4) : muni_count )
+
+table9 <- muni_ratechange_full|>
+  slice(c(1:5, median_5)) 
+
+table9  |>
+  mutate(across(is.numeric, scales::percent, accuracy = 0.01) ) |>
+  flextable() |> 
+  border_remove() |>
+  hline_top() |>
+  hline(i = c(5,10)) |>
+  set_header_labels(clean_name = "Municipality", rate_current = "Current Comp.\nTax Rate", rate_vacant = "Tax Rate if No\nIncent. Class.",
+                    change_vacant = "Rate Change") |>
+  bold(i = 8) |>
+  add_footer_lines(paste0("There are ", no_incents,  " municipalities that do not use incentives and have a majority of their taxable EAV within Cook County."), top = FALSE) |>
+  set_table_properties( layout = "autofit") |>
+    align(j = 2:4, align = "right", part = c("all"))
+
+```
+
+
+```{r}
 #| label: fig-comptaxratechange-gheplusincent
-#| fig-cap: "Hypothetical change in composite tax rate if all value that currently receives incentive classification became assessed at 25% and exempt EAV from GHE became taxable."
+#| fig-cap: "Hypothetical change in composite tax rate if all value that currently receives incentive classification became assessed at 25% AND exempt EAV from GHE became taxable."
+#| eval: false
+#| include: false
 
 
 muni_ratechange |> 
@@ -1343,53 +1375,11 @@ muni_ratechange |>
 ```
 
 ```{r}
-#| label: fig-dotplot-bycurrentrate-frompinlevel
-#| fig-cap: "Change in tax rate if incentive properties were assessed at 25% of their FMV instead of their reduced level of assessment."
-
-
-# as a dot graph ## 
-# create order of dots
-order <- muni_ratechange |>  
-  as_tibble() |> 
- filter(change_noInc >0) |>
-  arrange(rate_current) |>
-  select(clean_name, rate_current)
-
-# make dot graph
-muni_ratechange |> 
- filter(change_noInc > .007) |>
-  select(clean_name, rate_current, rate_noInc) |> 
-  distinct() |>
-  arrange(rate_current) |>
-  pivot_longer(c("rate_current", "rate_noInc"), 
-               names_to = "type", values_to = "tax_rate") |> 
-  inner_join(order) |>
-  ggplot(aes(x = tax_rate, y= reorder(clean_name, rate_current)))+
-  geom_line(aes(group = clean_name))+ 
-  geom_point(aes(fill=type), size=3, pch = 21, color = "black" 
-             )+
-    # scale_color_manual(palette="Blues", 
-    #                  labels = c("Current Rate", "No Incentives")#,  
-    #               #   values = c("#A6CEE3", "#1F78B4" )
-    #                  )+
-  theme_minimal() + 
-  theme( 
-    legend.title = element_blank(),
-    plot.title.position = "plot",
-    plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
-  )+
-  scale_fill_brewer(palette="Paired", labels = c("Incentives", "No Incentives"), direction = 1)+
-
-  
-  labs(title = "Difference in Composite Tax Rate if Assessed at 25%",
-       subtitle = "Ordered by Current Composite Tax Rate", x = "Composite Tax Rate (%)", y = "")
-```
-
-```{r}
 #| label: fig-ordereddotplot-amountofchange
-#| fig-cap: "Change in Tax Rate from use of Incentives. Ordered by amount of change in the composite tax rate. Only shows municipalities that had more than 1/2 percentage point change in tax rate."
+#| fig-cap: "Ordered by amount of change in the composite tax rate. "
 #| fig-height: 6
 #| fig-width: 6
+#| column: margin
 
 # as a dot graph ## 
 # create order of dots
@@ -1422,18 +1412,61 @@ muni_ratechange |>
     plot.title.position = "plot",
     plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
   )+
-  scale_fill_brewer(palette="Paired", labels = c("Incentives", "No Incentives"), direction = 1)+
-  
+  scale_fill_brewer(palette="Paired", labels = c("Incentives", "No Incentives"), direction = 1) +
   labs(title = "Difference in Composite Tax Rate if Assessed at 25%",
        subtitle = "Ordered by Comp. Rate Change", x = "Composite Tax Rate (%)", y = "")
 ```
 
+```{r}
+#| label: fig-dotplot-bycurrentrate-frompinlevel
+#| fig-cap: "Change in tax rate if incentive properties were assessed at 25% of their FMV instead of their reduced level of assessment. Only shows municipalities that had more than 1/2 percentage point change in tax rate."
+
+
+# as a dot graph ## 
+# create order of dots
+order <- muni_ratechange |>  
+  as_tibble() |> 
+ filter(change_noInc >0) |>
+  arrange(rate_current) |>
+  select(clean_name, rate_current)
+
+# make dot graph
+muni_ratechange |> 
+ filter(change_noInc > .005) |>
+  select(clean_name, rate_current, rate_noInc) |> 
+  distinct() |>
+  arrange(rate_current) |>
+  pivot_longer(c("rate_current", "rate_noInc"), 
+               names_to = "type", values_to = "tax_rate") |> 
+  inner_join(order) |>
+  ggplot(aes(x = tax_rate, y= reorder(clean_name, rate_current)))+
+  geom_line(aes(group = clean_name))+ 
+  geom_point(aes(fill=type), size=3, pch = 21, color = "black" 
+             )+
+  theme_minimal() + 
+  theme( 
+    legend.title = element_blank(),
+    plot.title.position = "plot",
+    plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
+  )+
+  scale_x_continuous(labels = scales::percent)+
+  scale_fill_brewer(palette="Paired", labels = c("Incentives", "No Incentives"), direction = 1)+
+
+  
+  labs(title = "Difference in Composite Tax Rate if Assessed at 25%",
+       subtitle = "Ordered by Current Composite Tax Rate", x = "Composite Tax Rate (%)", y = "")
+```
+
+
 
 ```{r}
 #| label: fig-dotplot4dots
-#| fig-cap: "Only shows municipalities that had more than 1/2 percentage point change in tax rate."
+#| fig-cap: "Multiple tax rate scenarios. Only shows municipalities that had more than 1/2 percentage point change in tax rate."
 #| fig-height: 6
 #| fig-width: 6
+#| eval: false
+#| include: false
+
 # as a dot graph ## 
 # create order of dots
 order <- muni_ratechange |>  
@@ -1475,6 +1508,8 @@ plot.title.position = "plot",
                                "Incententive Classification\nLoA = 0%"
                     ), 
                     direction = -1)+
+    scale_x_continuous(labels = scales::percent)+
+
   labs(title = "Composite Tax Rate Scenarios",
        subtitle = "Ordered by Current Composite Tax Rate", 
        x = "Composite Tax Rate (%)", y = "")
@@ -1482,8 +1517,8 @@ plot.title.position = "plot",
 
 ```{r}
 #| label: fig-dotplot4dots-allmunis
-#| fig-cap: "Same as figure above but includes all municipalities that had a taxrate change from altering the level of assessment for incentive class properties."
-#| fig-height: 10
+#| fig-cap: "Multiple taxrate scenarios. All municipalities that had a taxrate change from altering the level of assessment for incentive class properties."
+#| fig-height: 12
 #| fig-width: 6
 # as a dot graph ## 
 # create order of dots
@@ -1525,15 +1560,17 @@ plot.title.position = "plot",
                                "No Incentives:\nLoA 25%",
                                "Incententive Classification\nLoA = 0%"
                     ), 
-                    direction = -1)+
+                    direction = -1) +
+    scale_x_continuous(labels = scales::percent)+
+
   labs(title = "Composite Tax Rate Scenarios",
        subtitle = "Ordered by Current Composite Tax Rate", 
        x = "Composite Tax Rate (%)", y = "")
 ```
 
 ```{r}
-#| label: fig-dotplot3dots
-#| fig-cap: "Only shows municipalities that had more than 1/2 percentage point change in tax rate."
+#| label: fig-Figure9-dotplot3dots
+#| fig-cap: "**Figure 9 in Incentive Report.** Only shows municipalities that had more than 1/2 percentage point change in tax rate."
 #| fig-height: 6
 #| fig-width: 6
 
@@ -1548,15 +1585,15 @@ order <- muni_ratechange |>
 
 # make dot graph
 figure9_data <- muni_ratechange |> 
- filter(change_noInc > .005) |>
+  filter(change_noInc > .005) |>
   select(clean_name, rate_current, rate_noInc, rate_vacant) |> 
   distinct() |>
   arrange(rate_current) |>
   pivot_longer(c("rate_current", 
                  "rate_noInc", 
                  "rate_vacant"
-                 ), 
-               names_to = "type", values_to = "tax_rate") |> 
+  ), 
+  names_to = "type", values_to = "tax_rate") |> 
   inner_join(order) 
 
 figure9_data|>
@@ -1566,24 +1603,25 @@ figure9_data|>
   theme_minimal() + 
   theme( 
     legend.title = element_blank(),
-legend.position = "bottom",
-plot.title.position = "plot",
+    legend.position = "bottom",
+    plot.title.position = "plot",
     plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
   )+
   scale_fill_brewer(palette = "Greys", direction = -1,
                     labels = c("Current Rate", 
-                             #  "No Exemps & LoA is 25%",
-                             #  "If no Exemptions", 
                                "No Incentive Classes: \nLoA = 25%",
-                               "Incentive Classification\nLoA = 0%"
-                    )
-)+
+                               "Incentive Classification\nLoA = 0%") 
+  )+
+    scale_x_continuous(labels = scales::percent)+
   labs(title = "Composite Tax Rate Scenarios",
        subtitle = "Ordered by Current Composite Tax Rate", 
        x = "Composite Tax Rate (%)", y = "")
 ```
 
 ```{r}
+#| eval: false
+#| include: false
+
 library(ggrepel)
 # make dot graph
 muni_ratechange |> 
@@ -1617,7 +1655,7 @@ muni_ratechange |>
     legend.position = "none"  )+
   scale_fill_manual(
     values = c("#BDD7E7", "#6BAED6", "#3182BD", "#EFF3FF",  "#08519C")) +
-  scale_x_continuous(limits = c(.17, .35)) + 
+  scale_x_continuous(labels = scales::percent)+
   scale_y_discrete(
     expand = expand_scale(mult = c(.1, 1)) ,
            #        limits = c("Markham")#, breaks = "Markham"
@@ -1680,6 +1718,7 @@ library(readxl)
 #   "CommercShare_all is same as Commerc_share but includes all munis.") %>% 
 #   as.data.frame()
 
+if(params$year == 2022){
 paper_tables <- list(
   # "README"= readme,
   # Table 2 is from yearly trends.  Incentive FMV by year
@@ -1693,13 +1732,13 @@ paper_tables <- list(
   "Table 4" = indust_top10,
   # Table 5 is from yearly trends file
 
-  "Figure 7A" = figure7,
-  "Figure 7B" = figure7B,
-  "figure 7C" = figure7C,
+  "Figure 4" = figure7,
+  "Figure 5A" = figure7B,
+  "figure 5B" = figure7C,
   # Table 6 is from yearly trends file
   
-  "Table 8" = muni_ratechange, # if assessment ratio was 25% instead of 10%
-  "Table 9" = muni_ratechange, # if properties with incentives were vacant (i.e. 0 FMV)
+  "Table 8" = table8, # if assessment ratio was 25% instead of 10%
+  "Table 9" = table9, # if properties with incentives were vacant (i.e. 0 FMV)
 
  "Figure 9 data" = figure9_data,   # dot plot 
    # Figure X is from yearly trends. FMV Growth by Incent Class and Land Use
@@ -1709,9 +1748,10 @@ paper_tables <- list(
   "Muni Share_all" = muni_incent_share,
   "IndustShare_all" = indust_share_full,
   "Commerc_Share_all" = commerc_share_full
-  
+# "All Cook Rate Scenarios" = cook_ratechange
 )
 
 writexl::write_xlsx(paper_tables, "../Output/incentive_report_tables_2025_03_25.xlsx")
+}
 ```
 
