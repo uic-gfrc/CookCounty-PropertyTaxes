@@ -63,4 +63,85 @@ table(agency_funds$fund_name, agency_funds$year)
 ```
 
 
+# Read in and Combine PTAB documents
 
+```{r}
+# year = Tax Year. Date in file name is from agency creation of file or reception of file date.
+recap2021 <- readxl::read_xlsx("PTAB/levy recapture/LEvy Recapture - 221116.xlsx") |>
+  mutate(year = 2021)
+
+recap2022 <- readxl::read_xlsx("PTAB/levy recapture/LEvy Recapture - 231129 orig from TR.xlsx") |>
+  mutate(year = 2022)
+
+recap2023 <- readxl::read_xlsx("PTAB/levy recapture/LEvy Recapture - 241115 orig from TR.xlsx") |>
+  mutate(year = 2023)
+
+recap_all <- rbind(recap2021, recap2022, recap2023)
+```
+
+```{r}
+# year = Tax Year. Date in file name is from agency creation of file or reception of file date.
+adjust2021 <- readxl::read_xlsx("PTAB/Levy Adjustment 2021 for PA 102-0519 CORRECTED.xlsx") |>
+  mutate(year = 2021) |>
+  select(year, 
+         Agency,
+         agency_name = `Agency Name`,
+         adjust_eligible = `Adjustment Eligibility`,
+         lastyear_rate = `2020 Rate`,
+         total_tax = `2020 Total Tax`,
+         total_ptab_refunds = `Total SPO/PTAB Refunds\r\nCORRECTED\r\n(Mar 23, 2022)`,
+          # `Total SPO/PTAB Refunds CORRECTED (Mar 23, 2022)`,
+         total_coe_refunds = `Total Certificate of Error Refunds\r\nCORRECTED\r\n(Mar 23, 2022)`,
+           #`Total Certificate of Error Refunds CORRECTED (Mar 23, 2022)`,
+         aggregate_refunds = `Aggregate Refunds\r\nCORRECTED\r\n(Mar 23, 2022)`,
+           #`Aggregate Refunds CORRECTED (Mar 23, 2022)`,
+         prior_levy_adjustment = `2021 Prior Year Levy Adjustment CORRECTED\r\n(Mar 23, 2022)`
+           #`2021 Prior Year Levy Adjustment CORRECTED (Mar 23, 2022`
+         
+         ) 
+  
+
+adjust2022 <- readxl::read_xlsx("PTAB/Levy Adjustment 2022 for PA 102-0519.xlsx") |>
+  mutate(year = 2022) |>
+    select(year, 
+         Agency,
+         agency_name = `Agency Name`, 
+         adjust_eligible = `Adjustment Eligibility`,
+         lastyear_rate = `2021 Rate`,
+         total_tax = `2021 Total Tax`,
+         total_ptab_refunds = `Total SPO/PTAB Refunds`,
+         total_coe_refunds = `Total Certificate of Error Refunds`,
+         aggregate_refunds = `Aggregate Refunds`,
+         prior_levy_adjustment = `2022 Prior Year Levy Adjustment\r\n(Fund 408)`
+         ) 
+
+adjust2023 <- readxl::read_xlsx("PTAB/Levy Adjustment 2023 for PA 102-0519.xlsx") |>
+  mutate(year = 2023) |>
+      select(year, 
+         Agency,
+         agency_name = `Agency Name`, 
+        adjust_eligible = `Adjustment Eligibility`,
+         lastyear_rate = `2022 Rate`,
+         total_tax = `2022 Total Tax`,
+         total_ptab_refunds = `Total SPO/PTAB Refunds`,
+         total_coe_refunds = `Total Certificate of Error Refunds`,
+         aggregate_refunds = `Aggregate Refunds`,
+         prior_levy_adjustment = `2023 Prior Year Levy Adjustment\r\n(Fund 408)`
+         )
+
+adjust2024 <- readxl::read_xlsx("PTAB/Levy Adjustment 2024 for PA 102-0519.xlsx") |>
+  mutate(year = 2024) |>
+      select(year, 
+         Agency,
+         agency_name = `Agency Name`, 
+        adjust_eligible = `Adjustment Eligibility`,
+         lastyear_rate = `2023 Rate`,
+         total_tax = `2023 Total Tax`,
+         total_ptab_refunds = `Total SPO/PTAB Refunds`,
+         total_coe_refunds = `Total Certificate of Error Refunds`,
+         aggregate_refunds = `Aggregate Refunds`,
+         prior_levy_adjustment = `2024 Prior Year Levy Adjustment\r\n(Fund 408)`
+         )
+
+adjust_all <- rbind(adjust2021,adjust2021, adjust2023, adjust2024)
+```
