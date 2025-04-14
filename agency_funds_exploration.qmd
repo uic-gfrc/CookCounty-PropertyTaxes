@@ -140,9 +140,7 @@ agency_funds <- left_join(agency_funds, agency_info, by = c("year", "agency_num"
 ```{r}
 #agency_funds <- read_csv("agency_funds.csv")
 
-agency_funds <- agency_funds |> filter(year > 2020)
-
-table(agency_funds$fund_name, agency_funds$year)
+#agency_funds <- agency_funds |> filter(year > 2020)
 ```
 
 
@@ -162,8 +160,12 @@ recap2023 <- readxl::read_xlsx("PTAB/levy recapture/LEvy Recapture - 241115 orig
 recap_all <- rbind(recap2021, recap2022, recap2023) |>
   rename(agency_number = `Agency Number`,
          agency_name = `Agency Name`,
-         sp_ptab = `SP/PTAB Recouped`,
-         coe = `CofE (Over-Assessment)`)
+         recaptured_sp_ptab = `SP/PTAB Recouped`,
+         recaptured_coe = `CofE (Over-Assessment)`) |>
+  mutate(across(where(is.numeric), round, digits =0)) |>
+  filter(!is.na(agency_number) &
+           ((recaptured_sp_ptab!=0 & !is.na(recaptured_sp_ptab)) | 
+               (recaptured_coe!=0 & !is.na(recaptured_coe))))
 ```
 
 ```{r}
@@ -171,11 +173,11 @@ recap_all <- rbind(recap2021, recap2022, recap2023) |>
 adjust2021 <- readxl::read_xlsx("PTAB/Levy Adjustment 2021 for PA 102-0519 CORRECTED.xlsx") |>
   mutate(year = 2021) |>
   select(year, 
-         agency = Agency,
+         agency_number = Agency,
          agency_name = `Agency Name`,
          adjust_eligible = `Adjustment Eligibility`,
          lastyear_rate = `2020 Rate`,
-         total_tax = `2020 Total Tax`,
+         lastyear_levy = `2020 Total Tax`,
          total_ptab_refunds = `Total SPO/PTAB Refunds\r\nCORRECTED\r\n(Mar 23, 2022)`,
           # `Total SPO/PTAB Refunds CORRECTED (Mar 23, 2022)`,
          total_coe_refunds = `Total Certificate of Error Refunds\r\nCORRECTED\r\n(Mar 23, 2022)`,
@@ -191,11 +193,11 @@ adjust2021 <- readxl::read_xlsx("PTAB/Levy Adjustment 2021 for PA 102-0519 CORRE
 adjust2022 <- readxl::read_xlsx("PTAB/Levy Adjustment 2022 for PA 102-0519.xlsx") |>
   mutate(year = 2022) |>
     select(year, 
-         agency = Agency,
+         agency_number = Agency,
          agency_name = `Agency Name`, 
          adjust_eligible = `Adjustment Eligibility`,
          lastyear_rate = `2021 Rate`,
-         total_tax = `2021 Total Tax`,
+         lastyear_levy = `2021 Total Tax`,
          total_ptab_refunds = `Total SPO/PTAB Refunds`,
          total_coe_refunds = `Total Certificate of Error Refunds`,
          aggregate_refunds = `Aggregate Refunds`,
@@ -205,11 +207,11 @@ adjust2022 <- readxl::read_xlsx("PTAB/Levy Adjustment 2022 for PA 102-0519.xlsx"
 adjust2023 <- readxl::read_xlsx("PTAB/Levy Adjustment 2023 for PA 102-0519.xlsx") |>
   mutate(year = 2023) |>
       select(year, 
-         agency = Agency,
+         agency_number = Agency,
          agency_name = `Agency Name`, 
         adjust_eligible = `Adjustment Eligibility`,
          lastyear_rate = `2022 Rate`,
-         total_tax = `2022 Total Tax`,
+         lastyear_levy = `2022 Total Tax`,
          total_ptab_refunds = `Total SPO/PTAB Refunds`,
          total_coe_refunds = `Total Certificate of Error Refunds`,
          aggregate_refunds = `Aggregate Refunds`,
@@ -219,11 +221,11 @@ adjust2023 <- readxl::read_xlsx("PTAB/Levy Adjustment 2023 for PA 102-0519.xlsx"
 adjust2024 <- readxl::read_xlsx("PTAB/Levy Adjustment 2024 for PA 102-0519.xlsx") |>
   mutate(year = 2024) |>
       select(year, 
-         agency = Agency,
+         agency_number = Agency,
          agency_name = `Agency Name`, 
         adjust_eligible = `Adjustment Eligibility`,
          lastyear_rate = `2023 Rate`,
-         total_tax = `2023 Total Tax`,
+         lastyear_levy = `2023 Total Tax`,
          total_ptab_refunds = `Total SPO/PTAB Refunds`,
          total_coe_refunds = `Total Certificate of Error Refunds`,
          aggregate_refunds = `Aggregate Refunds`,
@@ -232,13 +234,18 @@ adjust2024 <- readxl::read_xlsx("PTAB/Levy Adjustment 2024 for PA 102-0519.xlsx"
 
 # We don't need to include 2024
 
-adjust_all <- rbind(adjust2021, adjust2022, adjust2023#, adjust2024
+adjust_all <- rbind(adjust2021, adjust2022, adjust2023, adjust2024
                     ) |>
-  rename(agency_number = agency)
+  mutate(prior_levy_adjustment = as.numeric(prior_levy_adjustment)) |>
+  mutate(across(.cols=c(total_tax:prior_levy_adjustment), round, digits = 0)) |>
+  filter(!is.na(agency_number) &
+           ((total_ptab_refunds!=0 & !is.na(total_ptab_refunds)) | 
+               ( total_coe_refunds!=0 & !is.na(total_coe_refunds)))
+         )
 
-#write_csv(adjust_all, "adjust_all.csv")
+write_csv(adjust_all, "output/adjust_all.csv")
 
-#write_csv(recap_all, "recap_all.csv")
+write_csv(recap_all, "output/recap_all.csv")
 ```
 
 # Data Concanation
@@ -248,27 +255,19 @@ adjust_all <- rbind(adjust2021, adjust2022, adjust2023#, adjust2024
 
 # Let's do some preliminary clean up work.
 
-keep <- c("adjust_all", "recap_all", "agency_funds", "taxcodes")
-
-all <- ls()
-
-remove <- setdiff(all, keep)
-
-rm(list = remove)
-
-rm(all, remove)
+rm(adjust2021, adjust2022, adjust2023, adjust2024, 
+   recap2021,recap2022, recap2023,
+   agency_names)
 
 ```
 
 ## Join and coalesce [sic] data
 
-> why dropping agencies if they didnt have refunds every year? 
 
+```{r eval=FALSE, include=FALSE}
 
-```{r}
 
 # Initial Filters
-
 recap_all |>
   select(year) |>
   distinct()
@@ -276,9 +275,6 @@ recap_all |>
 adjust_all |>
   select(year) |>
   distinct()
-
-# So we need to find 2022 AND drop 2024 from adjust_all
-# Great success. See above.
 
 # Check for na's
 
@@ -318,10 +314,12 @@ drop_recap <- recap_all |>
   filter(n != 3) |>
   distinct() #102
 
+# I'M JUST GOING TO DROP THESE OBSERVATIONS FOR NOW!!!!!! - MVH
+
+# Alea disagrees with dropping them ^
+
 drop_adjust <- as.list(drop_adjust$agency_number)
 drop_recap <- as.list(drop_recap$agency_number)
-
-# I'M JUST GOING TO DROP THESE OBSERVATIONS FOR NOW!!!!!!
 
 # 2760 obs.
 
@@ -341,24 +339,30 @@ recap_all_filtered <- recap_all |>
 
 ```{r}
 
-adjust_recap_all <- left_join(
-  recap_all_filtered, adjust_all_filtered, 
-  by = c("agency_number", "year")
+adjust_recap_all <- full_join(
+  recap_all, adjust_all,
+  #recap_all_filtered, adjust_all_filtered, 
+  by = c("year", "agency_number", "agency_name")
 )
 
 adjust_recap_all <- adjust_recap_all |>
-  mutate(total_ptab_refunds = ifelse(is.na(total_ptab_refunds), sp_ptab,
-                                     total_ptab_refunds),
-         total_coe_refunds = ifelse(is.na(total_coe_refunds), coe,
-                                    total_coe_refunds),
-         aggregate_refunds = total_ptab_refunds + total_coe_refunds)
+  mutate(
+    ## NO!!!##
+    # total_ptab_refunds = ifelse(is.na(total_ptab_refunds), sp_ptab,
+    #                             total_ptab_refunds),
+    # total_coe_refunds = ifelse(is.na(total_coe_refunds), coe,
+    #                            total_coe_refunds),
+    # aggregate_refunds = total_ptab_refunds + total_coe_refunds,
+    adjust_eligible = ifelse(is.na(adjust_eligible), "Not Eligible", adjust_eligible
+    )) 
 
-adjust_recap_all_final <- adjust_recap_all |>
-  select(year, agency_number, agency_name = agency_name.x, total_ptab_refunds, total_coe_refunds, aggregate_refunds)
+# adjust_recap_all_final <- adjust_recap_all |>
+#   select(year, agency_number, agency_name = agency_name.x, total_ptab_refunds, total_coe_refunds, aggregate_refunds)
 
-agency_fund <- agency_fund |>
-  rename(agency_number = agency_num)
+# 
+# adjust_recap_all_final <- adjust_recap_all_final |>
+#  # agency_funds, not agency_fund!
+#   left_join(agency_fund, by = c("year", "agency_number"))
 
-adjust_recap_all_final <- adjust_recap_all_final |>
-  left_join(agency_fund, by = c("year", "agency_number"))
+final_df <- left_join(taxing_agencies, adjust_recap_all)
 ```
