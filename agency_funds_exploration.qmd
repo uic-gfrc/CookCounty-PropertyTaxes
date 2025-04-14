@@ -64,16 +64,72 @@ agency_fund_info <- DBI::dbGetQuery(
 agency_funds <- left_join(agency_fund, agency_fund_info)
 
 agency_funds <- left_join(agency_funds, agency_names)
-agency_funds <- left_join(agency_funds, taxcodes, by = c("year","agency_num"))
+
+is.integer64 <- function(x){
+  class(x)=="integer64"
+}
+
+agency_funds <- agency_funds %>%
+  mutate_if(is.integer64, as.integer)
 
 #agency_funds |> write_csv("agency_funds.csv")
 
 ```
 
+## Rate Change from Levy Adjustment
+
+```{r}
+agency_funds |> filter(fund_num==408) |>
+  select(year, agency_name_short, final_levy, final_rate, fund_num) |>
+  arrange(desc(final_rate))
+
+agency_funds |> filter(fund_num==408) |>
+  select(year, agency_name_short, final_levy, final_rate, fund_num, major_type) |>
+  arrange(desc(final_rate)) |>
+  ggplot() + 
+  geom_line(aes(x=year, y=final_rate, group=agency_name_short, color = major_type, alpha = .3))
+
+agency_funds |> filter(fund_num==408) |>
+  select(year, agency_name_short, final_levy, final_rate, fund_num, major_type) |>
+  arrange(desc(final_rate)) |>
+  ggplot() + geom_line(aes(x=year, y=final_levy, group=agency_name_short, alpha = .4, color = major_type))+
+    labs(title = "Levy amount from Fund 408.\nAll Agencies with Fund 408")
+
+
+agency_funds |> filter(fund_num==408 & final_levy < 2000000) |>
+  select(year, agency_name_short, final_levy, final_rate, fund_num, major_type) |>
+  arrange(desc(final_rate)) |>
+  ggplot() + 
+  geom_line(aes(x=year, y=final_levy, group=agency_name_short, alpha = .4, color = major_type)) +
+  labs(title = "Levy amount from Fund 408.", subtitle = "Excludes largest agency amounts")
+```
+
 
 ```{r}
 taxing_agencies <- agency_funds |> 
-  group_by(year, agency_num, agency_name, tax_code_num, tax_code_rate)
+  group_by(year, agency_num, agency_name, major_type) |>
+  mutate(fund408 = ifelse(fund_num == 408, final_levy, 0),
+         not_recap = ifelse(fund_num != 408, final_levy, 0) ) |>
+  summarize(across(c(levy:final_rate, fund408, not_recap), sum, na.rm=TRUE))
+
+taxing_agencies |> 
+  filter(year > 2019) |>
+  mutate(recap_levyshare = fund408/final_levy,
+         recap_revratio = fund408/not_recap) |>
+  ggplot() + 
+  geom_line(aes(x=year, y=recap_levyshare, group=agency_name, alpha = .4, color = major_type)) +
+  labs(title = "Recapture / Total Levy")
+
+taxing_agencies |> 
+    filter(year > 2019) |>
+  mutate(recap_levyshare = fund408/final_levy,
+         recap_revratio = fund408/not_recap) |>
+  ggplot() + 
+  geom_line(aes(x=year, y=recap_revratio, group=agency_name, alpha = .4, color = major_type)) +
+  labs(title = "Recapture / Non-Recapture Levy")
+#taxing_agencies <- left_join(taxing_agencies, taxcodes, by = c("year","agency_num"))
+
+
 
 
 # after summing to taxing agency level, join the levy back in.
@@ -175,7 +231,6 @@ adjust2024 <- readxl::read_xlsx("PTAB/Levy Adjustment 2024 for PA 102-0519.xlsx"
          )
 
 # We don't need to include 2024
-# WE FOUND 2022!!!!!!!
 
 adjust_all <- rbind(adjust2021, adjust2022, adjust2023#, adjust2024
                     ) |>
@@ -193,7 +248,7 @@ adjust_all <- rbind(adjust2021, adjust2022, adjust2023#, adjust2024
 
 # Let's do some preliminary clean up work.
 
-keep <- c("adjust_all", "recap_all")
+keep <- c("adjust_all", "recap_all", "agency_funds", "taxcodes")
 
 all <- ls()
 
