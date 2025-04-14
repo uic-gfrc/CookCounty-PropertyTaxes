@@ -31,6 +31,13 @@ taxcodes <- DBI::dbGetQuery(
   "
   )
 
+agency_info <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT *
+  FROM agency
+  "
+  )
+
 agency_fund <- DBI::dbGetQuery(
   ptaxsim_db_conn,
   "SELECT *
@@ -57,9 +64,21 @@ agency_fund_info <- DBI::dbGetQuery(
 agency_funds <- left_join(agency_fund, agency_fund_info)
 
 agency_funds <- left_join(agency_funds, agency_names)
-agency_funds <- left_join(agency_funds, taxcodes, by = c("agency_num", "year"))
+agency_funds <- left_join(agency_funds, taxcodes, by = c("year","agency_num"))
 
 #agency_funds |> write_csv("agency_funds.csv")
+
+```
+
+
+```{r}
+taxing_agencies <- agency_funds |> 
+  group_by(year, agency_num, agency_name, tax_code_num, tax_code_rate)
+
+
+# after summing to taxing agency level, join the levy back in.
+agency_funds <- left_join(agency_funds, agency_info, by = c("year", "agency_num"))
+
 ```
 
 ```{r}
@@ -187,6 +206,9 @@ rm(all, remove)
 ```
 
 ## Join and coalesce [sic] data
+
+> why dropping agencies if they didnt have refunds every year? 
+
 
 ```{r}
 
