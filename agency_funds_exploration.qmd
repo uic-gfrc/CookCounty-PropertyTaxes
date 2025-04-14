@@ -15,8 +15,8 @@ library(DBI)
 ```{r}
 # #| eval: false
 
-ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), 
-  "C:/Users/aleaw/Documents/PhD Fall 2021 - Spring 2022/Merriman RA/ptax/ptaxsim.db/ptaxsim-2023.0.0.db")
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(),
+  "./ptaxsim.db/ptaxsim-2023.0.0.db")
 
 taxcodes <- DBI::dbGetQuery(
   ptaxsim_db_conn,
@@ -76,7 +76,11 @@ recap2022 <- readxl::read_xlsx("PTAB/levy recapture/LEvy Recapture - 231129 orig
 recap2023 <- readxl::read_xlsx("PTAB/levy recapture/LEvy Recapture - 241115 orig from TR.xlsx") |>
   mutate(year = 2023)
 
-recap_all <- rbind(recap2021, recap2022, recap2023)
+recap_all <- rbind(recap2021, recap2022, recap2023) |>
+  rename(agency_number = `Agency Number`,
+         agency_name = `Agency Name`,
+         sp_ptab = `SP/PTAB Recouped`,
+         coe = `CofE (Over-Assessment)`)
 ```
 
 ```{r}
@@ -84,7 +88,7 @@ recap_all <- rbind(recap2021, recap2022, recap2023)
 adjust2021 <- readxl::read_xlsx("PTAB/Levy Adjustment 2021 for PA 102-0519 CORRECTED.xlsx") |>
   mutate(year = 2021) |>
   select(year, 
-         Agency,
+         agency = Agency,
          agency_name = `Agency Name`,
          adjust_eligible = `Adjustment Eligibility`,
          lastyear_rate = `2020 Rate`,
@@ -104,7 +108,7 @@ adjust2021 <- readxl::read_xlsx("PTAB/Levy Adjustment 2021 for PA 102-0519 CORRE
 adjust2022 <- readxl::read_xlsx("PTAB/Levy Adjustment 2022 for PA 102-0519.xlsx") |>
   mutate(year = 2022) |>
     select(year, 
-         Agency,
+         agency = Agency,
          agency_name = `Agency Name`, 
          adjust_eligible = `Adjustment Eligibility`,
          lastyear_rate = `2021 Rate`,
@@ -118,7 +122,7 @@ adjust2022 <- readxl::read_xlsx("PTAB/Levy Adjustment 2022 for PA 102-0519.xlsx"
 adjust2023 <- readxl::read_xlsx("PTAB/Levy Adjustment 2023 for PA 102-0519.xlsx") |>
   mutate(year = 2023) |>
       select(year, 
-         Agency,
+         agency = Agency,
          agency_name = `Agency Name`, 
         adjust_eligible = `Adjustment Eligibility`,
          lastyear_rate = `2022 Rate`,
@@ -132,7 +136,7 @@ adjust2023 <- readxl::read_xlsx("PTAB/Levy Adjustment 2023 for PA 102-0519.xlsx"
 adjust2024 <- readxl::read_xlsx("PTAB/Levy Adjustment 2024 for PA 102-0519.xlsx") |>
   mutate(year = 2024) |>
       select(year, 
-         Agency,
+         agency = Agency,
          agency_name = `Agency Name`, 
         adjust_eligible = `Adjustment Eligibility`,
          lastyear_rate = `2023 Rate`,
