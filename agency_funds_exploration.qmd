@@ -3,6 +3,7 @@ title: "Agency Funds"
 format: html
 ---
 
+
 ```{r}
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 options(scipen=999)
@@ -10,7 +11,12 @@ options(scipen=999)
 library(tidyverse)
 library(ptaxsim)
 library(DBI)
+library(data.table)
 ```
+
+# Data Collection
+
+## PTAXSIM Part
 
 ```{r}
 # #| eval: false
@@ -53,17 +59,19 @@ agency_funds <- left_join(agency_fund, agency_fund_info)
 agency_funds <- left_join(agency_funds, agency_names)
 agency_funds <- left_join(agency_funds, taxcodes, by = c("agency_num", "year"))
 
-agency_funds %>% write_csv("agency_funds.csv")
+#agency_funds |> write_csv("agency_funds.csv")
 ```
 
 ```{r}
-agency_funds <- read_csv("agency_funds.csv")
+#agency_funds <- read_csv("agency_funds.csv")
+
 agency_funds <- agency_funds |> filter(year > 2020)
+
 table(agency_funds$fund_name, agency_funds$year)
 ```
 
 
-# Read in and Combine PTAB documents
+## PTAB Documents
 
 ```{r}
 # year = Tax Year. Date in file name is from agency creation of file or reception of file date.
@@ -147,5 +155,128 @@ adjust2024 <- readxl::read_xlsx("PTAB/Levy Adjustment 2024 for PA 102-0519.xlsx"
          prior_levy_adjustment = `2024 Prior Year Levy Adjustment\r\n(Fund 408)`
          )
 
-adjust_all <- rbind(adjust2021,adjust2021, adjust2023, adjust2024)
+# We don't need to include 2024
+# WE FOUND 2022!!!!!!!
+
+adjust_all <- rbind(adjust2021, adjust2022, adjust2023#, adjust2024
+                    ) |>
+  rename(agency_number = agency)
+
+#write_csv(adjust_all, "adjust_all.csv")
+
+#write_csv(recap_all, "recap_all.csv")
+```
+
+# Data Concanation
+
+```{r}
+#| eval: false
+
+# Let's do some preliminary clean up work.
+
+keep <- c("adjust_all", "recap_all")
+
+all <- ls()
+
+remove <- setdiff(all, keep)
+
+rm(list = remove)
+
+rm(all, remove)
+
+```
+
+## Join and coalesce [sic] data
+
+```{r}
+
+# Initial Filters
+
+recap_all |>
+  select(year) |>
+  distinct()
+
+adjust_all |>
+  select(year) |>
+  distinct()
+
+# So we need to find 2022 AND drop 2024 from adjust_all
+# Great success. See above.
+
+# Check for na's
+
+recap_all |>
+  count(is.na(agency_number)) #9
+
+adjust_all |>
+  count(is.na(agency_number)) #2
+
+# Check for duplicates
+
+recap_all |>
+  group_by(agency_number) |>
+  reframe(agency_number, n = n()) |>
+  filter(n != 3)
+
+recap_all |>
+  count(is.na(agency_number))
+
+adjust_all |>
+ group_by(agency_number) |>
+  reframe(agency_number, n = n()) |>
+  filter(n != 3)
+
+adjust_all |>
+  count(is.na(agency_number))
+
+drop_adjust <- adjust_all |>
+  group_by(agency_number) |>
+  reframe(agency_number, n = n()) |>
+  filter(n != 3) |>
+  distinct() #52
+
+drop_recap <- recap_all |>
+  group_by(agency_number) |>
+  reframe(agency_number, n = n()) |>
+  filter(n != 3) |>
+  distinct() #102
+
+drop_adjust <- as.list(drop_adjust$agency_number)
+drop_recap <- as.list(drop_recap$agency_number)
+
+# I'M JUST GOING TO DROP THESE OBSERVATIONS FOR NOW!!!!!!
+
+# 2760 obs.
+
+adjust_all_filtered <- adjust_all |>
+  filter(!is.na(agency_number)) |>
+  filter(!(agency_number %in% drop_adjust)) |>
+  filter(!(agency_number %in% drop_recap))
+
+#8217 obs.
+
+recap_all_filtered <- recap_all |>
+  filter(!is.na(agency_number)) |>
+  filter(!(agency_number %in% drop_adjust)) |>
+  filter(!(agency_number %in% drop_recap))
+
+```
+
+```{r}
+
+adjust_recap_all <- left_join(
+  recap_all_filtered, adjust_all_filtered, 
+  by = c("agency_number", "year")
+)
+
+adjust_recap_all <- adjust_recap_all |>
+  mutate(total_ptab_refunds = ifelse(is.na(total_ptab_refunds), sp_ptab,
+                                     total_ptab_refunds),
+         total_coe_refunds = ifelse(is.na(total_coe_refunds), coe,
+                                    total_coe_refunds),
+         aggregate_refunds = total_ptab_refunds + total_coe_refunds)
+
+adjust_recap_all_final <- adjust_recap_all |>
+  select(year, agency_number, agency_name = agency_name.x, total_ptab_refunds, total_coe_refunds, aggregate_refunds)
+
 ```
