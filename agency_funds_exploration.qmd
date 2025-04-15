@@ -148,25 +148,25 @@ agency_funds <- left_join(agency_funds, agency_info, by = c("year", "agency_num"
 
 ```{r}
 # year = Tax Year. Date in file name is from agency creation of file or reception of file date.
-recap2021 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 221116.xlsx") |>
+refund2021 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 221116.xlsx") |>
   mutate(year = 2021)
 
-recap2022 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 231129 orig from TR.xlsx") |>
+refund2022 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 231129 orig from TR.xlsx") |>
   mutate(year = 2022)
 
-recap2023 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 241115 orig from TR.xlsx") |>
+refund2023 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 241115 orig from TR.xlsx") |>
   mutate(year = 2023)
 
-recap_all <- rbind(recap2021, recap2022, recap2023) |>
+refund_all <- rbind(refund2021, refund2022, refund2023) |>
   rename(agency_number = `Agency Number`,
          agency_name = `Agency Name`,
-         recaptured_sp_ptab = `SP/PTAB Recouped`,
-         recaptured_coe = `CofE (Over-Assessment)`) |>
+         refunded_sp_ptab = `SP/PTAB Recouped`,
+         refunded_coe = `CofE (Over-Assessment)`) |>
   mutate(across(where(is.numeric), round, digits =0)) |>
   filter(!is.na(agency_number) &
-           ((recaptured_sp_ptab!=0 & !is.na(recaptured_sp_ptab)) | 
-               (recaptured_coe!=0 & !is.na(recaptured_coe)))) |>
-  mutate(total_recaptured = recaptured_sp_ptab + recaptured_coe)
+           ((refunded_sp_ptab!=0 & !is.na(refunded_sp_ptab)) | 
+               (refunded_coe!=0 & !is.na(refunded_coe)))) |>
+  mutate(total_refunds = refunded_sp_ptab + refunded_coe)
 ```
 
 ```{r}
@@ -247,7 +247,7 @@ adjust_all <- rbind(adjust2021, adjust2022, adjust2023, adjust2024
 
 write_csv(adjust_all, "output/adjust_all.csv")
 
-write_csv(recap_all, "output/recap_all.csv")
+write_csv(refund_all, "output/refunds_all.csv")
 ```
 
 # Descriptive Stats - Merriman Replication
@@ -379,19 +379,15 @@ recap_all_filtered <- recap_all |>
 ```{r}
 
 adjust_recap_all <- full_join(
-  recap_all, adjust_all,
+  refund_all, adjust_all,
   #recap_all_filtered, adjust_all_filtered, 
   by = c("year", "agency_number", "agency_name")
 )
 
+
 adjust_recap_all <- adjust_recap_all |>
   mutate(
-    ## NO!!!##
-    # total_ptab_refunds = ifelse(is.na(total_ptab_refunds), sp_ptab,
-    #                             total_ptab_refunds),
-    # total_coe_refunds = ifelse(is.na(total_coe_refunds), coe,
-    #                            total_coe_refunds),
-    # aggregate_refunds = total_ptab_refunds + total_coe_refunds,
+
     adjust_eligible = ifelse(is.na(adjust_eligible), "Not Eligible", adjust_eligible
     )) 
 
@@ -404,4 +400,14 @@ adjust_recap_all <- adjust_recap_all |>
 #   left_join(agency_fund, by = c("year", "agency_number"))
 
 final_df <- left_join(taxing_agencies, adjust_recap_all)
+
+final_df <- final_df   |>
+  mutate(
+    total_ptab_refunds = ifelse(is.na(total_ptab_refunds), refunded_sp_ptab,
+                                total_ptab_refunds),
+    total_coe_refunds = ifelse(is.na(total_coe_refunds), refunded_coe,
+                               total_coe_refunds),
+    aggregate_refunds = total_ptab_refunds + total_coe_refunds,
+    
+    levy_adjustment= ifelse(is.na(levy_adjustment), 0, levy_adjustment) )
 ```
