@@ -148,13 +148,13 @@ agency_funds <- left_join(agency_funds, agency_info, by = c("year", "agency_num"
 
 ```{r}
 # year = Tax Year. Date in file name is from agency creation of file or reception of file date.
-recap2021 <- readxl::read_xlsx("PTAB/levy recapture/LEvy Recapture - 221116.xlsx") |>
+recap2021 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 221116.xlsx") |>
   mutate(year = 2021)
 
-recap2022 <- readxl::read_xlsx("PTAB/levy recapture/LEvy Recapture - 231129 orig from TR.xlsx") |>
+recap2022 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 231129 orig from TR.xlsx") |>
   mutate(year = 2022)
 
-recap2023 <- readxl::read_xlsx("PTAB/levy recapture/LEvy Recapture - 241115 orig from TR.xlsx") |>
+recap2023 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 241115 orig from TR.xlsx") |>
   mutate(year = 2023)
 
 recap_all <- rbind(recap2021, recap2022, recap2023) |>
@@ -165,7 +165,8 @@ recap_all <- rbind(recap2021, recap2022, recap2023) |>
   mutate(across(where(is.numeric), round, digits =0)) |>
   filter(!is.na(agency_number) &
            ((recaptured_sp_ptab!=0 & !is.na(recaptured_sp_ptab)) | 
-               (recaptured_coe!=0 & !is.na(recaptured_coe))))
+               (recaptured_coe!=0 & !is.na(recaptured_coe)))) |>
+  mutate(total_recaptured = recaptured_sp_ptab + recaptured_coe)
 ```
 
 ```{r}
@@ -184,7 +185,7 @@ adjust2021 <- readxl::read_xlsx("PTAB/Levy Adjustment 2021 for PA 102-0519 CORRE
            #`Total Certificate of Error Refunds CORRECTED (Mar 23, 2022)`,
          aggregate_refunds = `Aggregate Refunds\r\nCORRECTED\r\n(Mar 23, 2022)`,
            #`Aggregate Refunds CORRECTED (Mar 23, 2022)`,
-         prior_levy_adjustment = `2021 Prior Year Levy Adjustment CORRECTED\r\n(Mar 23, 2022)`
+         levy_adjustment = `2021 Prior Year Levy Adjustment CORRECTED\r\n(Mar 23, 2022)`
            #`2021 Prior Year Levy Adjustment CORRECTED (Mar 23, 2022`
          
          ) 
@@ -201,7 +202,7 @@ adjust2022 <- readxl::read_xlsx("PTAB/Levy Adjustment 2022 for PA 102-0519.xlsx"
          total_ptab_refunds = `Total SPO/PTAB Refunds`,
          total_coe_refunds = `Total Certificate of Error Refunds`,
          aggregate_refunds = `Aggregate Refunds`,
-         prior_levy_adjustment = `2022 Prior Year Levy Adjustment\r\n(Fund 408)`
+         levy_adjustment = `2022 Prior Year Levy Adjustment\r\n(Fund 408)`
          ) 
 
 adjust2023 <- readxl::read_xlsx("PTAB/Levy Adjustment 2023 for PA 102-0519.xlsx") |>
@@ -215,7 +216,7 @@ adjust2023 <- readxl::read_xlsx("PTAB/Levy Adjustment 2023 for PA 102-0519.xlsx"
          total_ptab_refunds = `Total SPO/PTAB Refunds`,
          total_coe_refunds = `Total Certificate of Error Refunds`,
          aggregate_refunds = `Aggregate Refunds`,
-         prior_levy_adjustment = `2023 Prior Year Levy Adjustment\r\n(Fund 408)`
+         levy_adjustment = `2023 Prior Year Levy Adjustment\r\n(Fund 408)`
          )
 
 adjust2024 <- readxl::read_xlsx("PTAB/Levy Adjustment 2024 for PA 102-0519.xlsx") |>
@@ -229,24 +230,62 @@ adjust2024 <- readxl::read_xlsx("PTAB/Levy Adjustment 2024 for PA 102-0519.xlsx"
          total_ptab_refunds = `Total SPO/PTAB Refunds`,
          total_coe_refunds = `Total Certificate of Error Refunds`,
          aggregate_refunds = `Aggregate Refunds`,
-         prior_levy_adjustment = `2024 Prior Year Levy Adjustment\r\n(Fund 408)`
+         levy_adjustment = `2024 Prior Year Levy Adjustment\r\n(Fund 408)`
          )
 
 # We don't need to include 2024
 
 adjust_all <- rbind(adjust2021, adjust2022, adjust2023, adjust2024
                     ) |>
-  mutate(prior_levy_adjustment = as.numeric(prior_levy_adjustment)) |>
-  mutate(across(.cols=c(total_tax:prior_levy_adjustment), round, digits = 0)) |>
+  mutate(levy_adjustment = as.numeric(levy_adjustment)) |>
+  mutate(across(.cols=c(lastyear_levy:levy_adjustment), round, digits = 0)) |>
   filter(!is.na(agency_number) &
            ((total_ptab_refunds!=0 & !is.na(total_ptab_refunds)) | 
                ( total_coe_refunds!=0 & !is.na(total_coe_refunds)))
-         )
+         ) |>
+  mutate(recap_levyshare = levy_adjustment/lastyear_levy) 
 
 write_csv(adjust_all, "output/adjust_all.csv")
 
 write_csv(recap_all, "output/recap_all.csv")
 ```
+
+# Descriptive Stats - Merriman Replication
+
+For Levy Adjustment Excel Files
+```{r}
+deciles <- adjust_all |> 
+  group_by(year) |>
+  summarize(probs = seq(0.05, 0.95, by = .1),
+            quantiles = quantile(recap_levyshare, probs =  seq(0.05, 0.95, by = 0.1), na.rm = TRUE) )
+
+deciles |> filter(probs == 0.95)
+```
+
+In 2022, 95% of  taxing agencies had refunds equal to less than 4.6% of their levy. In 2024, 95% of agencies had 2.7% of their levy be refunded. 
+
+
+```{r}
+table(adjust_all$year)
+
+levyshare_byagency <- adjust_all |> 
+  group_by(year) |>
+  arrange(year, desc(recap_levyshare)) |>
+  mutate(cumsum = cumsum(levy_adjustment)) |>
+  select(year, agency_name, recap_levyshare, levy_adjustment, cumsum)
+
+# Merriman's for comparison for 2024
+levyshare_byagency |> filter(year == 2024)
+
+levyshare_byagency |> filter(year == 2021)
+levyshare_byagency |> filter(year == 2022)
+levyshare_byagency |> filter(year == 2023)
+```
+
+
+
+
+
 
 # Data Concanation
 
