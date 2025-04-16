@@ -106,13 +106,13 @@ agency_funds |> filter(fund_num==408 & final_levy < 2000000) |>
 
 
 ```{r}
-taxing_agencies <- agency_funds |> 
+agency_fund408_sums <- agency_funds |> 
   group_by(year, agency_num, agency_name, major_type) |>
   mutate(fund408 = ifelse(fund_num == 408, final_levy, 0),
          not_recap = ifelse(fund_num != 408, final_levy, 0) ) |>
-  summarize(across(c(levy:final_rate, fund408, not_recap), sum, na.rm=TRUE))
+  summarize(across(c(levy, final_levy, final_rate, fund408, not_recap), sum, na.rm=TRUE))
 
-taxing_agencies |> 
+agency_fund408_sums |> 
   filter(year > 2019) |>
   mutate(recap_levyshare = fund408/final_levy,
          recap_revratio = fund408/not_recap) |>
@@ -120,15 +120,13 @@ taxing_agencies |>
   geom_line(aes(x=year, y=recap_levyshare, group=agency_name, alpha = .4, color = major_type)) +
   labs(title = "Recapture / Total Levy")
 
-taxing_agencies |> 
+agency_fund408_sums |> 
     filter(year > 2019) |>
   mutate(recap_levyshare = fund408/final_levy,
          recap_revratio = fund408/not_recap) |>
   ggplot() + 
   geom_line(aes(x=year, y=recap_revratio, group=agency_name, alpha = .4, color = major_type)) +
   labs(title = "Recapture / Non-Recapture Levy")
-#taxing_agencies <- left_join(taxing_agencies, taxcodes, by = c("year","agency_num"))
-
 
 
 
@@ -145,6 +143,14 @@ agency_funds <- left_join(agency_funds, agency_info, by = c("year", "agency_num"
 
 
 ## PTAB Documents
+
+Treasurer's office sent the account specific files to the Clerk's office, and the Clerk's office sent them to Drucker and Merriman. 
+
+The Levy Recapture Files break up the refunds into 2 categories: PTAB/SP Refunds and CofE (Over-Assessment) Refunds.
+
+Two of the file have very detailed PTAB&SP and CofE tabs that have very detailed sheets of the amount of refund from previous years' appeals, but not sure how to use that information for now.
+
+(2022 and 2023 are missing the detailed sheets)
 
 ```{r}
 # year = Tax Year. Date in file name is from agency creation of file or reception of file date.
@@ -168,6 +174,9 @@ refund_all <- rbind(refund2021, refund2022, refund2023) |>
                (refunded_coe!=0 & !is.na(refunded_coe)))) |>
   mutate(total_refunds = refunded_sp_ptab + refunded_coe)
 ```
+
+The Levy Adjustment Files exist for 3 years. They use the refund amounts from the previous year to calculate how much to add to Fund 408 for the tax year in the file. 
+For example, Levy Adjustment 2021 shows the amount that was refunded in 2020
 
 ```{r}
 # year = Tax Year. Date in file name is from agency creation of file or reception of file date.
@@ -295,7 +304,7 @@ levyshare_byagency |> filter(year == 2023)
 # Let's do some preliminary clean up work.
 
 rm(adjust2021, adjust2022, adjust2023, adjust2024, 
-   recap2021,recap2022, recap2023,
+   refund2021,refund2022, refund2023,
    agency_names)
 
 ```
@@ -377,7 +386,6 @@ recap_all_filtered <- recap_all |>
 ```
 
 ```{r}
-
 adjust_recap_all <- full_join(
   refund_all, adjust_all,
   #recap_all_filtered, adjust_all_filtered, 
@@ -387,9 +395,11 @@ adjust_recap_all <- full_join(
 
 adjust_recap_all <- adjust_recap_all |>
   mutate(
-
-    adjust_eligible = ifelse(is.na(adjust_eligible), "Not Eligible", adjust_eligible
-    )) 
+    adjust_eligible = ifelse(is.na(adjust_eligible), "Not Eligible", adjust_eligible),
+    levy_adjustment = ifelse(is.na(levy_adjustment), 0, levy_adjustment),
+    recap_levyshare = ifelse(is.na(recap_levyshare), 0, recap_levyshare)
+    ) |>
+  filter(year != 2024)
 
 # adjust_recap_all_final <- adjust_recap_all |>
 #   select(year, agency_number, agency_name = agency_name.x, total_ptab_refunds, total_coe_refunds, aggregate_refunds)
@@ -398,8 +408,14 @@ adjust_recap_all <- adjust_recap_all |>
 # adjust_recap_all_final <- adjust_recap_all_final |>
 #  # agency_funds, not agency_fund!
 #   left_join(agency_fund, by = c("year", "agency_number"))
+```
 
-final_df <- left_join(taxing_agencies, adjust_recap_all)
+At this point, we have the data for all Eligible taxing agencies, but missing values for Agencies that are not eligible for levy adjustments (from Fund 408). 
+
+We want to get the values for all agencies. 
+
+```{r}
+final_df <- left_join(agency_fund408_sums, adjust_recap_all)
 
 final_df <- final_df   |>
   mutate(
