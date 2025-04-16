@@ -144,39 +144,11 @@ agency_funds <- left_join(agency_funds, agency_info, by = c("year", "agency_num"
 
 ## PTAB Documents
 
-Treasurer's office sent the account specific files to the Clerk's office, and the Clerk's office sent them to Drucker and Merriman. 
+The **Levy Adjustment** Files exist for 4 years. They use the refund amounts from the previous year to calculate how much to add to Fund 408 for the tax year in the file. 
 
-The Levy Recapture Files break up the refunds into 2 categories: PTAB/SP Refunds and CofE (Over-Assessment) Refunds.
+These are the files that Merriman wants us to fill in the non-eligible agencies' information. 
 
-Two of the file have very detailed PTAB&SP and CofE tabs that have very detailed sheets of the amount of refund from previous years' appeals, but not sure how to use that information for now.
-
-(2022 and 2023 are missing the detailed sheets)
-
-```{r}
-# year = Tax Year. Date in file name is from agency creation of file or reception of file date.
-refund2021 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 221116.xlsx") |>
-  mutate(year = 2021)
-
-refund2022 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 231129 orig from TR.xlsx") |>
-  mutate(year = 2022)
-
-refund2023 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 241115 orig from TR.xlsx") |>
-  mutate(year = 2023)
-
-refund_all <- rbind(refund2021, refund2022, refund2023) |>
-  rename(agency_number = `Agency Number`,
-         agency_name = `Agency Name`,
-         refunded_sp_ptab = `SP/PTAB Recouped`,
-         refunded_coe = `CofE (Over-Assessment)`) |>
-  mutate(across(where(is.numeric), round, digits =0)) |>
-  filter(!is.na(agency_number) &
-           ((refunded_sp_ptab!=0 & !is.na(refunded_sp_ptab)) | 
-               (refunded_coe!=0 & !is.na(refunded_coe)))) |>
-  mutate(total_refunds = refunded_sp_ptab + refunded_coe)
-```
-
-The Levy Adjustment Files exist for 3 years. They use the refund amounts from the previous year to calculate how much to add to Fund 408 for the tax year in the file. 
-For example, Levy Adjustment 2021 shows the amount that was refunded in 2020
+For example, Levy Adjustment 2021 shows the amount that was refunded in 2020.
 
 ```{r}
 # year = Tax Year. Date in file name is from agency creation of file or reception of file date.
@@ -259,9 +231,43 @@ write_csv(adjust_all, "output/adjust_all.csv")
 write_csv(refund_all, "output/refunds_all.csv")
 ```
 
+
+The **Levy Recapture Files** break up the refunds into 2 categories: PTAB/SP Refunds and CofE (Over-Assessment) Refunds.
+
+Treasurer's office sent the account specific files to the Clerk's office, and the Clerk's office sent them to Drucker and Merriman. 
+
+Two of the file have very detailed PTAB&SP and CofE tabs that have very detailed sheets of the amount of refund from previous years' appeals, but not sure how to use that information for now. (2022 and 2023 are missing the detailed sheets)
+
+```{r}
+# year = Tax Year. Date in file name is from agency creation of file or reception of file date.
+refund2021 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 221116.xlsx") |>
+  mutate(year = 2021)
+
+refund2022 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 231129 orig from TR.xlsx") |>
+  mutate(year = 2022)
+
+refund2023 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 241115 orig from TR.xlsx") |>
+  mutate(year = 2023)
+
+refund_all <- rbind(refund2021, refund2022, refund2023) |>
+  rename(agency_number = `Agency Number`,
+         agency_name = `Agency Name`,
+         refunded_sp_ptab = `SP/PTAB Recouped`,
+         refunded_coe = `CofE (Over-Assessment)`) |>
+  mutate(across(where(is.numeric), round, digits =0)) |>
+  filter(!is.na(agency_number) &
+           ((refunded_sp_ptab!=0 & !is.na(refunded_sp_ptab)) | 
+               (refunded_coe!=0 & !is.na(refunded_coe)))) |>
+  mutate(total_refunds = refunded_sp_ptab + refunded_coe)
+```
+
+
 # Descriptive Stats - Merriman Replication
 
-For Levy Adjustment Excel Files
+For Levy Adjustment Excel Files have the taxing agency, adjustment eligibility, previous year's tax rate and previous year's levy, as well a the amount of refunds from PTAB and COEs. 
+
+Merriman has output in the word document within the `PTAB` folder that has his descriptive stats for 2024. They are recreated below for 2024 and other tax years. 
+
 ```{r}
 deciles <- adjust_all |> 
   group_by(year) |>
