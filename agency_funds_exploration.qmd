@@ -404,9 +404,10 @@ recap_all_filtered <- recap_all |>
 ```
 
 ```{r}
+
+
 adjust_recap_all <- full_join(
   refund_all, adjust_all,
-  #recap_all_filtered, adjust_all_filtered, 
   by = c("year", "agency_number", "agency_name")
 )
 
@@ -419,13 +420,23 @@ adjust_recap_all <- adjust_recap_all |>
     ) |>
   filter(year != 2024)
 
-# adjust_recap_all_final <- adjust_recap_all |>
-#   select(year, agency_number, agency_name = agency_name.x, total_ptab_refunds, total_coe_refunds, aggregate_refunds)
+# Let's rename those misleading original variable names!!!
 
+adjust_recap_all <- adjust_recap_all |>
+
+# After discussion, we decided variables from the "Levy Adjustment" file referencing refunds were
+# ACTUALLY the value of fund 408 added to the levy value, not actual refunds.
 # 
-# adjust_recap_all_final <- adjust_recap_all_final |>
-#  # agency_funds, not agency_fund!
-#   left_join(agency_fund, by = c("year", "agency_number"))
+# Thus, relevant variables from the Levy Adjustment files are getting renamed with "recap".
+
+  rename(
+    ptab_recap = total_ptab_refunds,
+         coe_recap = total_coe_refunds,
+         total_recap = aggregate_refunds,
+# We should also rename the refund values to match the syntax
+         ptab_refund = refunded_sp_ptab,
+         coe_refund = refunded_coe,
+         total_refund = total_refunds)
 
 
 adjust_recap_all
@@ -450,5 +461,24 @@ final_df <- final_df   |>
 
 final_df  |> filter(year > 2020) |> select(-c(major_type )) |>
   arrange(agency_num, year)
+
+final_df |>
+  filter(!is.na(total_recap)) |>
+  filter(fund408 != levy_adjustment)
+```
+
+```{r}
+
+final_df_2 <- final_df |>
+  #filter(year > 2020) |>
+ # select(-c(major_type)) |>
+  mutate(adjust_eligible = ifelse(adjust_eligible == "Eligible", 1, 0),
+         adjust_eligible = ifelse(is.na(adjust_eligible), 0, adjust_eligible))
+
+df_mismatch <- final_df_2 |>
+  filter(refunded_coe != total_coe_refunds)
+
+final_df_3 <- final_df_2 |>
+  select(year, agency_num, agency_name, )
 
 ```
