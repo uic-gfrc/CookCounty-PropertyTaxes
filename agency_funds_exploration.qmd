@@ -274,7 +274,7 @@ write_csv(refund_all, "output/refunds_all.csv")
 ```
 
 
-# Descriptive Stats - Merriman Replication
+# Merriman Replication
 
 For Levy Adjustment Excel Files have the taxing agency, adjustment eligibility, previous year's tax rate and previous year's levy, as well a the amount of refunds from PTAB and COEs. 
 
@@ -442,6 +442,8 @@ adjust_recap_all <- adjust_recap_all |>
 adjust_recap_all
 ```
 
+## Final Data Assembly
+
 At this point, we have the data for all Eligible taxing agencies, but missing values for Agencies that are not eligible for levy adjustments (from Fund 408). 
 
 We want to get the values for all agencies. 
@@ -451,34 +453,80 @@ final_df <- left_join(agency_fund408_sums, adjust_recap_all)
 
 final_df <- final_df   |>
   mutate(
-    total_ptab_refunds = ifelse(is.na(total_ptab_refunds), refunded_sp_ptab,
-                                total_ptab_refunds),
-    total_coe_refunds = ifelse(is.na(total_coe_refunds), refunded_coe,
-                               total_coe_refunds),
-    aggregate_refunds = total_ptab_refunds + total_coe_refunds,
+    # MVH QUESTIONS IF THIS IS A GOOD IDEA
+    ptab_refund = ifelse(is.na(ptab_refund), ptab_recap,
+                                ptab_refund),
+    coe_refund = ifelse(is.na(coe_refund), coe_recap,
+                               coe_refund),
+    total_refund = ptab_refund + coe_refund,
     
-    levy_adjustment= ifelse(is.na(levy_adjustment), 0, levy_adjustment) )
+    levy_adjustment= ifelse(is.na(levy_adjustment), 0, levy_adjustment)) |>
+  left_join(agency_names, 
+            by = "agency_num",
+            copy = TRUE)
 
-final_df  |> filter(year > 2020) |> select(-c(major_type )) |>
-  arrange(agency_num, year)
+# Select only relevant, non-redundant variables
 
-final_df |>
-  filter(!is.na(total_recap)) |>
-  filter(fund408 != levy_adjustment)
+final_df_temp <- final_df |>
+  select(year, 
+         agency_num, 
+         agency_name = agency_name.x,
+         major_type = major_type.x,
+         minor_type,
+         adjust_eligible,
+         levy,
+         final_levy,
+         final_rate,
+         total_refund,
+         ptab_refund,
+         coe_refund,
+         total_recap,
+         ptab_recap,
+         coe_recap,
+         fund408,
+         levy_adjustment,
+         recap_levyshare)
+
+df_final_variables <- final_df_temp |>
+  names()
+
+df_final_variables
+
+df <- final_df_temp
+
+df |>
+  mutate(diff = abs(fund408 - levy_adjustment)) |>
+  summarise(max(diff))
+
+
+#write_csv(df, "levy_refunds_recoupments_by_agency.csv")
+
+
 ```
+
+# Data Exploration
 
 ```{r}
 
-final_df_2 <- final_df |>
-  #filter(year > 2020) |>
- # select(-c(major_type)) |>
-  mutate(adjust_eligible = ifelse(adjust_eligible == "Eligible", 1, 0),
-         adjust_eligible = ifelse(is.na(adjust_eligible), 0, adjust_eligible))
-
-df_mismatch <- final_df_2 |>
-  filter(refunded_coe != total_coe_refunds)
-
-final_df_3 <- final_df_2 |>
-  select(year, agency_num, agency_name, )
+df <- read_csv("levy_refunds_recoupments_by_agency.csv")
 
 ```
+
+## Descriptive Statistics: Eligible vs. Ineligible
+
+
+
+## Who is Eligible but Not Recouping Their Full Amount?
+
+
+
+## Discontinuity at Start of Recapture Program
+
+```{r}
+
+
+
+```
+
+## Refunds and Recapture by Minor Class
+
