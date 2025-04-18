@@ -159,6 +159,8 @@ These are the files that Merriman wants us to fill in the non-eligible agencies'
 For example, Levy Adjustment 2021 shows the amount that was refunded in 2020. 
 `ptab_refunds` from these files represent the recaptured funds from eligible agencies (if they did not waive their right to recapture the funds) that they had to give back the previous tax year due to successful PTAB appeals.
 
+All observations' `aggregate_refund` amounts equal their `levy_adjustment` values. 
+
 ```{r}
 # year = Tax Year. Date in file name is from agency creation of file or reception of file date.
 adjust2021 <- readxl::read_xlsx("PTAB/Levy Adjustment 2021 for PA 102-0519 CORRECTED.xlsx") |>
@@ -235,7 +237,8 @@ adjust_all <- rbind(adjust2021, adjust2022, adjust2023, adjust2024
                ( total_coe_refunds!=0 & !is.na(total_coe_refunds)))
          ) |>
   mutate(recap_levyshare = levy_adjustment/lastyear_levy,
-         adjustment_check = aggregate_refunds + levy_adjustment) 
+        #  adjustment_check = aggregate_refunds + levy_adjustment   # all zeros: they are the same value for all observatoins
+         ) 
 
 
 adjust_all
@@ -247,6 +250,8 @@ The **Levy Recapture Files** break up the refunds into 2 categories: PTAB/SP Ref
 Treasurer's office sent the account specific files to the Clerk's office, and the Clerk's office sent them to Drucker and Merriman. 
 
 Two of the file have very detailed PTAB&SP and CofE tabs that have very detailed sheets of the amount of refund from previous years' appeals, but not sure how to use that information for now. (2022 and 2023 are missing the detailed sheets)
+
+_Note: the variables are named "recouped" in these files which is very confusing for our analysis._^However, the variable names do make sense from the Treasurer's point of view, and they made the files in the first place.  
 
 ```{r}
 # year = Tax Year. Date in file name is from agency creation of file or reception of file date.
@@ -262,9 +267,11 @@ refund2023 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 241115 ori
 refund_all <- rbind(refund2021, refund2022, refund2023) |>
   rename(agency_number = `Agency Number`,
          agency_name = `Agency Name`,
-         refunded_sp_ptab = `SP/PTAB Recouped`,
+         refunded_sp_ptab = `SP/PTAB Recouped`,  # recouped is confusing variable name, so renamed to refunds
          refunded_coe = `CofE (Over-Assessment)`) |>
   mutate(across(where(is.numeric), round, digits =0)) |>
+  
+  # keep observations with non-missing variables
   filter(!is.na(agency_number) &
            ((refunded_sp_ptab!=0 & !is.na(refunded_sp_ptab)) | 
                (refunded_coe!=0 & !is.na(refunded_coe)))) |>
@@ -454,30 +461,33 @@ We want to get the values for all agencies.
 
 ```{r}
 final_df <- left_join(agency_fund408_sums, adjust_recap_all)
+# 
+# final_df <- final_df   |>
+#   mutate(
+#     # MVH QUESTIONS IF THIS IS A GOOD IDEA
+#     ptab_refund = ifelse(is.na(ptab_refund), ptab_recap,
+#                                 ptab_refund),
+#     coe_refund = ifelse(is.na(coe_refund), coe_recap,
+#                                coe_refund),
+#     total_refund = ptab_refund + coe_refund,
+#     
+#     levy_adjustment= ifelse(is.na(levy_adjustment), 0, levy_adjustment)) |>
+#   left_join(agency_names, 
+#             by = "agency_num",
+#             copy = TRUE) |>
 
-final_df <- final_df   |>
-  mutate(
-    # MVH QUESTIONS IF THIS IS A GOOD IDEA
-    ptab_refund = ifelse(is.na(ptab_refund), ptab_recap,
-                                ptab_refund),
-    coe_refund = ifelse(is.na(coe_refund), coe_recap,
-                               coe_refund),
-    total_refund = ptab_refund + coe_refund,
-    
-    levy_adjustment= ifelse(is.na(levy_adjustment), 0, levy_adjustment)) |>
-  left_join(agency_names, 
-            by = "agency_num",
-            copy = TRUE) |>
-  # THIS IS A BRAND NEW MUTATE MVH 4/17
-  mutate(adjust_eligible = ifelse(is.na(adjust_eligible), "Not Eligible", adjust_eligible))
+
+#   # THIS IS A BRAND NEW MUTATE MVH 4/17
+# No agencies were eligible for recapture before 2021, so maybe leaving them as NA makes the most sense?
+#   mutate(adjust_eligible = ifelse(is.na(adjust_eligible), "Not Eligible", adjust_eligible))
 
 # Select only relevant, non-redundant variables
 
 final_df_temp <- final_df |>
   select(year, 
          agency_num, 
-         agency_name = agency_name.x,
-         major_type = major_type.x,
+        # agency_name = agency_name.x,
+         #major_type = major_type.x,
          minor_type,
          adjust_eligible,
          levy,
@@ -502,7 +512,9 @@ df <- final_df_temp
 
 df |>
   mutate(diff = abs(fund408 - levy_adjustment)) |>
-  summarise(max(diff))
+  arrange(desc(diff) ) |>
+  select(agency_name, diff, fund408, levy_adjustment, year) 
+
 
 
 write_csv(df, "levy_refunds_recoupments_by_agency.csv")
