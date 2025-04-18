@@ -83,7 +83,7 @@ agency_funds <- agency_funds %>%
 
 ```
 
-## Rate Change from Levy Adjustment
+## PTAXSIM Fund Data: Rate Change from Levy Adjustment
 
 ```{r}
 agency_funds |> filter(fund_num==408) |>
@@ -114,7 +114,7 @@ agency_funds |> filter(fund_num==408 & final_levy < 2000000) |>
 
 ```{r}
 agency_fund408_sums <- agency_funds |> 
-  group_by(year, agency_num, agency_name, major_type) |>
+  group_by(year, agency_num, agency_name, major_type, minor_type) |>
   mutate(fund408 = ifelse(fund_num == 408, final_levy, 0),
          not_recap = ifelse(fund_num != 408, final_levy, 0) ) |>
   summarize(across(c(levy, final_levy, final_rate, fund408, not_recap), sum, na.rm=TRUE))
@@ -138,14 +138,15 @@ agency_fund408_sums |>
 
 
 # after summing to taxing agency level, join the levy back in.
-agency_funds <- left_join(agency_funds, agency_info, by = c("year", "agency_num"))
-
+agency_fund408_sums <- left_join(agency_fund408_sums, agency_info, by = c("year", "agency_num"))
 ```
 
 ```{r}
 #agency_funds <- read_csv("agency_funds.csv")
 
 #agency_funds <- agency_funds |> filter(year > 2020)
+agency_fund408_sums
+
 ```
 
 
@@ -155,7 +156,8 @@ The **Levy Adjustment** Files exist for 4 years. They use the refund amounts fro
 
 These are the files that Merriman wants us to fill in the non-eligible agencies' information. 
 
-For example, Levy Adjustment 2021 shows the amount that was refunded in 2020.
+For example, Levy Adjustment 2021 shows the amount that was refunded in 2020. 
+`ptab_refunds` from these files represent the recaptured funds from eligible agencies (if they did not waive their right to recapture the funds) that they had to give back the previous tax year due to successful PTAB appeals.
 
 ```{r}
 # year = Tax Year. Date in file name is from agency creation of file or reception of file date.
@@ -227,11 +229,13 @@ adjust_all <- rbind(adjust2021, adjust2022, adjust2023, adjust2024
                     ) |>
   mutate(levy_adjustment = as.numeric(levy_adjustment)) |>
   mutate(across(.cols=c(lastyear_levy:levy_adjustment), round, digits = 0)) |>
+  # exclude the rows that had Totals in them (using their missing agency numbers)
   filter(!is.na(agency_number) &
-           ((total_ptab_refunds!=0 & !is.na(total_ptab_refunds)) | 
+           ((total_ptab_refunds!=0 & !is.na(total_ptab_refunds)) | # keep observations that had non missing and non-zero values for the refund variables.
                ( total_coe_refunds!=0 & !is.na(total_coe_refunds)))
          ) |>
-  mutate(recap_levyshare = levy_adjustment/lastyear_levy) 
+  mutate(recap_levyshare = levy_adjustment/lastyear_levy,
+         adjustment_check = aggregate_refunds + levy_adjustment) 
 
 
 adjust_all
@@ -327,7 +331,7 @@ rm(adjust2021, adjust2022, adjust2023, adjust2024,
 
 ```
 
-## Join and coalesce [sic] data
+## Join data
 
 
 ```{r eval=FALSE, include=FALSE}
