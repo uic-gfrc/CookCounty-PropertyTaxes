@@ -463,7 +463,9 @@ final_df <- final_df   |>
     levy_adjustment= ifelse(is.na(levy_adjustment), 0, levy_adjustment)) |>
   left_join(agency_names, 
             by = "agency_num",
-            copy = TRUE)
+            copy = TRUE) |>
+  # THIS IS A BRAND NEW MUTATE MVH 4/17
+  mutate(adjust_eligible = ifelse(is.na(adjust_eligible), "Not Eligible", adjust_eligible))
 
 # Select only relevant, non-redundant variables
 
@@ -499,7 +501,7 @@ df |>
   summarise(max(diff))
 
 
-#write_csv(df, "levy_refunds_recoupments_by_agency.csv")
+write_csv(df, "levy_refunds_recoupments_by_agency.csv")
 
 
 ```
@@ -514,7 +516,77 @@ df <- read_csv("levy_refunds_recoupments_by_agency.csv")
 
 ## Descriptive Statistics: Eligible vs. Ineligible
 
+```{r}
 
+# I FILTER TO 2021 - 2023 BECAUSE SOMETHING IS WRONG!!!! HALP HALP HALP
+
+df_time <- df |>
+  filter(between(year, 2021, 2023))
+
+df |>
+  filter(between(year, 2021, 2023)) |>
+  group_by(year, adjust_eligible) |>
+  reframe(n = n()) |>
+  ggplot(aes(x = year, y = n, fill = adjust_eligible)) +
+    geom_col(position = "dodge") +
+    theme_classic()
+
+```
+
+```{r}
+
+df |>
+  filter(between(year, 2021, 2023)) |>
+  mutate(year = as.integer(year)) |>
+  group_by(year, adjust_eligible) |>
+  reframe(sum_levy = sum(levy)) |>
+  ggplot(aes(x = year, y = sum_levy, color = adjust_eligible)) +
+    geom_line() +
+    theme_classic()
+
+```
+
+```{r}
+
+df |>
+  filter(between(year, 2021, 2023)) |>
+  mutate(year = as.integer(year)) |>
+  group_by(year, adjust_eligible) |>
+  reframe(sum_levy = sum(levy, na.rm = T), n = n()) |>
+  ggplot(aes(x = year, y = sum_levy/n, color = adjust_eligible)) +
+    geom_line() +
+    theme_classic() +
+  labs(title = "Average (Mean) Levy")
+
+```
+```{r}
+
+df |>
+  filter(between(year, 2021, 2023)) |>
+  mutate(year = as.integer(year)) |>
+  group_by(year, adjust_eligible) |>
+  reframe(sum_refund = sum(total_refund, na.rm = T), n = n()) |>
+  ggplot(aes(x = year, y = sum_refund, color = adjust_eligible)) +
+    geom_line() +
+    theme_classic() +
+  labs(title = "Refunds by Eligibility")
+
+```
+
+```{r}
+
+df |>
+  filter(between(year, 2021, 2023)) |>
+  mutate(year = as.integer(year)) |>
+  group_by(year) |>
+  reframe(sum_refund = sum(total_refund, na.rm = T), n = n()) |>
+  ggplot(aes(x = year, y = sum_refund)) +
+    geom_line() +
+    theme_classic() +
+  labs(title = "Total Refunds")
+
+
+```
 
 ## Who is Eligible but Not Recouping Their Full Amount?
 
@@ -524,8 +596,8 @@ df <- read_csv("levy_refunds_recoupments_by_agency.csv")
 
 ```{r}
 
-
-
+df |>
+  group_by()
 ```
 
 ## Refunds and Recapture by Minor Class
