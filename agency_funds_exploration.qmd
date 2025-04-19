@@ -477,7 +477,12 @@ We want to get the values for all agencies.
 
 ```{r}
 # agency_fund408_sums had all years in ptaxsim. Filter to just 2021-2023 for now?
-final_df <- left_join(agency_fund408_sums|> filter(year>2020), adjust_recap_all)
+final_df <- left_join(agency_fund408_sums|> filter(year>2020), adjust_recap_all) |>
+    mutate(
+    adjust_eligible = ifelse(is.na(adjust_eligible), "Not Eligible", adjust_eligible),
+    levy_adjustment = ifelse(is.na(levy_adjustment), 0, levy_adjustment),
+    recap_levyshare = ifelse(is.na(recap_levyshare), 0, recap_levyshare)
+    )
 # 
 # final_df <- final_df   |>
 #   mutate(
