@@ -445,8 +445,7 @@ adjust_recap_all <- adjust_recap_all |>
     adjust_eligible = ifelse(is.na(adjust_eligible), "Not Eligible", adjust_eligible),
     levy_adjustment = ifelse(is.na(levy_adjustment), 0, levy_adjustment),
     recap_levyshare = ifelse(is.na(recap_levyshare), 0, recap_levyshare)
-    ) |>
-  filter(year != 2024)
+    ) #|>filter(year != 2024)
 
 # Let's rename those misleading original variable names!!!
 
@@ -477,7 +476,8 @@ At this point, we have the data for all Eligible taxing agencies, but missing va
 We want to get the values for all agencies. 
 
 ```{r}
-final_df <- left_join(agency_fund408_sums, adjust_recap_all)
+# agency_fund408_sums had all years in ptaxsim. Filter to just 2021-2023 for now?
+final_df <- left_join(agency_fund408_sums|> filter(year>2020), adjust_recap_all)
 # 
 # final_df <- final_df   |>
 #   mutate(
@@ -540,6 +540,7 @@ write_csv(df |>
             filter(between(year, 2021, 2023)), 
           "levy_refunds_recoupments_by_agency_2021-2023.csv")
 
+write_csv(df,  "levy_refunds_recoupments_by_agency_2021-2024.csv")
 
 ```
 
@@ -547,7 +548,7 @@ write_csv(df |>
 
 ```{r}
 
-df <- read_csv("levy_refunds_recoupments_by_agency.csv")
+#df <- read_csv("levy_refunds_recoupments_by_agency.csv")
 
 ```
 
@@ -561,7 +562,7 @@ df_time <- df |>
   filter(between(year, 2021, 2023))
 
 df |>
-  filter(between(year, 2021, 2023)) |>
+ # filter(between(year, 2021, 2023)) |>
   group_by(year, adjust_eligible) |>
   reframe(n = n()) |>
   ggplot(aes(x = year, y = n, fill = adjust_eligible)) +
@@ -573,7 +574,7 @@ df |>
 ```{r}
 
 df |>
-  filter(between(year, 2021, 2023)) |>
+ # filter(between(year, 2021, 2024)) |>
   mutate(year = as.integer(year)) |>
   group_by(year, adjust_eligible) |>
   reframe(sum_levy = sum(levy)) |>
@@ -586,7 +587,7 @@ df |>
 ```{r}
 
 df |>
-  filter(between(year, 2021, 2023)) |>
+ # filter(between(year, 2021, 2023)) |>
   mutate(year = as.integer(year)) |>
   group_by(year, adjust_eligible) |>
   reframe(sum_levy = sum(levy, na.rm = T), n = n()) |>
@@ -599,7 +600,7 @@ df |>
 ```{r}
 
 df |>
-  filter(between(year, 2021, 2023)) |>
+  #filter(between(year, 2021, 2023)) |>
   mutate(year = as.integer(year)) |>
   group_by(year, adjust_eligible) |>
   reframe(sum_refund = sum(total_refund, na.rm = T), n = n()) |>
@@ -613,7 +614,7 @@ df |>
 ```{r}
 
 df |>
-  filter(between(year, 2021, 2023)) |>
+#  filter(between(year, 2021, 2023)) |>
   mutate(year = as.integer(year)) |>
   group_by(year) |>
   reframe(sum_refund = sum(total_refund, na.rm = T), n = n()) |>
