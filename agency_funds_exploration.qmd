@@ -259,22 +259,26 @@ _Note: the variables are named "recouped" in these files which is very confusing
 ```{r}
 # year = Tax Year. Date in file name is from agency creation of file or reception of file date.
 
-refund2020 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - vf2 as received from CCTO 2022-03-23.xlsx")|>
+refund2021 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - vf2 as received from CCTO 2022-03-23.xlsx")|>
   mutate(year = 2021) |>
-  select(-Total)
+  select(-Total) |>
+  rename(`Agency Number` = `Agency Number (Text)`,
+         
+         `CofE (Over-Assessment)` = `CofE Recouped`) |>
+  mutate(across(where(is.numeric), round, digits =0))
 
-refund2021 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 221116.xlsx") |>
+refund2022 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 221116.xlsx") |>
   mutate(year = 2022)
 
 # refund data for Nov 1 2022 to Oct 31 2023. These refund would be added to the levy for tax year 2023?
-refund2022 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 231129 orig from TR.xlsx") |>
+refund2023 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 231129 orig from TR.xlsx") |>
   mutate(year = 2023)
 
 # refund data for Nov 1 2023 through Oct 31 2024. These refunds would be added to the levy for tax year 2025?
-refund2023 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 241115 orig from TR.xlsx") |>
+refund2024 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 241115 orig from TR.xlsx") |>
   mutate(year = 2024)
 
-refund_all <- rbind(refund2020, refund2021, refund2022, refund2023) |>
+refund_all <- rbind(refund2021, refund2022, refund2023, refund2024) |>
   rename(agency_number = `Agency Number`,
          agency_name = `Agency Name`,
          refunded_sp_ptab = `SP/PTAB Recouped`,  # recouped is confusing variable name, so renamed to refunds
@@ -342,12 +346,11 @@ levyshare_byagency |> filter(year == 2023)
 # Data Concanation
 
 ```{r}
-#| eval: false
 
 # Let's do some preliminary clean up work.
 
 rm(adjust2021, adjust2022, adjust2023, adjust2024, 
-   refund2021,refund2022, refund2023,
+   refund2021,refund2022, refund2023, refund2024
    agency_names)
 
 ```
