@@ -162,6 +162,9 @@ For example, Levy Adjustment 2021 shows the amount that was refunded in 2020.
 All observations' `aggregate_refund` amounts equal their `levy_adjustment` values. 
 
 ```{r}
+#| tbl-cap: "`adjust_all` has all levy adjustments from the new recapture legislation since 2021."
+
+
 # year = Tax Year. Date in file name is from agency creation of file or reception of file date.
 adjust2021 <- readxl::read_xlsx("PTAB/Levy Adjustment 2021 for PA 102-0519 CORRECTED.xlsx") |>
   mutate(year = 2021) |>
@@ -255,16 +258,23 @@ _Note: the variables are named "recouped" in these files which is very confusing
 
 ```{r}
 # year = Tax Year. Date in file name is from agency creation of file or reception of file date.
-refund2021 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 221116.xlsx") |>
-  mutate(year = 2021)
 
-refund2022 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 231129 orig from TR.xlsx") |>
+refund2020 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - vf2 as received from CCTO 2022-03-23.xlsx")|>
+  mutate(year = 2021) |>
+  select(-Total)
+
+refund2021 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 221116.xlsx") |>
   mutate(year = 2022)
 
-refund2023 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 241115 orig from TR.xlsx") |>
+# refund data for Nov 1 2022 to Oct 31 2023. These refund would be added to the levy for tax year 2023?
+refund2022 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 231129 orig from TR.xlsx") |>
   mutate(year = 2023)
 
-refund_all <- rbind(refund2021, refund2022, refund2023) |>
+# refund data for Nov 1 2023 through Oct 31 2024. These refunds would be added to the levy for tax year 2025?
+refund2023 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 241115 orig from TR.xlsx") |>
+  mutate(year = 2024)
+
+refund_all <- rbind(refund2020, refund2021, refund2022, refund2023) |>
   rename(agency_number = `Agency Number`,
          agency_name = `Agency Name`,
          refunded_sp_ptab = `SP/PTAB Recouped`,  # recouped is confusing variable name, so renamed to refunds
