@@ -483,33 +483,13 @@ final_df <- left_join(adjust_recap_all, agency_fund408_sums|> filter(year>2020) 
     levy_adjustment = ifelse(is.na(levy_adjustment), 0, levy_adjustment),
     recap_levyshare = ifelse(is.na(recap_levyshare), 0, recap_levyshare)
     )
-# 
-# final_df <- final_df   |>
-#   mutate(
-#     # MVH QUESTIONS IF THIS IS A GOOD IDEA
-#     ptab_refund = ifelse(is.na(ptab_refund), ptab_recap,
-#                                 ptab_refund),
-#     coe_refund = ifelse(is.na(coe_refund), coe_recap,
-#                                coe_refund),
-#     total_refund = ptab_refund + coe_refund,
-#     
-#     levy_adjustment= ifelse(is.na(levy_adjustment), 0, levy_adjustment)) |>
-#   left_join(agency_names, 
-#             by = "agency_num",
-#             copy = TRUE) |>
-
-
-#   # THIS IS A BRAND NEW MUTATE MVH 4/17
-# No agencies were eligible for recapture before 2021, so maybe leaving them as NA makes the most sense?
-#   mutate(adjust_eligible = ifelse(is.na(adjust_eligible), "Not Eligible", adjust_eligible))
 
 # Select only relevant, non-redundant variables
 
 final_df_temp <- final_df |>
   select(year, 
          agency_num, 
-        # agency_name = agency_name.x,
-         #major_type = major_type.x,
+         agency_name,
          minor_type,
          adjust_eligible,
          levy,
@@ -534,7 +514,7 @@ df <- final_df_temp
 
 df |>
   mutate(diff = abs(fund408 - levy_adjustment)) |>
-  arrange(desc(diff) ) |>
+  arrange(agency_name, desc(diff) ) |>
   select(agency_name, diff, fund408, levy_adjustment, year) 
 
 
@@ -579,10 +559,10 @@ df |>
 ```{r}
 
 df |>
- # filter(between(year, 2021, 2024)) |>
+  filter(between(year, 2021, 2023)) |>
   mutate(year = as.integer(year)) |>
   group_by(year, adjust_eligible) |>
-  reframe(sum_levy = sum(levy)) |>
+  reframe(sum_levy = sum(levy, na.rm=TRUE)) |>
   ggplot(aes(x = year, y = sum_levy, color = adjust_eligible)) +
     geom_line() +
     theme_classic()
@@ -592,7 +572,7 @@ df |>
 ```{r}
 
 df |>
- # filter(between(year, 2021, 2023)) |>
+  filter(between(year, 2021, 2023)) |>
   mutate(year = as.integer(year)) |>
   group_by(year, adjust_eligible) |>
   reframe(sum_levy = sum(levy, na.rm = T), n = n()) |>
@@ -602,6 +582,7 @@ df |>
   labs(title = "Average (Mean) Levy")
 
 ```
+
 ```{r}
 
 df |>
