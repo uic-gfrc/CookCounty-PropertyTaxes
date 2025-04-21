@@ -652,17 +652,32 @@ df |>
   pivot_wider(names_from = adjust_eligible, values_from = n)
 ```
 
+```{r}
+df |>
+  filter(minor_type %in% c("PARK", "LIBRARY", "ELEMENTARY") & 
+           final_levy>0) |>
+  group_by(year, minor_type, adjust_eligible ) |>
+  summarize(n = n()) |>
+  ggplot() +
+  geom_col(aes(x = year, y = n,, fill = minor_type), position = "dodge") +
+  theme_classic() +
+  facet_wrap(~adjust_eligible) +
+  labs(title  = "Number of Agencies Eligible for Recapture by Minor Type")
+
+
+```
 
 ```{r}
 df |>
-  filter(#minor_type %in% c("PARK", "LIBRARY", "ELEMENTARY") & 
-           final_levy>0) |>
+  filter(final_levy>0) |>
   group_by(year, major_type, adjust_eligible ) |>
   summarize(n = n()) |>
   ggplot() +
   geom_col(aes(x = year, y = n,, fill = major_type), position = "dodge") +
   theme_classic() +
-  facet_wrap(~adjust_eligible)
+  facet_wrap(~adjust_eligible) +
+    labs(title  = "Number of Agencies Eligible for Recapture by Major Type")
+
 
 
 ```
