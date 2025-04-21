@@ -484,12 +484,17 @@ We want to get the values for all agencies.
 
 ```{r}
 # agency_fund408_sums had all years in ptaxsim. Filter to just 2021-2023 for now?
-final_df <- left_join(adjust_recap_all, agency_fund408_sums|> filter(year>2020), by = c("agency_number" = "agency_num", "year") ) |>
-    mutate(
-   # adjust_eligible = ifelse(home_rule_ind == 1, "Not Eligible", adjust_eligible),
-   # levy_adjustment = ifelse(is.na(levy_adjustment), 0, levy_adjustment),
+final_df <- left_join(adjust_recap_all, agency_fund408_sums|> 
+                        filter(year>2020), by = c("agency_number" = "agency_num", "year") ) |>
+  mutate(
+    adjust_eligible = ifelse(home_rule_ind == 1 & is.na(adjust_eligible), 
+                             "Not Eligible",
+                            ifelse(home_rule_ind == 0 & is.na(adjust_eligible), 
+                                   "Eligible", adjust_eligible)
+                            )
+    # levy_adjustment = ifelse(is.na(levy_adjustment), 0, levy_adjustment),
     #recap_levyshare = ifelse(is.na(recap_levyshare), 0, recap_levyshare)
-    )
+  )
 
 # Select only relevant, non-redundant variables
 
@@ -564,17 +569,20 @@ _only potential option is use the grouped_labels from past levy project tangent?
 ```{r}
 df |>
   group_by(year, adjust_eligible) |>
+  filter(final_levy>0) |>
   reframe(n = n()) |>
   ggplot(aes(x = year, y = n, fill = adjust_eligible)) +
     geom_col(position = "dodge") +
-    theme_classic()
+    theme_classic() +
+  labs(title = "Taxing agencies & the Recapture Provision", x="", y = "", fill = "",
+       caption = "Only includes agencies with levies > 0")
 
 ```
 
 ```{r}
 
 df |>
-#  filter(between(year, 2021, 2023)) |>
+  filter(final_levy>0) |>
   mutate(year = as.integer(year)) |>
   group_by(year, adjust_eligible) |>
   reframe(sum_levy = sum(levy, na.rm=TRUE)) |>
@@ -588,6 +596,8 @@ df |>
 
 df |>
   filter(between(year, 2021, 2023)) |>
+    filter(final_levy>0) |>
+
   mutate(year = as.integer(year)) |>
   group_by(year, adjust_eligible) |>
   reframe(sum_levy = sum(levy, na.rm = T), n = n()) |>
@@ -601,7 +611,7 @@ df |>
 ```{r}
 
 df |>
-  #filter(between(year, 2021, 2023)) |>
+  filter(final_levy>0) |>
   mutate(year = as.integer(year)) |>
   group_by(year, adjust_eligible) |>
   reframe(sum_refund = sum(abs(total_refund), na.rm = T), n = n()) |>
@@ -615,6 +625,8 @@ df |>
 ```{r}
 
 df |>
+    filter(final_levy>0) |>
+
   group_by(year, adjust_eligible) |>
   summarize(perc_levy_ref = sum(abs(total_refund), na.rm = T)/sum(levy, na.rm = T)) |>
   ggplot(aes(x = year, y = perc_levy_ref, color = adjust_eligible)) +
@@ -627,6 +639,8 @@ df |>
 
 
 ## Who is Eligible but Not Recouping Their Full Amount?
+
+> Barrington and Matteson became homerule by vote in Nov. 2022. They were not eligible for recapture funds as of the 2022 levy. Can be seen in the agency_info table within ptaxsim and in Notes column of 2022 Adjustment excel file. 
 
 ```{r}
 eligible <- df |> filter(adjust_eligible == "Eligible") |>
