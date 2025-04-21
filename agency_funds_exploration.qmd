@@ -543,7 +543,7 @@ write_csv(df,  "levy_refunds_recoupments_by_agency_2021-2024.csv")
 
 # I FILTER TO 2021 - 2023 BECAUSE SOMETHING IS WRONG!!!! HALP HALP HALP
 
-df_time <- df |>
+df_all <- df |>
   filter(between(year, 2021, 2023))
 
 df |>
@@ -589,7 +589,7 @@ df |>
   #filter(between(year, 2021, 2023)) |>
   mutate(year = as.integer(year)) |>
   group_by(year, adjust_eligible) |>
-  reframe(sum_refund = sum(total_refund, na.rm = T), n = n()) |>
+  reframe(sum_refund = sum(abs(total_refund), na.rm = T), n = n()) |>
   ggplot(aes(x = year, y = sum_refund, color = adjust_eligible)) +
     geom_line() +
     theme_classic() +
@@ -600,30 +600,42 @@ df |>
 ```{r}
 
 df |>
-#  filter(between(year, 2021, 2023)) |>
-  mutate(year = as.integer(year)) |>
-  group_by(year) |>
-  reframe(sum_refund = sum(total_refund, na.rm = T), n = n()) |>
-  ggplot(aes(x = year, y = sum_refund)) +
-    geom_line() +
-    theme_classic() +
-  labs(title = "Total Refunds")
+  group_by(year, adjust_eligible) |>
+  reframe(year, adjust_eligible, perc_levy_ref = sum(abs(total_refund), na.rm = T)/sum(levy, na.rm = T)) |>
+  ggplot(aes(x = year, y = perc_levy_ref), color = adjust_eligible) +
+  geom_line() +
+  theme_classic()
 
 
 ```
+
+
 
 ## Who is Eligible but Not Recouping Their Full Amount?
 
 
 
-## Discontinuity at Start of Recapture Program
+
+
+## Refunds and Recapture by Minor Class
+
 
 ```{r}
 
 df |>
-  group_by(year) |>
-  summarize(sum(total_refund, na.rm = T))
+  filter(year == 2021) |>
+  group_by(minor_type, adjust_eligible) |>
+  summarize(n = n()) |>
+  arrange(desc(n))
+
+df |>
+  filter(minor_type %in% c("PARK", "LIBRARY", "ELEMENTARY")) |>
+  group_by(minor_type, adjust_eligible, year) |>
+  reframe(n = n()) |>
+  ggplot(aes(x = c("year", "minor_type"), y = n, fill = adjust_eligible)) +
+  geom_col() +
+  theme_classic()
+  
+
+
 ```
-
-## Refunds and Recapture by Minor Class
-
