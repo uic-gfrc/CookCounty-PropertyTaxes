@@ -162,7 +162,7 @@ For example, Levy Adjustment 2021 shows the amount that was refunded in 2020.
 All observations' `aggregate_refund` amounts equal their `levy_adjustment` values. 
 
 ```{r}
-#| tbl-cap: "`adjust_all` has all levy adjustments from the new recapture legislation since 2021."
+#| tbl-cap: "`adjust_all` has all levy adjustments from the new recapture legislation since 2021. Variables labeled with `refund` represent the amount that was recaptured due to refunds for eligible taxing agencies"
 
 
 # year = Tax Year. Date in file name is from agency creation of file or reception of file date.
@@ -235,9 +235,9 @@ adjust_all <- rbind(adjust2021, adjust2022, adjust2023, adjust2024
   mutate(levy_adjustment = as.numeric(levy_adjustment)) |>
   mutate(across(.cols=c(lastyear_levy:levy_adjustment), round, digits = 0)) |>
   # exclude the rows that had Totals in them (using their missing agency numbers)
-  filter(!is.na(agency_number) &
-           ((total_ptab_refunds!=0 & !is.na(total_ptab_refunds)) | # keep observations that had non missing and non-zero values for the refund variables.
-               ( total_coe_refunds!=0 & !is.na(total_coe_refunds)))
+  filter(!is.na(agency_number) # &
+           # ((total_ptab_refunds!=0 & !is.na(total_ptab_refunds)) | # keep observations that had non missing and non-zero values for the refund variables.
+           #     ( total_coe_refunds!=0 & !is.na(total_coe_refunds)))
          ) |>
   mutate(recap_levyshare = levy_adjustment/lastyear_levy,
         #  adjustment_check = aggregate_refunds + levy_adjustment   # all zeros: they are the same value for all observatoins
@@ -286,9 +286,10 @@ refund_all <- rbind(refund2021, refund2022, refund2023, refund2024) |>
   mutate(across(where(is.numeric), round, digits =0)) |>
   
   # keep observations with non-missing variables
-  filter(!is.na(agency_number) &
-           ((refunded_sp_ptab!=0 & !is.na(refunded_sp_ptab)) | 
-               (refunded_coe!=0 & !is.na(refunded_coe)))) |>
+  filter(!is.na(agency_number) #&
+           # ((refunded_sp_ptab!=0 & !is.na(refunded_sp_ptab)) | 
+           #     (refunded_coe!=0 & !is.na(refunded_coe)))
+         ) |>
   mutate(total_refunds = refunded_sp_ptab + refunded_coe)
 
 refund_all
@@ -343,7 +344,7 @@ levyshare_byagency |> filter(year == 2023)
 
 
 
-# Data Concanation
+# Combine data sources
 
 ```{r}
 
@@ -452,7 +453,7 @@ adjust_recap_all <- adjust_recap_all |>
 adjust_recap_all <- adjust_recap_all |>
 
 # After discussion, we decided variables from the "Levy Adjustment" file referencing refunds were
-# ACTUALLY the value of fund 408 added to the levy value, not actual refunds.
+# ACTUALLY the value of refunds that were recaptured and added to the levy value, not actual refunds amounts
 # 
 # Thus, relevant variables from the Levy Adjustment files are getting renamed with "recap".
 
@@ -477,7 +478,7 @@ We want to get the values for all agencies.
 
 ```{r}
 # agency_fund408_sums had all years in ptaxsim. Filter to just 2021-2023 for now?
-final_df <- left_join(adjust_recap_all, agency_fund408_sums|> filter(year>2020) ) |>
+final_df <- left_join(adjust_recap_all, agency_fund408_sums|> filter(year>2020), by = c("agency_number" = "agency_num", "year") ) |>
     mutate(
     adjust_eligible = ifelse(is.na(adjust_eligible), "Not Eligible", adjust_eligible),
     levy_adjustment = ifelse(is.na(levy_adjustment), 0, levy_adjustment),
@@ -488,8 +489,8 @@ final_df <- left_join(adjust_recap_all, agency_fund408_sums|> filter(year>2020) 
 
 final_df_temp <- final_df |>
   select(year, 
-         agency_num, 
-         agency_name,
+         agency_number, 
+         agency_name = agency_name.x,
          minor_type,
          adjust_eligible,
          levy,
@@ -512,10 +513,18 @@ df_final_variables
 
 df <- final_df_temp
 
-df |>
-  mutate(diff = abs(fund408 - levy_adjustment)) |>
-  arrange(agency_name, desc(diff) ) |>
+df |> 
+  filter(year !=2024) |> # since ptaxsim database doesn't have fund 408 values for that tax year yet.
+  
+  # difference between ptaxsim fund 408 recaptured levy amounts and levy adjustment/recaptured amounts from excel files received from Clerk's/treasurer's office
+  mutate(
+    fund408 = ifelse(is.na(fund408), 0, fund408),
+    diff = abs(fund408 - levy_adjustment),
+         ) |>
+  
+  arrange(desc(diff) ) |>
   select(agency_name, diff, fund408, levy_adjustment, year) 
+
 
 
 
@@ -531,11 +540,15 @@ write_csv(df,  "levy_refunds_recoupments_by_agency_2021-2024.csv")
 
 # Data Exploration
 
-```{r}
+```{r include = FALSE}
 
 #df <- read_csv("levy_refunds_recoupments_by_agency.csv")
 
 ```
+
+## Aggregation to some Composite increase?
+
+
 
 ## Descriptive Statistics: Eligible vs. Ineligible
 
@@ -613,7 +626,27 @@ df |>
 
 ## Who is Eligible but Not Recouping Their Full Amount?
 
+```{r}
+eligible <- df |> filter(adjust_eligible == "Eligible") |>
+    mutate(
+    fund408 = ifelse(is.na(fund408), 0, fund408),
+    diff = abs(fund408 - levy_adjustment)
+         )
 
+not_eligible <- df |> filter(adjust_eligible == "Not Eligible") |>
+    mutate(
+    fund408 = ifelse(is.na(fund408), 0, fund408),
+    diff = abs(fund408 - levy_adjustment)
+         )
+
+eligible |> filter(levy_adjustment==0 | is.na(levy_adjustment))
+
+
+
+
+#non eligible agencies should not have adjustment values or fund408 values
+not_eligible |> filter(levy_adjustment!=0 | fund408!=0)
+```
 
 
 
@@ -628,14 +661,15 @@ df |>
   summarize(n = n()) |>
   arrange(desc(n))
 
-df |>
-  filter(minor_type %in% c("PARK", "LIBRARY", "ELEMENTARY")) |>
-  group_by(minor_type, adjust_eligible, year) |>
-  reframe(n = n()) |>
-  ggplot(aes(x = c("year", "minor_type"), y = n, fill = adjust_eligible)) +
-  geom_col() +
-  theme_classic()
-  
 
+# 
+# df |>
+#   filter(minor_type %in% c("PARK", "LIBRARY", "ELEMENTARY")) |>
+#   group_by(minor_type, adjust_eligible, year) |>
+#   reframe(n = n()) |>
+#   ggplot(aes(x = c("year", "minor_type"), y = n, fill = adjust_eligible)) +
+#   geom_col() +
+#   theme_classic()
+  
 
 ```
