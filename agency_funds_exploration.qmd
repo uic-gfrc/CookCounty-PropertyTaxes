@@ -443,9 +443,9 @@ adjust_recap_all <- full_join(
 
 adjust_recap_all <- adjust_recap_all |>
   mutate(
-    adjust_eligible = ifelse(is.na(adjust_eligible), "Not Eligible", adjust_eligible),
-    levy_adjustment = ifelse(is.na(levy_adjustment), 0, levy_adjustment),
-    recap_levyshare = ifelse(is.na(recap_levyshare), 0, recap_levyshare)
+    # adjust_eligible = ifelse(is.na(adjust_eligible), "Not Eligible", adjust_eligible),
+    # levy_adjustment = ifelse(is.na(levy_adjustment), 0, levy_adjustment),
+    # recap_levyshare = ifelse(is.na(recap_levyshare), 0, recap_levyshare)
     ) #|>filter(year != 2024)
 
 # Let's rename those misleading original variable names!!!
@@ -453,18 +453,24 @@ adjust_recap_all <- adjust_recap_all |>
 adjust_recap_all <- adjust_recap_all |>
 
 # After discussion, we decided variables from the "Levy Adjustment" file referencing refunds were
-# ACTUALLY the value of refunds that were recaptured and added to the levy value, not actual refunds amounts
+# ACTUALLY the value of refunds that were recaptured and added to the levy value. adjustment files do not have refund information for non-eligible agencies.
 # 
 # Thus, relevant variables from the Levy Adjustment files are getting renamed with "recap".
 
   rename(
+    # only agencies eligible for recapture provisions will have values for these variables:
     ptab_recap = total_ptab_refunds,
          coe_recap = total_coe_refunds,
          total_recap = aggregate_refunds,
+    
 # We should also rename the refund values to match the syntax
+# any agency that paid refunds during the previous tax year will have values for these variables:
          ptab_refund = refunded_sp_ptab,
          coe_refund = refunded_coe,
-         total_refund = total_refunds)
+         total_refund = total_refunds) |>
+  
+  # reorder so key variables are visible right away and next to each other:
+  select(year, agency_number, agency_name, total_recap, total_refund, levy_adjustment, adjust_eligible, everything())
 
 
 adjust_recap_all
@@ -480,9 +486,9 @@ We want to get the values for all agencies.
 # agency_fund408_sums had all years in ptaxsim. Filter to just 2021-2023 for now?
 final_df <- left_join(adjust_recap_all, agency_fund408_sums|> filter(year>2020), by = c("agency_number" = "agency_num", "year") ) |>
     mutate(
-    adjust_eligible = ifelse(is.na(adjust_eligible), "Not Eligible", adjust_eligible),
-    levy_adjustment = ifelse(is.na(levy_adjustment), 0, levy_adjustment),
-    recap_levyshare = ifelse(is.na(recap_levyshare), 0, recap_levyshare)
+   # adjust_eligible = ifelse(home_rule_ind == 1, "Not Eligible", adjust_eligible),
+   # levy_adjustment = ifelse(is.na(levy_adjustment), 0, levy_adjustment),
+    #recap_levyshare = ifelse(is.na(recap_levyshare), 0, recap_levyshare)
     )
 
 # Select only relevant, non-redundant variables
@@ -491,8 +497,11 @@ final_df_temp <- final_df |>
   select(year, 
          agency_number, 
          agency_name = agency_name.x,
-         minor_type,
+         fund408,
+         recap_levyshare,
          adjust_eligible,
+         home_rule_ind,
+         minor_type,
          levy,
          final_levy,
          final_rate,
@@ -502,9 +511,8 @@ final_df_temp <- final_df |>
          total_recap,
          ptab_recap,
          coe_recap,
-         fund408,
          levy_adjustment,
-         recap_levyshare)
+         )
 
 df_final_variables <- final_df_temp |>
   names()
@@ -522,8 +530,8 @@ df |>
     diff = abs(fund408 - levy_adjustment),
          ) |>
   
-  arrange(desc(diff) ) |>
-  select(agency_name, diff, fund408, levy_adjustment, year) 
+  arrange(desc(diff), agency_name ) |>
+  select(year, agency_name, diff, fund408, levy_adjustment, total_refund, total_recap) 
 
 
 
@@ -548,19 +556,13 @@ write_csv(df,  "levy_refunds_recoupments_by_agency_2021-2024.csv")
 
 ## Aggregation to some Composite increase?
 
+_only potential option is use the grouped_labels from past levy project tangent?_
 
 
 ## Descriptive Statistics: Eligible vs. Ineligible
 
 ```{r}
-
-# I FILTER TO 2021 - 2023 BECAUSE SOMETHING IS WRONG!!!! HALP HALP HALP
-
-df_all <- df |>
-  filter(between(year, 2021, 2023))
-
 df |>
- # filter(between(year, 2021, 2023)) |>
   group_by(year, adjust_eligible) |>
   reframe(n = n()) |>
   ggplot(aes(x = year, y = n, fill = adjust_eligible)) +
@@ -572,7 +574,7 @@ df |>
 ```{r}
 
 df |>
-  filter(between(year, 2021, 2023)) |>
+#  filter(between(year, 2021, 2023)) |>
   mutate(year = as.integer(year)) |>
   group_by(year, adjust_eligible) |>
   reframe(sum_levy = sum(levy, na.rm=TRUE)) |>
