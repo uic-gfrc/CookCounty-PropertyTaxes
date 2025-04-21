@@ -19,6 +19,11 @@ library(tidyverse)
 library(ptaxsim)
 library(DBI)
 library(data.table)
+
+is.integer64 <- function(x){
+  class(x)=="integer64"
+}
+
 ```
 
 # Data Collection
@@ -30,13 +35,6 @@ library(data.table)
 
 ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(),
   "./ptaxsim.db/ptaxsim-2023.0.0.db")
-
-taxcodes <- DBI::dbGetQuery(
-  ptaxsim_db_conn,
-  "SELECT *
-  FROM tax_code
-  "
-  )
 
 agency_info <- DBI::dbGetQuery(
   ptaxsim_db_conn,
@@ -69,13 +67,10 @@ agency_fund_info <- DBI::dbGetQuery(
   )
 
 agency_funds <- left_join(agency_fund, agency_fund_info)
+agency_funds <- agency_funds %>%
+  mutate_if(is.integer64, as.integer)
 
 agency_funds <- left_join(agency_funds, agency_names)
-
-is.integer64 <- function(x){
-  class(x)=="integer64"
-}
-
 agency_funds <- agency_funds %>%
   mutate_if(is.integer64, as.integer)
 
@@ -142,11 +137,7 @@ agency_fund408_sums <- left_join(agency_fund408_sums, agency_info, by = c("year"
 ```
 
 ```{r}
-#agency_funds <- read_csv("agency_funds.csv")
-
-#agency_funds <- agency_funds |> filter(year > 2020)
 agency_fund408_sums
-
 ```
 
 
@@ -165,9 +156,8 @@ All observations' `aggregate_refund` amounts equal their `levy_adjustment` value
 #| tbl-cap: "`adjust_all` has all levy adjustments from the new recapture legislation since 2021. Variables labeled with `refund` represent the amount that was recaptured due to refunds for eligible taxing agencies"
 
 
-# year = Tax Year. Date in file name is from agency creation of file or reception of file date.
 adjust2021 <- readxl::read_xlsx("PTAB/Levy Adjustment 2021 for PA 102-0519 CORRECTED.xlsx") |>
-  mutate(year = 2021) |>
+  mutate(year = 2021) |>    # year = Tax Year
   select(year, 
          agency_number = Agency,
          agency_name = `Agency Name`,
@@ -175,14 +165,9 @@ adjust2021 <- readxl::read_xlsx("PTAB/Levy Adjustment 2021 for PA 102-0519 CORRE
          lastyear_rate = `2020 Rate`,
          lastyear_levy = `2020 Total Tax`,
          total_ptab_refunds = `Total SPO/PTAB Refunds\r\nCORRECTED\r\n(Mar 23, 2022)`,
-          # `Total SPO/PTAB Refunds CORRECTED (Mar 23, 2022)`,
          total_coe_refunds = `Total Certificate of Error Refunds\r\nCORRECTED\r\n(Mar 23, 2022)`,
-           #`Total Certificate of Error Refunds CORRECTED (Mar 23, 2022)`,
          aggregate_refunds = `Aggregate Refunds\r\nCORRECTED\r\n(Mar 23, 2022)`,
-           #`Aggregate Refunds CORRECTED (Mar 23, 2022)`,
          levy_adjustment = `2021 Prior Year Levy Adjustment CORRECTED\r\n(Mar 23, 2022)`
-           #`2021 Prior Year Levy Adjustment CORRECTED (Mar 23, 2022`
-         
          ) 
   
 
@@ -228,19 +213,14 @@ adjust2024 <- readxl::read_xlsx("PTAB/Levy Adjustment 2024 for PA 102-0519.xlsx"
          levy_adjustment = `2024 Prior Year Levy Adjustment\r\n(Fund 408)`
          )
 
-# We don't need to include 2024
 
-adjust_all <- rbind(adjust2021, adjust2022, adjust2023, adjust2024
-                    ) |>
+adjust_all <- rbind(adjust2021, adjust2022, adjust2023, adjust2024) |>
   mutate(levy_adjustment = as.numeric(levy_adjustment)) |>
   mutate(across(.cols=c(lastyear_levy:levy_adjustment), round, digits = 0)) |>
+  
   # exclude the rows that had Totals in them (using their missing agency numbers)
-  filter(!is.na(agency_number) # &
-           # ((total_ptab_refunds!=0 & !is.na(total_ptab_refunds)) | # keep observations that had non missing and non-zero values for the refund variables.
-           #     ( total_coe_refunds!=0 & !is.na(total_coe_refunds)))
-         ) |>
-  mutate(recap_levyshare = levy_adjustment/lastyear_levy,
-        #  adjustment_check = aggregate_refunds + levy_adjustment   # all zeros: they are the same value for all observatoins
+  filter(!is.na(agency_number)) |>
+  mutate(recap_levyshare = levy_adjustment/lastyear_levy
          ) 
 
 
@@ -274,7 +254,7 @@ refund2022 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 221116.xls
 refund2023 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 231129 orig from TR.xlsx") |>
   mutate(year = 2023)
 
-# refund data for Nov 1 2023 through Oct 31 2024. These refunds would be added to the levy for tax year 2025?
+# refund data for Nov 1 2023 through Oct 31 2024. These refunds would be added to the levy for tax year 2024?
 refund2024 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 241115 orig from TR.xlsx") |>
   mutate(year = 2024)
 
@@ -286,14 +266,14 @@ refund_all <- rbind(refund2021, refund2022, refund2023, refund2024) |>
   mutate(across(where(is.numeric), round, digits =0)) |>
   
   # keep observations with non-missing variables
-  filter(!is.na(agency_number) #&
-           # ((refunded_sp_ptab!=0 & !is.na(refunded_sp_ptab)) | 
-           #     (refunded_coe!=0 & !is.na(refunded_coe)))
-         ) |>
+  filter(!is.na(agency_number)) |>
   mutate(total_refunds = refunded_sp_ptab + refunded_coe)
 
 refund_all
+```
 
+
+```{r}
 write_csv(adjust_all, "output/adjust_all.csv")
 
 write_csv(refund_all, "output/refunds_all.csv")
@@ -433,8 +413,6 @@ recap_all_filtered <- recap_all |>
 ```
 
 ```{r}
-
-
 adjust_recap_all <- full_join(
   refund_all, adjust_all,
   by = c("year", "agency_number", "agency_name")
@@ -443,10 +421,7 @@ adjust_recap_all <- full_join(
 
 adjust_recap_all <- adjust_recap_all |>
   mutate(
-    # adjust_eligible = ifelse(is.na(adjust_eligible), "Not Eligible", adjust_eligible),
-    # levy_adjustment = ifelse(is.na(levy_adjustment), 0, levy_adjustment),
-    # recap_levyshare = ifelse(is.na(recap_levyshare), 0, recap_levyshare)
-    ) #|>filter(year != 2024)
+    ) 
 
 # Let's rename those misleading original variable names!!!
 
@@ -483,7 +458,7 @@ At this point, we have the data for all Eligible taxing agencies, but missing va
 We want to get the values for all agencies. 
 
 ```{r}
-# agency_fund408_sums had all years in ptaxsim. Filter to just 2021-2023 for now?
+# agency_fund408_sumshas all levies for all years, but fund 408 only began being used in 2021. Filter to just 2021-2023 for now before joining to the adjust_recap_all data object
 final_df <- left_join(adjust_recap_all, agency_fund408_sums|> 
                         filter(year>2020), by = c("agency_number" = "agency_num", "year") ) |>
   mutate(
@@ -506,6 +481,7 @@ final_df_temp <- final_df |>
          recap_levyshare,
          adjust_eligible,
          home_rule_ind,
+         major_type,
          minor_type,
          levy,
          final_levy,
@@ -523,7 +499,10 @@ df_final_variables <- final_df_temp |>
   names()
 
 df_final_variables
+```
 
+
+```{r}
 df <- final_df_temp
 
 df |> 
@@ -537,11 +516,6 @@ df |>
   
   arrange(desc(diff), agency_name ) |>
   select(year, agency_name, diff, fund408, levy_adjustment, total_refund, total_recap) 
-
-
-
-
-#write_csv(df, "levy_refunds_recoupments_by_agency_2006-2023.csv")
 
 write_csv(df |>
             filter(between(year, 2021, 2023)), 
@@ -649,44 +623,46 @@ eligible <- df |> filter(adjust_eligible == "Eligible") |>
     diff = abs(fund408 - levy_adjustment)
          )
 
+eligible |> filter(levy_adjustment==0 | is.na(levy_adjustment))
+
+```
+
+```{r}
+
 not_eligible <- df |> filter(adjust_eligible == "Not Eligible") |>
     mutate(
     fund408 = ifelse(is.na(fund408), 0, fund408),
     diff = abs(fund408 - levy_adjustment)
          )
 
-eligible |> filter(levy_adjustment==0 | is.na(levy_adjustment))
-
-
-
-
 #non eligible agencies should not have adjustment values or fund408 values
 not_eligible |> filter(levy_adjustment!=0 | fund408!=0)
 ```
-
 
 
 ## Refunds and Recapture by Minor Class
 
 
 ```{r}
-
 df |>
-  filter(year == 2021) |>
+  filter(year == 2021 & final_levy > 0 ) |>
   group_by(minor_type, adjust_eligible) |>
   summarize(n = n()) |>
   arrange(desc(n)) |> 
   pivot_wider(names_from = adjust_eligible, values_from = n)
+```
 
 
-# 
-# df |>
-#   filter(minor_type %in% c("PARK", "LIBRARY", "ELEMENTARY")) |>
-#   group_by(minor_type, adjust_eligible, year) |>
-#   reframe(n = n()) |>
-#   ggplot(aes(x = c("year", "minor_type"), y = n, fill = adjust_eligible)) +
-#   geom_col() +
-#   theme_classic()
-  
+```{r}
+df |>
+  filter(#minor_type %in% c("PARK", "LIBRARY", "ELEMENTARY") & 
+           final_levy>0) |>
+  group_by(year, major_type, adjust_eligible ) |>
+  summarize(n = n()) |>
+  ggplot() +
+  geom_col(aes(x = year, y = n,, fill = major_type), position = "dodge") +
+  theme_classic() +
+  facet_wrap(~adjust_eligible)
+
 
 ```
