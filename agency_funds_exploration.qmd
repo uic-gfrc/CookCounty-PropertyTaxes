@@ -458,7 +458,7 @@ At this point, we have the data for all Eligible taxing agencies, but missing va
 We want to get the values for all agencies. 
 
 ```{r}
-# agency_fund408_sumshas all levies for all years, but fund 408 only began being used in 2021. Filter to just 2021-2023 for now before joining to the adjust_recap_all data object
+# agency_fund408_sums has all levies for all years, but fund 408 only began being used in 2021. Filter to just 2021-2023 for now before joining to the adjust_recap_all data object
 final_df <- left_join(adjust_recap_all, agency_fund408_sums|> 
                         filter(year>2020), by = c("agency_number" = "agency_num", "year") ) |>
   mutate(
@@ -506,16 +506,22 @@ df_final_variables
 df <- final_df_temp
 
 df |> 
-  filter(year !=2024) |> # since ptaxsim database doesn't have fund 408 values for that tax year yet.
+  filter(year !=2024 & year > 2020) |> # since ptaxsim database doesn't have fund 408 values for that tax year yet.
   
   # difference between ptaxsim fund 408 recaptured levy amounts and levy adjustment/recaptured amounts from excel files received from Clerk's/treasurer's office
   mutate(
     fund408 = ifelse(is.na(fund408), 0, fund408),
-    diff = abs(fund408 - levy_adjustment),
+    diff = abs(fund408 - levy_adjustment),    # difference between ptaxsim recapture data and levy adjustment files recapture data
          ) |>
   
   arrange(desc(diff), agency_name ) |>
-  select(year, agency_name, diff, fund408, levy_adjustment, total_refund, total_recap) 
+  select(year, agency_name, diff, fund408, levy_adjustment, total_refund, total_recap)
+```
+
+
+```{r}
+#| eval: false
+
 
 write_csv(df |>
             filter(between(year, 2021, 2023)), 
@@ -678,6 +684,33 @@ df |>
   facet_wrap(~adjust_eligible) +
     labs(title  = "Number of Agencies Eligible for Recapture by Major Type")
 
-
-
 ```
+
+# Recapture Ratios - Merriman's graph request
+
+Distribution of ratios:
+
+2022/2021 is one observation,
+2023/2022 is another observation,
+ 
+Stacked line graph of summed non408 fund tax rates and 408 fund tax rates from ptaxsim agency-fund level data.
+
+408 fund tax rate / summed(non-408 fund tax rates)
+
+Add line for average or median that is darker 
+
+maybe a case study for "worst case scenario" agencies with large tax rate increase from fund 408?
+ 
+```{r}
+df |> 
+  filter(year !=2024 & year > 2020) |> # since ptaxsim database doesn't have fund 408 values for that tax year yet.
+  
+  # difference between ptaxsim fund 408 recaptured levy amounts and levy adjustment/recaptured amounts from excel files received from Clerk's/treasurer's office
+  group_by(agency_number) |>
+  mutate(
+    ratio = fund408 / lag(fund408)) |> 
+  ggplot() +
+  #geom_point(aes(x=year, y = ratio, color = major_type, alpha = .5) +
+  geom_jitter(aes(x=year, y = ratio, color = major_type, alpha = .5)) 
+```
+
