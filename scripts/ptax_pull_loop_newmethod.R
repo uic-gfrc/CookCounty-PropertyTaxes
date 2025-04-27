@@ -180,7 +180,7 @@ for(i in years){
     
     mutate(# zero_bill = ifelse(eav <= all_exemptions, 1, 0),  ## old way of creating zero bill but has missing vet exemptions data problem
       has_HO_exemp = ifelse(exe_homeowner > 0, 1, 0),
-      has_SF_exemp = ifelse(exe_senior > 0, 1, 0),
+      has_SR_exemp = ifelse(exe_senior > 0, 1, 0),
       has_FR_exemp = ifelse(exe_freeze > 0, 1, 0),
       has_LTHO_exemp = ifelse(exe_longtime_homeowner > 0, 1, 0),
       has_DI_exemp = ifelse(exe_disabled > 0, 1, 0),
@@ -338,11 +338,15 @@ for(i in years){
       cty_taxed_eav_commerc = sum(ifelse(class %in% commercial_classes, taxed_eav, 0), na.rm = TRUE),
       cty_taxed_eav_indust = sum(ifelse(class %in% industrial_classes, taxed_eav, 0), na.rm = TRUE),
       
-      exempt_HO_eav = sum(exe_total_adj,na.rm=TRUE),
+      exempt_allexemptions_eav = sum(exe_total_adj,na.rm=TRUE),
+      exempt_GHE_eav = sum(exe_homeowner, na.rm=TRUE),
+      exempt_SR_eav = sum(exe_senior, na.rm=TRUE),
+      exempt_FR_eav = sum(exe_freeze, na.rm=TRUE),
+      
       total_value_eav = sum(eq_av, na.rm=TRUE),
       untaxable_value_eav = sum(untaxable_value_eav, na.rm=TRUE),
       has_HO_exemp = sum(has_HO_exemp, na.rm=TRUE),
-      has_SF_exemp = sum(has_SF_exemp, na.rm=TRUE),
+      has_SR_exemp = sum(has_SR_exemp, na.rm=TRUE),
       has_FR_exemp = sum(has_FR_exemp, na.rm=TRUE),
       has_LTHO_exemp = sum(has_LTHO_exemp, na.rm=TRUE),
       has_DI_exemp = sum(has_DI_exemp, na.rm=TRUE),
@@ -434,11 +438,15 @@ if(is.data.frame(county_sums)){county_sums <- rbind(county_sums, county_sums2)}e
       cty_mc_taxed_eav_commerc = sum(ifelse(class %in% commercial_classes, taxed_eav, 0), na.rm = TRUE),
       cty_mc_taxed_eav_indust = sum(ifelse(class %in% industrial_classes, taxed_eav, 0), na.rm = TRUE),
       
-      exempt_HO_eav = sum(exe_total_adj,na.rm=TRUE),
+      exempt_allexemptions_eav = sum(exe_total_adj,na.rm=TRUE),
+      exempt_GHE_eav = sum(exe_homeowner, na.rm=TRUE),
+      exempt_SR_eav = sum(exe_senior, na.rm=TRUE),
+      exempt_FR_eav = sum(exe_freeze, na.rm=TRUE),
+      
       total_value_eav = sum(eq_av, na.rm=TRUE),
       untaxable_value_eav = sum(untaxable_value_eav, na.rm=TRUE),
       has_HO_exemp = sum(has_HO_exemp, na.rm=TRUE),
-      has_SF_exemp = sum(has_SF_exemp, na.rm=TRUE),
+      has_SR_exemp = sum(has_SR_exemp, na.rm=TRUE),
       has_FR_exemp = sum(has_FR_exemp, na.rm=TRUE),
       has_LTHO_exemp = sum(has_LTHO_exemp, na.rm=TRUE),
       has_DI_exemp = sum(has_DI_exemp, na.rm=TRUE),
@@ -545,12 +553,16 @@ if(is.data.frame(county_sums)){county_sums <- rbind(county_sums, county_sums2)}e
       muni_eav_taxed_commerc = sum(ifelse(class %in% commercial_classes, taxed_eav, 0), na.rm = TRUE),
       muni_eav_taxed_indust = sum(ifelse(class %in% industrial_classes, taxed_eav, 0), na.rm = TRUE),
 
-      exempt_HO_eav = sum(exe_total_adj,na.rm=TRUE),
+      exempt_allexemptions_eav = sum(exe_total_adj,na.rm=TRUE),
+      exempt_GHE_eav = sum(exe_homeowner, na.rm=TRUE),
+      exempt_SR_eav = sum(exe_senior, na.rm=TRUE),
+      exempt_FR_eav = sum(exe_freeze, na.rm=TRUE),
+      
       total_value_eav = sum(eq_av, na.rm=TRUE),
       untaxable_value_eav = sum(untaxable_value_eav, na.rm=TRUE),
       zero_bills = sum(zero_bill, na.rm=TRUE),
       has_HO_exemp = sum(has_HO_exemp, na.rm=TRUE),
-      has_SF_exemp = sum(has_SF_exemp, na.rm=TRUE),
+      has_SR_exemp = sum(has_SR_exemp, na.rm=TRUE),
       has_FR_exemp = sum(has_FR_exemp, na.rm=TRUE),
       has_LTHO_exemp = sum(has_LTHO_exemp, na.rm=TRUE),
       has_DI_exemp = sum(has_DI_exemp, na.rm=TRUE),
@@ -636,8 +648,14 @@ rm(muni_level_summary2)
     final_tax_to_dist = sum(final_tax_to_dist, na.rm=TRUE),
     final_tax_to_tif = sum(final_tax_to_tif, na.rm=TRUE),
     zero_bills = sum(zero_bill, na.rm=TRUE),
+    
+    exempt_allexemptions_eav = sum(exe_total_adj,na.rm=TRUE),
+    exempt_GHE_eav = sum(exe_homeowner, na.rm=TRUE),
+    exempt_SR_eav = sum(exe_senior, na.rm=TRUE),
+    exempt_FR_eav = sum(exe_freeze, na.rm=TRUE),
+    
     has_HO_exemp = sum(has_HO_exemp, na.rm=TRUE),
-    has_SF_exemp = sum(has_SF_exemp, na.rm=TRUE),
+    has_SR_exemp = sum(has_SR_exemp, na.rm=TRUE),
     has_FR_exemp = sum(has_FR_exemp, na.rm=TRUE),
     has_LTHO_exemp = sum(has_LTHO_exemp, na.rm=TRUE),
     has_DI_exemp = sum(has_DI_exemp, na.rm=TRUE),
@@ -672,7 +690,7 @@ rm(muni_level_summary2)
     #   pins_in_muni = n(),
     #
     #   all_exemptions = sum(all_exemptions, na.rm = TRUE),
-    #
+    #z 
     #   exe_homeowner = sum(exe_homeowner, na.rm=TRUE),
     #   exe_senior = sum(exe_senior, na.rm=TRUE),
     #   exe_freeze = sum(exe_freeze, na.rm=TRUE),
@@ -700,7 +718,7 @@ rm(muni_level_summary2)
     #
     #   zero_bills = sum(zero_bill, na.rm=TRUE),
     #   has_HO_exemp = sum(has_HO_exemp, na.rm=TRUE),
-    #   has_SF_exemp = sum(has_SF_exemp, na.rm=TRUE),
+    #   has_SR_exemp = sum(has_SR_exemp, na.rm=TRUE),
     #   has_FR_exemp = sum(has_FR_exemp, na.rm=TRUE),
     #   has_LTHO_exemp = sum(has_LTHO_exemp, na.rm=TRUE),
     #   has_DI_exemp = sum(has_DI_exemp, na.rm=TRUE),

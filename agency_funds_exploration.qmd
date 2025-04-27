@@ -690,8 +690,10 @@ df |>
 
 Distribution of ratios:
 
-2022/2021 is one observation,
-2023/2022 is another observation,
+- recaptured amount for 2022 / recaptured amount for 2021 is one observation
+
+- 2023/2022 is another observation,
+ 
  
 Stacked line graph of summed non408 fund tax rates and 408 fund tax rates from ptaxsim agency-fund level data.
 
@@ -703,14 +705,54 @@ maybe a case study for "worst case scenario" agencies with large tax rate increa
  
 ```{r}
 df |> 
-  filter(year !=2024 & year > 2020) |> # since ptaxsim database doesn't have fund 408 values for that tax year yet.
+  filter(year > 2020) |> # since ptaxsim database doesn't have fund 408 values for that tax year yet.
   
   # difference between ptaxsim fund 408 recaptured levy amounts and levy adjustment/recaptured amounts from excel files received from Clerk's/treasurer's office
-  group_by(agency_number) |>
+  group_by(agency_name, agency_number) |>
+  arrange(agency_number, year) |>
   mutate(
     ratio = fund408 / lag(fund408)) |> 
+  filter(agency_name %like% "Arlington Heights")
+```
+ 
+ 
+```{r}
+df |> 
+  filter(#year !=2024 &
+           year > 2020) |> # since ptaxsim database doesn't have fund 408 values for that tax year yet.
+  
+  # difference between ptaxsim fund 408 recaptured levy amounts and levy adjustment/recaptured amounts from excel files received from Clerk's/treasurer's office
+  group_by(agency_name, agency_number) |>
+  arrange(agency_number, year) |>
+  mutate(
+    ratio = fund408 / lag(fund408)) |> 
+  filter(ratio < 5) |>
   ggplot() +
-  #geom_point(aes(x=year, y = ratio, color = major_type, alpha = .5) +
-  geom_jitter(aes(x=year, y = ratio, color = major_type, alpha = .5)) 
+  geom_line(aes(x=as.character(year), y = ratio, color = major_type, alpha = .5, group = agency_number))+
+  geom_point(aes(x=as.character(year), y = ratio, color = major_type, alpha = .5) ) +
+  geom_text(aes(x=as.character(year), y = ratio, label=agency_name, nudge_x = 0.2), check_overlap = TRUE)+
+  scale_y_continuous(limits = c(0, 6) )
+         
+   # geom_jitter(aes(x=year, y = ratio, color = major_type, alpha = .5))
+```
+
+
+```{r}
+df |> 
+  filter(#year !=2024 &
+           year > 2020) |> # since ptaxsim database doesn't have fund 408 values for that tax year yet.
+  
+  # difference between ptaxsim fund 408 recaptured levy amounts and levy adjustment/recaptured amounts from excel files received from Clerk's/treasurer's office
+  group_by(agency_name, agency_number) |>
+  arrange(agency_number, year) |>
+  mutate(
+    ratio = fund408 / lag(fund408)) |> 
+  filter(ratio > 5) |>
+  ggplot() +
+  geom_line(aes(x=as.character(year), y = ratio, color = major_type, alpha = .5, group = agency_number))+
+  geom_point(aes(x=as.character(year), y = ratio, color = major_type, alpha = .5) ) +
+  geom_text(aes(x=as.character(year), y = ratio, label=agency_name, nudge_x = 0.2, nudge_y = 4 ), check_overlap = TRUE)+
+  scale_y_continuous(limits = c(0, 200) )
+ 
 ```
 
