@@ -629,7 +629,8 @@ eligible <- df |> filter(adjust_eligible == "Eligible") |>
     diff = abs(fund408 - levy_adjustment)
          )
 
-eligible |> filter(levy_adjustment==0 | is.na(levy_adjustment))
+eligible |> filter(fund408==0 | is.na(levy_adjustment)) |> distinct(agency_name)
+eligible |> filter(levy_adjustment==0 | is.na(levy_adjustment)) |> distinct(agency_name)
 
 ```
 
@@ -703,16 +704,17 @@ Add line for average or median that is darker
 
 maybe a case study for "worst case scenario" agencies with large tax rate increase from fund 408?
  
-```{r}
-df |> 
+```{r eval = FALSE}
+agency_funds |> 
   filter(year > 2020) |> # since ptaxsim database doesn't have fund 408 values for that tax year yet.
   
   # difference between ptaxsim fund 408 recaptured levy amounts and levy adjustment/recaptured amounts from excel files received from Clerk's/treasurer's office
-  group_by(agency_name, agency_number) |>
+  group_by(agency_number) |>
   arrange(agency_number, year) |>
   mutate(
     ratio = fund408 / lag(fund408)) |> 
-  filter(agency_name %like% "Arlington Heights")
+  filter(fund_num == 408 ) |>
+  arrange(desc(final_rate))
 ```
  
  
@@ -731,9 +733,49 @@ df |>
   geom_line(aes(x=as.character(year), y = ratio, color = major_type, alpha = .5, group = agency_number))+
   geom_point(aes(x=as.character(year), y = ratio, color = major_type, alpha = .5) ) +
   geom_text(aes(x=as.character(year), y = ratio, label=agency_name, nudge_x = 0.2), check_overlap = TRUE)+
-  scale_y_continuous(limits = c(0, 6) )
+  scale_y_continuous(limits = c(0, 6) ) +
+    labs(title = "Recapture / Previous Year's Recapture", x= element_blank(),
+         caption = "Excludes agencies where the recapture amount increased 
+         by more than 500% (i.e. ratio > 5 is excluded)")
+
          
    # geom_jitter(aes(x=year, y = ratio, color = major_type, alpha = .5))
+```
+
+```{r}
+df |> 
+  filter(#year !=2024 &
+           year > 2020) |> # since ptaxsim database doesn't have fund 408 values for that tax year yet.
+  
+  # difference between ptaxsim fund 408 recaptured levy amounts and levy adjustment/recaptured amounts from excel files received from Clerk's/treasurer's office
+  group_by(agency_name, agency_number) |>
+  arrange(agency_number, year) |>
+  mutate(
+    ratio = fund408 /final_levy) |> 
+  ggplot() +
+  geom_line(aes(x=as.character(year), y = ratio, color = major_type, alpha = .5, group = agency_number))+
+  geom_point(aes(x=as.character(year), y = ratio, color = major_type, alpha = .5) ) +
+  geom_text(aes(x=as.character(year), y = ratio, label=agency_name, nudge_x = 0.2), check_overlap = TRUE)+
+    labs(title = "Recapture Levy Share", x= element_blank(),
+         caption = "Recapture Share = Fund 408 Amount/ Final Levy")
+
+df |> 
+  filter(#year !=2024 &
+           year > 2020) |> # since ptaxsim database doesn't have fund 408 values for that tax year yet.
+  
+  # difference between ptaxsim fund 408 recaptured levy amounts and levy adjustment/recaptured amounts from excel files received from Clerk's/treasurer's office
+  group_by(agency_name, agency_number) |>
+  arrange(agency_number, year) |>
+  mutate(
+    ratio = fund408 /final_levy) |> 
+  filter(ratio < .5) |>
+  ggplot() +
+  geom_line(aes(x=as.character(year), y = ratio, color = major_type, alpha = .5, group = agency_number))+
+  geom_point(aes(x=as.character(year), y = ratio, color = major_type, alpha = .5) ) +
+  geom_text(aes(x=as.character(year), y = ratio, label=agency_name, nudge_x = 0.2), check_overlap = TRUE)+
+    labs(title = "Recapture Levy Share", x= element_blank(),
+         caption = "Recapture Share = Fund 408 Amount/ Final Levy.
+         Excludes > .5 ratios.")
 ```
 
 
@@ -751,8 +793,9 @@ df |>
   ggplot() +
   geom_line(aes(x=as.character(year), y = ratio, color = major_type, alpha = .5, group = agency_number))+
   geom_point(aes(x=as.character(year), y = ratio, color = major_type, alpha = .5) ) +
-  geom_text(aes(x=as.character(year), y = ratio, label=agency_name, nudge_x = 0.2, nudge_y = 4 ), check_overlap = TRUE)+
-  scale_y_continuous(limits = c(0, 200) )
+  geom_text(aes(x=as.character(year), y = ratio, label=agency_name, nudge_x = 0.2, nudge_y = 4), check_overlap = TRUE)+
+  scale_y_continuous(limits = c(0, 200) ) +
+  labs(title = "Outliers: Obs with ratio over 5", x= element_blank())
  
 ```
 
