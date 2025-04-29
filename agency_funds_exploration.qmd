@@ -26,9 +26,8 @@ is.integer64 <- function(x){
 
 ```
 
-# Data Collection
 
-## PTAXSIM Part
+# Recapture Data from PTAXSIM 
 
 ```{r}
 # #| eval: false
@@ -120,7 +119,7 @@ agency_fund408_sums |>
          recap_revratio = fund408/not_recap) |>
   ggplot() + 
   geom_line(aes(x=year, y=recap_levyshare, group=agency_name, alpha = .4, color = major_type)) +
-  labs(title = "Recapture / Total Levy")
+  labs(title = "Fund 408 / Total Levy", caption = "Fund data form PTAXSIM")
 
 agency_fund408_sums |> 
     filter(year > 2019) |>
@@ -128,7 +127,7 @@ agency_fund408_sums |>
          recap_revratio = fund408/not_recap) |>
   ggplot() + 
   geom_line(aes(x=year, y=recap_revratio, group=agency_name, alpha = .4, color = major_type)) +
-  labs(title = "Recapture / Non-Recapture Levy")
+  labs(title = "Fund 408 / Non-Recapture Levy", caption = "Fund data form PTAXSIM")
 
 
 
@@ -141,7 +140,10 @@ agency_fund408_sums
 ```
 
 
-## PTAB Documents
+
+# PTAB Documents from Clerk / Treasurer
+
+## Levy Adjustment Files
 
 The **Levy Adjustment** Files exist for 4 years. They use the refund amounts from the previous year to calculate how much to add to Fund 408 for the tax year in the file. 
 
@@ -227,6 +229,7 @@ adjust_all <- rbind(adjust2021, adjust2022, adjust2023, adjust2024) |>
 adjust_all
 ```
 
+## Levy Recapture Files from Clerk / Treasurer
 
 The **Levy Recapture Files** break up the refunds into 2 categories: PTAB/SP Refunds and CofE (Over-Assessment) Refunds. 
 
@@ -234,7 +237,7 @@ Treasurer's office sent the account specific files to the Clerk's office, and th
 
 Two of the file have very detailed PTAB&SP and CofE tabs that have very detailed sheets of the amount of refund from previous years' appeals, but not sure how to use that information for now. (2022 and 2023 are missing the detailed sheets)
 
-_Note: the variables are named "recouped" in these files which is very confusing for our analysis._^However, the variable names do make sense from the Treasurer's point of view, and they made the files in the first place.  
+_Note: the variables are named "recouped" in these files which is potentially confusing_ ^ However, the variable names do make sense from the Treasurer's point of view, and they made the files in the first place.  
 
 ```{r}
 # year = Tax Year. Date in file name is from agency creation of file or reception of file date.
@@ -269,15 +272,23 @@ refund_all <- rbind(refund2021, refund2022, refund2023, refund2024) |>
   filter(!is.na(agency_number)) |>
   mutate(total_refunds = refunded_sp_ptab + refunded_coe)
 
+#refund_all <- refund_all |> filter(total_refunds>0)
+
 refund_all
+```
+
+`adjust_all` saved as `output/adjust_all.csv`
+
+`refunds_all` saved as `output/refunds_all.csv`
+
+```{r include = FALSE}
+write_csv(adjust_all, "output/adjust_all.csv")
+
+write_csv(refund_all, "output/refunds_all.csv")
 ```
 
 
 ```{r}
-write_csv(adjust_all, "output/adjust_all.csv")
-
-write_csv(refund_all, "output/refunds_all.csv")
-
 refund_all |>
   group_by(year) |>
   summarize(sum(total_refunds, na.rm = T))
@@ -320,13 +331,7 @@ levyshare_byagency |> filter(year == 2023)
 ```
 
 
-
-
-
-
-# Combine data sources
-
-```{r}
+```{r include = FALSE}
 
 # Let's do some preliminary clean up work.
 
@@ -336,10 +341,15 @@ rm(adjust2021, adjust2022, adjust2023, adjust2024,
 
 ```
 
+
+
+# Combine data sources
+
+
 ## Join data
 
 
-```{r eval=FALSE, include=FALSE}
+```{r checkmissing, eval=FALSE, include=FALSE}
 
 
 # Initial Filters
@@ -376,40 +386,6 @@ adjust_all |>
 
 adjust_all |>
   count(is.na(agency_number))
-
-drop_adjust <- adjust_all |>
-  group_by(agency_number) |>
-  reframe(agency_number, n = n()) |>
-  filter(n != 3) |>
-  distinct() #52
-
-drop_recap <- recap_all |>
-  group_by(agency_number) |>
-  reframe(agency_number, n = n()) |>
-  filter(n != 3) |>
-  distinct() #102
-
-# I'M JUST GOING TO DROP THESE OBSERVATIONS FOR NOW!!!!!! - MVH
-
-# Alea disagrees with dropping them ^
-
-drop_adjust <- as.list(drop_adjust$agency_number)
-drop_recap <- as.list(drop_recap$agency_number)
-
-# 2760 obs.
-
-adjust_all_filtered <- adjust_all |>
-  filter(!is.na(agency_number)) |>
-  filter(!(agency_number %in% drop_adjust)) |>
-  filter(!(agency_number %in% drop_recap))
-
-#8217 obs.
-
-recap_all_filtered <- recap_all |>
-  filter(!is.na(agency_number)) |>
-  filter(!(agency_number %in% drop_adjust)) |>
-  filter(!(agency_number %in% drop_recap))
-
 ```
 
 ```{r}
@@ -518,9 +494,11 @@ df |>
   select(year, agency_name, diff, fund408, levy_adjustment, total_refund, total_recap)
 ```
 
+Joined data saved as `levy_refunds_recoupments_by_agency_2021-2024.csv`
 
 ```{r}
 #| eval: false
+#| include: false
 
 
 write_csv(df |>
@@ -542,6 +520,14 @@ write_csv(df,  "levy_refunds_recoupments_by_agency_2021-2024.csv")
 ## Aggregation to some Composite increase?
 
 _only potential option is use the grouped_labels from past levy project tangent?_
+
+[ ] Identify municipality that schools are in. Many are in multiple schools. I will focus on the "easy" school districts that are fully within a municipality.
+
+[ ] update `grouped_munis_manual_entry.xlsx` file in the `handcoded_cat` column.
+
+```{r}
+grouped_agencies <- read_csv("../../Levy Elasticity Research/Levy_Elasticity/Necessary_Files/grouped_munis_manual_entry.xlsx")
+```
 
 
 ## Descriptive Statistics: Eligible vs. Ineligible
@@ -778,13 +764,10 @@ df |>
          Excludes > .5 ratios.")
 ```
 
-
 ```{r}
 df |> 
   filter(#year !=2024 &
-           year > 2020) |> # since ptaxsim database doesn't have fund 408 values for that tax year yet.
-  
-  # difference between ptaxsim fund 408 recaptured levy amounts and levy adjustment/recaptured amounts from excel files received from Clerk's/treasurer's office
+           year > 2020) |>
   group_by(agency_name, agency_number) |>
   arrange(agency_number, year) |>
   mutate(
@@ -798,4 +781,52 @@ df |>
   labs(title = "Outliers: Obs with ratio over 5", x= element_blank())
  
 ```
+
+
+```{r}
+df |> 
+  filter(#year !=2024 &
+           year > 2020) |> 
+  group_by(agency_name, agency_number) |>
+  arrange(agency_number, year) |>
+  mutate(
+    ratio = levy_adjustment / lag(levy_adjustment)) |> 
+  ggplot() +
+  geom_line(aes(x=as.character(year), y = ratio, color = major_type, alpha = .5, group = agency_number))+
+  geom_point(aes(x=as.character(year), y = ratio, color = major_type, alpha = .5) ) +
+  geom_text(aes(x=as.character(year), y = ratio, label=agency_name, nudge_x = 0.2, nudge_y = 4), check_overlap = TRUE)+
+  scale_y_continuous(limits = c(0, 200) ) +
+  labs(title = "Levy Adjustment Variable from Treasurer", x= element_blank())
+ 
+```
+
+```{r}
+df |> 
+  filter(year > 2020) |> 
+  group_by(agency_name, agency_number) |>
+  arrange(agency_number, year) |>
+  mutate(
+    ratio = levy_adjustment / levy) |> 
+  ggplot() +
+  geom_line(aes(x=as.character(year), y = ratio, color = major_type, alpha = .5, group = agency_number))+
+  # geom_point(aes(x=as.character(year), y = ratio, color = major_type, alpha = .5) ) +
+  labs(title = "Levy Adjustment / Levy", x= element_blank())
+ 
+```
+
+
+```{r}
+df |> 
+  filter(year > 2020 & adjust_eligible == "Eligible") |> 
+  group_by(agency_name, agency_number) |>
+  arrange(agency_number, year) |>
+  mutate(
+    ratio = -total_refund / levy) |> 
+  ggplot() +
+  geom_line(aes(x=as.character(year), y = ratio, color = major_type, alpha = .5, group = agency_number))+
+   geom_point(aes(x=as.character(year), y = ratio, color = major_type, alpha = .5) ) +
+  labs(title = "Refund / Levy", x= element_blank())
+ 
+```
+
 
