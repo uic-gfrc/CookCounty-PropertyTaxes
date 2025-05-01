@@ -317,6 +317,8 @@ In 2022, 95% of  taxing agencies had refunds equal to less than 4.6% of their le
 
 
 ```{r}
+#| tbl-cap: "Recapture Levy Share for tax year 2024. Uses levy amount from fund 408 / total_final_levy to create recap levyshare. Only PTAXSIM data." 
+
 table(adjust_all$year)
 
 levyshare_byagency <- adjust_all |> 
@@ -326,11 +328,42 @@ levyshare_byagency <- adjust_all |>
   select(year, agency_name, recap_levyshare, levy_adjustment, cumsum)
 
 # Merriman's for comparison for 2024
-levyshare_byagency |> filter(year == 2024)
+levyshare_byagency |> filter(year == 2024) |> DT::datatable(rownames = FALSE)
+```
 
-levyshare_byagency |> filter(year == 2021)
-levyshare_byagency |> filter(year == 2022)
-levyshare_byagency |> filter(year == 2023)
+
+```{r}
+#| tbl-cap: "Uses total_refunds/total_final_levy to create recap levyshare. Total Refunds is from the clerk & treasurers files with refund information and the levy amount is from ptaxsim. 2021-2024 refund values."
+# using the refund data for all agencies, both homerule and non homerule.
+refund_all |> 
+  left_join(agency_info, by = c("agency_number" = "agency_num", "year")) |>
+  group_by(year) |>
+  mutate(recap_levyshare =  abs(total_refunds) / total_final_levy) |>
+  arrange(year, desc(recap_levyshare)) |>
+  select(year, agency_name, recap_levyshare, everything()) |>
+  filter(recap_levyshare > 0) |> DT::datatable(rownames = FALSE)
+
+```
+
+
+```{r}
+#| tbl-cap: "Levy Share for Tax Year 2021. Uses levy amount from fund 408 / total_final_levy to create recap levyshare. Only PTAXSIM data." 
+
+levyshare_byagency |> filter(year == 2021)|> DT::datatable(rownames = FALSE)
+```
+
+
+```{r}
+#| tbl-cap: "Levy Share for Tax Year 2022. Uses levy amount from fund 408 / total_final_levy to create recap levyshare. Only PTAXSIM data." 
+
+levyshare_byagency |> filter(year == 2022)|> DT::datatable(rownames = FALSE)
+```
+
+
+```{r}
+#| tbl-cap: "Levy Share for Tax Year 2023. Uses levy amount from fund 408 / total_final_levy to create recap levyshare. Only PTAXSIM data." 
+
+levyshare_byagency |> filter(year == 2023)|> DT::datatable(rownames = FALSE)
 ```
 
 ## Refunds as a share of agency's levy
@@ -342,11 +375,20 @@ Merriman said he looked at refunds, but he looked at refunds only for agencies e
 
 ```{r}
 library(ggrepel)
+library(readxl)
+nicknames <- readxl::read_xlsx("Necessary_Files/muni_shortnames.xlsx") |>
+  mutate(agency_number = str_pad(as.character(agency_number), 9, pad = "0" ) ) 
 
+```
+
+
+```{r}
 refund_all |> 
   left_join(agency_info, by = c("agency_number" = "agency_num", "year")) |>
   mutate(share = abs(total_refunds)/total_final_levy,
-         share = ifelse(share>1, 1,share)) |>
+         share = ifelse(share>1, 1,share),
+         year = as.character(year)) |>
+  filter(year !="2024") |>  # no values
   ggplot() +
     geom_jitter(aes(x=year, y = share, color = as.character(home_rule_ind))) + 
 
@@ -356,11 +398,20 @@ aes(x=year, y = share, label = agency_name), nudge_y =.05 ) +
   scale_y_continuous(limits = c(0, 1.2), breaks = c(0, .25, .5, .75, 1)) + 
   labs(title = "Refunds / Levy Amount",
        caption = "Agencies at 100% were Infinite: They did not have a levy, but they did have a refund.",
-       color = "")
+       color = "Home Rule", x=element_blank(),
+       y = "Share of Levy")
 ```
 
 
 
+```{r}
+refund_all |> 
+  left_join(agency_info, by = c("agency_number" = "agency_num", "year")) |>
+  mutate(share = abs(total_refunds)/total_final_levy,
+         share = ifelse(share>1, 1,share),
+         year = as.character(year)) |>
+  filter(year !="2024") |> DT::datatable(rownames = FALSE)
+```
 
 # Combine data sources
 
@@ -541,7 +592,13 @@ write_csv(df,  "levy_refunds_recoupments_by_agency_2021-2024.csv")
 ```{r include = FALSE}
 
 #df <- read_csv("levy_refunds_recoupments_by_agency.csv")
+fund408_fromtreas <- readxl::read_xlsx("PTAB/Levy Adjustment Fund 408 Extension 2021-2023.xlsx") 
 
+fund408_fromtreas <- fund408_fromtreas |> 
+  rename(year = `Tax Year`,
+         agency_num = Agency,
+         agency_name= `Agency Name`,
+         fund_num = Fund)
 ```
 
 ## Aggregation to some Composite increase?
@@ -579,14 +636,15 @@ impacted_taxcodes <- taxcodes |>
     mutate(rate_ratio = rate_408 / rate_non408) |>
   arrange(desc(rate_ratio)) 
 
-impacted_taxcodes |> filter(year == 2022)
+impacted_taxcodes |> filter(year == 2022) |> DT::datatable(rownames = FALSE)
 
-impacted_taxcodes |> filter(year == 2023)
+impacted_taxcodes |> filter(year == 2023)  |> DT::datatable(rownames = FALSE)
 
 ```
 
 
 ## Descriptive Statistics: Eligible vs. Ineligible
+
 ```{r include = FALSE}
 rm(agency_info, agency_fund_info, agency_fund, agency_names)
 ```
@@ -666,15 +724,18 @@ df |>
 
 > Barrington and Matteson became homerule by vote in Nov. 2022. They were not eligible for recapture funds as of the 2022 levy. Can be seen in the agency_info table within ptaxsim and in Notes column of 2022 Adjustment excel file. 
 
+From googleing random news articles and public documents, we know that taxing agencies in Oak Lawn opt out,
+
 ```{r}
-eligible <- df |> filter(adjust_eligible == "Eligible") |>
+eligible <- df |> filter(adjust_eligible == "Eligible" & levy > 0) |>
     mutate(
     fund408 = ifelse(is.na(fund408), 0, fund408),
     diff = abs(fund408 - levy_adjustment)
          )
 
-eligible |> filter(fund408==0 | is.na(levy_adjustment)) |> distinct(agency_name)
-eligible |> filter(levy_adjustment==0 | is.na(levy_adjustment)) |> distinct(agency_name)
+eligible |> filter(fund408==0 | is.na(levy_adjustment)) |> distinct(agency_name) |> DT::datatable(rownames = FALSE)
+
+eligible |> filter(levy_adjustment==0 | is.na(levy_adjustment)) |> distinct(agency_name) |> DT::datatable(rownames = FALSE)
 
 ```
 
@@ -687,7 +748,7 @@ not_eligible <- df |> filter(adjust_eligible == "Not Eligible") |>
          )
 
 #non eligible agencies should not have adjustment values or fund408 values
-not_eligible |> filter(levy_adjustment!=0 | fund408!=0)
+not_eligible |> filter(levy_adjustment!=0 | fund408!=0) |> DT::datatable(rownames = FALSE)
 ```
 
 
@@ -875,7 +936,7 @@ df |>
 
 ```{r}
 df |> 
-  filter(year > 2020 & adjust_eligible == "Eligible") |> 
+  filter(year > 2020 & adjust_eligible == "Eligible" & year < 2024) |> 
   group_by(agency_name, agency_number) |>
   arrange(agency_number, year) |>
   mutate(
@@ -883,7 +944,7 @@ df |>
   ggplot() +
   geom_line(aes(x=as.character(year), y = ratio, color = major_type, alpha = .5, group = agency_number))+
    geom_point(aes(x=as.character(year), y = ratio, color = major_type, alpha = .5) ) +
-  labs(title = "Refund / Levy", x= element_blank())
+  labs(title = "Eligible Agencies Only. Ratio = Refund / Levy.", caption = "Looked the same as using Levy Adjustment / Levy", x= element_blank())
  
 ```
 
