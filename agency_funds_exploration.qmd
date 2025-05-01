@@ -546,15 +546,7 @@ write_csv(df,  "levy_refunds_recoupments_by_agency_2021-2024.csv")
 
 ## Aggregation to some Composite increase?
 
-_only potential option is use the grouped_labels from past levy project tangent?_
-
-[ ] Identify municipality that schools are in. Many are in multiple schools. I will focus on the "easy" school districts that are fully within a municipality.
-
-[ ] update `grouped_munis_manual_entry.xlsx` file in the `handcoded_cat` column.
-
 ```{r}
-grouped_agencies <- read_csv("../Levy Elasticity Research/Levy_Elasticity/Necessary_Files/grouped_munis_manual_entry.xlsx")
-
 taxcodes <-  DBI::dbGetQuery(
   ptaxsim_db_conn,
   "SELECT *
@@ -562,34 +554,9 @@ taxcodes <-  DBI::dbGetQuery(
   "
   )
 
-impacted_taxcodes <- agency_funds |> 
-  filter(agency_num %in% refund_all$agency_number & final_levy > 0) |>
-  left_join(taxcodes) |>
-  group_by(year, tax_code_num, tax_code_rate) |>
-  summarize(rate_408 = sum(ifelse(fund_num==408, final_rate, 0)),
-         rate_non408 = sum(ifelse(fund_num!=408, final_rate, 0))
-  ) |> 
-  arrange(desc(rate_408))
-
-impacted_taxcodes |> 
-  filter(year > 2020) |>
-  mutate(rate_ratio = rate_408 / rate_non408) |>
-  arrange(desc(rate_ratio)) 
-
-impacted_taxcodes |> 
-  filter(year ==2023) |>
-  mutate(rate_ratio = rate_408 / rate_non408) |>
-  arrange(desc(rate_ratio)) 
 
 ##  Link municipality name to tax code
 
-# impacted_taxcodes |> 
-#   filter(year ==2023) |> 
-#   left_join(
-#     (taxcodes |> select(tax_code_num, agency_num) ) , by = "tax_code_num"  )|>
-#   left_join(
-#     (agency_names |> filter(minor_type == "MUNI" | agency_name == "TOWN CICERO")), 
-#    by = "agency_num")
 muni_names <- taxcodes |>
   left_join(agency_names) |> 
   filter(minor_type == "MUNI" | agency_name == "TOWN CICERO") |>
@@ -597,26 +564,24 @@ muni_names <- taxcodes |>
    distinct()
 
 
-impacted_v2 <- taxcodes |> 
+impacted_taxcodes <- taxcodes |> 
   select(-agency_rate) |>
   left_join(agency_funds, by = c("year", "agency_num") ) |>
   select(year, agency_num, fund_num, levy, final_levy, final_rate, tax_code_num, tax_code_rate) |>
-  filter(#agency_num %in% refund_all$agency_number & 
-           final_levy > 0) |>
+  #filter(final_levy > 0) |>
   left_join(muni_names, by = "tax_code_num") |>
   group_by(year, tax_code_num, tax_code_rate) |>
   summarize(
     muni_name = first(agency_name),
-    rate_408 = sum(ifelse(fund_num==408, final_rate, 0)),
-         rate_non408 = sum(ifelse(fund_num!=408, final_rate, 0))
+    rate_408 = sum(ifelse(fund_num==408, final_rate, 0), na.rm=TRUE),
+         rate_non408 = sum(ifelse(fund_num!=408, final_rate, 0), na.rm=TRUE)
   ) |> 
-#  arrange(desc(rate_408)) |>
     mutate(rate_ratio = rate_408 / rate_non408) |>
   arrange(desc(rate_ratio)) 
 
-impacted_v2 |> filter(year == 2022)
+impacted_taxcodes |> filter(year == 2022)
 
-impacted_v2 |> filter(year == 2023)
+impacted_taxcodes |> filter(year == 2023)
 
 ```
 
