@@ -40,7 +40,9 @@ agency_info <- DBI::dbGetQuery(
   "SELECT *
   FROM agency
   "
-  )
+  ) %>%
+  mutate_if(is.integer64, as.integer) |>
+  mutate_if(is.integer, as.numeric)
 
 agency_fund <- DBI::dbGetQuery(
   ptaxsim_db_conn,
@@ -63,18 +65,21 @@ agency_fund_info <- DBI::dbGetQuery(
   "SELECT *
   FROM agency_fund_info
   "
-  )
+  ) 
 
 agency_funds <- left_join(agency_fund, agency_fund_info)
 agency_funds <- agency_funds %>%
-  mutate_if(is.integer64, as.integer)
+  mutate_if(is.integer64, as.integer) |>
+  mutate_if(is.integer, as.numeric)
 
 agency_funds <- left_join(agency_funds, agency_names)
-agency_funds <- agency_funds %>%
-  mutate_if(is.integer64, as.integer)
 
 #agency_funds |> write_csv("agency_funds.csv")
 
+```
+
+```{r include = FALSE}
+rm(agency_info, agency_fund_info, agency_fund, agency_names)
 ```
 
 ## PTAXSIM Fund Data: Rate Change from Levy Adjustment
@@ -330,6 +335,36 @@ levyshare_byagency |> filter(year == 2022)
 levyshare_byagency |> filter(year == 2023)
 ```
 
+## Refunds as a share of agency's levy
+
+Merriman said he looked at refunds, but he looked at refunds only for agencies eligible for recapture. (Non Homerule Agencies.)
+
+- Add levy data to the refund data. Levy data from `agency_info` table in ptaxsim db.
+
+
+```{r}
+library(ggrepel)
+
+refund_all |> 
+  left_join(agency_info, by = c("agency_number" = "agency_num", "year")) |>
+  mutate(share = abs(total_refunds)/total_final_levy,
+         share = ifelse(share>1, 1,share)) |>
+  ggplot() +
+    geom_jitter(aes(x=year, y = share, color = as.character(home_rule_ind))) + 
+
+ # geom_point(aes(x=year, y = share, color = as.character(home_rule_ind))) + 
+  geom_text_repel(data = . %>% filter(share > 0.2),
+aes(x=year, y = share, label = agency_name), nudge_y =.05 ) + 
+  scale_y_continuous(limits = c(0, 1.2), breaks = c(0, .25, .5, .75, 1)) + 
+  labs(title = "Refunds / Levy Amount",
+       caption = "Agencies at 100% were Infinite: They did not have a levy, but they did have a refund.",
+       color = "")
+```
+
+
+
+
+# Combine data sources
 
 ```{r include = FALSE}
 
@@ -340,11 +375,6 @@ rm(adjust2021, adjust2022, adjust2023, adjust2024,
    agency_names)
 
 ```
-
-
-
-# Combine data sources
-
 
 ## Join data
 
@@ -527,6 +557,22 @@ _only potential option is use the grouped_labels from past levy project tangent?
 
 ```{r}
 grouped_agencies <- read_csv("../Levy Elasticity Research/Levy_Elasticity/Necessary_Files/grouped_munis_manual_entry.xlsx")
+
+taxcodes <-  DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT *
+  FROM tax_code
+  "
+  )
+
+agency_funds |> 
+  filter(agency_num %in% refund_all$agency_number & final_levy > 0) |>
+  left_join(taxcodes) |>
+  group_by(year, tax_code_num, tax_code_rate) |>
+  summarize(rate_408 = sum(ifelse(fund_num==408, final_rate, 0)),
+         rate_non408 = sum(ifelse(fund_num!=408, final_rate, 0))
+  ) |> 
+  filter(year > 2020) |> arrange(desc(rate_408))
 ```
 
 
