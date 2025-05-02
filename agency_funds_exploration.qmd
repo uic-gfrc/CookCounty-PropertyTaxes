@@ -30,7 +30,6 @@ is.integer64 <- function(x){
 # Recapture Data from PTAXSIM 
 
 ```{r}
-# #| eval: false
 
 ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(),
   "./ptaxsim.db/ptaxsim-2023.0.0.db")
@@ -42,7 +41,8 @@ agency_info <- DBI::dbGetQuery(
   "
   ) %>%
   mutate_if(is.integer64, as.integer) |>
-  mutate_if(is.integer, as.numeric)
+  mutate_if(is.integer, as.numeric) |>
+  mutate(pct_inCook = cty_cook_eav / cty_total_eav)
 
 agency_fund <- DBI::dbGetQuery(
   ptaxsim_db_conn,
@@ -68,11 +68,12 @@ agency_fund_info <- DBI::dbGetQuery(
   ) 
 
 agency_funds <- left_join(agency_fund, agency_fund_info)
+
 agency_funds <- agency_funds %>%
   mutate_if(is.integer64, as.integer) |>
   mutate_if(is.integer, as.numeric)
 
-agency_funds <- left_join(agency_funds, agency_names)
+agency_funds <- left_join(agency_funds, agency_names) 
 
 #agency_funds |> write_csv("agency_funds.csv")
 
@@ -82,31 +83,26 @@ agency_funds <- left_join(agency_funds, agency_names)
 
 ## PTAXSIM Fund Data: Rate Change from Levy Adjustment
 
+
+
+
 ```{r}
 agency_funds |> filter(fund_num==408) |>
   select(year, agency_name_short, final_levy, final_rate, fund_num) |>
-  arrange(desc(final_rate))
+  arrange(desc(final_rate)) 
+      
+
 
 agency_funds |> filter(fund_num==408) |>
   select(year, agency_name_short, final_levy, final_rate, fund_num, major_type) |>
   arrange(desc(final_rate)) |>
   ggplot() + 
-  geom_line(aes(x=year, y=final_rate, group=agency_name_short, color = major_type, alpha = .3))
+  geom_line(aes(x=year, y=final_rate, group=agency_name_short, color = major_type, alpha = .3)) + 
+  labs(title = "Tax Rate associated with Fund 408",
+           caption = "Source: PTAXSIM database; agency_fund table.")
 
-agency_funds |> filter(fund_num==408) |>
-  select(year, agency_name_short, final_levy, final_rate, fund_num, major_type) |>
-  arrange(desc(final_rate)) |>
-  ggplot() + geom_line(aes(x=year, y=final_levy, group=agency_name_short, alpha = .4, color = major_type))+
-    labs(title = "Levy amount from Fund 408.\nAll Agencies with Fund 408")
-
-
-agency_funds |> filter(fund_num==408 & final_levy < 2000000) |>
-  select(year, agency_name_short, final_levy, final_rate, fund_num, major_type) |>
-  arrange(desc(final_rate)) |>
-  ggplot() + 
-  geom_line(aes(x=year, y=final_levy, group=agency_name_short, alpha = .4, color = major_type)) +
-  labs(title = "Levy amount from Fund 408.", subtitle = "Excludes largest agency amounts")
 ```
+
 
 
 ```{r}
@@ -116,30 +112,61 @@ agency_fund408_sums <- agency_funds |>
          not_recap = ifelse(fund_num != 408, final_levy, 0) ) |>
   summarize(across(c(levy, final_levy, final_rate, fund408, not_recap), sum, na.rm=TRUE))
 
-agency_fund408_sums |> 
-  filter(year > 2019) |>
-  mutate(recap_levyshare = fund408/final_levy,
-         recap_revratio = fund408/not_recap) |>
-  ggplot() + 
-  geom_line(aes(x=year, y=recap_levyshare, group=agency_name, alpha = .4, color = major_type)) +
-  labs(title = "Fund 408 / Total Levy", caption = "Fund data form PTAXSIM")
-
-agency_fund408_sums |> 
-    filter(year > 2019) |>
-  mutate(recap_levyshare = fund408/final_levy,
-         recap_revratio = fund408/not_recap) |>
-  ggplot() + 
-  geom_line(aes(x=year, y=recap_revratio, group=agency_name, alpha = .4, color = major_type)) +
-  labs(title = "Fund 408 / Non-Recapture Levy", caption = "Fund data form PTAXSIM")
-
 
 
 # after summing to taxing agency level, join the levy back in.
 agency_fund408_sums <- left_join(agency_fund408_sums, agency_info, by = c("year", "agency_num"))
+
+agency_fund408_sums |> 
+  filter(year > 2019 & pct_inCook > 0.75) |>
+  mutate(recap_levyshare = fund408/final_levy,
+         recap_revratio = fund408/not_recap) |>
+  ggplot() + 
+  geom_line(aes(x=year, y=recap_levyshare, group=agency_name, alpha = .4, color = major_type)) +
+  labs(title = "Fund 408 / Total Levy", caption = "Fund data form PTAXSIM.
+       Excludes agencies with more than 25% of their taxbase outside of Cook County.")
+
+agency_fund408_sums |> 
+  filter(year > 2019 & pct_inCook > 0.75) |>
+  mutate(recap_levyshare = fund408/final_levy,
+         recap_revratio = fund408/not_recap) |>
+  ggplot() + 
+  geom_line(aes(x=year, y=recap_revratio, group=agency_name, alpha = .4, color = major_type)) +
+  labs(title = "Fund 408 / Non-Recapture Levy", 
+       caption = "Fund data form PTAXSIM. 
+       Excludes agencies with more than 25% of their taxbase outside of Cook County.")
+
+
 ```
+
+Some agencies have a majority of their taxbase outside of cook county. We will exclude those from this analysis.
 
 ```{r}
 agency_fund408_sums
+```
+
+
+## fund 408 data from clerk/treasurer
+
+```{r}
+
+fund408_fromtreas <- readxl::read_xlsx("PTAB/Levy Adjustment Fund 408 Extension 2021-2023.xlsx") 
+
+fund408_fromtreas <- fund408_fromtreas |> 
+  rename(year = `Tax Year`,
+         agency_num = Agency,
+         agency_name= `Agency Name`,
+         fund_num = Fund)|> 
+  mutate(year=as.integer(year))
+
+
+agency_fund408_sums |> 
+  ungroup() |>
+  filter(year>2020& pct_inCook > 0.75) |>
+  right_join(fund408_fromtreas, by = c("year", "agency_num" )) |>
+  select(year, agency_name.x, fund408, FundExtension ,agency_num, pct_inCook) |>
+  mutate(difference = round(fund408-FundExtension, digits = 0)) |> 
+  DT::datatable(rownames = FALSE)
 ```
 
 
@@ -275,7 +302,6 @@ refund_all <- rbind(refund2021, refund2022, refund2023, refund2024) |>
   filter(!is.na(agency_number)) |>
   mutate(total_refunds = refunded_sp_ptab + refunded_coe)
 
-#refund_all <- refund_all |> filter(total_refunds>0)
 
 refund_all
 ```
@@ -300,9 +326,13 @@ refund_all |>
 
 # Merriman Replication
 
+## "Descriptive Stats for 2024 property tax refunds"
+
 For Levy Adjustment Excel Files have the taxing agency, adjustment eligibility, previous year's tax rate and previous year's levy, as well a the amount of refunds from PTAB and COEs. 
 
 Merriman has output in the word document within the `PTAB` folder that has his descriptive stats for 2024. They are recreated below for 2024 and other tax years. 
+
+> These are descriptive stats for non-homerule taxing agencies that are eligible for recapture! Also fairly certain that the years should be n-1 because the file name indicates the when the file was created, but it is for the previous tax year. 
 
 ```{r}
 deciles <- adjust_all |> 
@@ -316,8 +346,8 @@ deciles |> filter(probs == 0.95)
 In 2022, 95% of  taxing agencies had refunds equal to less than 4.6% of their levy. In 2024, 95% of agencies had 2.7% of their levy be refunded. 
 
 
-```{r}
-#| tbl-cap: "Recapture Levy Share for tax year 2024. Uses levy amount from fund 408 / total_final_levy to create recap levyshare. Only PTAXSIM data." 
+```{r tbl-mtable1}
+#| tbl-cap: "Recapture Levy Share for tax year 2024. Uses levy amount from fund 408 / total_final_levy to create recap levyshare. Uses only PTAXSIM data." 
 
 table(adjust_all$year)
 
@@ -332,9 +362,10 @@ levyshare_byagency |> filter(year == 2024) |> DT::datatable(rownames = FALSE)
 ```
 
 
-```{r}
+```{r tbl-mtable2}
 #| tbl-cap: "Uses total_refunds/total_final_levy to create recap levyshare. Total Refunds is from the clerk & treasurers files with refund information and the levy amount is from ptaxsim. 2021-2024 refund values."
 # using the refund data for all agencies, both homerule and non homerule.
+
 refund_all |> 
   left_join(agency_info, by = c("agency_number" = "agency_num", "year")) |>
   group_by(year) |>
@@ -346,21 +377,21 @@ refund_all |>
 ```
 
 
-```{r}
+```{r tbl-mtable3}
 #| tbl-cap: "Levy Share for Tax Year 2021. Uses levy amount from fund 408 / total_final_levy to create recap levyshare. Only PTAXSIM data." 
 
 levyshare_byagency |> filter(year == 2021)|> DT::datatable(rownames = FALSE)
 ```
 
 
-```{r}
+```{r tbl-mtable4}
 #| tbl-cap: "Levy Share for Tax Year 2022. Uses levy amount from fund 408 / total_final_levy to create recap levyshare. Only PTAXSIM data." 
 
 levyshare_byagency |> filter(year == 2022)|> DT::datatable(rownames = FALSE)
 ```
 
 
-```{r}
+```{r tbl-mtable5}
 #| tbl-cap: "Levy Share for Tax Year 2023. Uses levy amount from fund 408 / total_final_levy to create recap levyshare. Only PTAXSIM data." 
 
 levyshare_byagency |> filter(year == 2023)|> DT::datatable(rownames = FALSE)
@@ -368,7 +399,16 @@ levyshare_byagency |> filter(year == 2023)|> DT::datatable(rownames = FALSE)
 
 ## Refunds as a share of agency's levy
 
+
 Merriman said he looked at refunds, but he looked at refunds only for agencies eligible for recapture. (Non Homerule Agencies.)
+
+```{r}
+#| tbl-cap: "Replicated most recent email and table in Merriman_recapture_memo.docx file."
+
+
+adjust_all |> mutate(share = levy_adjustment / lastyear_levy) |> filter(year == 2024 & share > 0.027)
+```
+
 
 - Add levy data to the refund data. Levy data from `agency_info` table in ptaxsim db.
 
@@ -382,7 +422,10 @@ nicknames <- readxl::read_xlsx("Necessary_Files/muni_shortnames.xlsx") |>
 ```
 
 
-```{r}
+
+```{r tbl-table6}
+#| tbl-cap: "Uses total_refunds / levy from the refund_all dataframe."
+
 refund_all |> 
   left_join(agency_info, by = c("agency_number" = "agency_num", "year")) |>
   mutate(share = abs(total_refunds)/total_final_levy,
@@ -404,13 +447,20 @@ aes(x=year, y = share, label = agency_name), nudge_y =.05 ) +
 
 
 
-```{r}
+```{r} 
+#| tbl-cap: "Over 8000 agencies exist during 2024, but only 2,390 are actively taxing properties (i.e. have a levy > $0)."
+
+
 refund_all |> 
   left_join(agency_info, by = c("agency_number" = "agency_num", "year")) |>
-  mutate(share = abs(total_refunds)/total_final_levy,
+  mutate(share = round(abs(total_refunds)/total_final_levy, digits = 3),
          share = ifelse(share>1, 1,share),
          year = as.character(year)) |>
-  filter(year !="2024") |> DT::datatable(rownames = FALSE)
+  filter(year !="2024" 
+         & total_final_levy > 0
+         ) |> 
+  select(agency_name, share, year, total_refunds, total_final_levy) |>
+  DT::datatable(rownames = FALSE)
 ```
 
 # Combine data sources
@@ -589,17 +639,6 @@ write_csv(df,  "levy_refunds_recoupments_by_agency_2021-2024.csv")
 
 # Data Exploration
 
-```{r include = FALSE}
-
-#df <- read_csv("levy_refunds_recoupments_by_agency.csv")
-fund408_fromtreas <- readxl::read_xlsx("PTAB/Levy Adjustment Fund 408 Extension 2021-2023.xlsx") 
-
-fund408_fromtreas <- fund408_fromtreas |> 
-  rename(year = `Tax Year`,
-         agency_num = Agency,
-         agency_name= `Agency Name`,
-         fund_num = Fund)
-```
 
 ## Aggregation to some Composite increase?
 
@@ -641,6 +680,7 @@ impacted_taxcodes |> filter(year == 2022) |> DT::datatable(rownames = FALSE)
 impacted_taxcodes |> filter(year == 2023)  |> DT::datatable(rownames = FALSE)
 
 ```
+
 
 
 ## Descriptive Statistics: Eligible vs. Ineligible
