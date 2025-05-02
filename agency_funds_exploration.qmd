@@ -332,7 +332,7 @@ For Levy Adjustment Excel Files have the taxing agency, adjustment eligibility, 
 
 Merriman has output in the word document within the `PTAB` folder that has his descriptive stats for 2024. They are recreated below for 2024 and other tax years. 
 
-> These are descriptive stats for non-homerule taxing agencies that are eligible for recapture! Also fairly certain that the years should be n-1 because the file name indicates the when the file was created, but it is for the previous tax year. 
+> These are descriptive stats for non-homerule taxing agencies that are eligible for recapture! 
 
 ```{r}
 deciles <- adjust_all |> 
@@ -345,9 +345,26 @@ deciles |> filter(probs == 0.95)
 
 In 2022, 95% of  taxing agencies had refunds equal to less than 4.6% of their levy. In 2024, 95% of agencies had 2.7% of their levy be refunded. 
 
+```{r tbl-actualreplication}
+#| tbl-cap: "Replicates Merriman's table in `descriptive_stats about 2024 property tax refunds.docx` file. He used the refund amount for the next tax year (2024) /  previous year's levy (from 2023)." 
+
+table(adjust_all$year)
+
+levyshare_byagency <- adjust_all |> 
+  group_by(year) |>
+  mutate(levy_share = round(levy_adjustment / lastyear_levy, digits = 3)) |>
+  arrange(year, desc(levy_share)) |>
+  mutate(cumsum = cumsum(levy_adjustment)) |>
+  select(year, agency_name, levy_share, levy_adjustment, cumsum)
+
+# Merriman's for comparison for 2024
+levyshare_byagency |> filter(year == 2024) |> DT::datatable(rownames = FALSE)
+```
+
+> **Values differ between the table above and below due to the year of the levy used in the denominator!**
 
 ```{r tbl-mtable1}
-#| tbl-cap: "Recapture Levy Share for tax year 2024. Uses levy amount from fund 408 / total_final_levy to create recap levyshare. Uses only PTAXSIM data." 
+#| tbl-cap: "**Alternative Replication for 2024.** Recapture Levy Share for tax year 2024. Uses levy amount from fund 408 / total_final_levy to create recap levyshare. Uses only PTAXSIM data." 
 
 table(adjust_all$year)
 
@@ -363,7 +380,7 @@ levyshare_byagency |> filter(year == 2024) |> DT::datatable(rownames = FALSE)
 
 
 ```{r tbl-mtable2}
-#| tbl-cap: "Uses total_refunds/total_final_levy to create recap levyshare. Total Refunds is from the clerk & treasurers files with refund information and the levy amount is from ptaxsim. 2021-2024 refund values."
+#| tbl-cap: "Uses total_refunds/total_final_levy to create recap levyshare. Total Refunds is from the clerk & treasurers files with refund information and the levy amount is from ptaxsim. 2021-2024 refund values. Excludes agencies that did not have a levy amount."
 # using the refund data for all agencies, both homerule and non homerule.
 
 refund_all |> 
@@ -372,7 +389,8 @@ refund_all |>
   mutate(recap_levyshare =  abs(total_refunds) / total_final_levy) |>
   arrange(year, desc(recap_levyshare)) |>
   select(year, agency_name, recap_levyshare, everything()) |>
-  filter(recap_levyshare > 0) |> DT::datatable(rownames = FALSE)
+  filter(total_final_levy > 0) |> 
+  DT::datatable(rownames = FALSE)
 
 ```
 
@@ -552,7 +570,7 @@ adjust_recap_all <- adjust_recap_all |>
   select(year, agency_number, agency_name, total_recap, total_refund, levy_adjustment, adjust_eligible, everything())
 
 
-adjust_recap_all
+adjust_recap_all |> DT::datatable(rownames = FALSE)
 ```
 
 ## Final Data Assembly
@@ -599,18 +617,16 @@ final_df_temp <- final_df |>
          levy_adjustment,
          )
 
-df_final_variables <- final_df_temp |>
-  names()
-
-df_final_variables
 ```
 
 
 ```{r}
 df <- final_df_temp
+df |> DT::datatable(rownames = FALSE)
+
 
 df |> 
-  filter(year !=2024 & year > 2020) |> # since ptaxsim database doesn't have fund 408 values for that tax year yet.
+  filter(year > 2020) |> # since ptaxsim database doesn't have fund 408 values for that tax year yet.
   
   # difference between ptaxsim fund 408 recaptured levy amounts and levy adjustment/recaptured amounts from excel files received from Clerk's/treasurer's office
   mutate(
@@ -688,6 +704,7 @@ impacted_taxcodes |> filter(year == 2023)  |> DT::datatable(rownames = FALSE)
 ```{r include = FALSE}
 rm(agency_info, agency_fund_info, agency_fund, agency_names)
 ```
+
 ```{r}
 df |>
   group_by(year, adjust_eligible) |>
@@ -773,9 +790,11 @@ eligible <- df |> filter(adjust_eligible == "Eligible" & levy > 0) |>
     diff = abs(fund408 - levy_adjustment)
          )
 
-eligible |> filter(fund408==0 | is.na(levy_adjustment)) |> distinct(agency_name) |> DT::datatable(rownames = FALSE)
+eligible |> 
+  filter(fund408==0 | is.na(levy_adjustment)) |> distinct(agency_name, year) |> DT::datatable(rownames = FALSE)
 
-eligible |> filter(levy_adjustment==0 | is.na(levy_adjustment)) |> distinct(agency_name) |> DT::datatable(rownames = FALSE)
+eligible |> 
+  filter(levy_adjustment==0 | is.na(levy_adjustment)) |> distinct(agency_name) |> DT::datatable(rownames = FALSE)
 
 ```
 
@@ -923,23 +942,6 @@ df |>
          Excludes > .5 ratios.")
 ```
 
-```{r}
-df |> 
-  filter(#year !=2024 &
-           year > 2020) |>
-  group_by(agency_name, agency_number) |>
-  arrange(agency_number, year) |>
-  mutate(
-    ratio = fund408 / lag(fund408)) |> 
-  filter(ratio > 5) |>
-  ggplot() +
-  geom_line(aes(x=as.character(year), y = ratio, color = major_type, alpha = .5, group = agency_number))+
-  geom_point(aes(x=as.character(year), y = ratio, color = major_type, alpha = .5) ) +
-  geom_text(aes(x=as.character(year), y = ratio, label=agency_name, nudge_x = 0.2, nudge_y = 4), check_overlap = TRUE)+
-  scale_y_continuous(limits = c(0, 200) ) +
-  labs(title = "Outliers: Obs with ratio over 5", x= element_blank())
- 
-```
 
 
 ```{r}
@@ -955,28 +957,16 @@ df |>
   geom_point(aes(x=as.character(year), y = ratio, color = major_type, alpha = .5) ) +
   geom_text(aes(x=as.character(year), y = ratio, label=agency_name, nudge_x = 0.2, nudge_y = 4), check_overlap = TRUE)+
   scale_y_continuous(limits = c(0, 200) ) +
-  labs(title = "Levy Adjustment Variable from Treasurer", x= element_blank())
- 
-```
-
-```{r}
-df |> 
-  filter(year > 2020) |> 
-  group_by(agency_name, agency_number) |>
-  arrange(agency_number, year) |>
-  mutate(
-    ratio = levy_adjustment / levy) |> 
-  ggplot() +
-  geom_line(aes(x=as.character(year), y = ratio, color = major_type, alpha = .5, group = agency_number))+
-  # geom_point(aes(x=as.character(year), y = ratio, color = major_type, alpha = .5) ) +
-  labs(title = "Levy Adjustment / Levy", x= element_blank())
+  labs(title = "Levy Adjustment Variable from Treasurer", x= element_blank(),
+       caption = "Ratio is recapture for 1 year / recapture for previous year.")
  
 ```
 
 
+
 ```{r}
 df |> 
-  filter(year > 2020 & adjust_eligible == "Eligible" & year < 2024) |> 
+  filter(year > 2020 & adjust_eligible == "Eligible") |> 
   group_by(agency_name, agency_number) |>
   arrange(agency_number, year) |>
   mutate(
@@ -984,7 +974,8 @@ df |>
   ggplot() +
   geom_line(aes(x=as.character(year), y = ratio, color = major_type, alpha = .5, group = agency_number))+
    geom_point(aes(x=as.character(year), y = ratio, color = major_type, alpha = .5) ) +
-  labs(title = "Eligible Agencies Only. Ratio = Refund / Levy.", caption = "Looked the same as using Levy Adjustment / Levy", x= element_blank())
+  labs(title = "Eligible Agencies Only. Ratio = Refund / Levy.", 
+       caption = "Looked the same as using Levy Adjustment / Levy", x= element_blank())
  
 ```
 
