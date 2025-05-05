@@ -105,7 +105,9 @@ agency_funds |> filter(fund_num==408) |>
 
 
 
-```{r}
+```{r fig-ptaxsimfund408}
+#| fig-cap: "Data from PTAXSIM database fund level data, and agency level info. Identifies the money amount from fund 408 (recapture) and all other funds that are not 408."
+
 agency_fund408_sums <- agency_funds |> 
   group_by(year, agency_num, agency_name, major_type, minor_type) |>
   mutate(fund408 = ifelse(fund_num == 408, final_levy, 0),
@@ -125,7 +127,10 @@ agency_fund408_sums |>
   geom_line(aes(x=year, y=recap_levyshare, group=agency_name, alpha = .4, color = major_type)) +
   labs(title = "Fund 408 / Total Levy", caption = "Fund data form PTAXSIM.
        Excludes agencies with more than 25% of their taxbase outside of Cook County.")
+```
 
+
+```{r}
 agency_fund408_sums |> 
   filter(year > 2019 & pct_inCook > 0.75) |>
   mutate(recap_levyshare = fund408/final_levy,
@@ -142,13 +147,18 @@ agency_fund408_sums |>
 Some agencies have a majority of their taxbase outside of cook county. We will exclude those from this analysis.
 
 ```{r}
-agency_fund408_sums
+#| label: tbl-datatable-from-ptaxsim
+#| tbl-cap: "Values created from PTAXSIM fund table and agency table."
+
+agency_fund408_sums |> DT::datatable(rownames = FALSE)
 ```
 
 
-## fund 408 data from clerk/treasurer
+## Fund 408 data from clerk/treasurer
 
 ```{r}
+#| label: tbl-fund408-fromtreasurer
+#| tbl-cap: "Table from data in the `Levy Adjustment Fund 408 Extension 2021-2023.xlsx`"
 
 fund408_fromtreas <- readxl::read_xlsx("PTAB/Levy Adjustment Fund 408 Extension 2021-2023.xlsx") 
 
@@ -162,7 +172,7 @@ fund408_fromtreas <- fund408_fromtreas |>
 
 agency_fund408_sums |> 
   ungroup() |>
-  filter(year>2020& pct_inCook > 0.75) |>
+  filter(year>2020 & pct_inCook > 0.75) |>
   right_join(fund408_fromtreas, by = c("year", "agency_num" )) |>
   select(year, agency_name.x, fund408, FundExtension ,agency_num, pct_inCook) |>
   mutate(difference = round(fund408-FundExtension, digits = 0)) |> 
@@ -185,6 +195,7 @@ For example, Levy Adjustment 2021 shows the amount that was refunded in 2020.
 All observations' `aggregate_refund` amounts equal their `levy_adjustment` values. 
 
 ```{r}
+#| label: tbl-levyadjustments
 #| tbl-cap: "`adjust_all` has all levy adjustments from the new recapture legislation since 2021. Variables labeled with `refund` represent the amount that was recaptured due to refunds for eligible taxing agencies"
 
 
@@ -252,11 +263,14 @@ adjust_all <- rbind(adjust2021, adjust2022, adjust2023, adjust2024) |>
   
   # exclude the rows that had Totals in them (using their missing agency numbers)
   filter(!is.na(agency_number)) |>
+  
+  # recap levyshare is the amount of recapture / previous year's levy. 
+  # Same year levy values are merged in in a seperate data frame.
   mutate(recap_levyshare = levy_adjustment/lastyear_levy
          ) 
 
 
-adjust_all
+adjust_all |> DT::datatable(rownames = FALSE)
 ```
 
 ## Levy Recapture Files from Clerk / Treasurer
@@ -270,6 +284,9 @@ Two of the file have very detailed PTAB&SP and CofE tabs that have very detailed
 _Note: the variables are named "recouped" in these files which is potentially confusing_ ^ However, the variable names do make sense from the Treasurer's point of view, and they made the files in the first place.  
 
 ```{r}
+#| label: tbl-refundsdata
+#| tbl-cap: "Files from `PTAB/levy recapture/` including `Levy Recapture vf2 as received from CCTO 2022-03-23.xlsx`, Levy Recapture - 221116.xlsx`, etc."
+
 # year = Tax Year. Date in file name is from agency creation of file or reception of file date.
 
 refund2021 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - vf2 as received from CCTO 2022-03-23.xlsx")|>
@@ -303,7 +320,7 @@ refund_all <- rbind(refund2021, refund2022, refund2023, refund2024) |>
   mutate(total_refunds = refunded_sp_ptab + refunded_coe)
 
 
-refund_all
+refund_all |> DT::datatable(rownames = FALSE)
 ```
 
 `adjust_all` saved as `output/adjust_all.csv`
@@ -434,15 +451,15 @@ adjust_all |> mutate(share = levy_adjustment / lastyear_levy) |> filter(year == 
 ```{r}
 library(ggrepel)
 library(readxl)
+
 nicknames <- readxl::read_xlsx("Necessary_Files/muni_shortnames.xlsx") |>
   mutate(agency_number = str_pad(as.character(agency_number), 9, pad = "0" ) ) 
-
 ```
 
 
 
-```{r tbl-table6}
-#| tbl-cap: "Uses total_refunds / levy from the refund_all dataframe."
+```{r fig-table6}
+#| fig-cap: "Uses total_refunds / levy from the refund_all dataframe."
 
 refund_all |> 
   left_join(agency_info, by = c("agency_number" = "agency_num", "year")) |>
@@ -452,7 +469,6 @@ refund_all |>
   filter(year !="2024") |>  # no values
   ggplot() +
     geom_jitter(aes(x=year, y = share, color = as.character(home_rule_ind))) + 
-
  # geom_point(aes(x=year, y = share, color = as.character(home_rule_ind))) + 
   geom_text_repel(data = . %>% filter(share > 0.2),
 aes(x=year, y = share, label = agency_name), nudge_y =.05 ) + 
@@ -464,8 +480,31 @@ aes(x=year, y = share, label = agency_name), nudge_y =.05 ) +
 ```
 
 
+```{r fig-table6b}
+#| fig-cap: "Uses total_refunds / levy from the refund_all dataframe. Excludes ratios above 0.25."
 
-```{r} 
+refund_all |> 
+  left_join(agency_info, by = c("agency_number" = "agency_num", "year")) |>
+  mutate(share = abs(total_refunds)/total_final_levy,
+         share = ifelse(share>1, 1,share),
+         year = as.character(year)) |>
+  filter(year !="2024" & share < 0.25) |>  # no values
+  ggplot() +
+   # geom_jitter(aes(x=year, y = share, color = as.character(home_rule_ind))) + 
+
+  geom_point(aes(x=year, y = share, color = as.character(home_rule_ind))) + 
+  
+  geom_text_repel(data = . %>% filter(share > 0.2),
+aes(x=year, y = share, label = agency_name), nudge_y =.05 ) + 
+  scale_y_continuous(limits = c(0, 0.25), breaks = c(0, .1, .25)) + 
+  labs(title = "Refunds / Levy Amount",
+       caption = "Agencies at 100% were Infinite: They did not have a levy, but they did have a refund.",
+       color = "Home Rule", x=element_blank(),
+       y = "Share of Levy")
+```
+
+
+```{r tbl-taxingagencies-withlevies} 
 #| tbl-cap: "Over 8000 agencies exist during 2024, but only 2,390 are actively taxing properties (i.e. have a levy > $0)."
 
 
@@ -535,6 +574,9 @@ adjust_all |>
 ```
 
 ```{r}
+#| label: tbl-joineddata
+#| tbl-caption: "Joined data from the refund files and recapture files from the Clerk and Treasurer."
+
 adjust_recap_all <- full_join(
   refund_all, adjust_all,
   by = c("year", "agency_number", "agency_name")
@@ -580,6 +622,10 @@ At this point, we have the data for all Eligible taxing agencies, but missing va
 We want to get the values for all agencies. 
 
 ```{r}
+#| label: tbl-finaldatable
+#| tbl-cap: "Final data table with renamed variables."
+
+
 # agency_fund408_sums has all levies for all years, but fund 408 only began being used in 2021. Filter to just 2021-2023 for now before joining to the adjust_recap_all data object
 final_df <- left_join(adjust_recap_all, agency_fund408_sums|> 
                         filter(year>2020), by = c("agency_number" = "agency_num", "year") ) |>
@@ -621,6 +667,10 @@ final_df_temp <- final_df |>
 
 
 ```{r}
+#| label: tbl-differences-invariables
+#| tbl-cap: "Difference between PTAXSIM's fund 408 values and the Clerk's variable for the levy adjustment."
+
+
 df <- final_df_temp
 df |> DT::datatable(rownames = FALSE)
 
@@ -659,6 +709,9 @@ write_csv(df,  "levy_refunds_recoupments_by_agency_2021-2024.csv")
 ## Aggregation to some Composite increase?
 
 ```{r}
+#| label: tbl-taxcode-aggregation2022
+#| tbl-cap: "Aggregating up to Tax Code Level: 2022"
+
 taxcodes <-  DBI::dbGetQuery(
   ptaxsim_db_conn,
   "SELECT *
@@ -692,6 +745,12 @@ impacted_taxcodes <- taxcodes |>
   arrange(desc(rate_ratio)) 
 
 impacted_taxcodes |> filter(year == 2022) |> DT::datatable(rownames = FALSE)
+```
+
+
+```{r}
+#| label: tbl-taxcode-aggregation2023
+#| tbl-cap: "Aggregating up to Tax Code Level: 2023"
 
 impacted_taxcodes |> filter(year == 2023)  |> DT::datatable(rownames = FALSE)
 
@@ -784,6 +843,10 @@ df |>
 From googleing random news articles and public documents, we know that taxing agencies in Oak Lawn opt out,
 
 ```{r}
+#| label: tbl-eligible
+#| tbl-cap: "Agencies that are eligible for recapture and did not have recapture funds."
+#| layout-ncol: 2
+
 eligible <- df |> filter(adjust_eligible == "Eligible" & levy > 0) |>
     mutate(
     fund408 = ifelse(is.na(fund408), 0, fund408),
@@ -799,6 +862,8 @@ eligible |>
 ```
 
 ```{r}
+#| label: tbl-noteligible
+#| tbl-cap: "There are no agencies that have refund values that are not eligible for recapture. So that is good."
 
 not_eligible <- df |> filter(adjust_eligible == "Not Eligible") |>
     mutate(
@@ -868,7 +933,7 @@ Add line for average or median that is darker
 
 maybe a case study for "worst case scenario" agencies with large tax rate increase from fund 408?
  
-```{r eval = FALSE}
+```{r eval = FALSE, include = FALSE}
 agency_funds |> 
   filter(year > 2020) |> # since ptaxsim database doesn't have fund 408 values for that tax year yet.
   
