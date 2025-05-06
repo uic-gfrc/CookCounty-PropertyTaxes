@@ -89,10 +89,11 @@ agency_funds <- left_join(agency_funds, agency_names)
 ```{r}
 agency_funds |> filter(fund_num==408) |>
   select(year, agency_name_short, final_levy, final_rate, fund_num) |>
-  arrange(desc(final_rate)) 
-      
+  arrange(desc(final_rate)) |> DT::datatable(rownames = FALSE)
+```
 
 
+```{r}
 agency_funds |> filter(fund_num==408) |>
   select(year, agency_name_short, final_levy, final_rate, fund_num, major_type) |>
   arrange(desc(final_rate)) |>
@@ -103,6 +104,16 @@ agency_funds |> filter(fund_num==408) |>
 
 ```
 
+```{r}
+agency_funds |> 
+  filter(fund_num==408) |>
+  ggplot() + 
+  geom_histogram(aes(x=final_rate)) + 
+  labs(title = "Tax Rate associated with Fund 408",
+           caption = "Source: PTAXSIM database; agency_fund table.",
+       y = "Count", x="Percentage Points added to Tax Rate") +
+  facet_wrap(~year)
+```
 
 
 ```{r fig-ptaxsimfund408}
@@ -158,7 +169,7 @@ agency_fund408_sums |> DT::datatable(rownames = FALSE)
 
 ```{r}
 #| label: tbl-fund408-fromtreasurer
-#| tbl-cap: "Table from data in the `Levy Adjustment Fund 408 Extension 2021-2023.xlsx`"
+#| tbl-cap: "Calculates difference in Fund 408 amounts from PTAXSIM and the values from the `Levy Adjustment Fund 408 Extension 2021-2023.xlsx`"
 
 fund408_fromtreas <- readxl::read_xlsx("PTAB/Levy Adjustment Fund 408 Extension 2021-2023.xlsx") 
 
@@ -275,6 +286,9 @@ adjust_all |> DT::datatable(rownames = FALSE)
 
 ## Levy Recapture Files from Clerk / Treasurer
 
+> There are taxing agencies that have refunds and are not active taxing agencies. The agencies themselves are named things like "2013A Bond Escrow Account". Refunds from these accounts are probably not included in recapture funds that are added to the levy since the money was in an escrow fund agency and the taxing agency does not actively tax the public
+
+
 The **Levy Recapture Files** break up the refunds into 2 categories: PTAB/SP Refunds and CofE (Over-Assessment) Refunds. 
 
 Treasurer's office sent the account specific files to the Clerk's office, and the Clerk's office sent them to Drucker and Merriman. 
@@ -285,7 +299,7 @@ _Note: the variables are named "recouped" in these files which is potentially co
 
 ```{r}
 #| label: tbl-refundsdata
-#| tbl-cap: "Files from `PTAB/levy recapture/` including `Levy Recapture vf2 as received from CCTO 2022-03-23.xlsx`, Levy Recapture - 221116.xlsx`, etc."
+#| tbl-cap: "Files from `PTAB/levy recapture/` including `Levy Recapture vf2 as received from CCTO 2022-03-23.xlsx`, Levy Recapture - 221116.xlsx`, etc. 11,120 observations if agencies without refunds are left in dataset. 6,042 if filtering for agencies that have non-zero refunds."
 
 # year = Tax Year. Date in file name is from agency creation of file or reception of file date.
 
@@ -320,7 +334,7 @@ refund_all <- rbind(refund2021, refund2022, refund2023, refund2024) |>
   mutate(total_refunds = refunded_sp_ptab + refunded_coe)
 
 
-refund_all |> DT::datatable(rownames = FALSE)
+refund_all |> filter(total_refunds != 0) |> DT::datatable(rownames = FALSE)
 ```
 
 `adjust_all` saved as `output/adjust_all.csv`
@@ -352,12 +366,19 @@ Merriman has output in the word document within the `PTAB` folder that has his d
 > These are descriptive stats for non-homerule taxing agencies that are eligible for recapture! 
 
 ```{r}
+adjust_all |>  
+  filter(aggregate_refunds != 0 & is.finite(recap_levyshare) ) |>
+  ggplot() + 
+  geom_histogram(aes(x=recap_levyshare))+
+  facet_wrap(~year)
+```
+
+```{r}
 deciles <- adjust_all |> 
-  group_by(year) |>
   summarize(probs = seq(0.05, 0.95, by = .1),
             quantiles = quantile(recap_levyshare, probs =  seq(0.05, 0.95, by = 0.1), na.rm = TRUE) )
 
-deciles |> filter(probs == 0.95)
+deciles |> filter(probs == 0.95 | probs == .50)
 ```
 
 In 2022, 95% of  taxing agencies had refunds equal to less than 4.6% of their levy. In 2024, 95% of agencies had 2.7% of their levy be refunded. 
@@ -477,6 +498,25 @@ aes(x=year, y = share, label = agency_name), nudge_y =.05 ) +
        caption = "Agencies at 100% were Infinite: They did not have a levy, but they did have a refund.",
        color = "Home Rule", x=element_blank(),
        y = "Share of Levy")
+```
+
+
+```{r fig-table6-histogram}
+#| fig-cap: "Histograms of total_refunds / levy from the refund_all dataframe."
+
+refund_all |> 
+  left_join(agency_info, by = c("agency_number" = "agency_num", "year")) |>
+  mutate(share = abs(total_refunds)/total_final_levy,
+         share = ifelse(share>1, 1,share),
+         year = as.character(year)) |>
+  filter(!is.na(home_rule_ind) & is.finite(share) & share < 1 ) |>
+  ggplot() +
+  geom_histogram(aes(x=share)) + 
+  labs(title = "Refunds / Levy Amount",
+       caption = "Agencies at 100% were Infinite: They did not have a levy, but they did have a refund.",
+       color = "Home Rule", x = "Refund Share of Levy",
+       y = "Share of Levy") +
+  facet_wrap(vars(year, home_rule_ind))
 ```
 
 
@@ -918,21 +958,10 @@ df |>
 
 # Recapture Ratios - Merriman's graph request
 
-Distribution of ratios:
 
-- recaptured amount for 2022 / recaptured amount for 2021 is one observation
+Add line for average or median that is darker? If zooming in on specific taxing agencies in order to have a refernece point.
 
-- 2023/2022 is another observation,
- 
- 
-Stacked line graph of summed non408 fund tax rates and 408 fund tax rates from ptaxsim agency-fund level data.
 
-408 fund tax rate / summed(non-408 fund tax rates)
-
-Add line for average or median that is darker 
-
-maybe a case study for "worst case scenario" agencies with large tax rate increase from fund 408?
- 
 ```{r eval = FALSE, include = FALSE}
 agency_funds |> 
   filter(year > 2020) |> # since ptaxsim database doesn't have fund 408 values for that tax year yet.
