@@ -519,6 +519,35 @@ refund_all |>
   facet_wrap(vars(year, home_rule_ind))
 ```
 
+```{r fig-table6-histogramv2}
+#| fig-cap: "Histograms of total_refunds / levy from the refund_all dataframe."
+
+# refund_all |> 
+#   left_join(agency_info, by = c("agency_number" = "agency_num", "year")) |>
+#   mutate(share = abs(total_refunds)/total_final_levy,
+#          share = ifelse(share>1, 1,share),
+#          year = as.character(year)) |>
+#   filter(share > 0.3) 
+
+refund_all |> 
+  left_join(agency_info, by = c("agency_number" = "agency_num", "year")) |>
+  mutate(share = abs(total_refunds)/total_final_levy,
+         share = ifelse(share>1, 1,share),
+         year = as.character(year)) |>
+  filter(!is.na(home_rule_ind) & is.finite(share) & share < 1 ) |>
+  filter(share < 0.3) |>
+  ggplot() +
+  geom_histogram(aes(x=share)) + 
+  labs(title = "Refunds / Levy Amount",
+       caption = "Excludes agencies that had refunds but no levy. 
+       Excludes agencies with refund share greater than 0.3. 
+       41 observations total are excluded.",
+       color = "Home Rule", x = "Refund Share of Levy",
+       y = "Share of Levy") +
+  facet_wrap(vars(year, home_rule_ind))
+
+
+```
 
 ```{r fig-table6b}
 #| fig-cap: "Uses total_refunds / levy from the refund_all dataframe. Excludes ratios above 0.25."
