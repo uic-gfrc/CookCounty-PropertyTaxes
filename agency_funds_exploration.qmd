@@ -42,7 +42,7 @@ agency_info <- DBI::dbGetQuery(
   ) %>%
   mutate_if(is.integer64, as.integer) |>
   mutate_if(is.integer, as.numeric) |>
-  mutate(pct_inCook = cty_cook_eav / cty_total_eav)
+  mutate(pct_inCook = round(cty_cook_eav / cty_total_eav, digits = 3) )
 
 agency_fund <- DBI::dbGetQuery(
   ptaxsim_db_conn,
@@ -144,8 +144,8 @@ agency_fund408_sums |>
 ```{r}
 agency_fund408_sums |> 
   filter(year > 2019 & pct_inCook > 0.75) |>
-  mutate(recap_levyshare = fund408/final_levy,
-         recap_revratio = fund408/not_recap) |>
+  mutate(recap_levyshare = round(fund408/final_levy, digits = 3),
+         recap_revratio = round(fund408/not_recap, digits = 3)) |>
   ggplot() + 
   geom_line(aes(x=year, y=recap_revratio, group=agency_name, alpha = .4, color = major_type)) +
   labs(title = "Fund 408 / Non-Recapture Levy", 
@@ -277,12 +277,12 @@ adjust_all <- rbind(adjust2021, adjust2022, adjust2023, adjust2024) |>
   
   # recap levyshare is the amount of recapture / previous year's levy. 
   # Same year levy values are merged in in a seperate data frame.
-  mutate(recap_levyshare = levy_adjustment/lastyear_levy) |> 
+  mutate(recap_levyshare = round(levy_adjustment/lastyear_levy, digits = 3)) |> 
   # fix agency names
-  mutate(ifelse(agency_number == "070390000", agency_name == "INVERNESS FIRE PROT DIST (FKA PALATINE)"), agency_name) |>
-  mutate(ifelse(agency_number == "140020000", agency_name == "BRONZEVILLE EXPANDED MENTAL HEALTH SERV DIST"), agency_name) |>
-  mutate(ifelse(agency_number == "020070003", agency_name == "TOWN ELK GROVE ROAD FUND"), agency_name) |>
-  mutate(ifelse(agency_number == "042220000", agency_name == "GLENBROOK HIGH SCHOOL DISTRICT 225"), agency_name)
+  mutate(agency_name = ifelse(agency_number == "070390000", agency_name == "INVERNESS FIRE PROT DIST (FKA PALATINE)", agency_name) ) |>
+  mutate(agency_name = ifelse(agency_number == "140020000", agency_name == "BRONZEVILLE EXPANDED MENTAL HEALTH SERV DIST", agency_name) )|>
+  mutate(agency_name = ifelse(agency_number == "020070003", agency_name == "TOWN ELK GROVE ROAD FUND", agency_name) )|>
+  mutate(agency_name = ifelse(agency_number == "042220000", agency_name == "GLENBROOK HIGH SCHOOL DISTRICT 225", agency_name))
 
 
 adjust_all |> DT::datatable(rownames = FALSE)
@@ -337,10 +337,11 @@ refund_all <- rbind(refund2021, refund2022, refund2023, refund2024) |>
   filter(!is.na(agency_number)) |>
   mutate(total_refunds = refunded_sp_ptab + refunded_coe) |>
   # fix agency names
-  mutate(ifelse(agency_number == "070390000", agency_name == "INVERNESS FIRE PROT DIST (FKA PALATINE)"), agency_name) |>
-  mutate(ifelse(agency_number == "140020000", agency_name == "BRONZEVILLE EXPANDED MENTAL HEALTH SERV DIST"), agency_name) |>
-  mutate(ifelse(agency_number == "020070003", agency_name == "TOWN ELK GROVE ROAD FUND"), agency_name) |>
-  mutate(ifelse(agency_number == "042220000", agency_name == "GLENBROOK HIGH SCHOOL DISTRICT 225"), agency_name)
+  mutate(agency_name = ifelse(agency_number == "070390000", agency_name == "INVERNESS FIRE PROT DIST (FKA PALATINE)", agency_name) ) |>
+  mutate(agency_name = ifelse(agency_number == "140020000", agency_name == "BRONZEVILLE EXPANDED MENTAL HEALTH SERV DIST", agency_name) )|>
+  mutate(agency_name = ifelse(agency_number == "020070003", agency_name == "TOWN ELK GROVE ROAD FUND", agency_name) )|>
+  mutate(agency_name = ifelse(agency_number == "042220000", agency_name == "GLENBROOK HIGH SCHOOL DISTRICT 225", agency_name))
+
 
 
 refund_all |> filter(total_refunds != 0) |> DT::datatable(rownames = FALSE)
@@ -493,7 +494,7 @@ nicknames <- readxl::read_xlsx("Necessary_Files/muni_shortnames.xlsx") |>
 
 refund_all |> 
   left_join(agency_info, by = c("agency_number" = "agency_num", "year")) |>
-  mutate(share = abs(total_refunds)/total_final_levy,
+  mutate(share = round(abs(total_refunds)/total_final_levy, digits = 3),
          share = ifelse(share>1, 1,share),
          year = as.character(year)) |>
   filter(year !="2024") |>  # no values
@@ -514,7 +515,7 @@ refund_all |>
 
 refund_all |> 
   left_join(agency_info, by = c("agency_number" = "agency_num", "year")) |>
-  mutate(share = abs(total_refunds)/total_final_levy,
+  mutate(share = round(abs(total_refunds)/total_final_levy, digits = 3),
          share = ifelse(share>1, 1,share),
          year = as.character(year)) |>
   filter(!is.na(home_rule_ind) & is.finite(share) & share < 1 ) |>
@@ -539,7 +540,7 @@ refund_all |>
 
 refund_all |> 
   left_join(agency_info, by = c("agency_number" = "agency_num", "year")) |>
-  mutate(share = abs(total_refunds)/total_final_levy,
+  mutate(share = round(abs(total_refunds)/total_final_levy, digits = 3),
          share = ifelse(share>1, 1,share),
          year = as.character(year)) |>
   filter(!is.na(home_rule_ind) & is.finite(share) & share < 1 ) |>
@@ -562,7 +563,7 @@ refund_all |>
 
 refund_all |> 
   left_join(agency_info, by = c("agency_number" = "agency_num", "year")) |>
-  mutate(share = abs(total_refunds)/total_final_levy,
+  mutate(share = round(abs(total_refunds)/total_final_levy, digits = 3),
          share = ifelse(share>1, 1,share),
          year = as.character(year)) |>
   filter(year !="2024" & share < 0.25) |>  # no values
@@ -818,7 +819,7 @@ impacted_taxcodes <- taxcodes |>
     rate_408 = sum(ifelse(fund_num==408, final_rate, 0), na.rm=TRUE),
          rate_non408 = sum(ifelse(fund_num!=408, final_rate, 0), na.rm=TRUE)
   ) |> 
-    mutate(rate_ratio = rate_408 / rate_non408) |>
+    mutate(rate_ratio = round(rate_408 / rate_non408, digits =3)) |>
   arrange(desc(rate_ratio)) 
 
 impacted_taxcodes |> filter(year == 2022) |> DT::datatable(rownames = FALSE)
@@ -913,11 +914,11 @@ df |>
 From googleing random news articles and public documents, we know that taxing agencies in Oak Lawn opt out,
 
 
-Some differences in tables below
+Some differences in tables below: 
 
 - School district 35: Glencoe   
 - School District 145:   
-- Palatine SD 211: submitted motion to abate recapture amount. That is not seen in the adjust_all file. So it either got voted down OR the adjustment files do not reflect those that submitted abatements.  
+- [Palatine SD 211](https://go.boarddocs.com/il/thsd211/Board.nsf/files/CLXT6W75E666/$file/Adoption%20of%20the%202022%20Tax%20Levy%20(12-15-22).pdf): submitted motion to abate recapture amount. That is not seen in the adjust_all file. So it either got voted down OR the adjustment files do not reflect those that submitted abatements.  
   - Palatine SD 211 had $0 recapture when using fund408 == 0, but Palatine SD had a levy_adjustment value that was not \$0.   
   - Does that mean that ptaxsim reflects the abatements? or just a data difference by mistake?  
 
