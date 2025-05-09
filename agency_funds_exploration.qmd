@@ -277,8 +277,12 @@ adjust_all <- rbind(adjust2021, adjust2022, adjust2023, adjust2024) |>
   
   # recap levyshare is the amount of recapture / previous year's levy. 
   # Same year levy values are merged in in a seperate data frame.
-  mutate(recap_levyshare = levy_adjustment/lastyear_levy
-         ) 
+  mutate(recap_levyshare = levy_adjustment/lastyear_levy) |> 
+  # fix agency names
+  mutate(ifelse(agency_number == "070390000", agency_name == "INVERNESS FIRE PROT DIST (FKA PALATINE)"), agency_name) |>
+  mutate(ifelse(agency_number == "140020000", agency_name == "BRONZEVILLE EXPANDED MENTAL HEALTH SERV DIST"), agency_name) |>
+  mutate(ifelse(agency_number == "020070003", agency_name == "TOWN ELK GROVE ROAD FUND"), agency_name) |>
+  mutate(ifelse(agency_number == "042220000", agency_name == "GLENBROOK HIGH SCHOOL DISTRICT 225"), agency_name)
 
 
 adjust_all |> DT::datatable(rownames = FALSE)
@@ -331,7 +335,12 @@ refund_all <- rbind(refund2021, refund2022, refund2023, refund2024) |>
   
   # keep observations with non-missing variables
   filter(!is.na(agency_number)) |>
-  mutate(total_refunds = refunded_sp_ptab + refunded_coe)
+  mutate(total_refunds = refunded_sp_ptab + refunded_coe) |>
+  # fix agency names
+  mutate(ifelse(agency_number == "070390000", agency_name == "INVERNESS FIRE PROT DIST (FKA PALATINE)"), agency_name) |>
+  mutate(ifelse(agency_number == "140020000", agency_name == "BRONZEVILLE EXPANDED MENTAL HEALTH SERV DIST"), agency_name) |>
+  mutate(ifelse(agency_number == "020070003", agency_name == "TOWN ELK GROVE ROAD FUND"), agency_name) |>
+  mutate(ifelse(agency_number == "042220000", agency_name == "GLENBROOK HIGH SCHOOL DISTRICT 225"), agency_name)
 
 
 refund_all |> filter(total_refunds != 0) |> DT::datatable(rownames = FALSE)
