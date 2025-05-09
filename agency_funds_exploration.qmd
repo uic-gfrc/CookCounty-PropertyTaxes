@@ -491,8 +491,7 @@ refund_all |>
   ggplot() +
     geom_jitter(aes(x=year, y = share, color = as.character(home_rule_ind))) + 
  # geom_point(aes(x=year, y = share, color = as.character(home_rule_ind))) + 
-  geom_text_repel(data = . %>% filter(share > 0.2),
-aes(x=year, y = share, label = agency_name), nudge_y =.05 ) + 
+  # geom_text_repel(data = . %>% filter(share > 0.2),aes(x=year, y = share, label = agency_name), nudge_y =.05 ) + 
   scale_y_continuous(limits = c(0, 1.2), breaks = c(0, .25, .5, .75, 1)) + 
   labs(title = "Refunds / Levy Amount",
        caption = "Agencies at 100% were Infinite: They did not have a levy, but they did have a refund.",
@@ -847,6 +846,7 @@ df |>
 ```
 
 ```{r}
+#| layout-ncol: 3
 
 df |>
   filter(final_levy>0) |>
@@ -857,9 +857,6 @@ df |>
     geom_line() +
     theme_classic()
 
-```
-
-```{r}
 
 df |>
   filter(between(year, 2021, 2023)) |>
@@ -873,9 +870,7 @@ df |>
     theme_classic() +
   labs(title = "Average (Mean) Levy")
 
-```
 
-```{r}
 
 df |>
   filter(final_levy>0) |>
@@ -887,9 +882,6 @@ df |>
     theme_classic() +
   labs(title = "Refunds by Eligibility")
 
-```
-
-```{r}
 
 df |>
     filter(final_levy>0) |>
@@ -911,6 +903,17 @@ df |>
 
 From googleing random news articles and public documents, we know that taxing agencies in Oak Lawn opt out,
 
+
+Some differences in tables below
+
+- School district 35: Glencoe   
+- School District 145:   
+- Palatine SD 211: submitted motion to abate recapture amount. That is not seen in the adjust_all file. So it either got voted down OR the adjustment files do not reflect those that submitted abatements.  
+  - Palatine SD 211 had $0 recapture when using fund408 == 0, but Palatine SD had a levy_adjustment value that was not \$0.   
+  - Does that mean that ptaxsim reflects the abatements? or just a data difference by mistake?  
+
+
+
 ```{r}
 #| label: tbl-eligible
 #| tbl-cap: "Agencies that are eligible for recapture and did not have recapture funds."
@@ -922,12 +925,25 @@ eligible <- df |> filter(adjust_eligible == "Eligible" & levy > 0) |>
     diff = abs(fund408 - levy_adjustment)
          )
 
-eligible |> 
-  filter(fund408==0 | is.na(levy_adjustment)) |> distinct(agency_name, year) |> DT::datatable(rownames = FALSE)
+check1 <- eligible |> 
+  filter(fund408==0 #| is.na(levy_adjustment)
+         ) |> distinct(agency_name, year)
 
-eligible |> 
-  filter(levy_adjustment==0 | is.na(levy_adjustment)) |> distinct(agency_name) |> DT::datatable(rownames = FALSE)
+check1 |>
+  pivot_wider(names_from = "year", values_from = "year") |> DT::datatable(rownames = FALSE)
 
+check2 <- eligible |> 
+  filter(levy_adjustment==0# | is.na(levy_adjustment)
+         ) |> distinct(agency_name, year)
+
+check2 |>
+  pivot_wider(names_from = "year", values_from = "year") |> DT::datatable(rownames = FALSE)
+```
+
+
+```{r}
+anti_join(check1, check2) |>
+  pivot_wider(names_from = "year", values_from = "year")
 ```
 
 ```{r}
