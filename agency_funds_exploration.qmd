@@ -573,17 +573,20 @@ refund_all |>
 
 refund_all |> 
   mutate(share = round(abs(total_refunds)/total_final_levy, digits = 3),
-      #   share = ifelse(share>1, 1, share),
-         year = as.character(year)) |>
+         year = as.character(year),
+             homerule_label = case_when(
+           home_rule_ind == "1" ~ "Homerule",
+           home_rule_ind == "0" ~ " Non-Homerule",
+           TRUE ~ NA)) |>
   filter(!is.na(home_rule_ind) & is.finite(share) & share < 1 ) |>
   ggplot() +
   geom_histogram(aes(x=share)) +
   alea_theme() +
   labs(title = "Refunds / Levy Amount",
-       caption = "Agencies at 100% were Infinite: They did not have a levy, but they did have a refund.",
-       color = "Home Rule", x = "Refund Share of Levy",
-       y = "Share of Levy") +
-  facet_wrap(vars(home_rule_ind, year))
+       caption = "Excludes agencies that had refunds but no levy.",
+       y = "Refund Share of Levy",
+       x = "# Taxing Agencies") +
+  facet_wrap(vars(homerule_label, year))
 ```
 
 ```{r fig-table6-histogramv2}
@@ -599,7 +602,12 @@ refund_all |>
 refund_all |> 
   mutate(share = round(abs(total_refunds)/total_final_levy, digits = 3),
          share = ifelse(share>1, 1,share),
-         year = as.character(year)) |>
+         year = as.character(year),
+         homerule_label = case_when(
+           home_rule_ind == "1" ~ "Homerule",
+           home_rule_ind == "0" ~ " Non-Homerule",
+           TRUE ~ NA
+         )) |>
   filter(!is.na(home_rule_ind) & is.finite(share) ) |>
   filter(share < 0.3) |>
   ggplot() +
@@ -609,9 +617,9 @@ refund_all |>
        caption = "Excludes agencies that had refunds but no levy. 
        Excludes agencies with refund share greater than 0.3. 
        41 observations total are excluded.",
-       color = "Home Rule", x = "Refund Share of Levy",
-       y = "Share of Levy") +
-  facet_wrap(vars(home_rule_ind, year ))
+       color = "Home Rule", y = "# Taxing Agencies",
+       x = "Share of Levy") +
+  facet_wrap(vars(homerule_label, year ))
 
 
 ```
@@ -919,6 +927,10 @@ impacted_munis |> DT::datatable(rownames = FALSE)
 
 ```
 
+```{r}
+impacted_munis |> filter(rate_408 > .5) |> DT::datatable(rownames = FALSE)
+
+```
 
 ## Descriptive Statistics: Eligible vs. Ineligible
 
@@ -1098,7 +1110,7 @@ df |>
 # Recapture Ratios - Merriman's graph request
 
 
-Add line for average or median that is darker? If zooming in on specific taxing agencies in order to have a refernece point.
+Add line for average or median that is darker? If zooming in on specific taxing agencies in order to have a reference point.
 
  
 ```{r}
