@@ -20,6 +20,12 @@ library(ptaxsim)
 library(DBI)
 library(data.table)
 
+library(ggrepel)
+library(readxl)
+
+nicknames <- readxl::read_xlsx("Necessary_Files/muni_shortnames.xlsx") |>
+  mutate(agency_number = str_pad(as.character(agency_number), 9, pad = "0" ) ) 
+
 is.integer64 <- function(x){
   class(x)=="integer64"
 }
@@ -101,7 +107,8 @@ agency_funds <- left_join(agency_funds, agency_names) |>
     mutate(agency_name = ifelse(agency_num == "070390000", agency_name == "INVERNESS FIRE PROT DIST (FKA PALATINE)", agency_name) ) |>
   mutate(agency_name = ifelse(agency_num == "140020000", agency_name == "BRONZEVILLE EXPANDED MENTAL HEALTH SERV DIST", agency_name) )|>
   mutate(agency_name = ifelse(agency_num == "020070003", agency_name == "TOWN ELK GROVE ROAD FUND", agency_name) ) |>
-  mutate(agency_name = ifelse(agency_num == "042220000", agency_name == "GLENBROOK HIGH SCHOOL DISTRICT 225", agency_name))
+  mutate(agency_name = ifelse(agency_num == "042220000", agency_name == "GLENBROOK HIGH SCHOOL DISTRICT 225", agency_name)) |>
+  mutate(agency_name = ifelse(agency_num == "030910000", agency_name == "VILLAGE OF OAK LAWN", agency_name))
 
 #agency_funds |> write_csv("agency_funds.csv")
 
@@ -201,6 +208,9 @@ agency_fund408_sums |> DT::datatable(rownames = FALSE)
 
 ## Fund 408 data from clerk/treasurer
 
+> Coding Note: Agency names had double spaces between words in the excel file. They were CTRL-F and replaced with a single space in the excel file.
+
+
 ```{r}
 #| label: tbl-fund408-fromtreasurer
 #| tbl-cap: "Calculates difference in Fund 408 amounts from PTAXSIM and the values from the `Levy Adjustment Fund 408 Extension 2021-2023.xlsx`"
@@ -223,11 +233,14 @@ agency_fund408_sums |>
   ungroup() |>
   filter(year>2020 & pct_inCook > 0.75) |>
   right_join(fund408_fromtreas, by = c("year", "agency_num" )) |>
-  select(year, agency_name.x, fund408, FundExtension ,agency_num, pct_inCook) |>
-  mutate(difference = round(fund408-FundExtension, digits = 0)) |> 
+  select(year, agency_name.x, fund408, FundExtension,
+         total_final_levy, total_ext, pct_inCook, agency_num ) |>
+  mutate(difference = round(fund408-FundExtension, digits = 0), .before = pct_inCook ) |> 
   DT::datatable(rownames = FALSE)
 ```
 
+
+> Taxing districts with the largest differences appear seem to generally be border crossers so it might just be a data issue of what is included in ptaxsim vs what is included in the treasurer's files.
 
 
 # PTAB Documents from Clerk / Treasurer
@@ -323,11 +336,21 @@ adjust_all <- rbind(adjust2021, adjust2022, adjust2023, adjust2024) |>
   mutate(agency_name = ifelse(agency_number == "070390000", agency_name == "INVERNESS FIRE PROT DIST (FKA PALATINE)", agency_name) ) |>
   mutate(agency_name = ifelse(agency_number == "140020000", agency_name == "BRONZEVILLE EXPANDED MENTAL HEALTH SERV DIST", agency_name) )|>
   mutate(agency_name = ifelse(agency_number == "020070003", agency_name == "TOWN ELK GROVE ROAD FUND", agency_name) )|>
-  mutate(agency_name = ifelse(agency_number == "042220000", agency_name == "GLENBROOK HIGH SCHOOL DISTRICT 225", agency_name)) 
+  mutate(agency_name = ifelse(agency_number == "042220000", agency_name == "GLENBROOK HIGH SCHOOL DISTRICT 225", agency_name)) |>
+  mutate(agency_name = ifelse(agency_number == "030910000", agency_name == "VILLAGE OF OAK LAWN", agency_name))
 
 
-adjust_all |> DT::datatable(rownames = FALSE)
+adjust_all |> select(year, agency_name, agency_number, adjust_eligible, aggregate_refunds, levy_adjustment, everything() )|>  DT::datatable(rownames = FALSE)
 ```
+
+
+```{r}
+#| include: FALSE
+
+adjust_all |> filter(levy_adjustment == 0 & total_levy > 0 & adjust_eligible == "Eligible")
+```
+
+**24 agencies had levies > $0 and were eligible for recapture and had no levy adjustments BUT they also had no refunds. This makes it appear like all agencies eligible for recapture accepted the recaptured funds.**
 
 ## Levy Recapture Files from Clerk / Treasurer
 
@@ -381,7 +404,8 @@ refund_all <- rbind(refund2021, refund2022, refund2023, refund2024) |>
   mutate(agency_name = ifelse(agency_number == "070390000", agency_name == "INVERNESS FIRE PROT DIST (FKA PALATINE)", agency_name) ) |>
   mutate(agency_name = ifelse(agency_number == "140020000", agency_name == "BRONZEVILLE EXPANDED MENTAL HEALTH SERV DIST", agency_name) )|>
   mutate(agency_name = ifelse(agency_number == "020070003", agency_name == "TOWN ELK GROVE ROAD FUND", agency_name) )|>
-  mutate(agency_name = ifelse(agency_number == "042220000", agency_name == "GLENBROOK HIGH SCHOOL DISTRICT 225", agency_name))
+  mutate(agency_name = ifelse(agency_number == "042220000", agency_name == "GLENBROOK HIGH SCHOOL DISTRICT 225", agency_name)) |>
+  mutate(agency_name = ifelse(agency_number == "030910000", agency_name == "VILLAGE OF OAK LAWN", agency_name))
 
 refund_all <- refund_all |> 
   left_join(agency_info, by = c("agency_number" = "agency_num", "year")) |>
@@ -411,7 +435,9 @@ refund_all |>
 
 # Merriman Replication
 
-## "Descriptive Stats for 2024 property tax refunds"
+## Recapture Eligible Descriptive Stats
+
+**"Descriptive Stats for 2024 property tax refunds"**
 
 For Levy Adjustment Excel Files have the taxing agency, adjustment eligibility, previous year's tax rate and previous year's levy, as well a the amount of refunds from PTAB and COEs. 
 
@@ -421,24 +447,20 @@ Merriman has output in the word document within the `PTAB` folder that has his d
 
 ```{r}
 adjust_all |>  
-  filter(aggregate_refunds != 0 & is.finite(recap_levyshare) ) |>
+  filter(
+    adjust_eligible == "Eligible" &
+    #aggregate_refunds != 0 & 
+    is.finite(recap_levyshare) 
+    ) |>
   ggplot() + 
     alea_theme() +
-
   geom_histogram(aes(x=recap_levyshare)) +
-  facet_wrap(~year)
+  scale_x_continuous(limits = c(0, 0.20))+
+  facet_wrap(~year) +
+  labs(caption = "Excludes observations with levy shares > 25% (only a couple outliers)", x = "Share of Levy Recaptured", y = "# Taxing Agencies")
 ```
 
-```{r}
-deciles <- adjust_all |> 
-  group_by(year) |>
-  summarize(probs = seq(0.05, 0.95, by = .1),
-            quantiles = quantile(recap_levyshare, probs =  seq(0.05, 0.95, by = 0.1), na.rm = TRUE) )
 
-deciles |> filter(probs == 0.95 | probs == .50)
-```
-
-In 2022, 95% of  taxing agencies had refunds equal to less than 4.6% of their levy. In 2024, 95% of agencies had 2.7% of their levy be refunded. (When using the refund amount / last year's levy amount. Which is not quite correct.)
 
 ```{r tbl-actualreplication}
 #| tbl-cap: "Replicates Merriman's table in `descriptive_stats about 2024 property tax refunds.docx` file. He used the refund amount for the next tax year (2024) /  previous year's levy (from 2023)." 
@@ -456,7 +478,25 @@ dm_levyshare_byagency <- adjust_all |>
 dm_levyshare_byagency |> filter(year == 2024) |> DT::datatable(rownames = FALSE)
 ```
 
-> **Values differ between the table above and below due to the year of the levy used in the denominator!**
+```{r}
+#| label: tbl-Merrimans-recapture-deciles
+#| tbl-cap: "Replicates Merriman's table in `descriptive_stats about 2024 property tax refunds.docx` file. He used the refund amount for the next tax year (2024) /  previous year's levy (from 2023)." 
+
+deciles <- adjust_all |> 
+  mutate(levy_share = round(levy_adjustment / lastyear_levy, digits = 3)) |>
+  filter(total_levy > 0 &
+    adjust_eligible == "Eligible" &
+    is.finite(levy_share) 
+    ) |>
+  group_by(year) |>
+  summarize(probs = seq(0.05, 0.95, by = .1),
+            quantiles = quantile(levy_share, probs =  seq(0.05, 0.95, by = 0.1), na.rm = TRUE) )
+
+deciles |> filter(probs == 0.95 | probs == .55)
+```
+
+In 2022, 95% of actively taxing taxing agencies had refunds equal to less than 4.5% of their levy. In 2021 and 2023, 95% of agencies had 3% of their levy be refunded. (When using the refund amount / last year's levy amount. Which is not quite correct.)
+
 
 ```{r tbl-mtable1}
 #| tbl-cap: "**Merriman's Method - Replication for 2023** Recapture Levy Share for tax year 2023. Uses levy amount from fund 408 / total_final_levy to create recap levyshare. Uses only PTAXSIM data." 
@@ -473,12 +513,14 @@ dm_levyshare_byagency |> filter(year == 2023) |> DT::datatable(rownames = FALSE)
 
 ### Alea's alternate calculations
  
-```{r tbl-mtable2}
-#| tbl-cap: "**Alea's Method** Uses total_refunds/total_final_levy to create recap levyshare. Total Refunds is from the clerk & treasurers files with refund information and the levy amount is from ptaxsim. 2021-2024 refund values. Excludes agencies that did not have a levy amount (which ends up droping tax year 2024 since there isn't levy values for that year in the ptaxsim database)."
+ > **Values differ between the table above and below due to the year of the levy used in the denominator!**
+
+ 
+```{r}
+#| tbl-cap: "**Alea's Method** Uses aggregate_refunds/total_final_levy to create recap levyshare. Aggregate Refunds is from the clerk & treasurers files with levy adjustment information and the levy amount is from ptaxsim. Excludes agencies that did not have a levy amount (which ends up droping tax year 2024 since there isn't levy values for that year in the ptaxsim database)."
 
 
-awm_levyshare_byagency <- refund_all |> 
-  mutate(recap_levyshare =  round(abs(total_refunds) / total_final_levy, digits = 3) ) |>
+awm_levyshare_byagency <- adjust_all |> 
   arrange(year, desc(recap_levyshare)) |>
   select(year, agency_name, recap_levyshare, everything()) |>
   filter(total_final_levy > 0 ) 
@@ -488,6 +530,8 @@ awm_levyshare_byagency <- refund_all |>
 awm_levyshare_byagency |> 
   DT::datatable(rownames = FALSE)
 ```
+ 
+
 ```{r}
 #| label: tbl-deciles_AWM
 #| tbl-cap: "Recapture's share of Agencies' Levies. Uses AWM's method of joining in ptaxsim levy data that corresponds with the recapture amount's year." 
@@ -500,24 +544,25 @@ deciles <- awm_levyshare_byagency |>
 deciles |> filter(probs == 0.95 | probs == .55)
 
 ```
+In 2022, 95% of actively taxing taxing agencies had refunds equal to less than 4.5% of their levy. In 2021 and 2023, 95% of agencies had 3% of their levy be refunded. 
 
 
 ```{r tbl-mtable3}
-#| tbl-cap: "Levy Share for Tax Year 2021. Uses levy amount from fund 408 / total_final_levy to create recap levyshare. Only PTAXSIM data." 
+#| tbl-cap: "Levy Share for Tax Year 2021. Uses levy adjustment / total_final_levy to create recap levyshare." 
 
 awm_levyshare_byagency |> filter(year == 2021)|> DT::datatable(rownames = FALSE)
 ```
 
 
 ```{r tbl-mtable4}
-#| tbl-cap: "Levy Share for Tax Year 2022. Uses levy amount from fund 408 / total_final_levy to create recap levyshare. Only PTAXSIM data." 
+#| tbl-cap: "Levy Share for Tax Year 2022. Uses levy levy_adjustment / total_final_levy to create recap levyshare" 
 
 awm_levyshare_byagency |> filter(year == 2022)|> DT::datatable(rownames = FALSE)
 ```
 
 
 ```{r tbl-mtable5}
-#| tbl-cap: "Levy Share for Tax Year 2023. Uses levy amount from fund 408 / total_final_levy to create recap levyshare. Only PTAXSIM data." 
+#| tbl-cap: "Levy Share for Tax Year 2023. Uses levy_adjustment / total_final_levy to create recap levyshare." 
 
 awm_levyshare_byagency |> filter(year == 2023)|> DT::datatable(rownames = FALSE)
 ```
@@ -528,22 +573,10 @@ awm_levyshare_byagency |> filter(year == 2023)|> DT::datatable(rownames = FALSE)
 Merriman said he looked at refunds, but he looked at refunds only for agencies eligible for recapture. (Non Homerule Agencies.)
 
 ```{r}
-#| tbl-cap: "Replicated most recent email and table in Merriman_recapture_memo.docx file."
+#| tbl-cap: "Replicated most recent email and table in Merriman_recapture_memo.docx file. It is NOT actually for refunds, but recaptured refunds."
 
 
 adjust_all |> mutate(share = levy_adjustment / lastyear_levy) |> filter(year == 2024 & share > 0.027)
-```
-
-
-- Add levy data to the refund data. Levy data from `agency_info` table in ptaxsim db.
-
-
-```{r}
-library(ggrepel)
-library(readxl)
-
-nicknames <- readxl::read_xlsx("Necessary_Files/muni_shortnames.xlsx") |>
-  mutate(agency_number = str_pad(as.character(agency_number), 9, pad = "0" ) ) 
 ```
 
 
@@ -591,14 +624,14 @@ refund_all |>
 ```
 
 ```{r fig-table6-histogramv2}
-#| fig-cap: "Histograms of total_refunds / levy from the refund_all dataframe."
+#| fig-cap: "Histograms of total_refunds / levy from the refund_all dataframe. Excludes 41 observations with shares larger than 30% to increase legibility."
 
-# refund_all |> 
-#   left_join(agency_info, by = c("agency_number" = "agency_num", "year")) |>
+# refund_all |>
 #   mutate(share = abs(total_refunds)/total_final_levy,
 #          share = ifelse(share>1, 1,share),
 #          year = as.character(year)) |>
-#   filter(share > 0.3) 
+#   filter(share > 0.3)
+## 41 observations excluded by filtering below
 
 refund_all |> 
   mutate(share = round(abs(total_refunds)/total_final_levy, digits = 3),
@@ -664,6 +697,23 @@ refund_all |>
   select(agency_name, share, year, total_refunds, total_final_levy) |>
   DT::datatable(rownames = FALSE)
 ```
+
+```{r tbl-refundtable2}
+#| tbl-cap: "**Alea's Method** Uses total_refunds/total_final_levy to create recap levyshare. Total Refunds is from the clerk & treasurers files with refund information and the levy amount is from ptaxsim. 2021-2024 refund values. Excludes agencies that did not have a levy amount (which ends up droping tax year 2024 since there isn't levy values for that year in the ptaxsim database)."
+
+
+awm_levyshare_byagency <- refund_all |> 
+  #mutate(recap_levyshare =  round(abs(total_refunds) / total_final_levy, digits = 3) ) |>
+  arrange(year, desc(refund_levyshare)) |>
+  select(year, agency_name, refund_levyshare, everything()) |>
+  filter(total_final_levy > 0 ) 
+
+
+
+awm_levyshare_byagency |> 
+  DT::datatable(rownames = FALSE)
+```
+
 
 # Combine data sources
 
@@ -763,19 +813,17 @@ final_df <- left_join(adjust_recap_all, agency_fund408_sums|>
                         filter(year>2020) #,
                       #by = c("agency_number" = "agency_num", "year") 
                       ) |>
+  filter(pct_inCook > 0.75) |>
   mutate(
     adjust_eligible = ifelse(home_rule_ind == 1 & is.na(adjust_eligible), 
                              "Not Eligible",
                             ifelse(home_rule_ind == 0 & is.na(adjust_eligible), 
                                    "Eligible", adjust_eligible)
-                            )
-    # levy_adjustment = ifelse(is.na(levy_adjustment), 0, levy_adjustment),
-    #recap_levyshare = ifelse(is.na(recap_levyshare), 0, recap_levyshare)
-  )
+                            ) )
 
 # Select only relevant, non-redundant variables
 
-final_df_temp <- final_df# |>
+#final_df_temp <- final_df# |>
  #  rename(agency_name = agency_name.x)
   # select(year, 
   #        agency_number, 
@@ -798,6 +846,7 @@ final_df_temp <- final_df# |>
   #        levy_adjustment,
   #        )
 
+final_df |> DT::datatable(rownames = FALSE)
 ```
 
 
@@ -806,7 +855,7 @@ final_df_temp <- final_df# |>
 #| tbl-cap: "Difference between PTAXSIM's fund 408 values and the Clerk's variable for the levy adjustment."
 
 
-df <- final_df_temp
+df <- final_df
 df |> DT::datatable(rownames = FALSE)
 
 
@@ -819,7 +868,8 @@ df |>
     diff = abs(fund408 - levy_adjustment),    # difference between ptaxsim recapture data and levy adjustment files recapture data
          ) |>
   
-  arrange(desc(diff), agency_name )  |>
+  arrange(#desc(diff),
+          agency_name )  |>
   select(year, agency_name, diff, fund408, levy_adjustment, total_refund, )
 ```
 
@@ -1001,25 +1051,28 @@ df |>
 
 > Barrington and Matteson became homerule by vote in Nov. 2022. They were not eligible for recapture funds as of the 2022 levy. Can be seen in the agency_info table within ptaxsim and in Notes column of 2022 Adjustment excel file. 
 
-From googleing random news articles and public documents, we know that taxing agencies in Oak Lawn opt out,
-
 
 Some differences in tables below: 
 
-- School district 35: Glencoe   
-- School District 145:   
+- School District 145: Arbor Park School District, had refunds and levies, but FundExtension from treasurer says $0 for fund 408.   
+
 - [Palatine SD 211](https://go.boarddocs.com/il/thsd211/Board.nsf/files/CLXT6W75E666/$file/Adoption%20of%20the%202022%20Tax%20Levy%20(12-15-22).pdf): submitted motion to abate recapture amount. That is not seen in the adjust_all file. So it either got voted down OR the adjustment files do not reflect those that submitted abatements.  
   - Palatine SD 211 had $0 recapture when using fund408 == 0, but Palatine SD had a levy_adjustment value that was not \$0.   
-  - Does that mean that ptaxsim reflects the abatements? or just a data difference by mistake?  
+  - Does that mean that ptaxsim reflects the abatements? or just a data difference by mistake?   
+  - Had FundExtension = $0 too (variable from fund 408 extensions from treasurers office)  
+  
+  
+  
 
 
 
 ```{r}
 #| label: tbl-eligible
 #| tbl-cap: "Agencies that are eligible for recapture and did not have recapture funds."
-#| layout-ncol: 2
+#| layout-ncol: 3
 
-eligible <- df |> filter(adjust_eligible == "Eligible" & levy > 0) |>
+eligible <- df |> filter(adjust_eligible == "Eligible" #& levy > 0
+                         ) |>
     mutate(
     fund408 = ifelse(is.na(fund408), 0, fund408),
     diff = abs(fund408 - levy_adjustment)
@@ -1038,6 +1091,13 @@ check2 <- eligible |>
 
 check2 |>
   pivot_wider(names_from = "year", values_from = "year") |> DT::datatable(rownames = FALSE)
+
+check3 <- eligible |> 
+  full_join(fund408_fromtreas) |>
+  filter(FundExtension==0 &
+          # total_levy > 0 
+         ) |> distinct(agency_name, year)
+check3 |>   pivot_wider(names_from = "year", values_from = "year") |> DT::datatable(rownames = FALSE)
 ```
 
 
@@ -1060,6 +1120,13 @@ not_eligible <- df |> filter(adjust_eligible == "Not Eligible") |>
 not_eligible |> filter(levy_adjustment!=0 | fund408!=0) |> DT::datatable(rownames = FALSE)
 ```
 
+
+
+```{r}
+
+df |> filter(levy_adjustment == 0 & total_levy > 0 & adjust_eligible == "Eligible")
+
+```
 
 ## Refunds and Recapture by Minor Class
 
