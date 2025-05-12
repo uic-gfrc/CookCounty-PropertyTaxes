@@ -64,7 +64,8 @@ agency_info <- DBI::dbGetQuery(
   ) %>%
   mutate_if(is.integer64, as.integer) |>
   mutate_if(is.integer, as.numeric) |>
-  mutate(pct_inCook = round(cty_cook_eav / cty_total_eav, digits = 3) )
+  mutate(pct_inCook = round(cty_cook_eav / cty_total_eav, digits = 3) ) |>
+  select(- c(cty_dupage_eav:cty_livingston_eav))
 
 
 agency_fund <- DBI::dbGetQuery(
@@ -322,8 +323,7 @@ adjust_all <- rbind(adjust2021, adjust2022, adjust2023, adjust2024) |>
   mutate(agency_name = ifelse(agency_number == "070390000", agency_name == "INVERNESS FIRE PROT DIST (FKA PALATINE)", agency_name) ) |>
   mutate(agency_name = ifelse(agency_number == "140020000", agency_name == "BRONZEVILLE EXPANDED MENTAL HEALTH SERV DIST", agency_name) )|>
   mutate(agency_name = ifelse(agency_number == "020070003", agency_name == "TOWN ELK GROVE ROAD FUND", agency_name) )|>
-  mutate(agency_name = ifelse(agency_number == "042220000", agency_name == "GLENBROOK HIGH SCHOOL DISTRICT 225", agency_name)) |>
-  select(-c(cty_dupage_eav:cty_livingston_eav))
+  mutate(agency_name = ifelse(agency_number == "042220000", agency_name == "GLENBROOK HIGH SCHOOL DISTRICT 225", agency_name)) 
 
 
 adjust_all |> DT::datatable(rownames = FALSE)
@@ -385,10 +385,10 @@ refund_all <- rbind(refund2021, refund2022, refund2023, refund2024) |>
 
 refund_all <- refund_all |> 
   left_join(agency_info, by = c("agency_number" = "agency_num", "year")) |>
-  mutate(recap_levyshare =  round(abs(total_refunds) / total_final_levy, digits = 3) )
+  mutate(refund_levyshare =  round(abs(total_refunds) / total_final_levy, digits = 3) )
   
 
-refund_all |> filter(total_refunds != 0) |> DT::datatable(rownames = FALSE)
+refund_all |> select(year,agency_name, refund_levyshare, everything()) |> filter(total_refunds != 0) |> DT::datatable(rownames = FALSE)
 ```
 
 `adjust_all` saved as `output/adjust_all.csv`
@@ -548,7 +548,7 @@ nicknames <- readxl::read_xlsx("Necessary_Files/muni_shortnames.xlsx") |>
 
 
 
-```{r fig-table6}
+```{r fig-table6, eval=FALSE, include=TRUE}
 #| fig-cap: "Uses total_refunds / levy from the refund_all dataframe."
 
 refund_all |> 
@@ -570,6 +570,7 @@ refund_all |>
 
 ```{r fig-table6-histogram}
 #| fig-cap: "Histograms of total_refunds / levy from the refund_all dataframe."
+#| fig-column: margin
 
 refund_all |> 
   mutate(share = round(abs(total_refunds)/total_final_levy, digits = 3),
@@ -626,6 +627,7 @@ refund_all |>
 
 ```{r fig-table6b}
 #| fig-cap: "Uses total_refunds / levy from the refund_all dataframe. Excludes ratios above 0.25."
+#| fig-column: margin
 
 refund_all |> 
   mutate(share = round(abs(total_refunds)/total_final_levy, digits = 3),
@@ -668,40 +670,27 @@ refund_all |>
 ```{r checkmissing, eval=FALSE, include=FALSE}
 
 
-# Initial Filters
-recap_all |>
-  select(year) |>
-  distinct()
-
-adjust_all |>
-  select(year) |>
-  distinct()
-
 # Check for na's
 
-recap_all |>
-  count(is.na(agency_number)) #9
+refund_all |>
+  count(is.na(agency_number)) #0
 
 adjust_all |>
-  count(is.na(agency_number)) #2
+  count(is.na(agency_number)) #0
 
 # Check for duplicates
 
-recap_all |>
+refund_all |>
   group_by(agency_number) |>
-  reframe(agency_number, n = n()) |>
-  filter(n != 3)
+  summarize(n = n()) |>
+  filter(n != 4)
 
-recap_all |>
-  count(is.na(agency_number))
 
 adjust_all |>
  group_by(agency_number) |>
-  reframe(agency_number, n = n()) |>
-  filter(n != 3)
+  summarize(n = n()) |>
+  filter(n != 4) # 70 agencies did not exist all 4 years
 
-adjust_all |>
-  count(is.na(agency_number))
 ```
 
 ```{r include = FALSE}
@@ -715,6 +704,7 @@ rm(adjust2021, adjust2022, adjust2023, adjust2024,
 
 ## Join data
 
+`Refund_all` had `r count(refund_all)` observations and `adjust_all` had `r count(adjust_all)` observatins. 
 
 
 ```{r}
@@ -723,13 +713,14 @@ rm(adjust2021, adjust2022, adjust2023, adjust2024,
 
 adjust_recap_all <- full_join(
   refund_all, adjust_all,
-  by = c("year", "agency_number", "agency_name")
 )
 
+dropped <- adjust_recap_all |>
+  filter(
+           (is.na(adjust_eligible)  & (is.na(total_refunds) |total_refunds==0 ))
+           )
 
-# Let's rename those misleading original variable names!!!
-
-adjust_recap_all <- adjust_recap_all |>
+  adjust_recap_all <- adjust_recap_all |>  
 
 # After discussion, we decided variables from the "Levy Adjustment" file referencing refunds were
 # ACTUALLY the value of refunds that were recaptured and added to the levy value. adjustment files do not have refund information for non-eligible agencies.
@@ -746,7 +737,8 @@ adjust_recap_all <- adjust_recap_all |>
 # # any agency that paid refunds during the previous tax year will have values for these variables:
 #          ptab_refund = refunded_sp_ptab,
 #          coe_refund = refunded_coe,
-         total_refund = total_refunds) #|>
+         total_refund = total_refunds) |>
+  anti_join(dropped)
 
   # reorder so key variables are visible right away and next to each other:
  # select(year, agency_number, agency_name, total_recap, total_refund, levy_adjustment, adjust_eligible, everything())
@@ -768,7 +760,9 @@ We want to get the values for all agencies.
 
 # agency_fund408_sums has all levies for all years, but fund 408 only began being used in 2021. Filter to just 2021-2023 for now before joining to the adjust_recap_all data object
 final_df <- left_join(adjust_recap_all, agency_fund408_sums|> 
-                        filter(year>2020), by = c("agency_number" = "agency_num", "year") ) |>
+                        filter(year>2020) #,
+                      #by = c("agency_number" = "agency_num", "year") 
+                      ) |>
   mutate(
     adjust_eligible = ifelse(home_rule_ind == 1 & is.na(adjust_eligible), 
                              "Not Eligible",
@@ -781,8 +775,8 @@ final_df <- left_join(adjust_recap_all, agency_fund408_sums|>
 
 # Select only relevant, non-redundant variables
 
-final_df_temp <- final_df |>
-  rename(agency_name = agency_name.x)
+final_df_temp <- final_df# |>
+ #  rename(agency_name = agency_name.x)
   # select(year, 
   #        agency_number, 
   #        agency_name = agency_name.x,
