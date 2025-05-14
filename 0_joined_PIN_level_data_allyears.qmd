@@ -6,8 +6,6 @@ format:
   html:
     code-fold: true
     df-print: paged
-
-  
 ---
 
 ```{r setup, warning=FALSE, message=FALSE, include=FALSE}
@@ -31,7 +29,7 @@ ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2023.
 
 #years <-(2022) # testing
 
-years <-(2021:2023)
+years <- c(2018, 2023)
 
 cross_county_lines <- c("030440000", "030585000", "030890000", "030320000", "031280000",
                         "030080000", "030560000", "031120000", "030280000", "030340000",
@@ -290,8 +288,8 @@ pin_data <- pin_data |>
 
     mutate(# zero_bill = ifelse(eav <= all_exemptions, 1, 0),  ## old way of creating zero bill but has missing vet exemptions data problem
       has_HO_exemp = ifelse(exe_homeowner > 0, 1, 0),
-    has_SF_exemp = ifelse(exe_senior > 0, 1, 0),
-    has_FR_exemp = ifelse(exe_freeze > 0, 1, 0),
+    has_SR_exemp = ifelse(exe_senior > 0, 1, 0), # senior exemption
+    has_SF_exemp = ifelse(exe_freeze > 0, 1, 0), # senior  freeze exemption
     has_LTHO_exemp = ifelse(exe_longtime_homeowner > 0, 1, 0),
     has_DI_exemp = ifelse(exe_disabled > 0, 1, 0),
     has_VR_exemp = ifelse(exe_vet_returning > 0, 1, 0),
@@ -394,13 +392,13 @@ pin_data <- pin_data %>%
   
 
 
-write_csv(pin_data, file = paste0("./Output/Dont_Upload/0_joined_PIN_data_", i, "_test.csv"))
+write_csv(pin_data, file = paste0("./Output/Dont_Upload/0_joined_PIN_data_", i, ".csv"))
 
 
 
  # Composite Tax Rate Change for Municipalities -------------------------------------
 
-pin_data <- read_csv(paste0("./Output/Dont_Upload/0_joined_PIN_data_", i, "_test.csv"))
+pin_data <- read_csv(paste0("./Output/Dont_Upload/0_joined_PIN_data_", i, ".csv"))
 
 muni_ratechange <- pin_data |>
   group_by(clean_name) |>
@@ -438,6 +436,8 @@ muni_ratechange <- pin_data |>
     pins_in_class = n(),
     all_exemptions = sum(all_exemptions, na.rm=T),   # in EAV
     exe_homeowner = sum(exe_homeowner),
+   exe_senior = sum(exe_senior, na.rm = TRUE),
+   exe_freeze = sum(exe_freeze, na.rm =TRUE),
     abatements = sum(exe_abate),            # in EAV
     eav_incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, taxed_av*eq_factor, 0), na.rm = TRUE),
     final_tax_to_dist = sum(final_tax_to_dist, na.rm=T),
@@ -458,7 +458,8 @@ muni_ratechange <- pin_data |>
     new_TEAV_noGHE = eav_taxed + exe_homeowner,
     new_TEAV_noExemps = eav_taxed + all_exemptions, # does not include abatements
     new_TEAV_noAbates = eav_taxed + abatements, # include only abatements, not other exemption types
-
+    new_TEAV_noSenior = eav_taxed + exe_senior,
+    new_TEAV_noSrFreeze = eav_taxed + exe_freeze,
     # amount of EAV from taxing an additional 15% of the AV if incentive properties didn't exist
     forgone_EAV_incent = #class_group %in% incentive_majorclasses,
       #incent_prop == "Incentive",
@@ -473,6 +474,8 @@ muni_ratechange <- pin_data |>
 
     rate_noExe = final_tax_to_dist / new_TEAV_noExemps,
     rate_noGHE = final_tax_to_dist / new_TEAV_noGHE,
+    rate_noSenior = final_tax_to_dist / new_TEAV_noSenior,
+    rate_noSrFreeze = final_tax_to_dist / new_TEAV_noSrFreeze,
     rate_noAbate = final_tax_to_dist / new_TEAV_noAbates,
     rate_noInc = final_tax_to_dist / new_TEAV_noIncents,
     rate_neither = final_tax_to_dist / TEAV_neither,
@@ -485,13 +488,15 @@ muni_ratechange <- pin_data |>
     change_neither = rate_current - rate_neither,
     change_noTIF = rate_current - rate_noTIFs,
     change_noExe = rate_current - rate_noExe,
+    change_noSenior = rate_current - rate_noSenior,
+    change_noSrFreeze = rate_current - rate_noSrFreeze,
     change_vacant = rate_current - rate_vacant,
     change_lowest = rate_current - rate_lowest
   )  |>
   mutate(across(contains("rate_"), round, digits = 4)) |>
   mutate(across(contains("change_"), round, digits = 4))
 
-write_csv(muni_ratechange, paste0("./Output/muni_ratechange_", i, "_test.csv"))
+write_csv(muni_ratechange, paste0("./Output/muni_ratechange_", i, ".csv"))
 
 muni_rates <- muni_ratechange |> select(clean_name, current_rate_avg, rate_noExe, rate_current)
 
@@ -532,7 +537,7 @@ mc_burden <- pin_data |>
   mutate(
          burden_shift = (pct_taxburden_current - hyp_pct_taxburden))
 
-write_csv(mc_burden, paste0("./Output/muni_mc_burden_", i, "_test.csv"))
+write_csv(mc_burden, paste0("./Output/muni_mc_burden_", i, ".csv"))
 
 
 
@@ -564,7 +569,7 @@ burden_shift <- pin_data |>
          hyp_pct_taxburden = hyp_group_taxes / muni_levy) |> 
   mutate(burden_shift = pct_taxburden_current - hyp_pct_taxburden)
 
-write_csv(burden_shift, paste0("./Output/muni_burden_shift_", i, "_test.csv"))
+write_csv(burden_shift, paste0("./Output/muni_burden_shift_", i, ".csv"))
 
 
 
