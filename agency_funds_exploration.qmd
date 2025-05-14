@@ -141,6 +141,41 @@ agency_funds |> filter(fund_num==408) |>
 
 ```
 
+
+```{r}
+
+# Calculate the 5th and 95th percentiles
+lower_cutoff <- quantile(agency_funds$final_rate[agency_funds$fund_num=="408"], 0.05, na.rm=TRUE)
+upper_cutoff <- quantile(agency_funds$final_rate[agency_funds$fund_num=="408"], 0.95, na.rm=TRUE)
+
+filtered_df <- agency_funds |>
+    filter(
+    fund_num == "408" &
+    levy > 0 &
+    capped_ind == 1
+    ) |>
+  filter(final_rate > upper_cutoff)
+
+filtered_df |> DT::datatable(rownames = FALSE)
+
+deciles <- agency_funds |>
+  filter(
+    fund_num == 408 &
+    levy > 0 &
+    capped_ind == 1
+    ) |>
+  group_by(year) |>
+  summarize(probs = seq(0.05, 0.95, by = .1),
+            n = n(), 
+            quantiles = quantile(final_rate, probs =  seq(0.05, 0.95, by = 0.1), na.rm = TRUE) )
+
+deciles |> filter(probs == 0.95 | probs == .55)
+
+
+
+```
+
+
 ```{r}
 agency_funds |> 
   filter(fund_num==408) |>
@@ -544,6 +579,7 @@ deciles <- awm_levyshare_byagency |>
 deciles |> filter(probs == 0.95 | probs == .55)
 
 ```
+
 In 2022, 95% of actively taxing taxing agencies had refunds equal to less than 4.5% of their levy. In 2021 and 2023, 95% of agencies had 3% of their levy be refunded. 
 
 
@@ -754,7 +790,7 @@ rm(adjust2021, adjust2022, adjust2023, adjust2024,
 
 ## Join data
 
-`Refund_all` had `r count(refund_all)` observations and `adjust_all` had `r count(adjust_all)` observatins. 
+`Refund_all` had `r paste(count(refund_all))` observations and `adjust_all` had `r paste(count(adjust_all))` observations. 
 
 
 ```{r}
@@ -770,7 +806,7 @@ dropped <- adjust_recap_all |>
            (is.na(adjust_eligible)  & (is.na(total_refunds) |total_refunds==0 ))
            )
 
-  adjust_recap_all <- adjust_recap_all |>  
+adjust_recap_all <- adjust_recap_all |>  
 
 # After discussion, we decided variables from the "Levy Adjustment" file referencing refunds were
 # ACTUALLY the value of refunds that were recaptured and added to the levy value. adjustment files do not have refund information for non-eligible agencies.
@@ -805,7 +841,7 @@ We want to get the values for all agencies.
 
 ```{r}
 #| label: tbl-finaldatable
-#| tbl-cap: "Final data table with renamed variables."
+#| tbl-cap: "Final data table."
 
 
 # agency_fund408_sums has all levies for all years, but fund 408 only began being used in 2021. Filter to just 2021-2023 for now before joining to the adjust_recap_all data object
@@ -846,7 +882,7 @@ final_df <- left_join(adjust_recap_all, agency_fund408_sums|>
   #        levy_adjustment,
   #        )
 
-final_df |> DT::datatable(rownames = FALSE)
+final_df |> filter(total_final_levy > 0) |> DT::datatable(rownames = FALSE)
 ```
 
 
@@ -1094,7 +1130,7 @@ check2 |>
 
 check3 <- eligible |> 
   full_join(fund408_fromtreas) |>
-  filter(FundExtension==0 &
+  filter(FundExtension==0 # &
           # total_levy > 0 
          ) |> distinct(agency_name, year)
 check3 |>   pivot_wider(names_from = "year", values_from = "year") |> DT::datatable(rownames = FALSE)
