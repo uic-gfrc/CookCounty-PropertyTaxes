@@ -662,12 +662,7 @@ refund_all |>
 ```{r fig-table6-histogramv2}
 #| fig-cap: "Histograms of total_refunds / levy from the refund_all dataframe. Excludes 41 observations with shares larger than 30% to increase legibility."
 
-# refund_all |>
-#   mutate(share = abs(total_refunds)/total_final_levy,
-#          share = ifelse(share>1, 1,share),
-#          year = as.character(year)) |>
-#   filter(share > 0.3)
-## 41 observations excluded by filtering below
+
 
 refund_all |> 
   mutate(share = round(abs(total_refunds)/total_final_levy, digits = 3),
@@ -693,6 +688,24 @@ refund_all |>
 
 
 ```
+
+```{r}
+#| label: tbl-outliers
+#| tbl-cap: "Taxing Agencies that had refunds greater than 30% of their levies."
+
+
+refund_all |>
+  mutate(share = round(abs(total_refunds)/total_final_levy, digits =4),
+         share = ifelse(share>1, 1,share),
+         year = as.character(year)) |>
+  filter(share > 0.3) |>
+  select(agency_name, share, home_rule_ind, year)  |>
+  arrange(desc(share)) |>
+  DT::datatable(rownames = FALSE) 
+
+# 41 observations excluded by filtering below
+```
+
 
 ```{r fig-table6b}
 #| fig-cap: "Uses total_refunds / levy from the refund_all dataframe. Excludes ratios above 0.25."
