@@ -71,7 +71,12 @@ agency_info <- DBI::dbGetQuery(
   mutate_if(is.integer64, as.integer) |>
   mutate_if(is.integer, as.numeric) |>
   mutate(pct_inCook = round(cty_cook_eav / cty_total_eav, digits = 3) ) |>
-  select(- c(cty_dupage_eav:cty_livingston_eav))
+  select(- c(cty_dupage_eav:cty_livingston_eav)) |>
+   mutate(
+     total_final_levy = ifelse(is.na(total_final_levy), total_ext, total_final_levy),
+     cty_cook_eav = ifelse(is.na(cty_cook_eav) & total_final_levy > 0, total_final_levy / (total_final_rate/100), cty_cook_eav),
+         cty_total_eav = ifelse(is.na(cty_total_eav) & total_final_levy > 0 , total_final_levy / (total_final_rate/100), cty_total_eav)) %>% 
+
 
 
 agency_fund <- DBI::dbGetQuery(
@@ -114,7 +119,12 @@ agency_funds <- left_join(agency_funds, agency_names) |>
 
 ```
 
+According to PTAXIM agency data, there are 810 agencies with levies in 2021 and 2022, and 815 in 2023.
 
+```{r include=FALSE}
+agency_info |> filter(total_final_levy!= 0& year > 2020) |> group_by(year)|>
+  summarise(n = n())
+```
 
 ## PTAXSIM Fund Data: Rate Change from Levy Adjustment
 
@@ -137,10 +147,11 @@ agency_funds |> filter(fund_num==408) |>
   select(year, agency_name_short, final_levy, final_rate, fund_num, major_type) |>
   arrange(desc(final_rate)) |>
   ggplot() + 
-  geom_line(aes(x=as.character(year), y=final_rate, group=agency_name_short, color = major_type, alpha = .3)) + 
+  geom_line(aes(x=as.character(year), y=final_rate, group=agency_name_short, color = major_type)) + 
   alea_theme()+
   labs(title = "Tax Rate associated with Fund 408",
        x = element_blank(), y = "Tax Rate (pct pts)",
+       color =element_blank(),
            caption = "Source: PTAXSIM database; agency_fund table.")
 
 ```
@@ -148,7 +159,7 @@ agency_funds |> filter(fund_num==408) |>
 
 ```{r}
 #| label: tbl-filtered-fund408table
-#| tbl-cap: "**Observations within the 95% percentile** Data from PTAXSIM database (agency_fund table)."
+#| tbl-cap: "**MEMO TABLE - Outliers: Largest Agency Level Tax Rate Change due to Fund 408** Data from PTAXSIM database (agency_fund table)."
 
 # Calculate the 5th and 95th percentiles
 lower_cutoff <- quantile(agency_funds$final_rate[agency_funds$fund_num=="408"], 0.05, na.rm=TRUE)
@@ -160,7 +171,7 @@ filtered_df <- agency_funds |>
     levy > 0 #&
   #  capped_ind == 1
     ) |>
-  select(-c(loss_pct,levy_plus_loss, rate_ceiling, max_levy, prelim_rate, ptell_reduced_levy, ptell_reduced_ind)) |>
+  select(-c(loss_pct,levy_plus_loss, rate_ceiling, max_levy, prelim_rate, ptell_reduced_levy, ptell_reduced_ind, fund_num, capped_ind, agency_name_original)) |>
   select(year, agency_name, final_rate, final_levy, everything()) |> 
   filter(final_rate > upper_cutoff) 
 
@@ -192,7 +203,7 @@ deciles |> filter(probs == 0.95 | probs == .55)
 
 ```{r}
 #| label: tbl-memo-histogram
-#| tbl-cap: "**Distribution of tax rate increases due to fund 408 (Data Source: PTAXSIM agency_fund table)**"
+#| tbl-cap: "**Distribution of tax rate increases due to fund 408** (Data Source: PTAXSIM agency_fund table)"
 #| 
 agency_funds |> 
   filter(fund_num==408) |>
@@ -230,7 +241,7 @@ agency_fund408_sums |>
   geom_line(aes(x=year, y=recap_levyshare, group=agency_name, alpha = .4, color = major_type)) +
 alea_theme() +
   scale_y_continuous(label = scales::percent) +
-  labs(title = "Fund 408 / Total Levy", caption = "Fund data form PTAXSIM.
+  labs(title = "Fund 408 / Levy", caption = "Fund data form PTAXSIM.
        Excludes agencies with more than 25% of their taxbase outside of Cook County.")
 ```
 
@@ -307,7 +318,7 @@ agency_fund408_sums |>
 
 # PTAB Documents from Clerk / Treasurer
 
-## Levy Adjustment Files
+## Recapture data from the Levy Adjustment Files
 
 The **Levy Adjustment** Files exist for 4 years. They use the refund amounts from the previous year to calculate how much to add to Fund 408 for the tax year in the file. 
 
@@ -414,94 +425,13 @@ adjust_all |> filter(levy_adjustment == 0 & total_levy > 0 & adjust_eligible == 
 
 **24 agencies had levies > $0 and were eligible for recapture and had no levy adjustments BUT they also had no refunds. This makes it appear like all agencies eligible for recapture accepted the recaptured funds.**
 
-## Levy Recapture Files from Clerk / Treasurer
+### Merriman Replication
 
-> There are taxing agencies that have refunds and are not active taxing agencies. The agencies themselves are named things like "2013A Bond Escrow Account". Refunds from these accounts are probably not included in recapture funds that are added to the levy since the money was in an escrow fund agency and the taxing agency does not actively tax the public
-
-
-The **Levy Recapture Files** break up the refunds into 2 categories: PTAB/SP Refunds and CofE (Over-Assessment) Refunds. 
-
-Treasurer's office sent the account specific files to the Clerk's office, and the Clerk's office sent them to Drucker and Merriman. 
-
-Two of the file have very detailed PTAB&SP and CofE tabs that have very detailed sheets of the amount of refund from previous years' appeals, but not sure how to use that information for now. (2022 and 2023 are missing the detailed sheets)
-
-_Note: the variables are named "recouped" in these files which is potentially confusing_ ^ However, the variable names do make sense from the Treasurer's point of view, and they made the files in the first place.  
-
-```{r}
-#| label: tbl-refundsdata
-#| tbl-cap: "Files from `PTAB/levy recapture/` including `Levy Recapture vf2 as received from CCTO 2022-03-23.xlsx`, Levy Recapture - 221116.xlsx`, etc. 11,120 observations if agencies without refunds are left in dataset. 6,042 if filtering for agencies that have non-zero refunds."
-
-# year = Tax Year. Date in file name is from agency creation of file or reception of file date.
-
-refund2021 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - vf2 as received from CCTO 2022-03-23.xlsx")|>
-  mutate(year = 2021) |>
-  select(-Total) |>
-  rename(`Agency Number` = `Agency Number (Text)`,
-         
-         `CofE (Over-Assessment)` = `CofE Recouped`) |>
-  mutate(across(where(is.numeric), round, digits =0))
-
-refund2022 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 221116.xlsx") |>
-  mutate(year = 2022)
-
-# refund data for Nov 1 2022 to Oct 31 2023. These refund would be added to the levy for tax year 2023?
-refund2023 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 231129 orig from TR.xlsx") |>
-  mutate(year = 2023)
-
-# refund data for Nov 1 2023 through Oct 31 2024. These refunds would be added to the levy for tax year 2024?
-refund2024 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 241115 orig from TR.xlsx") |>
-  mutate(year = 2024)
-
-refund_all <- rbind(refund2021, refund2022, refund2023, refund2024) |>
-  rename(agency_number = `Agency Number`,
-         agency_name = `Agency Name`,
-         refunded_sp_ptab = `SP/PTAB Recouped`,  # recouped is confusing variable name, so renamed to refunds
-         refunded_coe = `CofE (Over-Assessment)`) |>
-  mutate(across(where(is.numeric), round, digits =0)) |>
-  
-  # keep observations with non-missing variables
-  filter(!is.na(agency_number)) |>
-  mutate(total_refunds = refunded_sp_ptab + refunded_coe) |>
-  # fix agency names
-  mutate(agency_name = ifelse(agency_number == "070390000", agency_name == "INVERNESS FIRE PROT DIST (FKA PALATINE)", agency_name) ) |>
-  mutate(agency_name = ifelse(agency_number == "140020000", agency_name == "BRONZEVILLE EXPANDED MENTAL HEALTH SERV DIST", agency_name) )|>
-  mutate(agency_name = ifelse(agency_number == "020070003", agency_name == "TOWN ELK GROVE ROAD FUND", agency_name) )|>
-  mutate(agency_name = ifelse(agency_number == "042220000", agency_name == "GLENBROOK HIGH SCHOOL DISTRICT 225", agency_name)) |>
-  mutate(agency_name = ifelse(agency_number == "030910000", agency_name == "VILLAGE OF OAK LAWN", agency_name))
-
-refund_all <- refund_all |> 
-  left_join(agency_info, by = c("agency_number" = "agency_num", "year")) |>
-  mutate(refund_levyshare =  round(abs(total_refunds) / total_final_levy, digits = 3) )
-  
-
-refund_all |> select(year,agency_name, refund_levyshare, everything()) |> filter(total_refunds != 0) |> DT::datatable(rownames = FALSE)
-```
-
-`adjust_all` saved as `output/adjust_all.csv`
-
-`refunds_all` saved as `output/refunds_all.csv`
-
-```{r include = FALSE}
-write_csv(adjust_all, "output/adjust_all.csv")
-
-write_csv(refund_all, "output/refunds_all.csv")
-```
-
-
-```{r}
-refund_all |>
-  group_by(year) |>
-  summarize(sum(total_refunds, na.rm = T))
-```
-
-
-# Merriman Replication
-
-## Recapture Eligible Descriptive Stats
+#### Recapture Eligible Descriptive Stats
 
 **"Descriptive Stats for 2024 property tax refunds"**
 
-For Levy Adjustment Excel Files have the taxing agency, adjustment eligibility, previous year's tax rate and previous year's levy, as well a the amount of refunds from PTAB and COEs. 
+Four Levy Adjustment Excel Files have the taxing agency, adjustment eligibility, previous year's tax rate and previous year's levy, as well a the amount of refunds from PTAB and COEs. 
 
 Merriman has output in the word document within the `PTAB` folder that has his descriptive stats for 2024. They are recreated below for 2024 and other tax years. 
 
@@ -517,7 +447,7 @@ adjust_all |>
   ggplot() + 
     alea_theme() +
   geom_histogram(aes(x=recap_levyshare)) +
-  scale_x_continuous(limits = c(0, 0.20))+
+  scale_x_continuous(limits = c(0, 0.20), label = scales::percent)+
   facet_wrap(~year) +
   labs(caption = "Excludes observations with levy shares > 25% (only a couple outliers)", x = "Share of Levy Recaptured", y = "# Taxing Agencies")
 ```
@@ -630,86 +560,183 @@ awm_levyshare_byagency |> filter(year == 2022)|> DT::datatable(rownames = FALSE)
 awm_levyshare_byagency |> filter(year == 2023)|> DT::datatable(rownames = FALSE)
 ```
 
-## Refunds as a share of agency's levy
+
+## Refund data from the Levy Recapture Files (Source: Clerk / Treasurer)
+
+> There are taxing agencies that have refunds and are not active taxing agencies. The agencies themselves are named things like "2013A Bond Escrow Account". Refunds from these accounts are probably not included in recapture funds that are added to the levy since the money was in an escrow fund agency and the taxing agency does not actively tax the public
+
+
+The **Levy Recapture Files** break up the refunds into 2 categories: PTAB/SP Refunds and CofE (Over-Assessment) Refunds. 
+
+Treasurer's office sent the account specific files to the Clerk's office, and the Clerk's office sent them to Drucker and Merriman. 
+
+Two of the file have very detailed PTAB&SP and CofE tabs that have very detailed sheets of the amount of refund from previous years' appeals, but not sure how to use that information for now. (2022 and 2023 are missing the detailed sheets)
+
+_Note: the variables are named "recouped" in these files which is potentially confusing_ ^However, the variable names do make sense from the Treasurer's point of view, and they made the files in the first place.  
+
+```{r}
+#| label: tbl-refundsdata
+#| tbl-cap: "Files from `PTAB/levy recapture/` including `Levy Recapture vf2 as received from CCTO 2022-03-23.xlsx`, Levy Recapture - 221116.xlsx`, etc. 11,120 observations if agencies without refunds are left in dataset. 6,042 if filtering for agencies that have non-zero refunds."
+
+# year = Tax Year. Date in file name is from agency creation of file or reception of file date.
+
+refund2021 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - vf2 as received from CCTO 2022-03-23.xlsx")|>
+  mutate(year = 2021) |>
+  select(-Total) |>
+  rename(`Agency Number` = `Agency Number (Text)`,
+         
+         `CofE (Over-Assessment)` = `CofE Recouped`) |>
+  mutate(across(where(is.numeric), round, digits =0))
+
+refund2022 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 221116.xlsx") |>
+  mutate(year = 2022)
+
+# refund data for Nov 1 2022 to Oct 31 2023. These refund would be added to the levy for tax year 2023?
+refund2023 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 231129 orig from TR.xlsx") |>
+  mutate(year = 2023)
+
+# refund data for Nov 1 2023 through Oct 31 2024. These refunds would be added to the levy for tax year 2024?
+refund2024 <- readxl::read_xlsx("PTAB/levy recapture/Levy Recapture - 241115 orig from TR.xlsx") |>
+  mutate(year = 2024)
+
+refund_all <- rbind(refund2021, refund2022, refund2023, refund2024) |>
+  rename(agency_number = `Agency Number`,
+         agency_name = `Agency Name`,
+         refunded_sp_ptab = `SP/PTAB Recouped`,  # recouped is confusing variable name, so renamed to refunds
+         refunded_coe = `CofE (Over-Assessment)`) |>
+  mutate(across(where(is.numeric), round, digits =0)) |>
+  
+  # keep observations with non-missing variables
+  filter(!is.na(agency_number)) |>
+  mutate(total_refunds = refunded_sp_ptab + refunded_coe) |>
+  # fix agency names
+  mutate(agency_name = ifelse(agency_number == "070390000", agency_name == "INVERNESS FIRE PROT DIST (FKA PALATINE)", agency_name) ) |>
+  mutate(agency_name = ifelse(agency_number == "140020000", agency_name == "BRONZEVILLE EXPANDED MENTAL HEALTH SERV DIST", agency_name) )|>
+  mutate(agency_name = ifelse(agency_number == "020070003", agency_name == "TOWN ELK GROVE ROAD FUND", agency_name) )|>
+  mutate(agency_name = ifelse(agency_number == "042220000", agency_name == "GLENBROOK HIGH SCHOOL DISTRICT 225", agency_name)) |>
+  mutate(agency_name = ifelse(agency_number == "030910000", agency_name == "VILLAGE OF OAK LAWN", agency_name))
+
+refund_all <- refund_all |> 
+  left_join(agency_info, by = c("agency_number" = "agency_num", "year")) |>
+  mutate(refund_levyshare =  round(abs(total_refunds) / total_final_levy, digits = 3) )
+  
+
+refund_all |> 
+  select(year,agency_name, refund_levyshare, everything()) |> 
+  filter(total_refunds != 0) |> DT::datatable(rownames = FALSE)
+```
+
+`adjust_all` saved as `output/adjust_all.csv`
+
+`refunds_all` saved as `output/refunds_all.csv`
+
+```{r include = FALSE, eval=FALSE}
+write_csv(adjust_all, "output/adjust_all.csv")
+
+write_csv(refund_all, "output/refunds_all.csv")
+```
+
+
+```{r}
+refund_all |>
+  group_by(year) |>
+  summarize(refunds = sum(total_refunds, na.rm = T),
+             n = n(),
+            n_with_refunds = sum(ifelse(total_refunds!= 0, 1, 0)))
+```
+
+
+
+### Refunds Levy Share - Merriman Replication 
 
 
 Merriman said he looked at refunds, but he looked at refunds only for agencies eligible for recapture. (Non Homerule Agencies.)
 
 ```{r}
-#| tbl-cap: "Replicated most recent email and table in Merriman_recapture_memo.docx file. It is NOT actually for refunds, but recaptured refunds."
+#| tbl-cap: "Replicated most recent email and table in Merriman_recapture_memo.docx file. It is NOT actually for refunds, but recaptured refunds. Uses `levy_adjustment` files! "
 
 
 adjust_all |> mutate(share = levy_adjustment / lastyear_levy) |> filter(year == 2024 & share > 0.027)
 ```
 
+There are around 800 actively taxing agencies each year in the refund data. 2390 agencies have non-zero levies (for all years together). 
+
+There are around 1500 agencies with refunds each year. Most are Escrow accounts!
 
 
-```{r fig-table6, eval=FALSE, include=TRUE}
-#| fig-cap: "Uses total_refunds / levy from the refund_all dataframe."
-
-refund_all |> 
-  mutate(share = round(abs(total_refunds)/total_final_levy, digits = 3),
-       #  share = ifelse(share>1, 1,share),
-         year = as.character(year)) |>
-  filter(year !="2024") |>  # no values
-  ggplot() +
-    geom_jitter(aes(x=year, y = share, color = as.character(home_rule_ind))) + 
- # geom_point(aes(x=year, y = share, color = as.character(home_rule_ind))) + 
-  # geom_text_repel(data = . %>% filter(share > 0.2),aes(x=year, y = share, label = agency_name), nudge_y =.05 ) + 
-  scale_y_continuous(limits = c(0, 1.2), breaks = c(0, .25, .5, .75, 1)) + alea_theme() +
-  labs(title = "Refunds / Levy Amount",
-       caption = "Agencies at 100% were Infinite: They did not have a levy, but they did have a refund.",
-       color = "Home Rule", x=element_blank(),
-       y = "Share of Levy")
-```
+There are 723, 730, and 717 agencies with levies that also had refunds in 2021, 2022, and 2023, respectively. 
 
 
 ```{r fig-table6-histogram}
 #| fig-cap: "Histograms of total_refunds / levy from the refund_all dataframe."
 #| fig-column: margin
 
+
+# around 1500 agencies with refunds each year. Most are Escrow accounts!
+# refund_all |> filter( total_refunds!=0) |>  group_by(year) |> summarize(n = n())
+
+# refund_all |> filter( total_final_levy!=0) |> # 2390 agencies have non-zero levies
+#   group_by(year) |> summarize(n = n())   # around 800 actively taxing agencies each year
+
+ refund_all |> filter( total_final_levy!=0 & total_refunds != 0) |> 
+   group_by(year) |> summarize(n = n())   
+  
 refund_all |> 
+  filter( total_final_levy!=0 & total_refunds != 0) |> 
   mutate(share = round(abs(total_refunds)/total_final_levy, digits = 3),
          year = as.character(year),
              homerule_label = case_when(
            home_rule_ind == "1" ~ "Homerule",
            home_rule_ind == "0" ~ " Non-Homerule",
            TRUE ~ NA)) |>
-  filter(!is.na(home_rule_ind) & is.finite(share) & share < 1 ) |>
+  filter(!is.na(home_rule_ind) & is.finite(share) & share <=1 ) |>
   ggplot() +
   geom_histogram(aes(x=share)) +
   alea_theme() +
   labs(title = "Refunds / Levy Amount",
        caption = "Excludes agencies that had refunds but no levy.",
-       y = "Refund Share of Levy",
-       x = "# Taxing Agencies") +
+       x = "Refund Share of Levy",
+       y = "# Taxing Agencies") +
   scale_x_continuous(label = scales::percent)+
   facet_wrap(vars(homerule_label, year))
 ```
 
 ```{r fig-table6-histogramv2}
-#| fig-cap: "Histograms of total_refunds / levy from the refund_all dataframe. Excludes 41 observations with shares larger than 30% to increase legibility."
-
-
+#| fig-cap: "Histograms of total_refunds / levy from the refund_all dataframe. Excludes 41 observations with shares larger than 30% to increase legibility. 2170 agencies have levies and refunds across the three years of data."
 
 refund_all |> 
+    filter( (total_final_levy!=0 & !is.na(total_final_levy)) & total_refunds != 0) |> 
+
   mutate(share = round(abs(total_refunds)/total_final_levy, digits = 3),
-         share = ifelse(share>1, 1,share),
          year = as.character(year),
          homerule_label = case_when(
            home_rule_ind == "1" ~ "Homerule",
            home_rule_ind == "0" ~ " Non-Homerule",
            TRUE ~ NA
          )) |>
-  filter(!is.na(home_rule_ind) & is.finite(share) ) |>
+  filter(share > 0.3)
+
+refund_all |> 
+    filter( (total_final_levy==0 | is.na(total_final_levy)) & total_refunds != 0) |> arrange(total_refunds)
+
+refund_all |> 
+    filter( total_final_levy!=0 & total_refunds != 0) |> 
+
+  mutate(share = round(abs(total_refunds)/total_final_levy, digits = 3),
+         year = as.character(year),
+         homerule_label = case_when(
+           home_rule_ind == "1" ~ "Homerule",
+           home_rule_ind == "0" ~ " Non-Homerule",
+           TRUE ~ NA
+         )) |>
+#  filter(!is.na(home_rule_ind) & is.finite(share) ) |>
   filter(share < 0.3) |>
   ggplot() +
   geom_histogram(aes(x=share)) + 
   alea_theme() +
   labs(title = "Refunds / Levy Amount",
        caption = "Excludes agencies that had refunds but no levy. 
-       Excludes agencies with refund share greater than 0.3. 
-       41 observations total are excluded.",
+       Excludes agencies with refund share greater than 30% of their levy.",
        color = "Home Rule", y = "# Taxing Agencies",
        x = "Share of Levy") +
     scale_x_continuous(label = scales::percent)+
@@ -725,7 +752,7 @@ refund_all |>
 
 refund_all |>
   mutate(share = round(abs(total_refunds)/total_final_levy, digits =4),
-         share = ifelse(share>1, 1,share),
+         #share = ifelse(share>1, 1,share),
          year = as.character(year)) |>
   filter(share > 0.3) |>
   select(agency_name, share, home_rule_ind, year)  |>
@@ -750,12 +777,12 @@ refund_all |>
 
   geom_point(aes(x=year, y = share, color = as.character(home_rule_ind))) + 
   
-  geom_text_repel(data = . %>% filter(share > 0.2),
+  geom_text_repel(data = . %>% filter(share < 0.2),
 aes(x=year, y = share, label = agency_name), nudge_y =.05 ) + 
   alea_theme() +
-  scale_y_continuous(limits = c(0, 0.25), breaks = c(0, .1, .25), label = scales::percent) + 
+  scale_y_continuous(limits = c(0, 0.25), 
+                     breaks = c(0, .1, .25), label = scales::percent) + 
   labs(title = "Refunds / Levy Amount",
-       caption = "Agencies at 100% were Infinite: They did not have a levy, but they did have a refund.",
        color = "Home Rule", x=element_blank(),
        y = "Share of Levy")
 ```
@@ -775,6 +802,7 @@ refund_all |>
   select(agency_name, share, year, total_refunds, total_final_levy) |>
   DT::datatable(rownames = FALSE)
 ```
+### Refund Levyshare - AWM way
 
 ```{r tbl-refundtable2}
 #| tbl-cap: "**Alea's Method** Uses total_refunds/total_final_levy to create recap levyshare. Total Refunds is from the clerk & treasurers files with refund information and the levy amount is from ptaxsim. 2021-2024 refund values. Excludes agencies that did not have a levy amount (which ends up droping tax year 2024 since there isn't levy values for that year in the ptaxsim database)."
@@ -832,7 +860,7 @@ rm(adjust2021, adjust2022, adjust2023, adjust2024,
 
 ## Join data
 
-`Refund_all` had `r paste(count(refund_all))` observations and `adjust_all` had `r paste(count(adjust_all))` observations. 
+`Refund_all` had `r paste(count(refund_all))` observations and `adjust_all` had `r paste(count(adjust_all))` observations. _Note that many of the observations in `refund_all` had _
 
 
 ```{r}
