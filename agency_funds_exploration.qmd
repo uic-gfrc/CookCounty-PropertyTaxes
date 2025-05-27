@@ -119,9 +119,13 @@ agency_funds <- left_join(agency_funds, agency_names) |>
 ## PTAXSIM Fund Data: Rate Change from Levy Adjustment
 
 
-
+ 
 
 ```{r}
+#| label: tbl-PTAXSIM-fund408-ratechange
+#| tbl-cap: "**Tax rate change due to fund 408.** Data from PTAXSIM database (agency_fund table). Only shows fund 408 associated with the levy recapture fund."
+
+
 agency_funds |> filter(fund_num==408) |>
   select(year, agency_name_short, final_levy, final_rate, fund_num) |>
   arrange(desc(final_rate)) |> DT::datatable(rownames = FALSE)
@@ -143,6 +147,8 @@ agency_funds |> filter(fund_num==408) |>
 
 
 ```{r}
+#| label: tbl-filtered-fund408table
+#| tbl-cap: "**Observations within the 95% percentile** Data from PTAXSIM database (agency_fund table)."
 
 # Calculate the 5th and 95th percentiles
 lower_cutoff <- quantile(agency_funds$final_rate[agency_funds$fund_num=="408"], 0.05, na.rm=TRUE)
@@ -151,12 +157,20 @@ upper_cutoff <- quantile(agency_funds$final_rate[agency_funds$fund_num=="408"], 
 filtered_df <- agency_funds |>
     filter(
     fund_num == "408" &
-    levy > 0 &
-    capped_ind == 1
+    levy > 0 #&
+  #  capped_ind == 1
     ) |>
-  filter(final_rate > upper_cutoff)
+  select(-c(loss_pct,levy_plus_loss, rate_ceiling, max_levy, prelim_rate, ptell_reduced_levy, ptell_reduced_ind)) |>
+  select(year, agency_name, final_rate, final_levy, everything()) |> 
+  filter(final_rate > upper_cutoff) 
 
 filtered_df |> DT::datatable(rownames = FALSE)
+```
+
+
+```{r}
+#| label: tbl-fund408-deciles
+#| tbl-cap: "**95th and 5th percentile cutoff for taxing agencies with fund 408 and levies greater than $0** Data from PTAXSIM database (agency_fund table). Only includes levy amounts for fund 408 associated with the levy recapture fund."
 
 deciles <- agency_funds |>
   filter(
@@ -177,6 +191,9 @@ deciles |> filter(probs == 0.95 | probs == .55)
 
 
 ```{r}
+#| label: tbl-memo-histogram
+#| tbl-cap: "**Distribution of tax rate increases due to fund 408 (Data Source: PTAXSIM agency_fund table)**"
+#| 
 agency_funds |> 
   filter(fund_num==408) |>
   ggplot() + 
@@ -187,6 +204,8 @@ agency_funds |>
        y = "Count", x="Percentage Points added to Tax Rate") +
   facet_wrap(~year)
 ```
+
+Some agencies have a majority of their taxbase outside of cook county. We will exclude those from this analysis.
 
 
 ```{r fig-ptaxsimfund408}
@@ -210,6 +229,7 @@ agency_fund408_sums |>
   ggplot() + 
   geom_line(aes(x=year, y=recap_levyshare, group=agency_name, alpha = .4, color = major_type)) +
 alea_theme() +
+  scale_y_continuous(label = scales::percent) +
   labs(title = "Fund 408 / Total Levy", caption = "Fund data form PTAXSIM.
        Excludes agencies with more than 25% of their taxbase outside of Cook County.")
 ```
@@ -223,6 +243,8 @@ agency_fund408_sums |>
   ggplot() + 
   geom_line(aes(x=year, y=recap_revratio, group=agency_name, alpha = .4, color = major_type)) +
   alea_theme() +
+    scale_y_continuous(label = scales::percent) +
+
   labs(title = "Fund 408 / Non-Recapture Levy", 
        caption = "Fund data form PTAXSIM. 
        Excludes agencies with more than 25% of their taxbase outside of Cook County.")
@@ -230,7 +252,6 @@ agency_fund408_sums |>
 
 ```
 
-Some agencies have a majority of their taxbase outside of cook county. We will exclude those from this analysis.
 
 ```{r}
 #| label: tbl-datatable-from-ptaxsim
@@ -248,7 +269,7 @@ agency_fund408_sums |> DT::datatable(rownames = FALSE)
 
 ```{r}
 #| label: tbl-fund408-fromtreasurer
-#| tbl-cap: "Calculates difference in Fund 408 amounts from PTAXSIM and the values from the `Levy Adjustment Fund 408 Extension 2021-2023.xlsx`"
+#| tbl-cap: "**Data Comparison** Calculates difference in Fund 408 amounts from PTAXSIM and the values from the `Levy Adjustment Fund 408 Extension 2021-2023.xlsx`"
 
 fund408_fromtreas <- readxl::read_xlsx("PTAB/Levy Adjustment Fund 408 Extension 2021-2023.xlsx") 
 
@@ -263,12 +284,14 @@ fund408_fromtreas <- fund408_fromtreas |>
   mutate(agency_name = ifelse(agency_num == "020070003", agency_name == "TOWN ELK GROVE ROAD FUND", agency_name) )|>
   mutate(agency_name = ifelse(agency_num == "042220000", agency_name == "GLENBROOK HIGH SCHOOL DISTRICT 225", agency_name))
 
+agency_fund408_sums |> filter(is.na(agency_name))
 
 agency_fund408_sums |> 
   ungroup() |>
   filter(year>2020 & pct_inCook > 0.75) |>
   right_join(fund408_fromtreas, by = c("year", "agency_num" )) |>
-  select(year, agency_name.x, fund408, FundExtension,
+  mutate(agency_name = ifelse(is.na(agency_name.x), agency_name.y, agency_name.x)) |>
+  select(year, agency_name, fund408, FundExtension,
          total_final_levy, total_ext, pct_inCook, agency_num ) |>
   mutate(difference = round(fund408-FundExtension, digits = 0), .before = pct_inCook ) |> 
   DT::datatable(rownames = FALSE)
@@ -656,6 +679,7 @@ refund_all |>
        caption = "Excludes agencies that had refunds but no levy.",
        y = "Refund Share of Levy",
        x = "# Taxing Agencies") +
+  scale_x_continuous(label = scales::percent)+
   facet_wrap(vars(homerule_label, year))
 ```
 
@@ -684,6 +708,7 @@ refund_all |>
        41 observations total are excluded.",
        color = "Home Rule", y = "# Taxing Agencies",
        x = "Share of Levy") +
+    scale_x_continuous(label = scales::percent)+
   facet_wrap(vars(homerule_label, year ))
 
 
@@ -724,7 +749,7 @@ refund_all |>
   geom_text_repel(data = . %>% filter(share > 0.2),
 aes(x=year, y = share, label = agency_name), nudge_y =.05 ) + 
   alea_theme() +
-  scale_y_continuous(limits = c(0, 0.25), breaks = c(0, .1, .25)) + 
+  scale_y_continuous(limits = c(0, 0.25), breaks = c(0, .1, .25), label = scales::percent) + 
   labs(title = "Refunds / Levy Amount",
        caption = "Agencies at 100% were Infinite: They did not have a levy, but they did have a refund.",
        color = "Home Rule", x=element_blank(),
@@ -782,13 +807,13 @@ adjust_all |>
 refund_all |>
   group_by(agency_number) |>
   summarize(n = n()) |>
-  filter(n != 4)
+  filter(n != 4) # 216 agencies did not exist all 4 years in the refund data
 
 
 adjust_all |>
  group_by(agency_number) |>
   summarize(n = n()) |>
-  filter(n != 4) # 70 agencies did not exist all 4 years
+  filter(n != 4) # 70 agencies did not exist all 4 years in the recapture data
 
 ```
 
