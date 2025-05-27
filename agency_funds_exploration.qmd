@@ -262,29 +262,30 @@ agency_fund408_sums |> DT::datatable(rownames = FALSE)
 ```
 
 
-## Fund 408 data from clerk/treasurer
+### Comparison to Fund 408 File from Clerk/Treasurer
+
+
+File name: `Levy Adjustment Fund 408 Extension 2021-2023.xlsx`  
 
 > Coding Note: Agency names had double spaces between words in the excel file. They were CTRL-F and replaced with a single space in the excel file.
 
 
 ```{r}
 #| label: tbl-fund408-fromtreasurer
-#| tbl-cap: "**Data Comparison** Calculates difference in Fund 408 amounts from PTAXSIM and the values from the `Levy Adjustment Fund 408 Extension 2021-2023.xlsx`"
+#| tbl-cap: "**Data Comparison** Calculates difference in Fund 408 amounts from PTAXSIM and the values from the `Levy Adjustment Fund 408 Extension 2021-2023.xlsx`. Fund 408 data from Treasurer (`FundExtension`) is joined to fund 408 data (`fund408`, `total_final_levy`, `total_ext`) in PTAXSIM database (created by CCAO)."
 
-fund408_fromtreas <- readxl::read_xlsx("PTAB/Levy Adjustment Fund 408 Extension 2021-2023.xlsx") 
+fund408_fromtreas <- readxl::read_xlsx("PTAB/Levy Adjustment Fund 408 Extension 2021-2023.xlsx", col_types = c("numeric","text", "text", "text","text", "numeric", "text")) 
 
 fund408_fromtreas <- fund408_fromtreas |> 
   rename(year = `Tax Year`,
          agency_num = Agency,
          agency_name= `Agency Name`,
          fund_num = Fund)|> 
-  mutate(year=as.integer(year)) |>
+ # mutate(year=as.integer(year)) |>
     mutate(agency_name = ifelse(agency_num == "070390000", agency_name == "INVERNESS FIRE PROT DIST (FKA PALATINE)", agency_name) ) |>
   mutate(agency_name = ifelse(agency_num == "140020000", agency_name == "BRONZEVILLE EXPANDED MENTAL HEALTH SERV DIST", agency_name) )|>
   mutate(agency_name = ifelse(agency_num == "020070003", agency_name == "TOWN ELK GROVE ROAD FUND", agency_name) )|>
   mutate(agency_name = ifelse(agency_num == "042220000", agency_name == "GLENBROOK HIGH SCHOOL DISTRICT 225", agency_name))
-
-agency_fund408_sums |> filter(is.na(agency_name))
 
 agency_fund408_sums |> 
   ungroup() |>
@@ -294,6 +295,9 @@ agency_fund408_sums |>
   select(year, agency_name, fund408, FundExtension,
          total_final_levy, total_ext, pct_inCook, agency_num ) |>
   mutate(difference = round(fund408-FundExtension, digits = 0), .before = pct_inCook ) |> 
+  mutate(difference = ifelse(is.na(fund408), -FundExtension, difference), .before = pct_inCook ) |> 
+
+  mutate(across(fund408:difference, round, digits =0)) |>
   DT::datatable(rownames = FALSE)
 ```
 
@@ -316,7 +320,7 @@ All observations' `aggregate_refund` amounts equal their `levy_adjustment` value
 
 ```{r}
 #| label: tbl-levyadjustments
-#| tbl-cap: "`adjust_all` has all levy adjustments from the new recapture legislation since 2021. Variables labeled with `refund` represent the amount that was recaptured due to refunds for eligible taxing agencies"
+#| tbl-cap: "**Recaptured levy amounts** `adjust_all` has all levy adjustments from the new recapture legislation since 2021. Variables labeled with `refund` represent the amount that was recaptured due to refunds for eligible taxing agencies"
 
 
 adjust2021 <- readxl::read_xlsx("PTAB/Levy Adjustment 2021 for PA 102-0519 CORRECTED.xlsx") |>
