@@ -676,29 +676,35 @@ refund_all |>
   group_by(year) |>
   summarize(refunds = sum(total_refunds, na.rm = T),
              n = n(),
-            n_with_levy = sum(ifelse(total_final_levy != 0, 1, 0)))
+            n_with_levy = sum(ifelse(total_final_levy != 0, 1, 0), na.rm=TRUE))
 ```
 
 
 
-### Refunds Levy Share - Merriman Replication 
+### Refunds Levy Share 
 
 
-Merriman said he looked at refunds, but he looked at refunds only for agencies eligible for recapture. (Non Homerule Agencies.)
+<!---Merriman said he looked at refunds, but he looked at refunds only for agencies eligible for recapture. (Non Homerule Agencies.)--->
 
 ```{r}
+#| label: tbl-Merriman-refundreplication
 #| tbl-cap: "Replicated most recent email and table in Merriman_recapture_memo.docx file. It is NOT actually for refunds, but recaptured refunds. Uses `levy_adjustment` files! "
 
 
 adjust_all |> mutate(share = levy_adjustment / lastyear_levy) |> filter(year == 2024 & share > 0.027)
 ```
 
-There are around 800 actively taxing agencies each year in the refund data. 2390 agencies have non-zero levies (for all years together). 
+There are around 680 actively taxing agencies each year in the refund data. 2037 agencies have non-zero levies (for all years together). 
 
 There are around 1500 agencies with refunds each year. Most are Escrow accounts!
 
 
-There are 723, 730, and 717 agencies with levies that also had refunds in 2021, 2022, and 2023, respectively. 
+There are 678, 680, and 679 agencies with levies that also had refunds in 2021, 2022, and 2023, respectively. 
+
+```{r}
+refund_all |> filter( total_final_levy!=0 & total_refunds != 0) |> 
+   group_by(year) |> summarize(n = n())
+```
 
 
 ```{r fig-table6-histogram}
@@ -709,12 +715,10 @@ There are 723, 730, and 717 agencies with levies that also had refunds in 2021, 
 # around 1500 agencies with refunds each year. Most are Escrow accounts!
 # refund_all |> filter( total_refunds!=0) |>  group_by(year) |> summarize(n = n())
 
-# refund_all |> filter( total_final_levy!=0) |> # 2390 agencies have non-zero levies
-#   group_by(year) |> summarize(n = n())   # around 800 actively taxing agencies each year
+# refund_all |> filter( total_final_levy!=0) |> # 2037 agencies have non-zero levies
+#   group_by(year) |> summarize(n = n())   # around 680 actively taxing agencies each year
 
- refund_all |> filter( total_final_levy!=0 & total_refunds != 0) |> 
-   group_by(year) |> summarize(n = n())   
-  
+   
 refund_all |> 
   filter( total_final_levy!=0 & total_refunds != 0) |> 
   mutate(share = round(abs(total_refunds)/total_final_levy, digits = 3),
@@ -822,7 +826,7 @@ refund_all |>
 
 
 ```{r tbl-taxingagencies-withlevies} 
-#| tbl-cap: "Over 8000 observations exist for the 3 years of data, but only 5,906 had refunds. Of those, only 2,390 are actively taxing properties (i.e. have a levy > $0). 2,037 of the agencies with a levy also have refunds. This includes homerule and non-homerule agencies! It is not just recaptured refunds, but **all** refunds."
+#| tbl-cap: "Over 8000 observations exist for the 3 years of data, but only 5,906 had refunds. Of those, only 2,390 are actively taxing properties (i.e. have a levy > $0). 2,037 of the agencies with a levy also have refunds. This includes homerule and non-homerule agencies! It is not just recaptured refunds, but **all** refunds. Uses total_refunds/total_final_levy to create refund levyshare. Total Refunds is from the clerk & treasurers files with refund information and the levy amount is from ptaxsim. 2021-2024 refund values. Excludes agencies that did not have a levy amount (which ends up droping tax year 2024 since there isn’t levy values for that year in the ptaxsim database)."
 
 
 refund_all |> 
@@ -835,25 +839,6 @@ refund_all |>
   select(agency_name, refund_share, year, total_refunds, total_final_levy) |>
   DT::datatable(rownames = FALSE)
 ```
-### Refund Levyshare - AWM way
-
-```{r tbl-refundtable2}
-#| tbl-cap: "**Alea's Method** Uses total_refunds/total_final_levy to create recap levyshare. Total Refunds is from the clerk & treasurers files with refund information and the levy amount is from ptaxsim. 2021-2024 refund values. Excludes agencies that did not have a levy amount (which ends up droping tax year 2024 since there isn't levy values for that year in the ptaxsim database)."
-
-
-awm_levyshare_byagency <- refund_all |> 
-  arrange(year, desc(refund_levyshare)) |>
-  select(year, agency_name, refund_levyshare, everything()) |>
-  filter(total_final_levy > 0 
-         |
-           total_refunds !=0) 
-
-
-
-awm_levyshare_byagency |> 
-  DT::datatable(rownames = FALSE)
-```
-
 
 # Combine data sources
 
