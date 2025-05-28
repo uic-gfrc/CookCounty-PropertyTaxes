@@ -727,7 +727,7 @@ refund_all |>
            home_rule_ind == "1" ~ "Homerule",
            home_rule_ind == "0" ~ " Non-Homerule",
            TRUE ~ NA)) |>
-  filter(!is.na(home_rule_ind) & is.finite(share) & share <=1 ) |>
+  filter(!is.na(home_rule_ind) & is.finite(share)) |>
   ggplot() +
   geom_histogram(aes(x=share)) +
   alea_theme() +
@@ -742,9 +742,9 @@ refund_all |>
 
 ```{r}
 #| label: tbl-outlierobservations
-#| tbl-cap: "Observations with recapture amount that is larger than 5% of its levy. "
+#| tbl-cap: "Observations with refund amounts that are larger than 5% of its levy. "
 
-refund_all |> 
+refund_outliers <- refund_all |> 
     filter( (total_final_levy!=0 & !is.na(total_final_levy)) & total_refunds != 0) |> 
 
   mutate(share = round(abs(total_refunds)/total_final_levy, digits = 3),
@@ -754,7 +754,12 @@ refund_all |>
            home_rule_ind == "0" ~ " Non-Homerule",
            TRUE ~ NA
          )) |>
-  filter(share > 0.05)
+  filter(share > 0.05) |>
+  select(year, agency_name, total_refunds, total_final_levy, total_final_rate, refund_levyshare, homerule_label)
+
+#write_csv(refund_outliers, "./output/refund_outliers.csv")
+
+refund_outliers |> DT::datatable(rownames = FALSE)
 ```
 
 ```{r}
@@ -994,6 +999,28 @@ write_csv(final_df |>
 write_csv(df,  "levy_refunds_recoupments_by_agency_2021-2024.csv")
 
 ```
+
+```{r}
+#| label: tbl-joined_dataset_outlierobservations
+#| tbl-cap: "Observations with recapture amount that is larger than 5% of its levy. "
+
+refund_outliers <- final_df |> 
+    filter( (total_final_levy!=0 & !is.na(total_final_levy)) & total_refunds != 0) |> 
+
+  mutate(share = round(abs(total_refunds)/total_final_levy, digits = 3),
+         year = as.character(year),
+         homerule_label = case_when(
+           home_rule_ind == "1" ~ "Homerule",
+           home_rule_ind == "0" ~ " Non-Homerule",
+           TRUE ~ NA
+         )) |>
+  filter(share > 0.05) |>
+  select(year, agency_name, total_refunds, total_final_levy, total_final_rate, refund_levyshare, homerule_label, recaptured_funds = aggregate_refunds)
+
+
+refund_outliers |> DT::datatable(rownames = FALSE)
+```
+
 
 # Data Exploration
 
