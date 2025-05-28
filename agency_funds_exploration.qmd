@@ -921,7 +921,20 @@ adjust_recap_all <- adjust_recap_all |>
   anti_join(dropped) 
 
 adjust_recap_all <- adjust_recap_all |>
-  select(year, agency_name, refund_levyshare, recap_levyshare, total_refunds, total_final_levy, everything())
+  select(year, agency_name, home_rule_ind, 
+         refund_levyshare, recap_levyshare, 
+         total_refund,  # refund data, all agencies with refunds
+         aggregate_refunds,  # from levy adjustment file
+
+         levy_adjustment, total_final_levy, adjust_eligible, pct_inCook, 
+         
+         total_ptab_refunds, # from levy adjustment file, only Eligible agencies with refunds
+         refunded_sp_ptab, # refund data, all agencies with refunds
+         total_coe_refunds, # from levy adjustment file
+         refunded_coe, # refund data, all agencies with refunds
+         
+         
+         everything())
 
 adjust_recap_all |> DT::datatable(rownames = FALSE)
 ```
@@ -942,7 +955,6 @@ final_df <- left_join(adjust_recap_all, agency_fund408_sums|>
                         filter(year>2020) #,
                       #by = c("agency_number" = "agency_num", "year") 
                       ) |>
-  filter(pct_inCook > 0.75) |>
   mutate(
     adjust_eligible = ifelse(home_rule_ind == 1 & is.na(adjust_eligible), 
                              "Not Eligible",
@@ -951,7 +963,7 @@ final_df <- left_join(adjust_recap_all, agency_fund408_sums|>
                             ) )
 
 
-final_df |> filter(total_final_levy > 0) |> DT::datatable(rownames = FALSE)
+final_df |> DT::datatable(rownames = FALSE)
 ```
 
 
@@ -959,12 +971,7 @@ final_df |> filter(total_final_levy > 0) |> DT::datatable(rownames = FALSE)
 #| label: tbl-differences-invariables
 #| tbl-cap: "Difference between PTAXSIM's fund 408 values and the Clerk's variable for the levy adjustment."
 
-
-df <- final_df
-df |> DT::datatable(rownames = FALSE)
-
-
-df |> 
+final_df |> 
   filter(year > 2020) |> # since ptaxsim database doesn't have fund 408 values for that tax year yet.
   
   # difference between ptaxsim fund 408 recaptured levy amounts and levy adjustment/recaptured amounts from excel files received from Clerk's/treasurer's office
@@ -975,7 +982,8 @@ df |>
   
   arrange(#desc(diff),
           agency_name )  |>
-  select(year, agency_name, diff, fund408, levy_adjustment, total_refund, )
+  select(year, agency_name, diff, fund408, levy_adjustment, total_refund ) |>  
+  DT::datatable(rownames = FALSE)
 ```
 
 Joined data saved as `levy_refunds_recoupments_by_agency_2021-2024.csv`
@@ -985,7 +993,7 @@ Joined data saved as `levy_refunds_recoupments_by_agency_2021-2024.csv`
 #| include: false
 
 
-write_csv(df |>
+write_csv(final_df |>
             filter(between(year, 2021, 2023)), 
           "levy_refunds_recoupments_by_agency_2021-2023.csv")
 
@@ -1088,7 +1096,7 @@ rm(agency_info, agency_fund_info, agency_fund, agency_names)
 ```
 
 ```{r}
-df |>
+final_df |>
   group_by(year, adjust_eligible) |>
   filter(final_levy>0) |>
   reframe(n = n()) |>
@@ -1103,7 +1111,7 @@ df |>
 ```{r}
 #| layout-ncol: 3
 
-df |>
+final_df |>
   filter(final_levy>0) |>
   mutate(year = as.integer(year)) |>
   group_by(year, adjust_eligible) |>
@@ -1113,7 +1121,7 @@ df |>
     theme_classic()
 
 
-df |>
+final_df |>
   filter(between(year, 2021, 2023)) |>
     filter(final_levy>0) |>
 
@@ -1127,7 +1135,7 @@ df |>
 
 
 
-df |>
+final_df |>
   filter(final_levy>0) |>
   mutate(year = as.integer(year)) |>
   group_by(year, adjust_eligible) |>
@@ -1138,7 +1146,7 @@ df |>
   labs(title = "Refunds by Eligibility")
 
 
-df |>
+final_df |>
     filter(final_levy>0) |>
 
   group_by(year, adjust_eligible) |>
@@ -1176,7 +1184,7 @@ Some differences in tables below:
 #| tbl-cap: "Agencies that are eligible for recapture and did not have recapture funds."
 #| layout-ncol: 3
 
-eligible <- df |> filter(adjust_eligible == "Eligible" #& levy > 0
+eligible <- final_df |> filter(adjust_eligible == "Eligible" #& levy > 0
                          ) |>
     mutate(
     fund408 = ifelse(is.na(fund408), 0, fund408),
@@ -1215,7 +1223,7 @@ anti_join(check1, check2) |>
 #| label: tbl-noteligible
 #| tbl-cap: "There are no agencies that have refund values that are not eligible for recapture. So that is good."
 
-not_eligible <- df |> filter(adjust_eligible == "Not Eligible") |>
+not_eligible <- final_df |> filter(adjust_eligible == "Not Eligible") |>
     mutate(
     fund408 = ifelse(is.na(fund408), 0, fund408),
     diff = abs(fund408 - levy_adjustment)
@@ -1229,7 +1237,7 @@ not_eligible |> filter(levy_adjustment!=0 | fund408!=0) |> DT::datatable(rowname
 
 ```{r}
 
-df |> filter(levy_adjustment == 0 & total_levy > 0 & adjust_eligible == "Eligible")
+final_df |> filter(levy_adjustment == 0 & total_levy > 0 & adjust_eligible == "Eligible")
 
 ```
 
@@ -1237,7 +1245,7 @@ df |> filter(levy_adjustment == 0 & total_levy > 0 & adjust_eligible == "Eligibl
 
 
 ```{r}
-df |>
+final_df |>
   filter(year == 2021 & final_levy > 0 ) |>
   group_by(minor_type, adjust_eligible) |>
   summarize(n = n()) |>
@@ -1246,7 +1254,7 @@ df |>
 ```
 
 ```{r}
-df |>
+final_df |>
   filter(minor_type %in% c("PARK", "LIBRARY", "ELEMENTARY") & 
            final_levy>0) |>
   group_by(year, minor_type, adjust_eligible ) |>
@@ -1261,7 +1269,7 @@ df |>
 ```
 
 ```{r}
-df |>
+final_df |>
   filter(final_levy>0) |>
   group_by(year, major_type, adjust_eligible ) |>
   summarize(n = n()) |>
@@ -1280,7 +1288,7 @@ Add line for average or median that is darker? If zooming in on specific taxing 
 
  
 ```{r}
-df |> 
+final_df |> 
   filter(year > 2020) |>
   group_by(agency_name, agency_number) |>
   arrange(agency_number, year) |>
@@ -1303,7 +1311,7 @@ df |>
 ```{r}
 #| include: false
 
-df |> 
+final_df |> 
   filter(#year !=2024 &
            year > 2020) |> 
   group_by(agency_name, agency_number) |>
@@ -1317,7 +1325,7 @@ df |>
     labs(title = "Recapture Levy Share", x= element_blank(),
          caption = "Recapture Share = Fund 408 Amount/ Final Levy")
 
-df |> 
+final_df |> 
   filter(#year !=2024 &
            year > 2020) |> 
   group_by(agency_name, agency_number) |>
@@ -1339,7 +1347,7 @@ df |>
 ```{r}
 #| include: false
 
-df |> 
+final_df |> 
   filter( year > 2020) |> 
   group_by(agency_name, agency_number) |>
   arrange(agency_number, year) |>
@@ -1361,7 +1369,7 @@ df |>
 #| include: false
 
 
-df |> 
+final_df |> 
   filter(year > 2020 & adjust_eligible == "Eligible") |> 
   group_by(agency_name, agency_number) |>
   arrange(agency_number, year) |>
