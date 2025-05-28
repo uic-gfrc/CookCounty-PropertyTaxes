@@ -1191,25 +1191,28 @@ eligible <- final_df |> filter(adjust_eligible == "Eligible" #& levy > 0
     diff = abs(fund408 - levy_adjustment)
          )
 
+# eligible agencies without fund408 values from ptaxsim
 check1 <- eligible |> 
-  filter(fund408==0 #| is.na(levy_adjustment)
-         ) |> distinct(agency_name, year)
+  filter(fund408==0) |> distinct(agency_name, year)
 
 check1 |>
   pivot_wider(names_from = "year", values_from = "year") |> DT::datatable(rownames = FALSE)
 
+# eligible agencies that had no levy adjustment from the adjustment files
+# aka Recapture amount = $0
 check2 <- eligible |> 
-  filter(levy_adjustment==0# | is.na(levy_adjustment)
-         ) |> distinct(agency_name, year)
+  filter(levy_adjustment==0) |> distinct(agency_name, year)
 
 check2 |>
   pivot_wider(names_from = "year", values_from = "year") |> DT::datatable(rownames = FALSE)
 
+
+# Eligible agencies from Fund 408 file from Clerk/Treasurer with $0 Extensions
 check3 <- eligible |> 
   full_join(fund408_fromtreas) |>
-  filter(FundExtension==0 # &
-          # total_levy > 0 
-         ) |> distinct(agency_name, year)
+  filter(FundExtension==0) |> 
+  distinct(agency_name, year)
+
 check3 |>   pivot_wider(names_from = "year", values_from = "year") |> DT::datatable(rownames = FALSE)
 ```
 
