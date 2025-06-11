@@ -29,7 +29,7 @@ library(httr)
 
 
 # ptax_pins <- read_csv("./Output/comm_ind_PINs_2011-2022_balanced.csv")
-ptax_pins <- read_csv("./Output/comm_ind_PINs_2006to2022_timeseries.csv") |> 
+ptax_pins <- read_csv("./Output/comm_ind_PINs_2011to2022_timeseries.csv") |> 
   filter(year >= 2011)
 
 parcuniverse_keypins <- readxl::read_xlsx("./Inputs/parceluniverse_keypins_20240725.xlsx", 
@@ -47,8 +47,9 @@ nbh_pins <- GET(
   base_url,
   query = list(
     tax_year = 2022,
-    `$select` = paste0(c("pin", # "pin10", 
-                         "nbhd_code"
+    `$select` = paste0(c("pin",
+                         "nbhd_code", 
+                         "lat", "lon"
     ),
     collapse = ","),
     `$limit` = 500000000L
@@ -89,7 +90,8 @@ ptax_proj <- ptax_pins %>%
   left_join(nbh_pins)
 
 
-proj_xwalk <- read_csv("Output/all_keypins.csv")               
+proj_xwalk <- read_csv("Output/all_keypins.csv")    
+
 ptax_proj <- ptax_proj %>% left_join(proj_xwalk, by = "pin", relationship = "many-to-many")
 
 
@@ -121,8 +123,9 @@ mutate(actual_keypin = case_when(
   pin %in% c(14054020411033:14054020411036) ~ "5858 Sheridan LLC",
   pin %in% c(32282140460000:32282180090000) ~ "Dembay LLC",
   pin %in% c(17103080120000:17103080140000) ~ "Macy's State Street",
-  pin %in% c(15212000180000:15212041520000) ~ "Westchester Rising LLC",
-  pin %in% c(25311050220000:25311230010000) ~ "Veterans Services",
+#  pin %in% c(15212000180000:15212041520000) ~ "Westchester Rising LLC",
+
+  # pin %in% c(25311050220000:25311230010000) ~ "Veterans Services",
 
  # pin %in% c(15063020520000:15071030230000) ~ "IL State Toll Highway",
   pin %in% c(13313210320000,13313220590000) ~ "Harlem and North Development",
@@ -141,7 +144,8 @@ modelsummary::datasummary_skim(ptax_proj)
 ```{r}
 #| label: tbl-whichcamefirst
 #| tbl-cap: "PINS that were in a TIF before receiving an incentive classification. 254 PINs had incentive classes before they were in a TIF. 1373 PINs were in a TIF before they had an incentive classification"
-
+#| eval: false
+#| include: false
 
 change_table <- ptax_proj |>
   ungroup() |>
@@ -164,13 +168,16 @@ change_table |> filter(first_tif_year < first_incent_year)
 ```{r}
 #| label: tbl-keypin-tiforincent
 #| tbl-cap: "Projects that were in a TIF before they also got an incentive classification."
+#| eval: false
+#| include: false
+
 
 change_table <- ptax_proj |>
-  ungroup() |>
-  arrange(pin, year) |>
+  ungroup() |> 
+  arrange(pin, year) |> 
   group_by(actual_keypin) |>
   summarize(first_tif_year = first(year[in_tif==1]),
-                     first_incent_year = first(year[incent_prop=="Incentive"])) |>
+            first_incent_year = first(year[incent_prop=="Incentive"])) |>
   filter(!is.na(first_tif_year) & !is.na(first_incent_year)) |>
   select(actual_keypin, first_tif_year, first_incent_year)|> 
   distinct() 
@@ -187,7 +194,8 @@ change_table |> filter(first_tif_year < first_incent_year)
 ```{r}
 #| label: tbl-commercial-toOther-pins
 #| tbl-cap: "Commercial PINs that became Industrial or other land use types"
-
+#| eval: false
+#| include: false
 
 change_table <- ptax_proj |>
   ungroup() |>
@@ -206,9 +214,11 @@ change_table |> filter(first_commerc_year < first_other_year)
 ```
 
 
-```{r eval=FALSE}
+```{r }
 #| label: tbl-keypinchange
 #| tbl-cap: "Projects where the first year as a commercial land use is before becoming commercial."
+#| eval: false
+#| include: false
 
 change_table <- ptax_proj |>
   ungroup() |>
@@ -234,6 +244,96 @@ change_table |> filter(first_commerc_year < first_indust_year)
 #  # select(-c(landuse_change, land_use, incent_change, tif_change, pin_classes_2011, pin_classes_2022) ) %>%
 #   filter(incent_change %in% c("Always Incentive", "Changes Sometime")) %>%
 #            write_csv("Output/incentive_project_summaries.csv")
+```
+
+```{r}
+ptax_proj %>% filter(is.na(actual_keypin)) %>% mutate(block7 = str_sub(pin, 1,7)) %>% group_by(year, block7, pin) %>% select(block7, years_existed, everything())
+```
+
+```{r}
+#| eval: false
+
+block_sums <- ptax_proj %>% 
+  mutate(block7 = str_sub(pin, 1,7)) %>%
+  group_by(year, block7 ) %>%
+  summarize(
+    incent_pins = sum(ifelse(class >= 600 & class < 900, 1, 0)),
+    project_pins = n_distinct(actual_keypin),
+    fmv = sum(fmv, na.rm=TRUE),
+    tax_code = mean(tax_code_num, na.rm=TRUE),
+    in_tif = mean(in_tif, na.rm=TRUE),
+    # pin_classes = paste(sort(unique(class)), collapse = ", "),
+    land_use = paste(sort(unique(land_use)), collapse = ", "),
+    incent_prop = paste(sort(unique(incent_prop)), collapse = ", "),
+    triad = first(Triad),
+    clean_name = first(clean_name),
+    reassessed_year = first(reassessed_year),
+    exe_abate = sum(exe_abate, na.rm = TRUE),
+   
+    landuse_change= paste(sort(unique(landuse_change)), collapse = ", "),
+    incent_change = paste(sort(unique(incent_change)), collapse = ", "),
+    tif_change = paste(sort(unique(tif_change)), collapse = ", "),
+    av_mailed = sum(av_mailed, na.rm=TRUE),
+    av_clerk = sum(av_clerk, na.rm=TRUE) 
+    )  %>%
+   ungroup()
+
+timespan = 12 
+
+block_sums <- block_sums %>%
+  
+  group_by(block7) |>
+  mutate(
+    years_existed = n(),
+    base_year_fmv_2011 = ifelse(years_existed == timespan, 
+                                fmv[year == 2011], NA),
+    end_year_fmv_2022 = ifelse(years_existed == timespan, fmv[year == 2022], NA),
+    fmv_2022_2011_diff = ifelse(!is.na(end_year_fmv_2022) & !is.na(base_year_fmv_2011), end_year_fmv_2022 - base_year_fmv_2011, NA)
+  ) %>% 
+  ungroup() %>%
+  mutate(fmv_growth_2011 = fmv/base_year_fmv_2011) |>
+  group_by(year) %>%
+  mutate(fmv_w = DescTools::Winsorize(fmv, quantile(fmv, probs = c(0.01, 0.99), na.rm=TRUE)),
+         fmv_growth_2011_w = DescTools::Winsorize(fmv_growth_2011, quantile(fmv_growth_2011, probs = c(0.01, 0.99), na.rm=TRUE)),
+         fmv_2022_2011_diff_w = DescTools::Winsorize(fmv_2022_2011_diff, quantile(fmv_2022_2011_diff, probs = c(0.01, 0.99), na.rm=TRUE))) |>
+  ungroup()
+
+block_sums <- block_sums %>%  mutate(
+    # commented out to make it run faster 
+    # landuse_change2 = ifelse(landuse_change!= "Always Commercial" & landuse_change != "Always Industrial", "Changes", landuse_change),
+         land_use2 = ifelse(!land_use %in% c("Commercial", "Industrial", "Land", "Exempt"), "Multi Land Uses", land_use),
+         # tif_change2 = ifelse(!tif_change %in% c("Always TIF", "Never TIF"), "Changes", tif_change),
+        #  incent_change2 = ifelse(!incent_change %in% c("Always Incentive", "Never Incentive"), "Changes", incent_change),
+         in_tif2 = ifelse(in_tif != 0 & in_tif != 1, "Partly in TIF", in_tif)) %>%
+  mutate(across(c(fmv, tax_code), round, digits = 0))
+
+
+block_panel <- block_sums %>% 
+    filter(year >= 2012) %>% # drop first year of data when fmv growth is 1
+  select(block7, year, fmv, fmv_w, incent_prop,
+         land_use2, in_tif2, triad, fmv_growth_2011, years_existed,
+        base_year_fmv_2011, reassessed_year, incent_pins,
+         project_pins, incent_pins, clean_name, fmv_growth_2011_w)  %>% 
+  arrange(block7, year) %>% 
+
+  mutate(#across(year:triad, as.factor),
+         land_use2 = as.character(land_use2),
+         incent_prop2 = factor(incent_prop, levels= c("Non-Incentive", "Incentive"), labels = c("NonIncentive", "Incentive"), ordered = TRUE))  %>%
+  ungroup() |>
+  group_by(year) %>%
+  mutate(fmv_w = DescTools::Winsorize(fmv, quantile(fmv, probs = c(0.005, 0.995), na.rm=TRUE)),
+         fmv_growth_2011_w = DescTools::Winsorize(fmv_growth_2011, quantile(fmv_growth_2011, probs = c(0.01, 0.99), na.rm=TRUE)))
+
+# table(proj_panel$incent_prop2)
+table(block_panel$years_existed)
+
+summary(block_panel$fmv_growth_2011)
+summary(block_panel$fmv_growth_2011_w)
+#write_csv(block_panel, "Output/block_panel_summaries.csv")
+
+
+block_panel %>% filter(year == 2022) %>%
+  summarize(pin_count = sum(project_pins))
 ```
 
 ```{r}
@@ -283,15 +383,26 @@ ptax_proj_summs <- ptax_proj_summs %>%
   mutate(fmv_growth_2011 = fmv/base_year_fmv_2011) |>
   group_by(year) %>%
   mutate(fmv_w = DescTools::Winsorize(fmv, quantile(fmv, probs = c(0.01, 0.99), na.rm=TRUE)),
-         fmv_growth_2011_w = DescTools::Winsorize(fmv_growth_2011, quantile(fmv_growth_2011, probs = c(0.01, 0.99), na.rm=TRUE)),
-         fmv_2022_2011_diff_w = DescTools::Winsorize(fmv_2022_2011_diff, quantile(fmv_2022_2011_diff, probs = c(0.01, 0.99), na.rm=TRUE))) |>
+         # fmv_growth_2011_w = DescTools::Winsorize(fmv_growth_2011, quantile(fmv_growth_2011, probs = c(0.01, 0.99), na.rm=TRUE)),
+         # fmv_2022_2011_diff_w = DescTools::Winsorize(fmv_2022_2011_diff, quantile(fmv_2022_2011_diff, probs = c(0.01, 0.99), na.rm=TRUE)),
+         # 
+         
+       #  base_year_fmv_2006_w =DescTools::Winsorize(base_year_fmv_2006,quantile(base_year_fmv_2006, probs = c(0.01,0.99), na.rm=TRUE)),
+  #  fmv_growth_2006_w =DescTools::Winsorize(fmv_growth_2006, quantile(fmv_growth_2006, probs = c(0.01,0.99), na.rm=TRUE)),
+    base_year_fmv_2011_w =
+      DescTools::Winsorize(base_year_fmv_2011,
+                           quantile(base_year_fmv_2011, probs = c(0.01,0.99), na.rm=TRUE)),
+    fmv_growth_2011_w =
+      DescTools::Winsorize(fmv_growth_2011,
+                           quantile(fmv_growth_2011, probs = c(0.01,0.99), na.rm=TRUE))) |>
+
   ungroup() 
 
 ptax_proj_summs <- ptax_proj_summs %>%
   mutate(
     # commented out to make it run faster 
     # landuse_change2 = ifelse(landuse_change!= "Always Commercial" & landuse_change != "Always Industrial", "Changes", landuse_change),
-         land_use2 = ifelse(!land_use %in% c("Commercial", "Industrial", "Land"), "Multi Land Uses", land_use),
+         land_use2 = ifelse(!land_use %in% c("Commercial", "Industrial", "Land", "Exempt"), "Multi Land Uses", land_use),
          # tif_change2 = ifelse(!tif_change %in% c("Always TIF", "Never TIF"), "Changes", tif_change),
         #  incent_change2 = ifelse(!incent_change %in% c("Always Incentive", "Never Incentive"), "Changes", incent_change),
          in_tif2 = ifelse(in_tif != 0 & in_tif != 1, "Partly in TIF", in_tif)) %>%
@@ -326,7 +437,7 @@ ptax_proj_summs %>%
 
 ```{r}
 #| label: tbl-exemptprojects
-#| tbl-cap: Projects that were exempt or became exempt. 
+#| tbl-cap: Projects that were exempt or became exempt.
 
 summary(ptax_proj_summs$fmv_growth_2011)
 summary(ptax_proj_summs$fmv_growth_2011_w)
@@ -390,9 +501,6 @@ ptax_proj_summs %>% filter(year == 2022) %>%
 **Problem example 2:** 7308877 - LYCEE FRANCAIS DE CHIC	 became tax exempt. Filtering out PINs
 
 
-> making binary variable for if a PIN went from vacant to not-vacant or not might work in a logit model though.
-
-
 **Large FMV Growth PINS**:
 
 - 17221101230000 for ACRON Navy Pier Hotel LLC was land class 100 in 2011, became 590 and gained value after it opened? 
@@ -411,6 +519,7 @@ ptax_proj_summs %>%
 ## Fixed Effect Model using Projects
 
 Create winsorized FMV growth at this stage, after removing properties the properties with infinite growth. Too many properties had Inf or 0's as values for the winsorizing to do anything. 
+
 
 
 ```{r}
@@ -446,40 +555,18 @@ proj_panel %>% filter(year == 2022) %>%
 ```
 
 
-```{r}
-#| label: tbl-growthcomparison-winsor
-#| tbl-cap: "Winsorized Growth growth for projects."
-
-
-library(fixest)
-
-models <- list(
-  "Project-Year FE" = feols(fmv_growth_2011_w ~  land_use2*incent_prop2 | actual_keypin + year, panel.id = c("actual_keypin", "year"),                                      vcov = "newey_west",
-
-                            data = proj_panel),
-  
-  "Project, Year & Muni FE" = feols(fmv_growth_2011_w ~ land_use2*incent_prop2  | actual_keypin + clean_name + year, 
-                                    vcov = "newey_west",
-                                          panel.id = c("actual_keypin", "year"), data = proj_panel)
-)
-
-
-modelsummary::modelsummary(model = models, output = "flextable",
-                           stars = TRUE,
-                           gof_omit = "AIC|BIC")
-```
-
 
 ```{r}
 #| label: tbl-growthcomparison-nonwinsor
 #| tbl-cap: "Non-winsorized growth for projects."
 
 models <- list(
-  projectlevel_2FE = feols(fmv_growth_2011 ~  land_use2*incent_prop2 | actual_keypin + year, panel.id = c("actual_keypin", "year"),                                     vcov = "newey_west",
-data = proj_panel),
-               
-  projectlevel_3FE = feols(fmv_growth_2011 ~  land_use2*incent_prop2  | actual_keypin + clean_name + year, panel.id = c("actual_keypin", "year"),                                    vcov = "newey_west",
- data = proj_panel)
+  projectlevel_2FE = feols(fmv_growth_2011 ~  land_use2*incent_prop2 | 
+                             actual_keypin + year, 
+                           panel.id = c("actual_keypin", "year"),                                     
+                        vcov = ~clean_name,
+                           data = proj_panel),
+                
 )
 
 
@@ -496,16 +583,28 @@ modelsummary::modelsummary(model = models, output = "flextable",
 #| tbl-cap: "With reassessment years interaction with Winsorized FMV Growth"
 
 models <- list(
-  reassess_year = feols(fmv_growth_2011_w ~ land_use2*incent_prop2  + reassessed_year | actual_keypin + clean_name + year, panel.id = c("actual_keypin", "year"),                                     vcov = "newey_west",
+  reassess_year = feols(fmv_growth_2011_w ~ land_use2*incent_prop2  + reassessed_year | 
+                          actual_keypin + clean_name + year, 
+                        panel.id = c("actual_keypin", "year"),                                     
+                        vcov = ~clean_name,
 data = proj_panel),
   
-  reassess_interact = feols(fmv_growth_2011_w ~  land_use2*incent_prop2 + reassessed_year*incent_prop2 | actual_keypin + clean_name + year, panel.id = c("actual_keypin", "year"),                                     vcov = "newey_west",
+  reassess_interact = feols(fmv_growth_2011_w ~  land_use2*incent_prop2 + reassessed_year*incent_prop2 |
+                              actual_keypin  + year, 
+                            panel.id = c("actual_keypin", "year"),                                     
+                        vcov = ~clean_name,
   data = proj_panel),
   
-   triadFE1 = feols(fmv_growth_2011_w ~ land_use2*incent_prop2  + reassessed_year | actual_keypin + clean_name + year^triad, panel.id = c("actual_keypin", "year"),                                     vcov = "newey_west",
+   triadFE1 = feols(fmv_growth_2011_w ~ land_use2*incent_prop2  + reassessed_year | 
+                      actual_keypin + year^triad, 
+                    panel.id = c("actual_keypin", "year"),                                     
+                        vcov = ~clean_name,
  data = proj_panel),
   
-  triadFE2 = feols(fmv_growth_2011_w ~  land_use2*incent_prop2 + reassessed_year*incent_prop2 | actual_keypin + clean_name + year^triad, panel.id = c("actual_keypin", "year"),                                    vcov = "newey_west",
+  triadFE2 = feols(fmv_growth_2011_w ~  land_use2*incent_prop2 + reassessed_year*incent_prop2 |
+                     actual_keypin + year^triad, 
+                   panel.id = c("actual_keypin", "year"),                                    
+                        vcov = ~clean_name,
   data = proj_panel)
 )
 
@@ -523,17 +622,27 @@ modelsummary::modelsummary(model = models,
 #| tbl-cap: "With reassessment years interaction with FMV Growth"
 
 models <- list(
-  reassess_year = feols(fmv_growth_2011 ~ land_use2*incent_prop2  + reassessed_year | actual_keypin + clean_name + year, panel.id = c("actual_keypin", "year"),                                    vcov = "newey_west",
- data = proj_panel),
+  reassess_year = feols(fmv_growth_2011 ~ land_use2*incent_prop2  + reassessed_year | 
+                          actual_keypin  + year, 
+                        panel.id = c("actual_keypin", "year"),                                    
+                        vcov = ~clean_name,
+                        data = proj_panel),
   
-  reassess_interact = feols(fmv_growth_2011 ~  land_use2*incent_prop2 + reassessed_year*incent_prop2 | actual_keypin + clean_name + year, panel.id = c("actual_keypin", "year"),                                     vcov = "newey_west",
- data = proj_panel),
+  reassess_interact = feols(fmv_growth_2011 ~  land_use2*incent_prop2 + reassessed_year*incent_prop2 | 
+                              actual_keypin + year, 
+                            panel.id = c("actual_keypin", "year"),                                     
+                        vcov = ~clean_name,
+                            data = proj_panel),
   
-   triadFE1 = feols(fmv_growth_2011 ~ land_use2*incent_prop2  + reassessed_year | actual_keypin + clean_name + year^triad, panel.id = c("actual_keypin", "year"),                                     vcov = "newey_west",
-data = proj_panel),
+   triadFE1 = feols(fmv_growth_2011 ~ land_use2*incent_prop2  + reassessed_year | actual_keypin + year, panel.id = c("actual_keypin", "year"),                                     
+                        vcov = ~clean_name,
+                    data = proj_panel),
   
-  triadFE2 = feols(fmv_growth_2011 ~  land_use2*incent_prop2 + reassessed_year*incent_prop2 | actual_keypin + clean_name + year^triad, panel.id = c("actual_keypin", "year"),                                     vcov = "newey_west",
- data = proj_panel)
+  triadFE2 = feols(fmv_growth_2011 ~  land_use2*incent_prop2 + reassessed_year*incent_prop2 | 
+                     actual_keypin + year^triad, 
+                   panel.id = c("actual_keypin", "year"),                                     
+                        vcov = ~clean_name,
+                   data = proj_panel)
 )
 
 
