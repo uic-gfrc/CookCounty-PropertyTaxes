@@ -12,6 +12,7 @@ library(tidyverse)
 library(ptaxsim)
 library(DBI) 
 library(glue)
+library(janitor)
 
 
 amazon <- readxl::read_excel("./amazonPINs.xlsx")
@@ -24,6 +25,29 @@ amazon <- amazon %>%
          block = str_sub(pin_clean,1,7),
          township = str_sub(pin_clean, 1, 2))
 
+
+# Archived Parcel Universe Dataset -----
+
+parcuniverse_keypins <- readxl::read_xlsx("./Inputs/parceluniverse_keypins_20240725.xlsx", 
+                                          sheet = "keypins_20240725") %>%
+  mutate(pin = str_remove_all(pin, "-")) 
+
+parcuniverse_keypins <- parcuniverse_keypins %>%
+  mutate(
+    pin14 = str_pad(as.character(pin), width = 14, side = "left", pad = "0"),
+    keypin = str_pad(as.character(proration_key_pin), width = 14, side = "left", pad = "0"),
+    pin10 = str_sub(pin14,1,10),
+    pin7 = str_sub(pin14,1,7), .before = "pin") %>%
+  select(-c(pin_7dig, pin, Column1)) %>%
+  filter(class != "EX")
+
+parcuniverse_keypins %>% 
+  group_by(keypin) %>% 
+  summarize(pincount = n(), 
+            class = mean(as.numeric(class)),
+            has_incent = sum(ifelse(as.numeric(between(class, 600, 899)), 1, 0), na.rm=TRUE)) %>%
+  filter(pincount > 1) %>% 
+  arrange(desc(has_incent), desc(pincount))
 
 # Commercial Valuation Dataset - Cook County Data Portal ------------------
 
