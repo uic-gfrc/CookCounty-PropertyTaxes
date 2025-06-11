@@ -28,25 +28,25 @@ library(glue)
 cde <- read_csv("./Necessary_Files/class_dict_expanded.csv") |>
   mutate(class = as.character(class_code)) |>  # rename to match other data frames
   select(-c(loa_2022, Option2, class_desc, land, vacant_ind, last2dig,
-            Res_nonRes, assessment_level, used_in2021, class_code)) %>%
+            Res_nonRes, assessment_level, used_in2021, class_code)) |>
   mutate_at(.vars = c("improvement_ind", "incent_prop", "class_1dig", "major_class_code"), .funs = as.character
   )
 
  # Levels of assessment by year (they change over time)
 
-ccao_loa <- read_csv("./inputs/ccao_loa.csv") %>%
-  mutate(class = as.character(class_code)) %>%
-  filter(year > 2005) %>%
-  select(-class_code) %>%
-  mutate(loa = as.numeric(loa)) %>%
+ccao_loa <- read_csv("./inputs/ccao_loa.csv") |>
+  mutate(class = as.character(class_code)) |>
+  filter(year > 2005) |>
+  select(-class_code) |>
+  mutate(loa = as.numeric(loa)) |>
   mutate(loa = ifelse(loa == 0, NA, loa) # avoid dividing by zero errors
   )
 
  # "Clean" muni names
 
-nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")  %>%
-  select(agency_number, clean_name, Triad, Township) %>%
-  mutate(agency_number = str_pad(agency_number, width = 9, side = "left", pad = "0")) %>%
+nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")  |>
+  select(agency_number, clean_name, Triad, Township) |>
+  mutate(agency_number = str_pad(agency_number, width = 9, side = "left", pad = "0")) |>
   mutate(agency_number = as.character(agency_number))
 
 ## Create class and border crosser variables. ---------------------
@@ -121,7 +121,7 @@ tax_codes_muni <- DBI::dbGetQuery(
 
  # associate clean muni names w/ tax codes
 
-tax_codes_muni <- tax_codes_muni %>%
+tax_codes_muni <- tax_codes_muni |>
   left_join(nicknames, by = c("agency_num" = "agency_number"))
 
 ## Identify all comm/ind PINs -------------------
@@ -153,7 +153,6 @@ distinct_pins <- muni_pins |>
 # NOW we can pull all comm/ind PINs ever comm/ind 2006 through 2023
 
 # We pull exe_abate because it isn't a residential exemption.
-# Don't fully know what is in that category, either...
 
 
 # 1,938,402 obs.
@@ -169,7 +168,7 @@ comm_ind_pins_ever <- DBI::dbGetQuery(
   )) |>
 
   # fix variable types
-  mutate_if(is.integer64, as.double ) %>%
+  mutate_if(is.integer64, as.double ) |>
   mutate(class = as.character(class)) |>
 
   # join in variables from other sheets
@@ -189,16 +188,18 @@ tif_distrib <- DBI::dbGetQuery(
     .con = ptaxsim_db_conn)
 )
 
+dbDisconnect(ptaxsim_db_conn)
+
 # Mutate new variables ---------------------------------------------
 
-comm_ind_pins_ever <- comm_ind_pins_ever %>%
+comm_ind_pins_ever <- comm_ind_pins_ever |>
 
-  # Alea_cat--manual labor to create land use list.
+  # Alea_cat--manually coded based on assessor categories
 
   rename(land_use = Alea_cat) |>
-  arrange(pin) %>%
-  left_join(tax_codes_muni, by = c("year", "tax_code_num")) %>%  # has muni clean_name  in it
-  left_join(tif_distrib) %>%
+  arrange(pin) |>
+  left_join(tax_codes_muni, by = c("year", "tax_code_num")) |>  # has muni clean_name  in it
+  left_join(tif_distrib) |>
   mutate(
     has_AB_exemp = as.character(ifelse(exe_abate > 0, 1, 0)),
     fmv = av_clerk / loa,
