@@ -185,6 +185,8 @@ for(i in years){
       has_LTHO_exemp = ifelse(exe_longtime_homeowner > 0, 1, 0),
       has_DI_exemp = ifelse(exe_disabled > 0, 1, 0),
       has_VR_exemp = ifelse(exe_vet_returning > 0, 1, 0),
+      
+      # includes missing disabled veteran exemption counts
       has_DV_exemp = ifelse(exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 + exe_missing_disvet > 0, 1, 0),
       has_AB_exemp = ifelse(exe_abate > 0, 1, 0),
     )|>
@@ -339,9 +341,14 @@ for(i in years){
       cty_taxed_eav_indust = sum(ifelse(class %in% industrial_classes, taxed_eav, 0), na.rm = TRUE),
       
       exempt_allexemptions_eav = sum(exe_total_adj,na.rm=TRUE),
+      
       exempt_GHE_eav = sum(exe_homeowner, na.rm=TRUE),
-      exempt_SR_eav = sum(exe_senior, na.rm=TRUE),
-      exempt_FR_eav = sum(exe_freeze, na.rm=TRUE),
+      exempt_SR_eav = sum(exe_senior, na.rm=TRUE), # senior exemption
+      exempt_FR_eav = sum(exe_freeze, na.rm=TRUE), #  senior freeze exemption
+      exempt_LTHO_eav = sum(exe_longtime_homeowner, na.rm=TRUE),
+      exempt_DIS_eav = sum(exe_disabled, na.rm=TRUE),
+      # combined veteran exemptions and the missing veteran exemptions
+      exempt_VET_eav = sum(exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 + exe_missing_disvet, na.rm=TRUE),
       
       total_value_eav = sum(eq_av, na.rm=TRUE),
       untaxable_value_eav = sum(untaxable_value_eav, na.rm=TRUE),
@@ -439,9 +446,15 @@ if(is.data.frame(county_sums)){county_sums <- rbind(county_sums, county_sums2)}e
       cty_mc_taxed_eav_indust = sum(ifelse(class %in% industrial_classes, taxed_eav, 0), na.rm = TRUE),
       
       exempt_allexemptions_eav = sum(exe_total_adj,na.rm=TRUE),
+
       exempt_GHE_eav = sum(exe_homeowner, na.rm=TRUE),
-      exempt_SR_eav = sum(exe_senior, na.rm=TRUE),
-      exempt_FR_eav = sum(exe_freeze, na.rm=TRUE),
+      exempt_SR_eav = sum(exe_senior, na.rm=TRUE), # senior exemption
+      exempt_FR_eav = sum(exe_freeze, na.rm=TRUE), #  senior freeze exemption
+      exempt_LTHO_eav = sum(exe_longtime_homeowner, na.rm=TRUE),  # can eventually be combined with GHE exemption in graphs and tables
+      exempt_DIS_eav = sum(exe_disabled, na.rm=TRUE),
+      # combined veteran exemptions and the missing veteran exemptions
+      exempt_VET_eav = sum(exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 + exe_missing_disvet, na.rm=TRUE),
+      
       
       total_value_eav = sum(eq_av, na.rm=TRUE),
       untaxable_value_eav = sum(untaxable_value_eav, na.rm=TRUE),
@@ -554,9 +567,15 @@ if(is.data.frame(county_sums)){county_sums <- rbind(county_sums, county_sums2)}e
       muni_eav_taxed_indust = sum(ifelse(class %in% industrial_classes, taxed_eav, 0), na.rm = TRUE),
 
       exempt_allexemptions_eav = sum(exe_total_adj,na.rm=TRUE),
+      
       exempt_GHE_eav = sum(exe_homeowner, na.rm=TRUE),
-      exempt_SR_eav = sum(exe_senior, na.rm=TRUE),
-      exempt_FR_eav = sum(exe_freeze, na.rm=TRUE),
+      exempt_SR_eav = sum(exe_senior, na.rm=TRUE), # senior exemption
+      exempt_FR_eav = sum(exe_freeze, na.rm=TRUE), #  senior freeze exemption
+      exempt_LTHO_eav = sum(exe_longtime_homeowner, na.rm=TRUE),
+      exempt_DIS_eav = sum(exe_disabled, na.rm=TRUE),
+      # combined veteran exemptions and the missing veteran exemptions
+      exempt_VET_eav = sum(exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 + exe_missing_disvet, na.rm=TRUE),
+      
       
       total_value_eav = sum(eq_av, na.rm=TRUE),
       untaxable_value_eav = sum(untaxable_value_eav, na.rm=TRUE),
@@ -650,9 +669,15 @@ rm(muni_level_summary2)
     zero_bills = sum(zero_bill, na.rm=TRUE),
     
     exempt_allexemptions_eav = sum(exe_total_adj,na.rm=TRUE),
+    
     exempt_GHE_eav = sum(exe_homeowner, na.rm=TRUE),
-    exempt_SR_eav = sum(exe_senior, na.rm=TRUE),
-    exempt_FR_eav = sum(exe_freeze, na.rm=TRUE),
+    exempt_SR_eav = sum(exe_senior, na.rm=TRUE), # senior exemption
+    exempt_FR_eav = sum(exe_freeze, na.rm=TRUE), #  senior freeze exemption
+    exempt_LTHO_eav = sum(exe_longtime_homeowner, na.rm=TRUE),
+    exempt_DIS_eav = sum(exe_disabled, na.rm=TRUE),
+    # combined veteran exemptions and the missing veteran exemptions
+    exempt_VET_eav = sum(exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 + exe_missing_disvet, na.rm=TRUE),
+    
     
     has_HO_exemp = sum(has_HO_exemp, na.rm=TRUE),
     has_SR_exemp = sum(has_SR_exemp, na.rm=TRUE),
