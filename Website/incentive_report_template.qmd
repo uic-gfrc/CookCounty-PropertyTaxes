@@ -107,7 +107,8 @@ cross_county_line <- c(
 ```
 
 
-Municipalities that are dropped due to having EAV outside of Cook County: Frankfort, Homer Glen,  Oak Brook, East Dundee, University Park,  Bensenville, Hinsdale, Roselle, Deer Park, Deerfield. 
+Municipalities that are dropped due to having EAV outside of Cook County: Frankfort, Homer Glen,  Oak Brook, East Dundee, University Park,  Bensenville, Hinsdale, Roselle, Deer Park, Deerfield, Elgin,
+  Buffalo Grove,  Bartlett,  Burr Ridge, Hanover Park, Steger. 
                         
 ```{r}
 #| label: merge-in-project-identifier
@@ -917,7 +918,7 @@ figure7C |>
 Read in CCAO level of assessment rates for each property class. Read in Summary file for Municipalities from 2006 to `r params$year`.
 
 ```{r}
-muni_rate <- read_csv("../Output/ptaxsim_muni_level_2006to2023.csv") |>
+muni_rate <- read_csv("../Output/ptaxsim_muni_level_2006to2023_new.csv") |>
   filter(year == params$year) |>
   left_join(nicknames) |> 
   select(clean_name, muni_current_rate_avg, muni_pct_eav_taxed) |>
@@ -1696,17 +1697,22 @@ pin_data |>
 ```{r}
 library(readxl)
 
-# tablelist <- list(
-#   "Muni Stats" = munilevel,
-#   "Muni Rate Change" = muni_ratechange,
-#   
-#   "Cook Sums" = table_cook,
-#   "Cook Class Sums" = cty_MC_table,
-#   "Cook Rate Change" = cook_ratechange
-# )
+today_date <- Sys.Date()
 
-#writexl::write_xlsx(tablelist, "Output/calculations_report_content_20240927.xlsx")
-# 
+
+tablelist <- list(
+  "Muni Stats" = muni_sums,
+  "Muni Rate Change" = muni_ratechange,
+
+  "Cook Sums" = cook_sums,
+  "Cook Class Sums" = cook_MC_sums,
+  "Cook Rate Change" = cook_ratechange
+)
+
+file_name = paste0("../Output/calculations_report_content_", today_date, ".xlsx")
+
+writexl::write_xlsx(tablelist, file_name)
+ 
 # readme <- c(
 # 
 #   "Muni names and share of FMV with incentive property",
@@ -1718,7 +1724,7 @@ library(readxl)
 #   "CommercShare_all is same as Commerc_share but includes all munis.") %>% 
 #   as.data.frame()
 
-if(params$year == 2022){
+if(params$year == 2023){
 paper_tables <- list(
   # "README"= readme,
   # Table 2 is from yearly trends.  Incentive FMV by year
@@ -1751,7 +1757,9 @@ paper_tables <- list(
 # "All Cook Rate Scenarios" = cook_ratechange
 )
 
-writexl::write_xlsx(paper_tables, "../Output/incentive_report_tables_2025_03_25.xlsx")
+
+writexl::write_xlsx(paper_tables, paste0( "../Output/incentive_report_tables_taxyear_", params$year, "_", today_date, ".xlsx"))
+
 }
 ```
 
