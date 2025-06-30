@@ -84,6 +84,7 @@ ptax_pins <- ptax_pins %>%
   mutate(clean_name = ifelse(is.na(clean_name), "0_Unincorporated", clean_name))
 
 ```
+
 ```{r}
 #| label: tbl-bor-pin-list
 #| tbl-cap: "**BoR Appeal PINs**. Shows list of classes that PIN was between 2006 and 2022 according to Board of Review data of appeals."
@@ -241,11 +242,13 @@ table_list <- ptax_pins %>%
 
 table_list %>% datatable(rownames = FALSE)
 
-table_list %>% summarize(sum(has_incent))
+#table_list %>% summarize(sum(has_incent))
 ```
 
 
 ```{r}
+
+# Just read in eq factors?
 
 eq2021 <- 3.0027
 eq2022 <- 2.9237
@@ -290,7 +293,7 @@ ptax_pins <- ptax_pins %>%
     
 
     ) %>%
-  select(tax_code, class, pin, taxable_fmv, untaxable_value_fmv, fmv_inTIF, fmv_tif_increment, fmv, total_billed, final_tax_to_dist, final_tax_to_tif, tax_code_rate, eav, equalized_av, av, everything())
+  select(tax_code_num, class, pin, taxable_fmv, untaxable_value_fmv, fmv_inTIF, fmv_tif_increment, fmv, final_tax_to_dist, final_tax_to_tif, tax_code_rate, taxed_eav, eq_av, av, everything())
 
 ```
 
@@ -308,7 +311,9 @@ nonres_pins2022 <- ptax_pins %>%
   mutate(min_class = first(class),
          max_class = last(class)) %>% 
   filter(max_class > 399 & max_class < 900) %>%
-  ungroup()
+  ungroup() |>
+  rename(incent_prop = incent_prop.x) |>
+  select(!incent_prop.y)
 
 table <- nonres_pins2022 %>% 
       filter(Alea_cat != "Land") %>%
@@ -348,11 +353,11 @@ formatPercentage('% AV Incentivized', digits = 2)
 
 table <- nonres_pins2022 %>% 
    #   filter(Alea_cat != "Land") %>%
-  mutate(has_incentive = ifelse(class >= 600, 1, 0)) %>%
+  
   group_by(both_ids) %>%
   summarize(
     count = n(),     # number of pins in project
-    sum = sum(has_incentive), # number of pins that had incentives
+    sum = sum(incent_prop), # number of pins that had incentives
     av_adjusted=sum(ifelse(between(class, 600, 899), av*2.5, av)),  # approximated fmv
     fmv = sum((av/loa)*0.25, na.rm=TRUE),                            # more accurate fmv
     av = sum(av)) %>%
@@ -378,18 +383,16 @@ flextable(table) %>%
 #| column: page
 
 table <- nonres_pins2022 %>% 
-  # filter(Alea_cat != "Land") %>%
 
-  mutate(has_incentive = ifelse(class >= 600, 1, 0)) %>%
   group_by(both_ids) %>%
   mutate(project_taxable_av = sum(av)) %>%
   ungroup() %>%
   group_by(both_ids) %>%
   summarize(count = n(), # number of pins in project
-         sum = sum(has_incentive), # number of pins that had incentives
-         av_incent = sum(if_else(incent_prop == "Incentive", av, 0), na.rm=TRUE),
-         av_nonincent = sum(ifelse(incent_prop == "Non-Incentive", av, 0), na.rm=TRUE),
-         fmv_incent = sum(ifelse(incent_prop == "Non-Incentive", av/loa*0.25, 0), na.rm=TRUE),
+         sum = sum(incent_prop), # number of pins that had incentives
+         av_incent = sum(if_else(incent_prop == 1, av, 0), na.rm=TRUE),
+         av_nonincent = sum(ifelse(incent_prop == 0, av, 0), na.rm=TRUE),
+         fmv_incent = sum(ifelse(incent_prop == 0, av/loa*0.25, 0), na.rm=TRUE),
          fmv = sum((av/loa)*0.25, na.rm=TRUE) ) %>%
   mutate(pct_pins_w_inct = round(sum/count, digits = 3), # pct of pins that had incentive property class
          av_incent_adjusted = av_incent * 2.5,
