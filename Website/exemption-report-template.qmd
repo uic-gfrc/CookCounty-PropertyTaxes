@@ -15,6 +15,9 @@ library(flextable)
 
 nicknames <- readxl::read_excel("../Necessary_Files/muni_shortnames.xlsx")
 
+
+county_sums <- read_csv("../Output/ptaxsim_cook_level_2006to2023_new.csv")
+
 muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006to2023.csv") |> 
  left_join(nicknames)
 
@@ -130,7 +133,7 @@ ft
 
 EqAV is the `r params$year` equalization factor multiplied by assessed value. Thus, Taxed EAV and Exempt EAV equal EqAV. It can be thought of as the "maximum available tax base" in a world without exemptions.
 
-### Figure 3. using EAV
+### Figure 3. using EAV out of Municipality's EAV
 
 ```{r}
 #| label: fig-exemptionsums-withEAV
@@ -174,7 +177,84 @@ print(median_exempt |>
 
 The County-wide municipal-median percent of **EAV** exempt from property taxes in tax year `r params$year` was `r median_muni` with `r midpoint`.
 
-#### Figure 3. Using FMV
+#### Alt Figure 3. Exempt EAV out of Muni's Residential EAV
+
+```{r}
+#| label: fig-exemptionsums-ResidentialEAV
+#| fig-cap: "**Share of EAV that is tax exempt due to homestead exemptions. Denominator is a municipality's residential EAV.**"
+#| eval: false
+
+## DOESNT WORK YET
+
+median_exempt <- muni_mc_sums |>
+  filter(year== params$year)|>
+  group_by(clean_name) |>
+  summarize(muni_pct_eav_exempt =( eav[major_class_code == "2"] - eav_taxed[major_class_code == "2"] )/  eav[major_class_code == "2"])  |> 
+  select(muni_pct_eav_exempt, clean_name)
+
+
+midpoint = scales::percent(median(median_exempt$muni_pct_eav_exempt), accuracy = 0.01)
+
+median_muni = median_exempt |>
+  arrange(muni_pct_eav_exempt) |>
+  filter(muni_pct_eav_exempt == median(muni_pct_eav_exempt)) |>
+  select(clean_name) |> 
+  as.character()
+
+# 
+# label <- c( "<7.50%",
+#                       "7.50% to 14.99%",
+#                       "15.00% to 22.49%",
+#                       "22.50% to 29.99%",
+#                       "30.00% or greater"
+#           )
+# 
+# breaks = c(0.075, 0.15, 0.225, 0.30, as.numeric(max(median_exempt$muni_pct_eav_exempt)) ) 
+# 
+# colors = c( "#ffffcc",
+#                       "lightblue",
+#                       "#1d91c0", 
+#                         "navy",
+#                       "#0a0a14", "black"
+#           )        
+#           
+print(median_exempt |>
+        left_join(nicknames) |>
+        
+        mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) |>
+        full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) |>
+        ggplot(aes(fill = muni_pct_eav_exempt)) + 
+        geom_sf(aes(geometry = geom), color = "black") + 
+        theme_void()+ 
+        labs(title = "Exempt EAV as a Percent of Residential EAV") +
+        theme(axis.ticks = element_blank(), 
+              axis.text = element_blank()) +
+        scale_fill_manual(
+         # values = colors,
+        # values = c(0.075, 0.15, 0.225, 0.30, as.numeric(max(median_exempt$muni_pct_eav_exempt)) ),
+          # colors = c( "#ffffcc",
+          #             "lightblue",
+          #             "#1d91c0",
+          #               "navy",
+          #             "#0a0a14"
+          # ) ,
+  #show.limits = TRUE,
+         # labels = label,
+          breaks = c(0.075, 0.15, 0.225, 0.30, as.numeric(max(median_exempt$muni_pct_eav_exempt)) ) ,
+          na.value = "gray50",
+          name = "% Exempt", 
+          # label =  c( "<7.50%",
+          #             "7.50% to 14.99%",
+          #             "15.00% to 22.49%",
+          #             "22.50% to 29.99%",
+          #             "30.00% or greater"
+          # ),
+        )
+)
+```
+
+
+#### Alt Figure 3. Using FMV
 
 ```{r}
 #| label: fig-exemptionsums-midpointcolors
@@ -597,7 +677,7 @@ burden_shift |>
 
 ```
 
-```{r tbl-figure8}
+```{r}
 #| label: tbl-tableforFigure8
 #| tbl-cap: "Ungrouped values for donut chart in report. Tax Burden is the Revenue Collected from a Major Class / the combined levy from local taxing agencies (non-TIF) in Dolton, IL."
 
@@ -1085,7 +1165,7 @@ taxcodes_current <- pin_data %>%
     HO_exemps = sum(exe_homeowner),
     tax_code_rate = first(tax_code_rate), 
     final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # used as LEVY amount!!
-    final_tax_to_dist_AWM = sum(final_tax_to_dist_AWM, na.rm=TRUE),
+   # final_tax_to_dist_AWM = sum(final_tax_to_dist_AWM, na.rm=TRUE),
     final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
     tax_amt_exe = sum(tax_amt_exe, na.rm = TRUE), 
     tax_amt_pre_exe = sum(tax_amt_pre_exe, na.rm = TRUE), 
