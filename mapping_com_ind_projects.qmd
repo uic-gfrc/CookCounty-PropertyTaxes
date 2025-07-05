@@ -4,30 +4,48 @@ format: html
 ---
 
 ```{r}
-#| echo: true
+#| output: false
 #| code-fold: false
 
 library(tidyverse)
 library(sf)
 library(DBI)
 library(ptaxsim)
+library(ggplot2)
 
-# Create the DB connection with the default name expected by PTAXSIM functions
-ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "C:/Users/aleaw/OneDrive/Documents/PhD Fall 2021 - Spring 2022/Merriman RA/ptax/ptaxsim.db/ptaxsim-2022.0.0.db")
+```
 
-# all pins for 2022
-ptax_pins <- read_csv("Output/Dont_Upload/0_joined_PIN_data_2022.csv") %>% 
-  mutate(class = as.numeric(class)) %>%
-    select(-c(propclass_1dig:av.y))
+Open ptaxsim.db connection; read in 0_joined_PIN_data_2022.csv (do we want/have 2023?)
+
+```{r}
+
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2023.0.0.db")
+
+ptax_pins <- read_csv("./Output/Dont_Upload/0_joined_PIN_data_2022.csv") %>% 
+  mutate(class = as.numeric(class))
 
 comm_ind <- read_csv("Output/comm_ind_PINs_2011to2022_timeseries.csv") %>% 
   filter(year == 2022)
 
-# 57,004 obs
-sales <- read_csv("C:/Users/aleaw/OneDrive/Documents/PhD Fall 2021 - Spring 2022/Project Data/SampleFiles/dissertation/inputs/Assessor_Parcel_Sales_20240911.csv") %>% 
+# We should investigate these parsing problems in this context.
+# 
+# I have 127705 obs -- do we only want 2022?
+
+sales <- read_csv(#"./inputs/Assessor_Parcel_Sales_20240911.csv") %>% 
+  "./inputs/Assessor_-_Parcel_Sales_20250704.csv") %>%
   filter(class > 399 & class < 900) %>%
   mutate(major_class = str_sub(class, 1, 1),
-            pin10 = str_sub(pin,1,10))
+            pin10 = str_sub(pin,1,10)) #|>
+  #filter(year == 2022)
+
+```
+
+
+Manipulate DFs and such.
+
+Below, there is an indication of 54k obs. Nothing I've read in in that ballpark number of obs.
+
+```{r}
 
 pins_sold <- sales %>% 
   group_by(pin10) %>% 
@@ -37,8 +55,13 @@ pins_sold <- sales %>%
             class_current = first(class),
             sale_document_num= first(sale_document_num),
             sale_buyer_name = first(sale_buyer_name), 
-            num_parcels_sale = first(num_parcels_sale) )
+            num_parcels_sale = first(num_parcels_sale))
 
+```
+
+Checking in on Berwyn
+
+```{r}
 
 twnshp_test <- comm_ind %>% 
   filter(Township == "Berwyn") %>%
@@ -89,7 +112,7 @@ for (i in seq_along(neighbors)) {
   }
 }
 
-library(ggplot2)
+
 
 ## Commercial Properties in Berwyn
 ggplot(parcels) +
@@ -101,65 +124,6 @@ ggplot(parcels) +
 
 ```{r}
 
-twnshp_test <- comm_ind %>% 
-  filter(clean_name == "Markham") %>%
-  mutate(pin10 = str_sub(pin, 1, 10))
-
-flood_pins_geo <- lookup_pin10_geometry(year = 2022, 
-                                        pin10 = twnshp_test$pin10) %>%
-  st_as_sf(wkt = "geometry", crs = 4326)
-
-points <- st_as_sf(flood_pins_geo, coords = c("longitude", "latitude"), crs = 4326)
-
-parcels <- st_as_sf(flood_pins_geo, wkt = "geometry", crs = 4326)
-
-invalid_geom <- st_is_valid(parcels)
-table(invalid_geom)
-parcels$geometry <- st_make_valid(parcels$geometry)
-
-# Filter out invalid geometries
-parcels <- parcels[st_is_valid(parcels), ]
-
-neighbors <- st_touches(parcels)
-parcels$group <- rep(NA, nrow(parcels))
-
-group_id <- 1  # Start with the first group ID
-
-# Loop over each parcel
-for (i in seq_along(neighbors)) {
-  if (is.na(parcels$group[i])) {  # If the parcel hasn't been assigned to a group yet
-    
-    # Start a list of parcels to visit (start with the current parcel)
-    to_visit <- i
-    
-    # Use BFS/DFS to explore connected parcels and assign the same group ID
-    while (length(to_visit) > 0) {
-      current <- to_visit[1]  # Get the first parcel to visit
-      to_visit <- to_visit[-1]  # Remove it from the list
-      
-      if (is.na(parcels$group[current])) {  # If the parcel hasn't been visited
-        parcels$group[current] <- group_id  # Assign the current group ID
-        
-        # Add its neighbors (parcels it touches) to the list of parcels to visit
-        to_visit <- c(to_visit, neighbors[[current]])
-      }
-    }
-    
-    # Increment the group ID for the next group of connected parcels
-    group_id <- group_id + 1
-  }
-}
-
-library(ggplot2)
-
-## Commercial Properties in Berwyn
-ggplot(parcels) +
-  geom_sf(aes(fill = as.factor(group))) +
-  theme_minimal() + theme(legend.position = "none")
-
-```
-
-```{r}
 parcel_comparison <- left_join(parcels, pins_sold, by = "pin10") %>% select(group, pin10, everything()) %>% filter()
 
 parcel_comparison %>% 
