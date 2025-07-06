@@ -18,11 +18,11 @@ nicknames <- readxl::read_excel("../Necessary_Files/muni_shortnames.xlsx")
 
 county_sums <- read_csv("../Output/ptaxsim_cook_level_2006to2023_new.csv")
 
-muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006to2023.csv") |> 
+muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006to2023_new.csv") |> 
  left_join(nicknames)
 
 
-muni_mc_sums <- read_csv("../Output/ptaxsim_muni_MC_2006to2023.csv") |>
+muni_mc_sums <- read_csv("../Output/ptaxsim_muni_MC_2006to2023_new.csv") |>
   rename_all(~str_replace(., "muni_mc_", ""))
 
 
@@ -86,51 +86,6 @@ ft
 ```
 
 
-```{r}
-#| label: tbl-exemptionsums-old
-#| include: false
-#| eval: false
-#| tbl-cap: !expr paste("**Summary of Homestead Exemption Use in Cook County** (Tax Year", params$year)
-
-
-tbl <- muni_cl_sums |>
-    filter(year == params$year) |>
-    group_by(year) |>
-    summarize(
-      'PINs' = sum(muni_c_pins_in_muni),
-      'PINs (w/ exemps.)' = sum(muni_c_has_HO_exemp),
-      "EqAV" = sum(muni_c_equalized_av),
-      'Taxed EAV' = sum(muni_c_current_taxable_eav),
-      'Exempt EAV' = sum(muni_c_all_exemptions),
-      'GHE' = sum(muni_c_exe_homeowner + muni_c_exe_longtime_homeowner),
-      'Senior' = sum(muni_c_exe_senior),
-      'Senior Freeze' = sum(muni_c_exe_freeze),
-      'Other Exemps.' = sum(muni_c_all_exemptions -muni_c_exe_homeowner - muni_c_exe_longtime_homeowner - muni_c_exe_senior - muni_c_exe_freeze )
-      ) |>
-    pivot_longer(cols = c('PINs':'Other Exemps.'),
-                 names_to = "Metric", values_to = "Total") |>
-    select(-year) |> 
-    mutate(
-      Total = case_when(
-        Metric %in% c("Other Exemps.", "EAV", "EqAV", "Taxed EAV", "Exempt EAV","GHE", "Senior", "Senior Freeze") ~ 
-          paste0(format(round(`Total` / 1e9, 2), big.mark = ","), " B"),
-        TRUE ~ format(`Total`, big.mark = ",")
-      )
-    )
-
-
-ft <- tbl |>
-    flextable(cwidth = c(1, 1)) |>
-    align(j = 2, align = "right", part = "header") |>  # Align header
-    align(j = 2, align = "right", part = "body") |>  # Align body
-    align(i = 6:9, j = 1, align = "center", part = "body") |>  # Align body
-
-    footnote(i = 1, j = 2, value = as_paragraph("EAV in billions."), ref_symbols = "*", part='header') #Footnote in new header
-  
-
-ft
-```
-
 EqAV is the `r params$year` equalization factor multiplied by assessed value. Thus, Taxed EAV and Exempt EAV equal EqAV. It can be thought of as the "maximum available tax base" in a world without exemptions.
 
 ### Figure 3. using EAV out of Municipality's EAV
@@ -141,9 +96,29 @@ EqAV is the `r params$year` equalization factor multiplied by assessed value. Th
 
 median_exempt <- muni_sums |>
   filter(year== params$year)|>
-  mutate(muni_pct_eav_exempt =(muni_eav - muni_eav_taxed) / muni_eav) |> 
+  mutate(muni_pct_eav_exempt =(exempt_allexemptions_eav) / (muni_eav_taxed + exempt_allexemptions_eav)) |> 
   select(muni_pct_eav_exempt, clean_name, agency_name)
 
+median_exempt$exemption_category <- cut(
+  median_exempt$muni_pct_eav_exempt,
+  breaks = c(0, 0.075, 0.15, 0.22, 0.30, as.numeric(max(median_exempt$muni_pct_eav_exempt))),
+  labels = c(
+    "<7.5%",
+    "7.5–14.99%",
+    "15.0–21.99%",
+    "22.0–29.99%",
+    "≥30%"
+  ),
+  include.lowest = TRUE
+)
+
+
+exemption_colors <- c(
+  "<7.5%" = "#ffffcc",
+  "7.5–14.99%" = "lightblue",
+  "15.0–21.99%" = "#4292C6",
+  "22.0–29.99%" = "#253494",
+  "≥30%" = "#00004d")
 
 midpoint = scales::percent(median(median_exempt$muni_pct_eav_exempt), accuracy = 0.01)
 
@@ -155,24 +130,18 @@ median_muni = median_exempt |>
 print(median_exempt |>
     mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) |>
  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) |>
-  ggplot(aes(fill = muni_pct_eav_exempt)) + 
+  ggplot(aes(fill = exemption_category)) + 
   geom_sf(aes(geometry = geom), color = "black") + 
   theme_void()+ 
   labs(title = "Exempt EAV as a Percent of Municipality EAV") +
-  theme(axis.ticks = element_blank(), 
-        axis.text = element_blank())
- +
-    scale_fill_stepsn(colors = c("#ffffcc",
-                                 "lightblue",
-                                 "#41b6c4", 
-                                 "#253494",
-                                 "navy"
-                                 ),
-                        show.limits=TRUE, 
-                  breaks = c(0.075, 0.15, 0.225, 0.30, max(median_exempt$muni_pct_eav_exempt)),
-                       na.value = "gray50",
-                    nice.breaks = FALSE,
-                        name = "% Exempt", label = scales::percent))
+        theme(axis.ticks = element_blank(), 
+              axis.text = element_blank()) +
+        scale_fill_manual(
+          na.value = "gray50",
+          name = "% Exempt",
+          values = exemption_colors,
+          na.translate = FALSE
+        ) )
 ```
 
 The County-wide municipal-median percent of **EAV** exempt from property taxes in tax year `r params$year` was `r median_muni` with `r midpoint`.
@@ -181,16 +150,14 @@ The County-wide municipal-median percent of **EAV** exempt from property taxes i
 
 ```{r}
 #| label: fig-exemptionsums-ResidentialEAV
-#| fig-cap: "**Share of EAV that is tax exempt due to homestead exemptions. Denominator is a municipality's residential EAV.**"
-#| eval: false
+#| fig-cap: "**Share of residential EAV that is tax exempt due to homestead exemptions. Denominator is a municipality's residential EAV.**"
 
-## DOESNT WORK YET
 
 median_exempt <- muni_mc_sums |>
-  filter(year== params$year)|>
+  filter(year== params$year & major_class_code == "2")|>
   group_by(clean_name) |>
-  summarize(muni_pct_eav_exempt =( eav[major_class_code == "2"] - eav_taxed[major_class_code == "2"] )/  eav[major_class_code == "2"])  |> 
-  select(muni_pct_eav_exempt, clean_name)
+  mutate(muni_pct_eav_exempt =( exempt_allexemptions_eav )/  (eav_taxed + exempt_allexemptions_eav))    |> 
+  select(year, major_class_code, muni_pct_eav_exempt, eav_c2_taxed, exempt_allexemptions_eav, clean_name, eav_taxed)
 
 
 midpoint = scales::percent(median(median_exempt$muni_pct_eav_exempt), accuracy = 0.01)
@@ -201,55 +168,47 @@ median_muni = median_exempt |>
   select(clean_name) |> 
   as.character()
 
-# 
-# label <- c( "<7.50%",
-#                       "7.50% to 14.99%",
-#                       "15.00% to 22.49%",
-#                       "22.50% to 29.99%",
-#                       "30.00% or greater"
-#           )
-# 
-# breaks = c(0.075, 0.15, 0.225, 0.30, as.numeric(max(median_exempt$muni_pct_eav_exempt)) ) 
-# 
-# colors = c( "#ffffcc",
-#                       "lightblue",
-#                       "#1d91c0", 
-#                         "navy",
-#                       "#0a0a14", "black"
-#           )        
-#           
+
+median_exempt$exemption_category <- cut(
+  median_exempt$muni_pct_eav_exempt,
+  breaks = c(0, 0.075, 0.15, 0.22, 0.30, as.numeric(max(median_exempt$muni_pct_eav_exempt))),
+  labels = c(
+    "<7.5%",
+    "7.5–14.99%",
+    "15.0–21.99%",
+    "22.0–29.99%",
+    "≥30%"
+  ),
+  include.lowest = TRUE
+)
+
+# writexl::write_xlsx(median_exempt, "../Output/Figure2_JD.xlsx")
+  
+# Define color palette
+exemption_colors <- c(
+  "<7.5%" = "#ffffcc",
+  "7.5–14.99%" = "lightblue",
+  "15.0–21.99%" = "#4292C6",
+  "22.0–29.99%" = "#253494",
+  "≥30%" = "#00004d")
+
 print(median_exempt |>
-        left_join(nicknames) |>
-        
+        left_join(nicknames) |> # to get name that joines with the muni_shp shapefiles
         mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) |>
         full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) |>
-        ggplot(aes(fill = muni_pct_eav_exempt)) + 
+        ggplot(aes(fill = exemption_category)) + 
         geom_sf(aes(geometry = geom), color = "black") + 
         theme_void()+ 
         labs(title = "Exempt EAV as a Percent of Residential EAV") +
         theme(axis.ticks = element_blank(), 
               axis.text = element_blank()) +
         scale_fill_manual(
-         # values = colors,
-        # values = c(0.075, 0.15, 0.225, 0.30, as.numeric(max(median_exempt$muni_pct_eav_exempt)) ),
-          # colors = c( "#ffffcc",
-          #             "lightblue",
-          #             "#1d91c0",
-          #               "navy",
-          #             "#0a0a14"
-          # ) ,
-  #show.limits = TRUE,
-         # labels = label,
-          breaks = c(0.075, 0.15, 0.225, 0.30, as.numeric(max(median_exempt$muni_pct_eav_exempt)) ) ,
           na.value = "gray50",
-          name = "% Exempt", 
-          # label =  c( "<7.50%",
-          #             "7.50% to 14.99%",
-          #             "15.00% to 22.49%",
-          #             "22.50% to 29.99%",
-          #             "30.00% or greater"
-          # ),
-        )
+          name = "% Exempt",
+          values = exemption_colors,
+          na.translate = FALSE
+        ) 
+      
 )
 ```
 
@@ -268,30 +227,52 @@ median_exempt <- muni_sums |>
 
 midpoint = scales::percent(median(median_exempt$pct_fmv_exempt), accuracy = 0.01)
 
+
+median_exempt$exemption_category <- cut(
+  median_exempt$pct_fmv_exempt,
+  breaks = c(0, 0.075, 0.15, 0.22, 0.30, as.numeric(max(median_exempt$pct_fmv_exempt))),
+  labels = c(
+    "<7.5%",
+    "7.5–14.99%",
+    "15.0–21.99%",
+    "22.0–29.99%",
+    "≥30%"
+  ),
+  include.lowest = TRUE
+)
+
+# Define color palette
+exemption_colors <- c(
+  "<7.5%" = "#ffffcc",
+  "7.5–14.99%" = "lightblue",
+  "15.0–21.99%" = "#4292C6",
+  "22.0–29.99%" = "#253494",
+  "≥30%" = "#00004d")
+
+
 median_muni = median_exempt |>
   arrange(pct_fmv_exempt) |>
   filter(pct_fmv_exempt == median(pct_fmv_exempt)) |>
   select(clean_name) |> as.character()
 
-print(muni_sums |>
-  filter(year == params$year)|>
-  mutate(pct_fmv_exempt = muni_fmv_exempt / muni_fmv ) |>
-    mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) |>
- full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) |>
-  ggplot(aes(fill = pct_fmv_exempt)) + 
-  geom_sf(aes(geometry = geom), color = "black") + 
-  theme_void()+ 
-  labs(title = "Exempt FMV as a Percent of Municipality FMV",
-       caption = sprintf("The County-wide municipal-median is %s", midpoint)) +
-    theme_void() + 
-  theme(axis.ticks = element_blank(), 
-        axis.text = element_blank())+
-   scale_fill_steps2(high = "darkblue", low = "black",  mid = "beige",
-                       n.breaks = 5, show.limits=TRUE,
-                       na.value = NA,
-                    nice.breaks = FALSE,
-                   midpoint = median(median_exempt$pct_fmv_exempt),
-                        name = "% Exempt", label = scales::percent))
+print(median_exempt |>
+        left_join(nicknames) |>
+        mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) |>
+        full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) |>
+        ggplot(aes(fill = exemption_category)) + 
+        geom_sf(aes(geometry = geom), color = "black") + 
+        theme_void()+ 
+        labs(title = "Exempt FMV as a Percent of Municipality FMV",
+             caption = sprintf("The County-wide municipal-median is %s", midpoint)) +
+        theme_void() + 
+        theme(axis.ticks = element_blank(), 
+              axis.text = element_blank()) +
+        scale_fill_manual(
+          na.value = "gray50",
+          name = "% Exempt",
+          values = exemption_colors,
+          na.translate = FALSE
+        ) )
 ```
 
 The County-wide municipal-median percent of FMV exempt from property taxes in tax year `r params$year` was `r median_muni` with `r midpoint`.
@@ -361,7 +342,6 @@ muni_cl_sums |>
 #| fig-cap: "Uses adjusted exemption total"
 #| eval: false
 #| include: false
-#| 
 
 
 muni_cl_sums |> 
@@ -431,38 +411,6 @@ county_sums |>
                     scale_x_continuous(breaks = c(2006, 2010, 2015, 2020, 2023))
 ```
 
-```{r}
-#| label: fig-exemptions-overtime-old
-#| fig-cap: "**Residential Exempt EAV in Cook County**"
-#| eval: false
-#| include: false
-#| 
-
-muni_cl_sums |> 
-  select(year, muni_c_exe_homeowner:muni_c_exe_disabled, muni_c_exe_vet_dis) |>
-  filter(year <= params$year) |>
-  group_by(year) |>
-  summarize("GHE" = sum(muni_c_exe_homeowner + muni_c_exe_longtime_homeowner, na.rm=TRUE),
-            "Senior Homestead" = sum(muni_c_exe_senior, na.rm=TRUE),
-            "Senior Freeze" = sum(muni_c_exe_freeze, na.rm=TRUE),
-            "Veterans (combined)" = sum(muni_c_exe_vet_dis, na.rm = T),
-            "Persons with disabilities" = sum(muni_c_exe_disabled, na.rm=T),
-        #    "Other Exemptions" = sum(muni_c_exe_disabled + muni_c_exe_vet_returning+ muni_c_exe_vet_dis_lt50 + muni_c_exe_vet_dis_50_69+muni_c_exe_vet_dis_ge70, na.rm = T)
-) |>
-  pivot_longer(cols = c(`GHE`:`Persons with disabilities`), names_to = "Type" ) |>
-  mutate(Type = factor(Type, levels = c(
-                                        "Persons with disabilities", "Veterans (combined)", "Senior Freeze", "Senior Homestead", "GHE"))) |>
-  ggplot(aes(x=year, y = value/1000000000, fill = Type)) +
-  
-  geom_bar( stat = "identity" ) + 
-  theme_minimal() +
-  labs(title = "Residential Exempt EAV in Cook County", 
-       subtitle = paste0("by Type and Geography, 2006-", params$year), 
-       y = "EAV (Billions)", x ="") +
-  scale_fill_manual(values = c("deepskyblue3", "chartreuse2",  "darksalmon", "brown2", "blue4" )) +
-                    scale_x_continuous(breaks = c(2006, 2010, 2015, 2020))
-```
-
 Trends in the total EAV reductions due to homestead exemptions reflect both real estate market shifts and the legislative changes in their availability, eligibility, and value.
 
 ## Effect on Composite Tax Rates
@@ -477,7 +425,7 @@ Trends in the total EAV reductions due to homestead exemptions reflect both real
 #| column: page
 
 
-muni_ratechange <- read_csv(paste0("../Output/muni_ratechange_", params$year, "_test.csv"))
+muni_ratechange <- read_csv(paste0("../Output/muni_ratechange_", params$year, ".csv"))
 
 
 muni_ratechange |> 
@@ -612,13 +560,13 @@ burden_shift %>%
 ```{r readin-taxcodes-andburden}
 #read_csv(paste0("../../Output/Dont_Upload/0_Joined_PIN_data_", params$year, ".csv") )
 
-pin_data <- read_csv(paste0("../Output/Dont_Upload/0_joined_PIN_data_", params$year, "_test.csv"))
+pin_data <- read_csv(paste0("../Output/Dont_Upload/0_joined_PIN_data_", params$year, ".csv"))
 
 
-mc_burden <- read_csv(paste0("../Output/muni_mc_burden_", params$year, "_test.csv"))
+mc_burden <- read_csv(paste0("../Output/muni_mc_burden_", params$year, ".csv"))
 
 
-burden_shift <- read_csv(paste0("../Output/muni_burden_shift_", params$year, "_test.csv"))
+burden_shift <- read_csv(paste0("../Output/muni_burden_shift_", params$year, ".csv"))
 ```
 
 ```{r}
