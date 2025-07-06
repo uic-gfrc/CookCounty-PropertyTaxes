@@ -1,3 +1,68 @@
+
+options(scipen = 999) # scientific notation sucks
+
+library(tidyverse)
+library(glue)
+
+## Import supporting files --------------------------------------
+
+# Class dictionary
+
+cde <- read_csv("./Necessary_Files/class_dict_expanded.csv") |>
+  mutate(class = as.character(class_code)) |>  # rename to match other data frames
+  select(-c(loa_2022, Option2, class_desc, land, vacant_ind, last2dig,
+            Res_nonRes, assessment_level, used_in2021, class_code)) |>
+  mutate_at(.vars = c("improvement_ind", "incent_prop", "class_1dig", "major_class_code"), .funs = as.character
+  )
+
+# Levels of assessment by year (they change over time)
+
+ccao_loa <- read_csv("./inputs/ccao_loa.csv") |>
+  mutate(class = as.character(class_code)) |>
+  filter(year > 2005) |>
+  select(-class_code) |>
+  mutate(loa = as.numeric(loa)) |>
+  mutate(loa = ifelse(loa == 0, NA, loa) # avoid dividing by zero errors
+  )
+
+# "Clean" muni names
+
+nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx")  |>
+  select(agency_number, clean_name, Triad, Township) |>
+  mutate(agency_number = str_pad(agency_number, width = 9, side = "left", pad = "0")) |>
+  mutate(agency_number = as.character(agency_number))
+
+## Create class and border crosser variables. ---------------------
+
+# The following munis cross county lines and are consistently dropped across the PTAX project
+
+# "Frankfort", "Homer Glen",  "Oak Brook", "East Dundee", "University Park",
+# "Bensenville", "Hinsdale", "Roselle", "Deer Park", "Deerfield"
+
+cross_county_lines <- c("030440000", "030585000", "030890000", "030320000", "031280000",
+                        "030080000", "030560000", "031120000", "030280000", "030340000",
+                        "030150000","030050000", "030180000","030500000", "031210000")
+
+
+# These had to be manually broken up because major classes 4, 5, and 8 include
+# commercial and industrial properties
+
+# Note: major class 400 is for nonprofits
+
+commercial_classes <- c(401:435, 490, 491, 492, 496:499,
+                        500:535, 590, 591, 592, 597:599,
+                        700:799,
+                        800:835, 891, 892, 897, 899
+)
+
+industrial_classes <- c(480:489, 493,
+                        550:589, 593,
+                        600:699,
+                        850:890, 893
+)
+
+comm_ind_pins_ever <- read_csv("./Output/comm_ind_PINs_ever_2006to2023.csv")
+
 #  Create 2006 to 2023 Timeseries ############################
 timespan = 18
 
@@ -592,5 +657,5 @@ write_csv(comm_ind_pins, "./Output/comm_ind_PINs_2011to2023_timeseries.csv")
 #
 #
 # ## Write CSV to Output Folder
-# write_csv(comm_ind_2011to2022, "./Output/comm_ind_PINs_2011-2022_balanced.csv")
+#write_csv(comm_ind_2011to2022, "./Output/comm_ind_PINs_2011-2022_balanced.csv")
 #
