@@ -150,7 +150,7 @@ for(i in years){
       incent_prop = ifelse(between(class, 600, 899), 1, 0),
       res_prop = ifelse(between(class, 200, 399), 1, 0),
       c2_prop = ifelse(between(class, 200, 299), 1, 0),
-      
+      parcels = str_sub(pin, 1, 10), 
       in_tif = ifelse(tax_code_num %in% tif_distrib$tax_code_num, 1, 0),
       tif_tax_code_frozen_eav = ifelse(is.na(tax_code_frozen_eav), 0, tax_code_frozen_eav),
       tif_tax_code_eav = ifelse(is.na(tax_code_eav), 0, tax_code_eav), # only TIF taxcodes
@@ -284,6 +284,7 @@ for(i in years){
     ungroup() %>%
     summarize(
       cty_PC = n(),
+      cty_parcels =n_distinct(parcels),
       cty_PC_residential = sum(ifelse(res_prop == 1, 1, 0), na.rm = TRUE),
       cty_PC_industrial  = sum(ifelse(class %in% industrial_classes, 1, 0), na.rm = TRUE),
       cty_PC_commercial = sum(ifelse(class %in% commercial_classes, 1, 0), na.rm = TRUE),
@@ -389,6 +390,8 @@ if(is.data.frame(county_sums)){county_sums <- rbind(county_sums, county_sums2)}e
     group_by(class_group) |>
     summarize(
       cty_mc_PC = n(),
+      cty_mc_parcels =n_distinct(parcels),
+      
       cty_mc_PC_residential = sum(ifelse(res_prop == 1, 1, 0), na.rm = TRUE),
       cty_mc_PC_industrial  = sum(ifelse(class %in% industrial_classes, 1, 0), na.rm = TRUE),
       cty_mc_PC_commercial = sum(ifelse(class %in% commercial_classes, 1, 0), na.rm = TRUE),
@@ -520,6 +523,8 @@ if(is.data.frame(county_sums)){county_sums <- rbind(county_sums, county_sums2)}e
       # max_av_c2 = max(ifelse(c2_prop == 1, av, NA)),
 
       muni_PC_total = n(),
+      muni_parcels =n_distinct(parcels),
+      
       muni_PC_residential = sum(ifelse(res_prop==1, 1, 0), na.rm = TRUE),
       muni_PC_industrial  = sum(ifelse(class %in% industrial_classes, 1, 0), na.rm = TRUE),
       muni_PC_commercial = sum(ifelse(class %in% commercial_classes, 1, 0), na.rm = TRUE),
@@ -630,7 +635,9 @@ rm(muni_level_summary2)
     quant50_all_fmv = round(quantile(fmv, probs = q[2])),
     quant75_all_fmv = round(quantile(fmv, probs = q[3])),
     max_fmv_all = max(av),
-    PC_total = n(),
+    PC_major_class = n(),
+    parcels =n_distinct(parcels),
+    
     PC_residential = sum(ifelse(class %in% c(200:399), 1, 0), na.rm = TRUE),
     PC_industrial  = sum(ifelse(class %in% industrial_classes, 1, 0), na.rm = TRUE),
     PC_commercial = sum(ifelse(class %in% commercial_classes, 1, 0), na.rm = TRUE),
