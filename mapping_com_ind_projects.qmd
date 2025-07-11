@@ -4,6 +4,8 @@ format:
   html:
     toc: true
     toc-location: left
+    fig-cap-location: margin
+    tbl-cap-location: margin
 ---
 
 ```{r}
@@ -307,7 +309,12 @@ parcel_comparison %>% group_by(appellant, group) %>%
 
 
 ```{r}
-parcel_comparison %>% group_by(appellant, group) %>%
+#| label: fig-touchespin-elkgrove-appellantname
+#| fig-cap: "Elk Grove mapped by if PINs touch. Not the default method for making project IDs."
+#| layout-ncol: 2
+
+parcel_comparison %>% 
+  group_by(appellant, group) %>%
   mutate(pins_ingroup = n(),
          id = paste(appellant, "_", group)) %>%
   filter(pins_ingroup > 1) %>%
@@ -320,15 +327,15 @@ parcel_comparison %>% group_by(appellant, group) %>%
 ```{r}
 parcel_comparison %>% 
   group_by(appellant, group) %>%
-  mutate(pins_ingroup = n(),
+  summarize(pins_ingroup = n(),
          id = paste(appellant, "_", group)) %>%
   filter(pins_ingroup > 1)
 ```
 
 
 ```{r}
-#| label: fig-touchespin-elkgrove-appellantname
-#| fig-cap: "Elk Grove mapped by Board of Review Appellant name only."
+#| label: fig-elkgrove-appellantname
+#| fig-cap: "Elk Grove mapped by Board of Review Appellant name. Only shows projects with more than 1 pin."
 #| layout-ncol: 2
 
 parcel_comparison %>% 
@@ -350,7 +357,7 @@ parcel_comparison %>%
 
 ```{r}
 #| label: fig-appellantgroups
-#| fig-cap: "Elk Grove mapped by appellant name"
+#| fig-cap: "Elk Grove mapped by appellant name. Only shows projects with more than one pin."
 
 parcel_comparison %>% 
   group_by(appellant) %>%
@@ -365,6 +372,10 @@ parcel_comparison %>%
 ### By Buyer Name
 
 ```{r}
+#| label: fig-elkgrove-buyername-andtouches
+#| fig-cap: "Elk Grove mapped by sale buyer name&ifpins touch. Only shows projects with more than 1 PIN"
+#| layout-ncol: 2
+
 parcel_comparison <- left_join(parcels, sales, by = "pin10") %>% select(group, pin10, everything())
 
 
@@ -383,7 +394,13 @@ parcel_comparison %>%
   ggplot() +
   geom_sf(aes(fill = id)) +
   theme_minimal() + theme(legend.position = "none")
+```
 
+
+```{r}
+#| label: fig-elkgrove-buyername
+#| fig-cap: "Elk Grove mapped by Buyer's name. Only shows projects with more than 1 PIN"
+#| layout-ncol: 2
 
 parcel_comparison %>% 
   group_by(sale_buyer_name, group) %>%
@@ -393,8 +410,7 @@ parcel_comparison %>%
 
 parcel_comparison %>% 
   group_by(sale_buyer_name, group) %>%
-  mutate(pins_ingroup = n(),
-         id = paste(sale_buyer_name, "_", group)) %>%
+  mutate(pins_ingroup = n()) %>%
   filter(pins_ingroup > 1) %>%
   ggplot() +
   geom_sf(aes(fill = sale_buyer_name)) +
