@@ -18,7 +18,9 @@ library(ggplot2)
 
 ```
 
-Open ptaxsim.db connection; read in 0_joined_PIN_data_2022.csv (do we want/have 2023?)
+Open ptaxsim.db connection; read in 0_joined_PIN_data_2022.csv. (do we want/have 2023?)
+
+- Can use any year of data. Yes we have Tax year 2023 also.   
 
 ```{r}
 
@@ -46,9 +48,14 @@ sales <- read_csv("../../dissertation/data/raw/Assessor_Parcel_Sales_20250105.cs
 
 Manipulate DFs and such.
 
-Below, there is an indication of 54k obs. Nothing I've read in in that ballpark number of obs.
+<!---Below, there is an indication of 54k obs. Nothing I've read in in that ballpark number of obs.--->
+
+<!---     - Where??  ---> 
+
+
 
 ```{r}
+
 
 pins_sold <- sales %>% 
   group_by(pin10) %>% 
@@ -62,13 +69,15 @@ pins_sold <- sales %>%
 
 ```
 
-# Berwyn
+# Mapping Areas
 
-Checking in on Berwyn
+## Berwyn
+
+### Parcels that Touch other Parcels
 
 ```{r}
 #| label: fig-touchingpins
-#| fig-cap: "Mapped by if a parcel is touching another parcel."
+#| fig-cap: "Loop creates `group` id for connected parcels. Mapped by if a parcel is touching another parcel. Simply touching another parcel is not how we want to create project IDs, but it does allow a quick visualization to see if there are PINs nested inside of other PINs which would indicate a larger project shared by the same owner. **This mapping method is mostly just a stepping stone for comparison.**"
 
 twnshp_test <- comm_ind %>% 
   filter(Township == "Berwyn") %>%
@@ -128,8 +137,14 @@ ggplot(parcels) +
 
 ```
 
+### Sales Data and Proximity
+
+#### By Buyer Name and if parcels touch
 
 ```{r}
+#| label: fig-buyernamesandtouch
+#| fig-cap: "Brings in buyer names from sales data and uses that to create a project identifier from combining the name and if a parcel shares a touching 'group' variable."
+
 
 parcel_comparison <- left_join(parcels, pins_sold, by = "pin10") %>% select(group, pin10, everything()) %>% filter()
 
@@ -141,15 +156,26 @@ parcel_comparison %>%
   ggplot() +
   geom_sf(aes(fill = id)) +
   theme_minimal() + theme(legend.position = "none")
+```
+
+
+```{r}
+#| label: fig-buyernames
+#| fig-cap: "Brings in buyer names from sales data. Fill color based on Buyer Name"
 
 parcel_comparison %>% 
   group_by(sale_buyer_name, group) %>%
-  mutate(pins_ingroup = n(),
-         id = paste(sale_buyer_name, "_", group)) %>%
+  mutate(pins_ingroup = n()) %>%
   filter(pins_ingroup > 1) %>%
   ggplot() +
   geom_sf(aes(fill = sale_buyer_name)) +
   theme_minimal() + theme(legend.position = "none")
+```
+
+
+```{r}
+#| label: fig-saledocandtouches
+#| fig-cap: "Default group is from saledocument. If missing sale document id, then the ID uses the group variable for if a PIN touches other PINs. Color fill uses the created ID."
 
 parcel_comparison %>% 
   group_by(sale_document_num, group) %>%
@@ -159,6 +185,12 @@ parcel_comparison %>%
   ggplot() +
   geom_sf(aes(fill = id)) +
   theme_minimal() + theme(legend.position = "none")
+```
+
+
+```{r}
+#| label: fig-buyernamesdefault-andtouches
+#| fig-cap: "Default group is from buyer name in sales data. If missing sale buyer name, then the ID uses the group variable for if a PIN touches other PINs. Color fill uses the created ID."
 
 parcel_comparison %>% 
   group_by(sale_buyer_name, group) %>%
@@ -171,7 +203,9 @@ parcel_comparison %>%
 ```
 
 
-# Elk Grove
+## Elk Grove
+
+### Proxmity 
 
 ```{r}
 #| label: fig-touchespin-elkgrove
@@ -236,11 +270,12 @@ ggplot(parcels) +
 
 ```
 
-## BOR Appeals IDs
+### BOR Appeals IDs
 
 ```{r}
-
-
+#| label: fig-touchespin-elkgrove-borid
+#| fig-cap: "Elk Grove mapped by Board of Review Appellant name and then if the PIN is touching or not."
+#| 
 bor <- read_csv("Output/borappeals.csv") %>%
   mutate(project_appellant = paste(project_id, sep = "-", appellant),
          pin10 = str_sub(pin,1,10)) 
@@ -268,7 +303,10 @@ parcel_comparison %>% group_by(appellant, group) %>%
   ggplot() +
   geom_sf(aes(fill = as.factor(id))) +
   theme_minimal() + theme(legend.position = "none")
+```
 
+
+```{r}
 parcel_comparison %>% group_by(appellant, group) %>%
   mutate(pins_ingroup = n(),
          id = paste(appellant, "_", group)) %>%
@@ -276,16 +314,32 @@ parcel_comparison %>% group_by(appellant, group) %>%
   ggplot() +
   geom_sf(aes(fill = as.factor(group))) +
   theme_minimal() + theme(legend.position = "none")
+```
 
 
-parcel_comparison %>% group_by(appellant, group) %>%
+```{r}
+parcel_comparison %>% 
+  group_by(appellant, group) %>%
   mutate(pins_ingroup = n(),
          id = paste(appellant, "_", group)) %>%
   filter(pins_ingroup > 1)
+```
 
-parcel_comparison %>% group_by(appellant, group) %>%
+
+```{r}
+#| label: fig-touchespin-elkgrove-appellantname
+#| fig-cap: "Elk Grove mapped by Board of Review Appellant name only."
+#| layout-ncol: 2
+
+parcel_comparison %>% 
+  group_by(appellant, group) %>%
   mutate(pins_ingroup = n(),
          id = paste(appellant, "_", group)) %>%
+  filter(pins_ingroup > 1 & class_current >= 600)
+
+parcel_comparison %>% 
+  group_by(appellant, group) %>%
+  mutate(pins_ingroup = n()) %>%
   filter(pins_ingroup > 1) %>%
   ggplot() +
   geom_sf(aes(fill = as.factor(appellant))) +
@@ -294,26 +348,13 @@ parcel_comparison %>% group_by(appellant, group) %>%
 ```
 
 
-### By Appellant 
-
-
 ```{r}
-#| tbl-cap: "appellant groups"
-#| 
+#| label: fig-appellantgroups
+#| fig-cap: "Elk Grove mapped by appellant name"
+
 parcel_comparison %>% 
-  group_by(appellant, group) %>%
-  mutate(pins_ingroup = n(),
-         id = paste(appellant, "_", group)) %>%
-  filter(pins_ingroup > 1 & class_current >= 600)
-```
-
-```{r}
-#| label: fig-appellantgrouops
-#| fig-cap: "Elk Grove mapped by appeallant goruop IDs"
-
-parcel_comparison %>% group_by(appellant, group) %>%
-  mutate(pins_ingroup = n(),
-         id = paste(appellant, "_", group)) %>%
+  group_by(appellant) %>%
+  mutate(pins_ingroup = n()) %>%
   filter(pins_ingroup > 1 & class_current >= 600) %>%
   ggplot() +
   geom_sf(aes(fill = as.factor(appellant))) +
@@ -322,6 +363,7 @@ parcel_comparison %>% group_by(appellant, group) %>%
 ```
 
 ### By Buyer Name
+
 ```{r}
 parcel_comparison <- left_join(parcels, sales, by = "pin10") %>% select(group, pin10, everything())
 
