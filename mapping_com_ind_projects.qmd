@@ -1,6 +1,9 @@
 ---
 title: "Mapping C&I Projects"
-format: html
+format: 
+  html:
+    toc: true
+    toc-location: left
 ---
 
 ```{r}
@@ -31,12 +34,12 @@ comm_ind <- read_csv("Output/comm_ind_PINs_2011to2022_timeseries.csv") %>%
 # 
 # I have 127705 obs -- do we only want 2022?
 
-sales <- read_csv(#"./inputs/Assessor_Parcel_Sales_20240911.csv") %>% 
-  "./inputs/Assessor_-_Parcel_Sales_20250704.csv") %>%
+# we use buyer name for creating groups in later chunks
+sales <- read_csv("../../dissertation/data/raw/Assessor_Parcel_Sales_20250105.csv") %>% 
+ # "./inputs/Assessor_-_Parcel_Sales_20250704.csv") %>%
   filter(class > 399 & class < 900) %>%
   mutate(major_class = str_sub(class, 1, 1),
-            pin10 = str_sub(pin,1,10)) #|>
-  #filter(year == 2022)
+            pin10 = str_sub(pin,1,10)) 
 
 ```
 
@@ -59,21 +62,25 @@ pins_sold <- sales %>%
 
 ```
 
+# Berwyn
+
 Checking in on Berwyn
 
 ```{r}
+#| label: fig-touchingpins
+#| fig-cap: "Mapped by if a parcel is touching another parcel."
 
 twnshp_test <- comm_ind %>% 
   filter(Township == "Berwyn") %>%
   mutate(pin10 = str_sub(pin, 1, 10))
 
-flood_pins_geo <- lookup_pin10_geometry(year = 2022, 
+pins_geo <- lookup_pin10_geometry(year = 2022, 
                                         pin10 = twnshp_test$pin10) %>%
   st_as_sf(wkt = "geometry", crs = 4326)
 
-points <- st_as_sf(flood_pins_geo, coords = c("longitude", "latitude"), crs = 4326)
+points <- st_as_sf(pins_geo, coords = c("longitude", "latitude"), crs = 4326)
 
-parcels <- st_as_sf(flood_pins_geo, wkt = "geometry", crs = 4326)
+parcels <- st_as_sf(pins_geo, wkt = "geometry", crs = 4326)
 
 invalid_geom <- st_is_valid(parcels)
 table(invalid_geom)
@@ -163,19 +170,25 @@ parcel_comparison %>%
   theme_minimal() + theme(legend.position = "none")
 ```
 
+
+# Elk Grove
+
 ```{r}
+#| label: fig-touchespin-elkgrove
+#| fig-cap: "Elk Grove mapped by grouping parcels if they touch other parcels."
+
 
 twnshp_test <- comm_ind %>% 
   filter(clean_name == "Elk Grove Village") %>%
   mutate(pin10 = str_sub(pin, 1, 10))
 
-flood_pins_geo <- lookup_pin10_geometry(year = 2022, 
+pins_geo <- lookup_pin10_geometry(year = 2022, 
                                         pin10 = twnshp_test$pin10) %>%
   st_as_sf(wkt = "geometry", crs = 4326)
 
-points <- st_as_sf(flood_pins_geo, coords = c("longitude", "latitude"), crs = 4326)
+points <- st_as_sf(pins_geo, coords = c("longitude", "latitude"), crs = 4326)
 
-parcels <- st_as_sf(flood_pins_geo, wkt = "geometry", crs = 4326)
+parcels <- st_as_sf(pins_geo, wkt = "geometry", crs = 4326)
 
 invalid_geom <- st_is_valid(parcels)
 table(invalid_geom)
@@ -222,6 +235,8 @@ ggplot(parcels) +
   theme_minimal() + theme(legend.position = "none")
 
 ```
+
+## BOR Appeals IDs
 
 ```{r}
 
@@ -279,7 +294,22 @@ parcel_comparison %>% group_by(appellant, group) %>%
 ```
 
 
+### By Appellant 
+
+
 ```{r}
+#| tbl-cap: "appellant groups"
+#| 
+parcel_comparison %>% 
+  group_by(appellant, group) %>%
+  mutate(pins_ingroup = n(),
+         id = paste(appellant, "_", group)) %>%
+  filter(pins_ingroup > 1 & class_current >= 600)
+```
+
+```{r}
+#| label: fig-appellantgrouops
+#| fig-cap: "Elk Grove mapped by appeallant goruop IDs"
 
 parcel_comparison %>% group_by(appellant, group) %>%
   mutate(pins_ingroup = n(),
@@ -291,8 +321,17 @@ parcel_comparison %>% group_by(appellant, group) %>%
 
 ```
 
+### By Buyer Name
 ```{r}
 parcel_comparison <- left_join(parcels, sales, by = "pin10") %>% select(group, pin10, everything())
+
+
+parcel_comparison %>% 
+  group_by(sale_buyer_name, group) %>%
+  summarize (pins_ingroup = n(),
+         ) %>%
+  filter(pins_ingroup > 1)
+
 
 parcel_comparison %>% 
   group_by(sale_buyer_name, group) %>%
@@ -302,6 +341,13 @@ parcel_comparison %>%
   ggplot() +
   geom_sf(aes(fill = id)) +
   theme_minimal() + theme(legend.position = "none")
+
+
+parcel_comparison %>% 
+  group_by(sale_buyer_name, group) %>%
+  summarize (pins_ingroup = n(),
+         ) %>%
+  filter(pins_ingroup > 1)
 
 parcel_comparison %>% 
   group_by(sale_buyer_name, group) %>%
