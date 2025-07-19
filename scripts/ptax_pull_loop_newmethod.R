@@ -132,8 +132,8 @@ for(i in years){
   ## Different than taxbill because it checks to see if the tax_bill_total == $0 
   ## from the `pin` table, since that is the most accurate,
   ## and if zero, it changes its taxed value to zero instead of using the 
-  ## `final_tax_to_dist` variable previoiusly created by taxbill()  
-  ## (which took the equalied AV and subtracted exemptions, but if the exemptions 
+  ## `final_tax_to_dist` variable previously created by taxbill()  
+  ## (which took the equalized AV and subtracted exemptions, but if the exemptions 
   ## were not correct, like the missing disabled veteran exemptions, 
   ## than the final tax to district was also wrong, and all the taxbase calculations were off slightly)
   ## mattered for some municipalities way more than others.
@@ -255,10 +255,10 @@ for(i in years){
                                   eq_av-taxed_eav, untaxable_value_eav),
 
       untaxable_value_av = untaxable_value_eav / eq_factor,
-      untaxable_value_fmv = untaxable_value_av / loa,
-      untaxable_value_fmv = ifelse(is.nan(untaxable_value_av), 0, untaxable_value_av),
+    #  untaxable_value_fmv = untaxable_value_av / loa,
+     # untaxable_value_fmv = ifelse(is.nan(untaxable_value_av), 0, untaxable_value_av),
 
-      exempt_eav_inTIF = ifelse(in_tif == 1,
+      exempt_eav_inTIF = ifelse(in_tif == 1 & tif_tax_code_frozen_eav>0,
                                 exe_total_adj, 0),
       exempt_eav= exe_total_adj,
       exempt_fmv = exempt_eav / eq_factor / loa,
