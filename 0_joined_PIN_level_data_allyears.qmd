@@ -29,7 +29,7 @@ ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2023.
 
 #years <-(2022) # testing
 
-years <- c(2021:2023)
+years <- c(2023)
 
 cross_county_lines <- c("030440000", "030585000", "030890000", "030320000", "031280000",
                         "030080000", "030560000", "031120000", "030280000", "030340000",
@@ -60,7 +60,7 @@ is.integer64 <- function(x){
 ```{r}
 for(i in years){
   
-  year_vairiable = i
+  year_variable = i
   
 # PTAXSIM tables ------------------------------------------------
   
@@ -101,7 +101,7 @@ for(i in years){
     left_join(muni_tax_codes, by = c("tax_code_num")) %>%
     left_join(muni_agency_names, by = "agency_num") %>%
     left_join(nicknames, by = c("agency_num" = "agency_number"))  |>   
-    mutate(tax_code_rate = tax_code_rate/100)#%>% select(-c(minor_type, short_name, agency_number))
+    mutate(tax_code_rate = tax_code_rate/100)
   
   
   # PIN data from pin datatable in PTaxSim. Has total tax bill amount from Treasurer data,
@@ -180,6 +180,8 @@ for(i in years){
       has_DI_exemp = ifelse(exe_disabled > 0, 1, 0),
       has_VR_exemp = ifelse(exe_vet_returning > 0, 1, 0),
       has_DV_exemp = ifelse(exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 + exe_missing_disvet > 0, 1, 0),
+      has_DV_exemp_adj = ifelse(exe_missing_disvet > 0 | (exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70) > 0, 1, 0),
+
       has_AB_exemp = ifelse(exe_abate > 0, 1, 0),
     )|>
   
@@ -206,99 +208,18 @@ for(i in years){
         (class_1dig == 8 & class %in% commercial_classes ) ~ "8A",
         (class_1dig == 8 & class %in% industrial_classes ) ~ "8B",
         TRUE ~ as.character(class_1dig)))  
-  
-# pin_data <- pin_data |>
-#   mutate_if(is.integer64, as.double ) %>%
-#   left_join(ccao_loa, by = c("class" = "class_code")) %>%
-#   left_join(tc_muninames, by = c("tax_code_num")) |>
-#   left_join(tif_distrib, by ="tax_code_num") |>
-#   mutate(tax_code_distribution_pct = ifelse(is.na(tax_code_distribution_pct), 0, tax_code_distribution_pct)) |>
-# 
-#     mutate(
-#       incent_prop = ifelse(between(class, 600, 899), 1, 0),
-#       res_prop = ifelse(between(class, 200, 399), 1, 0),
-#       c2_prop = ifelse(between(class, 200, 299), 1, 0),
-# 
-#       in_tif = ifelse(tax_code_num %in% tif_distrib$tax_code_num, 1, 0),
-#       tif_tax_code_frozen_eav = ifelse(is.na(tax_code_frozen_eav), 0, tax_code_frozen_eav),
-#       tif_tax_code_eav = ifelse(is.na(tax_code_eav), 0, tax_code_eav), # only TIF taxcodes
-#       tif_tax_code_increment_eav = tif_tax_code_eav - tif_tax_code_frozen_eav,
-#       tif_tax_code_increment_eav = ifelse(tif_tax_code_increment_eav < 0, 0, tif_tax_code_increment_eav),
-#       in_tif_andpays_revtotif = ifelse(in_tif == 1 & tif_tax_code_eav > tif_tax_code_frozen_eav, 1, 0 ),
-#       ) |>
-# 
-#     mutate(
-#       eq_av = av_clerk*eq_factor,
-#       exe_total_old = rowSums(across(starts_with("exe_"))),
-#       exe_total_old = ifelse(exe_total_old > eq_av, eq_av, exe_total_old),
-# 
-#       # create variables that appear from taxbill() function
-#       taxed_eav_old = av_clerk*eq_factor - exe_total_old,
-#       tax_amt_exe = exe_total*tax_code_rate,
-#       tax_amt_pre_exe = av_clerk*eq_factor*tax_code_rate,
-#       tax_amt_post_exe = tax_amt_pre_exe - tax_amt_exe,
-#       tax_amt_post_exe = ifelse(tax_amt_post_exe < 0, 0, tax_amt_post_exe),
-# 
-#       final_tax_to_tif = ifelse(!is.na(tif_tax_code_frozen_eav) < !is.na(tif_tax_code_eav),
-#                                 tax_amt_post_exe*tax_code_distribution_pct, 0),
-#       final_tax_to_dist = (tax_amt_post_exe - final_tax_to_tif),
-# 
-#       incent_prop = ifelse(between(class, 600, 899), 1, 0),
-#       res_prop = ifelse(between(class, 200, 399), 1, 0),
-#       c2_prop = ifelse(between(class, 200, 299), 1, 0),
-# 
-#       # for A and B property types of commercial and industrial properties
-#       class_1dig = str_sub(class, 1, 1),
-#       class_group = case_when(
-#         (class_1dig == 5 & class %in% commercial_classes) ~ "5A",
-#         (class_1dig == 5 & class %in% industrial_classes) ~ "5B",
-#         class_1dig == 7 &  class < 742 ~ "7A",
-#         class_1dig == 7 &  class >= 742 ~ "7B",
-#         (class_1dig == 8 & class %in% commercial_classes ) ~ "8A",
-#         (class_1dig == 8 & class %in% industrial_classes ) ~ "8B",
-#         TRUE ~ as.character(class_1dig))) %>%
-
+ 
     # NOTE: the number of $0 tax bills identified when using the tax_bill() command from ptaxsim is differnet than using the tax bill total value directly from the pin db table
 pin_data <- pin_data |>   
       # taxed_eav is the eav that is taxable by the nonTIF taxing districts
     rename(taxed_eav = taxed_eav_nonTIF) |>
   
-  mutate(zero_bill = ifelse(tax_bill_total == 0, 1, 0)) |>
-    mutate(flag_missingdata = ifelse(taxed_eav_old > 1000 & tax_bill_total == 0 & c2_prop == 1, 1, 0)) |>
-    mutate(exe_missing_disvet = ifelse(taxed_eav_old > 1000 & tax_bill_total == 0 & c2_prop == 1, taxed_eav_old, 0)) |>
-    mutate(taxed_eav_adj = ifelse(taxed_eav_old > 1000 & flag_missingdata == 1, 0 , taxed_eav_old),
-           total_taxed_eav_AWM = tax_bill_total / tax_code_rate,  # EAV that was taxed by TIFs and taxing districts
-           taxed_eav_TIFincrement = total_taxed_eav_AWM *tax_code_distribution_pct,
-           taxed_eav_nonTIF = total_taxed_eav_AWM*(1-tax_code_distribution_pct)
-    ) |>
-    mutate(exe_total_adj = rowSums(across(starts_with("exe_")))- exe_total_old) # don't double count the total value when summing the values
-
-
-  pin_data <- pin_data |>
-    mutate(
-      # all exemptions calculated using original data in pin datatable
-      all_exemptions = exe_homeowner + exe_senior + exe_freeze + exe_longtime_homeowner +
-        exe_disabled + exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 ,
-
-      abatements = exe_abate, #abatements get their own variable
-      fmv = av_clerk / loa,
-      fmv = ifelse(is.na(fmv), 0, fmv)) %>%
-
-    # Create binary variables for exemptions
-
-    mutate(# zero_bill = ifelse(eav <= all_exemptions, 1, 0),  ## old way of creating zero bill but has missing vet exemptions data problem
-      has_HO_exemp = ifelse(exe_homeowner > 0, 1, 0),
-    has_SR_exemp = ifelse(exe_senior > 0, 1, 0), # senior exemption
-    has_SF_exemp = ifelse(exe_freeze > 0, 1, 0), # senior  freeze exemption
-    has_LTHO_exemp = ifelse(exe_longtime_homeowner > 0, 1, 0),
-    has_DI_exemp = ifelse(exe_disabled > 0, 1, 0),
-    has_VR_exemp = ifelse(exe_vet_returning > 0, 1, 0),
-    has_DV_exemp = ifelse(exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 > 0, 1, 0),
-    has_DV_exemp_adj = ifelse(exe_missing_disvet > 0 | (exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70) > 0, 1, 0),
-
-    has_AB_exemp = ifelse(exe_abate > 0, 1, 0),
-)
-
+  mutate(
+         av = av_clerk, 
+         taxed_av = taxed_eav / eq_factor, 
+         taxed_fmv = taxed_av /loa,
+         fmv = av_clerk / loa,
+         fmv = ifelse(is.na(fmv), 0, fmv))
   
 
 
@@ -326,7 +247,7 @@ pin_data <- pin_data |>
 pin_data <- pin_data %>%
 
   mutate(
-    av = av_clerk, # basic av variable is the final assessed value from clerk data
+#    av = av_clerk, # basic av variable is the final assessed value from clerk data
     ### EXPERIMENTAL COMPARISON of AWM calculations and ptaxsim::taxbill() calculations ------------
     # adjusted tax revenue amount. taxed eav is calculated from the total tax bill / tax code rate
     # assumes that tax bill amount from Treasurer data is more correct than exemption amounts from Clerk data
@@ -337,20 +258,11 @@ pin_data <- pin_data %>%
     # -----------------------
 
 
-    # uses revenue amounts as they would be calculated by ptaxsim::tax_bill()
-    total_value_eav = ((final_tax_to_dist + final_tax_to_tif)/ tax_code_rate) + all_exemptions + abatements,
-
-    taxed_av =  taxed_eav / eq_factor, # current value that taxing agencies can tax for their levies
-
-    ## FMV * assessment rate = AV
-    taxed_fmv = taxed_av / loa,
-    #taxed_fmv = ifelse(is.nan(taxed_fmv), 0, taxed_fmv),
-
-    fmv = av / loa,
-    fmv = ifelse(is.na(fmv), 0, fmv),
+    ### loop file sums total value eav in summation steps below from eq_Av
+    total_value_eav = ((final_tax_to_dist + final_tax_to_tif)/ tax_code_rate) + exe_total_adj,
 
     ## untaxable value = exempt EAV from abatements and exemptions
-    untaxable_value_eav = all_exemptions + abatements +
+    untaxable_value_eav = exe_total_adj +
 
       ## TIF increment EAV above frozen EAV, which becomes TIF revenue
       (final_tax_to_tif /  tax_code_rate) +
@@ -366,10 +278,9 @@ pin_data <- pin_data %>%
   #  untaxable_value_fmv = untaxable_value_av / loa,
   #  untaxable_value_fmv = ifelse(is.nan(untaxable_value_av), 0, untaxable_value_av),
 
-    exempt_eav_inTIF = ifelse(in_tif == 1 & tif_tax_code_frozen_eav>0,
-                              all_exemptions, 0),
+    exempt_eav_inTIF = ifelse(in_tif == 1, exe_total_adj, 0),
 
-    exempt_eav = all_exemptions + abatements, # EAV exempt from taxation due to homestead exemptions and abatements
+    exempt_eav = exe_total_adj, # EAV exempt from taxation due to homestead exemptions and abatements
 
     exempt_fmv = exempt_eav / eq_factor / loa,  # FMV exempt from taxation due to homestead exemptions and abatements
 
@@ -385,9 +296,6 @@ pin_data <- pin_data %>%
     fmv_incents_tif_increment = ifelse(incent_prop == 1 & final_tax_to_tif > 0 ,
                                        ((final_tax_to_tif / tax_code_rate) / eq_factor ) / loa, 0),
     eav_incents_inTIF = fmv_incents_inTIF * loa * eq_factor,
-    #     tax_amt_exe = all_exemptions*tax_code_rate,
-    # tax_amt_pre_exe = av_clerk*eq_factor*tax_code_rate,
-    # tax_amt_post_exe = (av_clerk*eq_factor-all_exemptions)*tax_code_rate
   )
   
 
@@ -403,75 +311,84 @@ pin_data <- read_csv(paste0("./Output/Dont_Upload/0_joined_PIN_data_", i, ".csv"
 muni_ratechange <- pin_data |>
   group_by(clean_name) |>
   mutate(all_exemptions = exe_total_adj) |>
-
+  
   summarize(
     pincount = n(),
-    pins_withincents = sum(ifelse(class >= 600 & class < 900, 1,0)),
-    fmv_incentive = sum(ifelse(class >=600 & class <900, fmv, 0), na.rm = TRUE),
+    pins_withincents = sum(incent_prop==1),
+    fmv_incentive = sum(ifelse(incent_prop ==1, fmv, 0), na.rm = TRUE),
     #fmv_taxed =  sum(taxed_fmv, na.rm=TRUE),
-    fmv_incents_inTIFs = sum(ifelse(class >=600 & class <900 & final_tax_to_tif > 0, fmv, 0), na.rm = TRUE),
-    fmv_inTIF = sum(ifelse(final_tax_to_tif > 0, fmv, 0), na.rm=TRUE),
+    fmv_incents_inTIFs = sum(ifelse(incent_prop == 1 & in_tif == 1, fmv, 0), na.rm = TRUE),
+    fmv_inTIF = sum(fmv_inTIF, na.rm=TRUE),
     fmv_tif_increment = sum(fmv_tif_increment, na.rm=TRUE),
-   # fmv_untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
-    fmv_exemptions = sum(all_exemptions/eq_factor/loa, na.rm=TRUE),
-    fmv_abatements = sum(exe_abate/eq_factor/loa, na.rm=TRUE),
+    # fmv_untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
+    fmv_exemp = sum(all_exemptions/eq_factor/loa, na.rm=TRUE),
+    fmv_abated = sum(exe_abate/eq_factor/loa, na.rm=TRUE),
     zero_bill = sum(zero_bill, na.rm=TRUE),
-    fmv_residential = sum(ifelse(class %in% c(200:399), fmv, 0), na.rm = TRUE),
-    fmv_C2 = sum(ifelse(class %in% c(200:299), fmv, 0), na.rm = TRUE),
-
+    fmv_residential = sum(ifelse(res_prop == 1, fmv, 0), na.rm = TRUE),
+    fmv_C2 = sum(ifelse(c2_prop == 1, fmv, 0), na.rm = TRUE),
+    
     fmv_industrial = sum(ifelse(class %in% industrial_classes, fmv, 0), na.rm = TRUE),
     fmv_commercial = sum(ifelse(class %in% commercial_classes, fmv, 0), na.rm = TRUE),
-
+    min_TC_rate = min(tax_code_rate),
+    max_TC_rate = max(tax_code_rate),
     current_rate_avg = mean(tax_code_rate, na.rm=TRUE),
-    avg_C2_bill_noexe = mean(ifelse(between(class,200,299) & all_exemptions == 0, (final_tax_to_dist + final_tax_to_tif), NA), na.rm=TRUE),
-    avg_C2_bill_withexe = mean(ifelse(between(class,200,299) & all_exemptions > 0, (final_tax_to_dist + final_tax_to_tif), NA), na.rm=TRUE),
+    avg_C2_bill_noexe = mean(ifelse(c2_prop==1 & exe_total_adj == 0, (final_tax_to_dist + final_tax_to_tif), NA), na.rm=TRUE),
+    avg_C2_bill_withexe = mean(ifelse(c2_prop==1 & exe_total_adj > 0, (final_tax_to_dist + final_tax_to_tif), NA), na.rm=TRUE),
     av_taxed = sum(taxed_av, na.rm = TRUE),
     untaxable_value_av = sum(untaxable_value_av, na.rm=TRUE),
-    av = sum(av),
-    eav_taxed = sum(taxed_eav, na.rm=T),
-    eav_untaxable = sum(untaxable_value_eav, na.rm=TRUE),
+    muni_av = sum(av, na.rm=TRUE),
+    muni_eav_taxed = sum(taxed_eav, na.rm=TRUE),
+    muni_c2_taxed = sum(ifelse(c2_prop ==1, taxed_eav, 0), na.rm=TRUE),
+    muni_res_taxed = sum(ifelse(res_prop ==1, taxed_eav, 0), na.rm=TRUE),
+    muni_eav_taxed_commerc = sum(ifelse(class %in% commercial_classes, taxed_eav, 0), na.rm = TRUE),
+    muni_eav_taxed_indust = sum(ifelse(class %in% industrial_classes, taxed_eav, 0), na.rm = TRUE),
+    
+    #  eav_untaxable = sum(untaxable_value_eav, na.rm=TRUE),
     eav_tif_increment = sum(final_tax_to_tif/tax_code_rate, na.rm=TRUE),
     eav_max = sum(fmv*loa*eq_factor, na.rm=TRUE),
     fmv = sum(fmv, na.rm=TRUE),
     pins_in_class = n(),
-    all_exemptions = sum(all_exemptions, na.rm=T),   # in EAV
+    all_exemptions = sum(exe_total_adj, na.rm=T),   # in EAV
     exe_homeowner = sum(exe_homeowner),
-   exe_senior = sum(exe_senior, na.rm = TRUE),
-   exe_freeze = sum(exe_freeze, na.rm =TRUE),
-    abatements = sum(exe_abate),            # in EAV
-    eav_incents_inTIFs = sum(ifelse(class >=600 & class <=900 & in_tif == 1, taxed_av*eq_factor, 0), na.rm = TRUE),
+    exe_senior = sum(exe_senior, na.rm = TRUE),
+    exe_freeze = sum(exe_freeze, na.rm =TRUE),
+    exempt_LTHO_eav = sum(exe_longtime_homeowner, na.rm=TRUE),
+    exempt_DIS_eav = sum(exe_disabled, na.rm=TRUE),
+    exempt_VET_eav = sum(exe_vet_returning + exe_vet_dis_lt50 + exe_vet_dis_50_69 + exe_vet_dis_ge70 + exe_missing_disvet, na.rm=TRUE),
+    
+    abatements = sum(exe_abate, na.rm = TRUE),            # in EAV
+    eav_incents_inTIFs = sum(ifelse(incent_prop == 1 & in_tif == 1, taxed_av*eq_factor, 0), na.rm = TRUE),
     final_tax_to_dist = sum(final_tax_to_dist, na.rm=T),
-   # final_tax_to_dist_AWM = sum(final_tax_to_dist_AWM, na.rm=T),
+    # final_tax_to_dist_AWM = sum(final_tax_to_dist_AWM, na.rm=T),
     
     final_tax_to_tif = sum(final_tax_to_tif, na.rm=T),
-   # final_tax_to_tif_AWM = sum(final_tax_to_tif_AWM, na.rm=T),
+    # final_tax_to_tif_AWM = sum(final_tax_to_tif_AWM, na.rm=T),
     
-    eav = sum(eq_av, na.rm=T),
+    total_value_eav = sum(eq_av, na.rm=T),
     
-    new_TEAV_noIncents = sum(ifelse(class >=600 & class < 900,
+    new_TEAV_noIncents = sum(ifelse(incent_prop==1,
                                     (taxed_av*eq_factor/loa)*0.25, taxed_av*eq_factor), na.rm=TRUE),
-    new_TEAV_vacant_noIncents = sum(ifelse(class >=600 & class <900,
+    new_TEAV_vacant_noIncents = sum(ifelse(incent_prop == 1,
                                            0, taxed_av*eq_factor), na.rm=T)
   ) |>
-  ungroup() |>
   mutate(
-    new_TEAV_noGHE = eav_taxed + exe_homeowner,
-    new_TEAV_noExemps = eav_taxed + all_exemptions, # does not include abatements
-    new_TEAV_noAbates = eav_taxed + abatements, # include only abatements, not other exemption types
-    new_TEAV_noSenior = eav_taxed + exe_senior,
-    new_TEAV_noSrFreeze = eav_taxed + exe_freeze,
+    new_TEAV_noGHE = muni_eav_taxed + exe_homeowner,
+    new_TEAV_noExemps = muni_eav_taxed + all_exemptions, # does not include abatements
+    new_TEAV_noAbates = muni_eav_taxed + abatements, # include only abatements, not other exemption types
+    new_TEAV_noSenior = muni_eav_taxed + exe_senior,
+    new_TEAV_noSrFreeze = muni_eav_taxed + exe_freeze,
     # amount of EAV from taxing an additional 15% of the AV if incentive properties didn't exist
     forgone_EAV_incent = #class_group %in% incentive_majorclasses,
       #incent_prop == "Incentive",
-      new_TEAV_noIncents - eav_taxed) |>
+      new_TEAV_noIncents - muni_eav_taxed) |>
   mutate(
     # Absolute maximum TEAV: No Exemptions, no abatements, no TIFS, no Incentive properties
     # Commercial and industrial assessed at 25%
-    TEAV_max = eav_taxed + all_exemptions + abatements + eav_tif_increment + forgone_EAV_incent,
-
+    TEAV_max = muni_eav_taxed + all_exemptions + eav_tif_increment + forgone_EAV_incent,
+    
     # no exemptions or incentive classifications:
-    TEAV_neither = eav_taxed + all_exemptions + forgone_EAV_incent,
-
+    TEAV_neither = muni_eav_taxed + all_exemptions + forgone_EAV_incent,
+    # 
     rate_noExe = final_tax_to_dist / new_TEAV_noExemps,
     rate_noGHE = final_tax_to_dist / new_TEAV_noGHE,
     rate_noSenior = final_tax_to_dist / new_TEAV_noSenior,
@@ -479,10 +396,12 @@ muni_ratechange <- pin_data |>
     rate_noAbate = final_tax_to_dist / new_TEAV_noAbates,
     rate_noInc = final_tax_to_dist / new_TEAV_noIncents,
     rate_neither = final_tax_to_dist / TEAV_neither,
-    rate_noTIFs = final_tax_to_dist / (eav_taxed + eav_tif_increment),
+    rate_noTIFs = final_tax_to_dist / (muni_eav_taxed + eav_tif_increment),
     rate_vacant = final_tax_to_dist / new_TEAV_vacant_noIncents,
     rate_lowest = final_tax_to_dist / TEAV_max,
-    rate_current = final_tax_to_dist / eav_taxed,
+    rate_current = final_tax_to_dist / muni_eav_taxed,
+  
+    rate_current_avgrate = current_rate_avg,
 
     change_noInc = rate_current - rate_noInc,
     change_neither = rate_current - rate_neither,
