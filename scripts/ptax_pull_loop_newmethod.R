@@ -258,7 +258,7 @@ for(i in years){
     #  untaxable_value_fmv = untaxable_value_av / loa,
      # untaxable_value_fmv = ifelse(is.nan(untaxable_value_av), 0, untaxable_value_av),
 
-      exempt_eav_inTIF = ifelse(in_tif == 1 & tif_tax_code_frozen_eav>0,
+      exempt_eav_inTIF = ifelse(in_tif == 1,
                                 exe_total_adj, 0),
       exempt_eav= exe_total_adj,
       exempt_fmv = exempt_eav / eq_factor / loa,

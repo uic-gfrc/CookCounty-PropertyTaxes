@@ -43,7 +43,8 @@ sales <- read_csv("../../dissertation/data/raw/Assessor_Parcel_Sales_20250105.cs
  # "./inputs/Assessor_-_Parcel_Sales_20250704.csv") %>%
   filter(class > 399 & class < 900) %>%
   mutate(major_class = str_sub(class, 1, 1),
-            pin10 = str_sub(pin,1,10)) 
+            pin10 = str_sub(pin,1,10)) |>
+  mutate(incent_prop = ifelse(as.numeric(class) > 599, 1, 0))
 
 ```
 
@@ -67,7 +68,8 @@ pins_sold <- sales %>%
             class_current = first(class),
             sale_document_num= first(sale_document_num),
             sale_buyer_name = first(sale_buyer_name), 
-            num_parcels_sale = first(num_parcels_sale))
+            num_parcels_sale = first(num_parcels_sale)) |>
+  mutate(incent_prop = ifelse(as.numeric(class_current) > 599, 1, 0))
 
 ```
 
@@ -89,7 +91,8 @@ bor_pins <- bor %>%
             project_id = first(project_id), 
             tax_year_appealed = list(tax_year),
             timesappealed = n() ) %>%
-  mutate(proj_appeallant = paste(project_id, "-", appellant))
+  mutate(proj_appeallant = paste(project_id, "-", appellant)) |>
+  mutate(incent_prop = ifelse(as.numeric(class_current) > 599, 1, 0))
 ```
 
 
@@ -169,16 +172,17 @@ ggplot(parcels) +
 #| fig-cap: "Grouped by Sale Document Number."
 #| layout-ncol: 2
 
-parcel_comparison <- left_join(parcels, pins_sold, by = "pin10") %>% select(group, pin10, everything())
+parcel_comparison <- left_join(parcels, pins_sold, by = "pin10") %>% 
+  select(group, pin10, everything())
 
 parcel_comparison %>% 
   group_by(sale_document_num) %>%
-  summarize(pins_ingroup = n())
+  summarize(pins_ingroup = n(), 
+            incent_pins = sum(incent_prop==1, na.rm=TRUE)) |>
+  arrange(desc(incent_pins), desc(pins_ingroup))
 
 parcel_comparison %>% 
   group_by(sale_document_num) %>%
-  mutate(pins_ingroup = n()) %>%
-  #filter(pins_ingroup > 1) %>%
   ggplot() +
   geom_sf(aes(fill = sale_document_num, )) +
   scale_fill_continuous(na.value = "white")+
@@ -211,13 +215,14 @@ parcel_comparison %>%
 #| layout-ncol: 2
 
 parcel_comparison %>% 
+  as.data.frame() |>
   group_by(sale_buyer_name) %>%
-  summarize(pins_ingroup = n())
+  summarize(pins_ingroup = n(), 
+            incent_pins = sum(incent_prop==1)) |>
+  arrange(desc(pins_ingroup))
 
 parcel_comparison %>% 
   group_by(sale_buyer_name) %>%
-  mutate(pins_ingroup = n()) %>%
-  #filter(pins_ingroup > 1) %>%
   ggplot() +
   geom_sf(aes(fill = sale_buyer_name)) +
     scale_fill_discrete(na.value = "white")+
@@ -232,18 +237,20 @@ parcel_comparison %>%
 ```{r}
 #| label: fig-buyernamesandtouch
 #| fig-cap: "Brings in buyer names from sales data and uses that to create a project identifier from combining the name and if a parcel shares a touching 'group' variable."
+#| include: false
+#| eval: false
 
 parcel_comparison %>% 
     mutate(pins_ingroup = n(),
          id = paste(sale_buyer_name, "_", group)) |>
   group_by(id) %>%
-  summarize(pins_ingroup = n())
+  summarize(pins_ingroup = n(), 
+            incent_pins = sum(incent_prop==1))
 
 parcel_comparison %>% 
   group_by(sale_buyer_name, group) %>%
   mutate(pins_ingroup = n(),
          id = paste(sale_buyer_name, "_", group)) %>%
- # filter(pins_ingroup > 1) %>%
   ggplot() +
   geom_sf(aes(fill = id)) +
   theme_minimal() + 
@@ -265,13 +272,14 @@ There are `r paste(parcel_comparison %>% as.data.frame() |> group_by(sale_buyer_
 
 
 parcel_comparison <- left_join(parcels, bor_pins) %>% 
-  select(group, pin10, appellant, everything())
+  select(group, pin10, appellant, everything()) 
 
 
 parcel_comparison %>% 
   as.data.frame() |>
   group_by(appellant) %>%
-  summarize(pins_ingroup = n())
+  summarize(pins_ingroup = n(), 
+            incent_pins = sum(incent_prop==1))
 
 parcel_comparison %>% 
   group_by(appellant) %>%
@@ -369,13 +377,13 @@ parcel_comparison <- left_join(parcels, bor_pins) %>%
 
 parcel_comparison |>
   as.data.frame() |>
-#  select(-geometry) |> 
   group_by(appellant) %>%
-  summarize(pins_ingroup = n()) 
+  summarize(pins_ingroup = n(),
+            incent_pins = sum(incent_prop == 1, na.rm=TRUE)) |> 
+  arrange(desc(incent_pins), desc(pins_ingroup)) 
 
 parcel_comparison %>% 
   group_by(appellant) %>%
-  mutate(pins_ingroup = n()) %>%
   ggplot() +
   geom_sf(aes(fill = as.factor(appellant))) +
   theme_minimal() + 
@@ -423,14 +431,14 @@ parcel_comparison <- left_join(parcels, sales, by = "pin10") %>%
 
 
 parcel_comparison  |>
-  select(-geometry) |>
+  as.data.frame() |>
   group_by(sale_buyer_name) %>%
-  summarize(pins_ingroup = n() )
+  summarize(pins_ingroup = n(),
+            incent_pins = sum(incent_prop == 1)) |>
+  arrange(desc(incent_pins), desc(pins_ingroup))
 
 parcel_comparison %>% 
   group_by(sale_buyer_name) %>%
-  mutate(pins_ingroup = n()) %>%
- # filter(pins_ingroup > 1) %>%
   ggplot() +
   geom_sf(aes(fill = sale_buyer_name)) +
   scale_fill_discrete(na.value = "white" ) + 
@@ -449,13 +457,12 @@ There are `r paste(parcel_comparison %>% group_by(sale_buyer_name) %>% summarize
 #| layout-ncol: 2
 
 parcel_comparison |>
-  select(-geometry) |>
+  as.data.frame() |>
   group_by(sale_document_num) %>%
   summarize(pins_ingroup = n() )
 
 parcel_comparison %>% 
   group_by(sale_document_num) %>%
-  mutate(pins_ingroup = n()) %>%
   ggplot() +
   geom_sf(aes(fill = sale_document_num)) +
   scale_fill_continuous(na.value = "white" ) + 
