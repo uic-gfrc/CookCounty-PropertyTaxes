@@ -100,6 +100,7 @@ for(i in years){
   tc_muninames <- tax_codes %>%
     left_join(muni_tax_codes, by = c("tax_code_num")) %>%
     left_join(muni_agency_names, by = "agency_num") %>%
+    mutate(agency_num = as.character(agency_num)) |>
     left_join(nicknames, by = c("agency_num" = "agency_number"))  |>   
     mutate(tax_code_rate = tax_code_rate/100)
   
@@ -165,7 +166,9 @@ for(i in years){
     
     mutate(exe_missing_disvet = ifelse(taxed_eav_old > 1000 & tax_bill_total == 0 & c2_prop == 1, taxed_eav_old, 0)) |>
     
-    mutate(taxed_eav_adj = ifelse(taxed_eav_old > 1000 & flag_missingdata == 1, 0 , taxed_eav_old),
+    mutate(
+      # value changes the taxed eav to 0 if it was flagged for missing values.
+      # taxed_eav_adj = ifelse(taxed_eav_old > 1000 & flag_missingdata == 1, 0 , taxed_eav_old),
            total_taxed_eav_AWM = tax_bill_total / tax_code_rate,  # EAV that was taxed by TIFs and taxing districts
            taxed_eav_TIFincrement = total_taxed_eav_AWM *tax_code_distribution_pct,
            taxed_eav_nonTIF = total_taxed_eav_AWM*(1-tax_code_distribution_pct)) |>
@@ -349,7 +352,7 @@ muni_ratechange <- pin_data |>
     fmv = sum(fmv, na.rm=TRUE),
     pins_in_class = n(),
     all_exemptions = sum(exe_total_adj, na.rm=T),   # in EAV
-    exe_homeowner = sum(exe_homeowner),
+    exe_homeowner = sum(exe_homeowner, na.rm=TRUE),
     exe_senior = sum(exe_senior, na.rm = TRUE),
     exe_freeze = sum(exe_freeze, na.rm =TRUE),
     exempt_LTHO_eav = sum(exe_longtime_homeowner, na.rm=TRUE),
