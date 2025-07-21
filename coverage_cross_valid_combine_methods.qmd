@@ -1,0 +1,76 @@
+---
+title: "Coverage & Cross-validation of Grouping Methods"
+author: "MVH & AWM"
+date: 07-20-2025
+format: 
+  html:
+    toc-location: left
+    code-fold: true
+    toc: true
+    theme: united
+    page-layout: full
+---
+
+# Setup
+
+```{r setup}
+#| output: false
+
+library(tidyverse)
+library(flextable)
+
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+set_flextable_defaults(theme_fun = theme_vanilla, 
+                       padding = 2,
+                       line_spacing = 1,
+                       big.mark = ",",
+                       )
+
+class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv") |>
+  select(class_code, comparable_props, Alea_cat, incent_prop)
+
+
+```
+
+# "Coverage" of Different Metrics
+
+## Cook Totals
+
+```{r}
+
+big_data_set <- read_csv("./Output/Dont_Upload/0_joined_PIN_data_2022.csv")
+
+bds <- big_data_set |>
+  left_join(class_dict, by = c("class" = "class_code")) |>
+  rename(incent_prop = incent_prop.y,
+         Type = Alea_cat)
+
+```
+
+```{r}
+
+bds |>
+  filter(Alea_cat == c("Commercial", "Industrial")) |>
+  group_by(Alea_cat, incent_prop) |>
+  summarize(n = n())
+
+```
+
+## Board of Review
+
+```{r}
+#| output: false
+
+bor <- read_csv("Output/borappeals.csv") %>%
+  mutate(project_appellant = paste(project_id, sep = "-", appellant))
+
+```
+
+### 
+
+## Parcel Universe
+
+
+## Board of Review Data
+
