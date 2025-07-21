@@ -1,0 +1,197 @@
+---
+title: "Coverage & Cross-validation of Grouping Methods"
+author: "MVH & AWM"
+date: 07-20-2025
+format: 
+  html:
+    toc-location: left
+    code-fold: true
+    toc: true
+    theme: united
+    page-layout: full
+---
+
+Given that we have multiple, sometimes conflicting data points, we are trading off **coverage** and **consistency**. 
+
+```{r setup}
+#| output: false
+
+library(tidyverse)
+library(flextable)
+library(scales)
+library(data.table)
+
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+set_flextable_defaults(theme_fun = theme_vanilla, 
+                       padding = 2,
+                       line_spacing = 1,
+                       big.mark = ",",
+                       )
+
+class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv") |>
+  select(class_code, comparable_props, Alea_cat, incent_prop)
+
+
+```
+
+# "Coverage" of Different Metrics
+
+## Cook Totals
+
+```{r}
+
+big_data_set <- read_csv("./Output/Dont_Upload/0_joined_PIN_data_2023.csv")
+
+bds <- big_data_set |>
+  left_join(class_dict, by = c("class" = "class_code")) |>
+  rename(incent_prop = incent_prop.y,
+         type = Alea_cat) |>
+  select(pin, type, av, fmv, in_tif, final_tax_to_dist, incent_prop)
+
+```
+
+```{r}
+
+# Summarize source data
+cook_sum_stats <- bds |>
+  filter(type %in% c("Commercial", "Industrial")) |>
+  group_by(type, incent_prop) |>
+  reframe(
+    n = n(),
+    av = sum(av, na.rm = TRUE),
+    fmv = sum(fmv, na.rm = TRUE),
+    in_tif = sum(in_tif, na.rm = TRUE),
+    total_rev = sum(final_tax_to_dist, na.rm = TRUE)
+  )
+
+df_long <- cook_sum_stats |>
+  pivot_longer(cols = c(n, av, fmv, in_tif, total_rev), names_to = "measure", values_to = "value") |>
+  group_by(type, measure) |>
+  mutate(
+    prop = value / sum(value, na.rm = TRUE)
+  ) |>
+  ungroup()
+
+# Total labels (above bar)
+bar_totals <- df_long |>
+  group_by(type, measure) |>
+  summarise(total = sum(value, na.rm = TRUE), .groups = "drop") |>
+  mutate(
+    label = case_when(
+      measure %in% c("av", "fmv", "total_rev") ~ label_dollar(scale = 1e-9, suffix = "B", accuracy = 0.1)(total),
+      TRUE ~ comma(total)
+    )
+  )
+
+# Label positions (only if prop fits in 1.05 range)
+bar_totals <- bar_totals |>
+  mutate(y_pos = 1.05)  # static position slightly above bar
+
+# Nice labels for facets
+facet_labels <- c(
+  n = "Parcel Count",
+  av = "Assessed Value",
+  fmv = "Fair Market Value",
+  in_tif = "Parcels in TIFs",
+  total_rev = "Total Tax Revenue"
+)
+
+# Plot
+ggplot(df_long, aes(x = type, y = prop, fill = incent_prop)) +
+  geom_bar(stat = "identity", position = "stack", width = 0.6) +
+  geom_text(
+    data = bar_totals,
+    aes(x = type, y = y_pos, label = label),
+    inherit.aes = FALSE,
+    size = 4
+  ) +
+  facet_wrap(~measure, labeller = as_labeller(facet_labels)) +
+  scale_y_continuous(
+    labels = percent_format(accuracy = 1),
+    limits = c(0, 1.1),  # hard limit to cut off anything above 100%
+    expand = c(0, 0)
+  ) +
+  scale_fill_manual(
+    values = c("Incentive" = "#E69F00", "Non-Incentive" = "#56B4E9"),
+    name = "Incentive Status"
+  ) +
+  labs(
+    x = NULL,
+    y = "Percent of Total",
+    title = "Distribution of Parcels, Value, and Tax Revenue by Type and Incentive (2023)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    plot.title = element_text(hjust = 0.5),
+    strip.text = element_text(face = "bold")
+  )
+
+```
+
+Each of these shows a potential metric of "completeness." How many PINs are covered? How much AV? FMV? We expect most incentive properties to also be in TIFs!
+
+## Board of Review: Appellant
+
+```{r}
+#| output: false
+
+bor <- read_csv("Output/borappeals.csv") %>%
+  mutate(project_appellant = paste(project_id, sep = "-", appellant))
+
+```
+
+```{r}
+
+cook_sum_stats_incent <- bds |>
+  filter(type %in% c("Commercial", "Industrial")) |>
+  filter(incent_prop == "Incentive") |>
+  group_by(type) |>
+  summarize(
+    n = n(),
+    av = sum(av, na.rm = TRUE),
+    fmv = sum(fmv, na.rm = TRUE),
+    in_tif = sum(in_tif, na.rm = TRUE),
+    total_rev = sum(final_tax_to_dist, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+appellant_table_coverage_sums <- appellant_table_coverage |>
+  filter(type %in% c("Commercial", "Industrial")) |>
+  group_by(type) |>
+  summarize(
+    n = n(),
+    av = sum(av, na.rm = TRUE),
+    fmv = sum(fmv, na.rm = TRUE),
+    in_tif = sum(in_tif, na.rm = TRUE),
+    total_rev = sum(final_tax_to_dist, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Join and compute coverage
+perc_app_cov <- appellant_table_coverage_sums |>
+  left_join(cook_sum_stats_incent, by = "type", suffix = c("_app", "_total")) |>
+  mutate(
+    p_n = n_app / n_total,
+    p_av = av_app / av_total,
+    p_fmv = fmv_app / fmv_total,
+    p_in_tif = in_tif_app / in_tif_total,
+    p_rev = total_rev_app / total_rev_total
+  ) |>
+  select(type, starts_with("p_"))
+
+perc_app_cov
+
+```
+
+```{r}
+
+
+
+```
+## Parcel Universe
+
+
+## Board of Review Data
+
