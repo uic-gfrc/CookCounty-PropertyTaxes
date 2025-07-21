@@ -130,15 +130,39 @@ ggplot(df_long, aes(x = type, y = prop, fill = incent_prop)) +
 
 ```
 
-Each of these shows a potential metric of "completeness." How many PINs are covered? How much AV? FMV? We expect most incentive properties to also be in TIFs!
+Each of these shows a potential metric of "completeness." How many PINs are covered? How much AV? FMV? 
+
+We expect most incentive properties to also be in TIFs!
+
+-- no we dont.
 
 ## Board of Review: Appellant
 
 ```{r}
 #| output: false
 
+commercial_classes <- c(401:435, 490, 491, 492, 496:499,
+                        500:535,590, 591, 592, 597:599,
+                        700:799,
+                        800:835, 891, 892, 897, 899)   %>% as.character()
+
+industrial_classes <- c(480:489,493,
+                        550:589, 593,
+                        600:699,
+                        850:890, 893 ) %>% as.character()
+
+
+
+
 bor <- read_csv("Output/borappeals.csv") %>%
-  mutate(project_appellant = paste(project_id, sep = "-", appellant))
+  # project id in BOR appeals is just the appeal id that was in the original dataset
+  
+  mutate(project_appellant = paste(appealid, sep = "-", appellant))  |>
+  mutate(type = case_when(
+    class %in% commercial_classes ~ "Commercial",
+    class %in% industrial_classes ~ "Industrial",
+    T ~ "Other"))
+  
 
 ```
 
@@ -157,8 +181,9 @@ cook_sum_stats_incent <- bds |>
     .groups = "drop"
   )
 
-appellant_table_coverage_sums <- appellant_table_coverage |>
+appellant_table_coverage_sums <- bor |>
   filter(type %in% c("Commercial", "Industrial")) |>
+  inner_join(bds) |>
   group_by(type) |>
   summarize(
     n = n(),
