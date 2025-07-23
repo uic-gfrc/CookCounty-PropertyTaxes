@@ -30,7 +30,20 @@ set_flextable_defaults(theme_fun = theme_vanilla,
                        )
 
 class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv") |>
-  select(class_code, comparable_props, Alea_cat, incent_prop)
+select(class_code, comparable_props, Alea_cat, incent_prop)
+
+
+
+commercial_classes <- c(401:435, 490, 491, 492, 496:499,
+                        500:535,590, 591, 592, 597:599,
+                        700:799,
+                        800:835, 891, 892, 897, 899)   %>% as.character()
+
+industrial_classes <- c(480:489,493,
+                        550:589, 593,
+                        600:699,
+                        850:890, 893 ) %>% as.character()
+
 
 
 ```
@@ -44,9 +57,14 @@ class_dict <- read_csv("./Necessary_Files/class_dict_expanded.csv") |>
 big_data_set <- read_csv("./Output/Dont_Upload/0_joined_PIN_data_2023.csv")
 
 bds <- big_data_set |>
-  left_join(class_dict, by = c("class" = "class_code")) |>
-  rename(incent_prop = incent_prop.y,
-         type = Alea_cat) |>
+ left_join(class_dict, by = c("class" = "class_code")) |>
+ rename(incent_prop = incent_prop.y,
+        type = Alea_cat) |>
+    mutate(type = case_when(
+    class %in% commercial_classes ~ "Commercial",
+    class %in% industrial_classes ~ "Industrial",
+    T ~ "Other")) |>
+  
   select(pin, type, av, fmv, in_tif, final_tax_to_dist, incent_prop)
 
 ```
@@ -119,7 +137,7 @@ ggplot(df_long, aes(x = type, y = prop, fill = incent_prop)) +
   labs(
     x = NULL,
     y = "Percent of Total",
-    title = "Distribution of Parcels, Value, and Tax Revenue by Type and Incentive (2023)"
+    title = "Distribution of Parcels, Value, and Tax Revenue\nby Type and Incentive (2023)"
   ) +
   theme_minimal(base_size = 12) +
   theme(
@@ -132,26 +150,12 @@ ggplot(df_long, aes(x = type, y = prop, fill = incent_prop)) +
 
 Each of these shows a potential metric of "completeness." How many PINs are covered? How much AV? FMV? 
 
-We expect most incentive properties to also be in TIFs!
 
--- no we dont.
 
 ## Board of Review: Appellant
 
 ```{r}
 #| output: false
-
-commercial_classes <- c(401:435, 490, 491, 492, 496:499,
-                        500:535,590, 591, 592, 597:599,
-                        700:799,
-                        800:835, 891, 892, 897, 899)   %>% as.character()
-
-industrial_classes <- c(480:489,493,
-                        550:589, 593,
-                        600:699,
-                        850:890, 893 ) %>% as.character()
-
-
 
 
 bor <- read_csv("Output/borappeals.csv") %>%
@@ -164,30 +168,52 @@ bor <- read_csv("Output/borappeals.csv") %>%
     T ~ "Other"))
   
 
+bor |> filter(appealid != project_id)
+
 ```
 
 ```{r}
 
-cook_sum_stats_incent <- bds |>
-  filter(type %in% c("Commercial", "Industrial")) |>
-  filter(incent_prop == "Incentive") |>
-  group_by(type) |>
-  summarize(
-    n = n(),
-    av = sum(av, na.rm = TRUE),
-    fmv = sum(fmv, na.rm = TRUE),
-    in_tif = sum(in_tif, na.rm = TRUE),
-    total_rev = sum(final_tax_to_dist, na.rm = TRUE),
-    .groups = "drop"
-  )
+# cook_sum_stats_incent <- bds |>
+#   filter(type %in% c("Commercial", "Industrial")) |>
+#   filter(incent_prop == "Incentive") |>
+#   group_by(type) |>
+#   summarize(
+#     n = n(),
+#     av = sum(av, na.rm = TRUE),
+#     fmv = sum(fmv, na.rm = TRUE),
+#     in_tif = sum(in_tif, na.rm = TRUE),
+#     total_rev = sum(final_tax_to_dist, na.rm = TRUE),
+#     .groups = "drop"
+#   )
 
-appellant_table_coverage_sums <- bor |>
-  filter(type %in% c("Commercial", "Industrial")) |>
-  inner_join(bds) |>
-  group_by(type) |>
+
+# distinct PINs with their most recent appeallant information
+bor_pins <- bor %>% 
+  group_by(pin) %>% 
+  arrange(desc(tax_year)) %>%
+  summarize(pin = first(pin),
+            class_bor = first(class),
+            appellant = first(appellant),
+            appealid = first(appealid),
+           # project_id = first(project_id), 
+            tax_year_appealed = first(tax_year),
+            timesappealed = n() ) 
+
+bor_pins %>% head()
+
+
+appellant_table_coverage_sums <- bds |>
+  inner_join(bor_pins, by = "pin") |>
+    # mutate(type = case_when(
+    # class_bor %in% commercial_classes ~ "Commercial",
+    # class_bor %in% industrial_classes ~ "Industrial",
+    # T ~ "Other")) |>
+  group_by(type, incent_prop) |>
   summarize(
     n = n(),
-    av = sum(av, na.rm = TRUE),
+    n_projects = n_distinct(appealid),
+    av = sum(av, na.rm = TRUE),  
     fmv = sum(fmv, na.rm = TRUE),
     in_tif = sum(in_tif, na.rm = TRUE),
     total_rev = sum(final_tax_to_dist, na.rm = TRUE),
@@ -196,7 +222,8 @@ appellant_table_coverage_sums <- bor |>
 
 # Join and compute coverage
 perc_app_cov <- appellant_table_coverage_sums |>
-  left_join(cook_sum_stats_incent, by = "type", suffix = c("_app", "_total")) |>
+  left_join(cook_sum_stats, by = c("type", "incent_prop"), suffix = c("_app", "_total")
+            ) |>
   mutate(
     p_n = n_app / n_total,
     p_av = av_app / av_total,
@@ -204,7 +231,8 @@ perc_app_cov <- appellant_table_coverage_sums |>
     p_in_tif = in_tif_app / in_tif_total,
     p_rev = total_rev_app / total_rev_total
   ) |>
-  select(type, starts_with("p_"))
+  select(type, starts_with("p_")) |>
+  mutate(across(is.numeric, round, digits = 2))
 
 perc_app_cov
 
@@ -215,8 +243,12 @@ perc_app_cov
 
 
 ```
+
+
 ## Parcel Universe
 
 
 ## Board of Review Data
+
+## Sales Data
 
