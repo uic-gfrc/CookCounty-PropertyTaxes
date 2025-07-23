@@ -92,8 +92,53 @@ final_df_chi <- subset(final_df_chi, subset = !missing)
 
 write.csv(final_df_chi, "Output/combined_methodologyworksheets_CHICAGO.csv")
 
+
+
+# Chicago 2024 Townships --------------------------------------------------
+
+
+# Main script
+dir_path_chicago <- "inputs/methodologyreports/chicago_2024"   # Path to the directory containing the files
+
+# Get the list of files
+file_paths <- list.files(dir_path_chicago, pattern = "*.xlsx", full.names = TRUE)
+# Combine data from all files
+final_df_chi <- map_dfr(file_paths, read_sheets) 
+
+# final_df_chi <- final_df_chi %>% select(-c(x18:x29, x30:x32))
+
+final_df_chi <- final_df_chi %>%
+  replace_with_na_all(~.x == "NA" )
+
+missing <- is.na(final_df_chi$key_pin) | is.na(final_df_chi$ias_world_pi_ns )
+final_df_chi <- subset(final_df_chi, subset = !missing)
+
+
+write.csv(final_df_chi, "Output/combined_methodologyworksheets_chicago2024.csv")
  
-  
+
+# North 2025 Townships ----------------------------------------------------
+
+# Main script
+dir_path_chicago <- "inputs/methodologyreports/north_2025"   # Path to the directory containing the files
+
+# Get the list of files
+file_paths <- list.files(dir_path_chicago, pattern = "*.xlsx", full.names = TRUE)
+# Combine data from all files
+final_df_chi <- map_dfr(file_paths, read_sheets) 
+
+final_df_chi <- final_df_chi %>%
+  replace_with_na_all(~.x == "NA" )
+
+missing <- is.na(final_df_chi$key_pin) | is.na(final_df_chi$pi_ns  )
+final_df_chi <- subset(final_df_chi, subset = !missing)
+
+
+write.csv(final_df_chi, "Output/combined_methodologyworksheets_north2025.csv")  
+
+
+
+
 # # Load all Excel files into a list of data frames
 # load_clean_rearrange <- function(file) {
 #   excel_sheets(file) %>%
