@@ -42,21 +42,10 @@ sales <- read_csv("../../dissertation/data/raw/Assessor_Parcel_Sales_20250105.cs
             pin10 = str_sub(pin,1,10)) |>
   mutate(incent_prop = ifelse(as.numeric(class) > 599, 1, 0))
 
-keypins <- read.csv("./Output/keypins_from_methodwkshts.csv") |>
-  mutate(pin10 = str_sub(pin, 1, 10)) |> 
-  distinct(keypin, pin10)
-
-```
-
-- Random parcels that should be grouped in a project:
-  - 0821202023, 0821202024. Share buyer name but not document number. CMAP landuse development site confirms that it is a project and developer is Bridge Point LLC
-  
-
-```{r}
 pins_sold <- sales %>% 
   group_by(pin10) %>% 
   arrange(desc(year)) %>%
-  summarize(#pin = first(pin),
+  summarize(pin = first(pin),
             pin10 = first(pin10),
             class_current = first(class),
             sale_document_num= first(sale_document_num),
@@ -64,7 +53,39 @@ pins_sold <- sales %>%
             num_parcels_sale = first(num_parcels_sale)) |>
   mutate(incent_prop = ifelse(as.numeric(class_current) > 599, 1, 0))
 
+parcels_sold <- sales %>% 
+  group_by(pin10) %>% 
+  arrange(desc(year)) %>%
+  summarize(pin10 = first(pin10),
+            class_current = first(class),
+            sale_document_num= first(sale_document_num),
+            sale_buyer_name = first(sale_buyer_name), 
+            num_parcels_sale = first(num_parcels_sale)) |>
+  mutate(incent_prop = ifelse(as.numeric(class_current) > 599, 1, 0))
+
+keypins <- read.csv("./Output/keypins_from_methodwkshts.csv") |>
+  mutate(pin10 = str_sub(pin, 1, 10),
+        pin =  as.character(pin),
+        pin10 = as.character(pin10)) |> 
+  distinct(keypin, pin10, pin)
+
 ```
+
+
+```{r}
+keypincheck <- comm_ind |> 
+  left_join(keypins) |> 
+  left_join(bor_pins, by = "pin") |>
+  left_join(pins_sold, by = "pin")
+
+keypincheck <- keypincheck |> 
+  select(pin, pin10, keypin, sale_buyer_name, sale_document_num, num_parcels_sale, proj_appeallant, timesappealed, incent_prop)
+```
+
+- Random parcels that should be grouped in a project:
+  - 0821202023, 0821202024. Share buyer name but not document number. CMAP landuse development site confirms that it is a project and developer is Bridge Point LLC
+  
+
 
 ```{r}
 #| label: read-BOR-data
