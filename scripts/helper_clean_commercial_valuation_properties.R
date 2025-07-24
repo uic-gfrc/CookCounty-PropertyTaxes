@@ -25,31 +25,33 @@ amazon <- amazon %>%
   mutate(pin_clean = str_remove_all(PIN, "-"),
          parcel = str_sub(pin_clean, 1, 10),
          block = str_sub(pin_clean,1,7),
-         township = str_sub(pin_clean, 1, 2))
+         township = str_sub(pin_clean, 1, 2),
+         keypin = "amazon") |>
+  select(keypin, pin = pin_clean)
 
 
 # Archived Parcel Universe Dataset -----
 
-parcuniverse_keypins <- readxl::read_xlsx("./Inputs/parceluniverse_keypins_20240725.xlsx", 
-                                          sheet = "keypins_20240725") %>%
-  mutate(pin = str_remove_all(pin, "-")) 
-
-parcuniverse_keypins <- parcuniverse_keypins %>%
-  mutate(
-    pin14 = str_pad(as.character(pin), width = 14, side = "left", pad = "0"),
-    keypin = str_pad(as.character(proration_key_pin), width = 14, side = "left", pad = "0"),
-    pin10 = str_sub(pin14,1,10),
-    pin7 = str_sub(pin14,1,7), .before = "pin") %>%
-  select(-c(pin_7dig, pin, Column1)) %>%
-  filter(class != "EX")
-
-parcuniverse_keypins %>% 
-  group_by(keypin) %>% 
-  summarize(pincount = n(), 
-            class = mean(as.numeric(class)),
-            has_incent = sum(ifelse(as.numeric(between(class, 600, 899)), 1, 0), na.rm=TRUE)) %>%
-  filter(pincount > 1) %>% 
-  arrange(desc(has_incent), desc(pincount))
+# parcuniverse_keypins <- readxl::read_xlsx("./Inputs/parceluniverse_keypins_20240725.xlsx", 
+#                                           sheet = "keypins_20240725") %>%
+#   mutate(pin = str_remove_all(pin, "-")) 
+# 
+# parcuniverse_keypins <- parcuniverse_keypins %>%
+#   mutate(
+#     pin14 = str_pad(as.character(pin), width = 14, side = "left", pad = "0"),
+#     keypin = str_pad(as.character(proration_key_pin), width = 14, side = "left", pad = "0"),
+#     pin10 = str_sub(pin14,1,10),
+#     pin7 = str_sub(pin14,1,7), .before = "pin") %>%
+#   select(-c(pin_7dig, pin, Column1)) %>%
+#   filter(class != "EX")
+# 
+# parcuniverse_keypins %>% 
+#   group_by(keypin) %>% 
+#   summarize(pincount = n(), 
+#             class = mean(as.numeric(class)),
+#             has_incent = sum(ifelse(as.numeric(between(class, 600, 899)), 1, 0), na.rm=TRUE)) %>%
+#   filter(pincount > 1) %>% 
+#   arrange(desc(has_incent), desc(pincount))
 
 # Commercial Valuation Dataset - Cook County Data Portal ------------------
 
@@ -102,15 +104,28 @@ south  <- comval |>
 
 keypins <- rbind(chikeys, north, south)
 
-distinct_keypins <- keypins |> distinct(key_pin)
-# 53,730 distinct keypins
+keypins <- keypins |> 
+  filter(check_me == 0) |>
+  select(keypin = key_pin, pin = pins2) |>
+  mutate(keypin = str_remove_all(keypin, "-")) |> 
+  rbind(amazon) |>
+  distinct()
+  
+
+distinct_keypins <- keypins |> distinct(keypin)
+# 53,710 distinct keypins
+
+keypins |> summarize(n = n(), .by = keypin) |> arrange(desc(n))
+
+write_csv(keypins, "./Output/keypins_from_methodwkshts.csv")
 ## ^^ stopped here!!
+
+
 
 
 comval <- comval %>% 
   filter(keypin > 0 & keypin != "TOTAL PINS")
 #  63,142 observations for 2021, 2022, and 2023. Includes all commercial property
-#  96,066 when 2024 is added
 
 comval <- comval %>% 
   arrange(desc(year)) |>
@@ -160,8 +175,7 @@ pins_pivot <- comval %>%
   unnest(pins3) %>%
   mutate(check_me = ifelse(str_length(pins3) < 14, 1, 0)) # if pin does not have the number of characters expected (14), then flag it
 # 81128 obs, but might have been excluding 500 level properties?
-# 125,964 obs as of July 23 2025
-# 117,149 if excluding class variables
+
 
 table(pins_pivot$check_me)
 # 860 check me's. big jump from before.
@@ -182,8 +196,7 @@ addinkeypin_PINs <- pins_pivot %>%
   select(keypin_concat = keypin_concat2, # need matching variable names for row bind
          pin_cleaned = pins_add) #|>
  # mutate(n = n(), .by = pin_cleaned) |> distinct()
-# 62 063
-# 116,118
+# 62,063
 
 pins_pivot_cleaned <- pins_pivot %>% 
   select(keypin_concat, pin_cleaned) |> distinct()
@@ -191,7 +204,6 @@ pins_pivot_cleaned <- pins_pivot %>%
 pins_pivot_cleaned <- rbind(pins_pivot_cleaned, addinkeypin_PINs)
 pins_pivot_cleaned <- pins_pivot_cleaned %>% distinct()
 # 78,067 obs
-# 107, 809
 
 pins_pivot_cleaned <- pins_pivot_cleaned  %>%
   mutate(keypin_concat = as.character(keypin_concat),
@@ -376,7 +388,6 @@ projects <- keypins %>%
 # write_csv(projects, "Output/all_keypins_2022.csv")
 # 106,939 pin-projects after using classes 500-899
 
- write_csv(projects, "Output/all_keypins_2024.csv")
 # 
 
  
