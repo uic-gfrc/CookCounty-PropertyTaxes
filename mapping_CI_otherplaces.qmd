@@ -6,6 +6,7 @@ format:
     toc-location: left
     fig-cap-location: margin
     tbl-cap-location: margin
+    code-fold: true
 ---
 
 ```{r}
@@ -40,6 +41,10 @@ sales <- read_csv("../../dissertation/data/raw/Assessor_Parcel_Sales_20250105.cs
   mutate(major_class = str_sub(class, 1, 1),
             pin10 = str_sub(pin,1,10)) |>
   mutate(incent_prop = ifelse(as.numeric(class) > 599, 1, 0))
+
+keypins <- read.csv("./Output/keypins_from_methodwkshts.csv") |>
+  mutate(pin10 = str_sub(pin, 1, 10)) |> 
+  distinct(keypin, pin10)
 
 ```
 
@@ -242,6 +247,34 @@ parcel_comparison %>%
 There are `r paste(parcel_comparison %>% group_by(appellant) %>% summarize(pins_ingroup = n()) |> filter(pins_ingroup > 1) |> n_distinct())` projects with more than 1 pin in them and  `r paste(parcel_comparison %>% group_by(appellant) %>% summarize(pins_ingroup = n()) |> n_distinct())` projects overall based on appeals data.
 
 
+### Commercial valuation keypins
+
+```{r}
+#| label: fig-muni1-keypin
+#| fig-cap: "Mapped by Commercial valuation keypin"
+#| layout-ncol: 2
+
+parcel_comparison <- left_join(parcels, keypins) %>% 
+  select(group, pin10, keypin, everything()) 
+
+
+parcel_comparison %>% 
+  as.data.frame() |>
+  group_by(keypin) %>%
+  summarize(pins_ingroup = n()) |>
+  arrange(desc(pins_ingroup))
+
+
+parcel_comparison %>% 
+  group_by(keypin) %>%
+  mutate(pins_ingroup = n()) %>%
+  ggplot() +
+  geom_sf(aes(fill = as.factor(keypin))) +
+  theme_minimal() + 
+  scale_fill_discrete(na.value = "white") + 
+  theme(legend.position = "none")
+```
+
 
 ## South Holland
 
@@ -396,6 +429,33 @@ parcel_comparison %>%
 ```
 
 
+### Commercial valuation keypins
+
+```{r}
+#| label: fig-muni2-keypin
+#| fig-cap: "Mapped by Commercial valuation keypin"
+#| layout-ncol: 2
+
+parcel_comparison <- left_join(parcels, keypins) %>% 
+  select(group, pin10, keypin, everything()) 
+
+
+parcel_comparison %>% 
+  as.data.frame() |>
+  group_by(keypin) %>%
+  summarize(pins_ingroup = n()) |>
+  arrange(desc(pins_ingroup))
+
+
+parcel_comparison %>% 
+  group_by(keypin) %>%
+  mutate(pins_ingroup = n()) %>%
+  ggplot() +
+  geom_sf(aes(fill = as.factor(keypin))) +
+  theme_minimal() + 
+  scale_fill_discrete(na.value = "white") + 
+  theme(legend.position = "none")
+```
 
 
 
@@ -551,5 +611,33 @@ parcel_comparison %>%
   theme_minimal() + theme(legend.position = "none")
 ```
 
+
+### Commercial valuation keypins
+
+```{r}
+#| label: fig-muni3-keypin
+#| fig-cap: "Mapped by Commercial valuation keypin"
+#| layout-ncol: 2
+
+parcel_comparison <- left_join(parcels, keypins) %>% 
+  select(group, pin10, keypin, everything()) 
+
+
+parcel_comparison %>% 
+  as.data.frame() |>
+  group_by(keypin) %>%
+  summarize(pins_ingroup = n()) |>
+  arrange(desc(pins_ingroup))
+
+
+parcel_comparison %>% 
+  group_by(keypin) %>%
+  mutate(pins_ingroup = n()) %>%
+  ggplot() +
+  geom_sf(aes(fill = as.factor(keypin))) +
+  theme_minimal() + 
+  scale_fill_discrete(na.value = "white") + 
+  theme(legend.position = "none")
+```
 
 
