@@ -5,6 +5,8 @@
 #        to be used with data extracted from PTAXSIM
 # Initial steps of building panel data to examine commercial and industrial 
 #        property in Cook County
+
+# Redownloaded on July 23rd 2025
 #########################################################################
 
 
@@ -15,7 +17,7 @@ library(glue)
 library(janitor)
 
 
-amazon <- readxl::read_excel("./amazonPINs.xlsx")
+amazon <- readxl::read_excel("./inputs/amazonPINs.xlsx")
 library(stringr)
 library(tidyverse)
 
@@ -53,34 +55,99 @@ parcuniverse_keypins %>%
 
 
 # downloaded entire file from data portal on March 1 2024. No prefiltering:
-comval <- read_csv("./Necessary_Files/Assessor_-_Commercial_Valuation_Data_20240301.csv") 
+#comval <- read_csv("./Inputs/Assessor_-_Commercial_Valuation_Data_20250723.csv") 
+
+# created from AWM combining com val worksheets
+comval <- read_csv("./output/combined_methodologyworksheets_chicago2024.csv") 
+chikeys  <- comval |> select(key_pin, pins = ias_world_pi_ns, classes) |>
+
+  mutate(pins = tolower(pins)) %>%
+  mutate(has_range = ifelse(str_detect(pins,"thru"), 1, 0),
+        pins = str_remove_all(pins, "-"))  %>%
+  mutate(pins2 = str_split(pins, " ")) %>%
+  unnest(pins2) %>%
+  mutate( pins2 = trimws(pins2) ) %>%
+  filter(!is.na(pins2)# & pins2 != " "
+         ) %>%
+  mutate(check_me = ifelse(str_length(pins2) < 14, 1, 0)) 
+
+comval <- read_csv("./output/combined_methodologyworksheets_north2025.csv") 
+north  <- comval |> 
+  select(key_pin, pins = pi_ns, classes) |>
+  
+  mutate(pins = tolower(pins)) %>%
+  mutate(has_range = ifelse(str_detect(pins,"thru"), 1, 0),
+         pins = str_remove_all(pins, "-"))  %>%
+  mutate(pins2 = str_split(pins, " ")) %>%
+  unnest(pins2) %>%
+  mutate( pins2 = trimws(pins2) ) %>%
+  filter(!is.na(pins2)# & pins2 != " "
+  ) %>%
+  mutate(check_me = ifelse(str_length(pins2) !=  14, 1, 0)) 
+
+
+comval <- read_csv("./output/combined_methodologyworksheets_SOUTH.csv") 
+south  <- comval |> 
+  select(key_pin, pins = ias_world_pi_ns, classes) |>
+  
+  mutate(pins = tolower(pins)) %>%
+  mutate(has_range = ifelse(str_detect(pins,"thru"), 1, 0),
+         pins = str_remove_all(pins, "-"))  %>%
+  mutate(pins2 = str_split(pins, " ")) %>%
+  unnest(pins2) %>%
+  mutate( pins2 = trimws(pins2) ) %>%
+  filter(!is.na(pins2)# & pins2 != " "
+  ) %>%
+  mutate(check_me = ifelse(str_length(pins2) !=  14, 1, 0)) 
+
+keypins <- rbind(chikeys, north, south)
+
+distinct_keypins <- keypins |> distinct(key_pin)
+# 53,730 distinct keypins
+## ^^ stopped here!!
+
 
 comval <- comval %>% 
   filter(keypin > 0 & keypin != "TOTAL PINS")
 #  63,142 observations for 2021, 2022, and 2023. Includes all commercial property
+#  96,066 when 2024 is added
+
+comval <- comval %>% 
+  arrange(desc(year)) |>
+  group_by(keypin, pins) |>
+  summarize(keypin = first(keypin, na_rm = T),
+            pins = first(pins, na_rm = T),
+         #  `class(es)`  # 86,041
+           )
+# 70,111 using keypin and pins only. 86K+ if including building class
+
 
 ## Clean up / create a class variable using the first class that appears for each keypin
 comval <- comval %>% 
   mutate(keypin_concat = as.character(keypin)) %>%
   
   # an odd ball that showed up with a class == 60. searched it and manually adding it and then removing it just to document it.
-  mutate(`class(es)` = ifelse(keypin_concat == "17313100110000", "522", `class(es)`)) %>%
+#  mutate(`class(es)` = ifelse(keypin_concat == "17313100110000", "522", `class(es)`)) %>%
   
   mutate(keypin_concat = as.character(keypin),
          keypin_concat = str_remove_all(keypin_concat, "-"),
          keypin_concat = str_pad(keypin_concat, 14, "left", pad = "0"),
-         class_4dig = str_sub(`class(es)`, 1, 4),
-         class_3dig = str_remove_all(class_4dig, "[-,]"),
+      #   class_4dig = str_sub(`class(es)`, 1, 4),
+       #  class_3dig = str_remove_all(class_4dig, "[-,]"),
          pins = as.character(pins))  %>%
-  select(keypin_concat, class_3dig, pins, `class(es)`, everything()) 
+  select(keypin_concat, 
+         #class_3dig, pins, `class(es)`, 
+         everything()) 
 # 63142 obs - implies the number of projects since the comval data was 1 keypin per row
-
+# 86,041 obs - July2025
+# 70,111 when getting rid of property classes
 
 keypins <- unique(comval$keypin_concat)
 # 62,925 unique keypins 
+# 64,108 unique keypins as of July 23rd 2025
 
 pins_pivot <- comval %>% 
-  filter(class_3dig < 600) %>%
+  #filter(class_3dig < 600) %>%
   mutate(pins = tolower(pins)) %>%
   select(keypin_concat, keypin, pins) %>%
   mutate(has_range = ifelse(str_detect(pins,"thru"), 1, 0),
@@ -92,10 +159,13 @@ pins_pivot <- comval %>%
   mutate(pins3 = str_split(pins2, pattern = " ")) %>%
   unnest(pins3) %>%
   mutate(check_me = ifelse(str_length(pins3) < 14, 1, 0)) # if pin does not have the number of characters expected (14), then flag it
-# 81128 obs
+# 81128 obs, but might have been excluding 500 level properties?
+# 125,964 obs as of July 23 2025
+# 117,149 if excluding class variables
 
-
-
+table(pins_pivot$check_me)
+# 860 check me's. big jump from before.
+# 1031 after dropping class
 
 # not sure if all KeyPINs exist as their own PIN variable  (i.e. the keypin = pin)
 # so adding this step just in case
@@ -110,14 +180,18 @@ pins_pivot <- pins_pivot %>%    # was read.csv("./Output/manually_cleaned_incent
 
 addinkeypin_PINs <- pins_pivot %>% 
   select(keypin_concat = keypin_concat2, # need matching variable names for row bind
-         pin_cleaned = pins_add)
+         pin_cleaned = pins_add) #|>
+ # mutate(n = n(), .by = pin_cleaned) |> distinct()
+# 62 063
+# 116,118
 
 pins_pivot_cleaned <- pins_pivot %>% 
-  select(keypin_concat, pin_cleaned)
+  select(keypin_concat, pin_cleaned) |> distinct()
 
 pins_pivot_cleaned <- rbind(pins_pivot_cleaned, addinkeypin_PINs)
-pins_pivot_cleaned <- pins_pivot_cleaned %>% unique()
+pins_pivot_cleaned <- pins_pivot_cleaned %>% distinct()
 # 78,067 obs
+# 107, 809
 
 pins_pivot_cleaned <- pins_pivot_cleaned  %>%
   mutate(keypin_concat = as.character(keypin_concat),
@@ -299,11 +373,14 @@ projects <- keypins %>%
 # 106,939 projects after using classes 500-899
 
 
-write_csv(projects, "Output/all_keypins_2022.csv")
-
+# write_csv(projects, "Output/all_keypins_2022.csv")
 # 106,939 pin-projects after using classes 500-899
+
+ write_csv(projects, "Output/all_keypins_2024.csv")
 # 
-commercpins_2022 <- pins2022 %>% 
+
+ 
+ commercpins_2022 <- pins2022 %>% 
   filter(class >= 500 & class < 900) %>% 
   left_join(projects, by = "pin", relationship = "many-to-many") %>% 
 #  mutate(tax_code_num = as.character(tax_code_num)) %>%
