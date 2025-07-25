@@ -60,7 +60,7 @@ FitFlextableToPage <- function(ft, pgwidth = 6){
   return(ft_out)
 }
 
-pin_data <- read_csv(paste0("../Output/Dont_Upload/0_joined_PIN_data_", params$year, "_test.csv"))
+pin_data <- read_csv(paste0("../Output/Dont_Upload/0_joined_PIN_data_", params$year, ".csv"))
 
 
 eq_factor <- read_csv("../Necessary_Files/eq_factor.csv") |>
@@ -925,7 +925,7 @@ muni_rate <- read_csv("../Output/ptaxsim_muni_level_2006to2023_new.csv") |>
   rename(cur_munilevel_rate = muni_current_rate_avg) |> 
   filter(!clean_name %in% cross_county_line)
 
-muni_ratechange <- read_csv(paste0("../Output/muni_ratechange_", params$year, ".csv")) |> 
+muni_ratechange <- read_csv(paste0("../Output/website_files/muni_ratechange_", params$year, ".csv")) |> 
   filter(!clean_name %in% cross_county_line)
 ```
 
@@ -966,7 +966,7 @@ cook_ratechange <- pin_data |>
     new_TEAV_vacant_props = sum(ifelse(class >=600 & class <900,  # if incentive classes were assessed at 0% (aka not taxedat all) or if the building lost its value completely without the incentive classification.
                                        0, taxed_av*eq_factor), na.rm=TRUE),
     
-    new_TEAV_noExemps = sum(taxed_av*eq_factor + all_exemptions, na.rm=TRUE), # does not include abatements
+    new_TEAV_noExemps = sum(taxed_av*eq_factor + exe_total_adj, na.rm=TRUE), # does not include abatements
     new_TEAV_noAbates = sum(taxed_av*eq_factor + exe_abate, na.rm=TRUE), # include only abatements, not other exemption types
   
     # TIF increment above the frozen EAV
@@ -981,7 +981,7 @@ cook_ratechange <- pin_data |>
     fmv_inTIF = sum(fmv_inTIF, na.rm=TRUE),
     fmv_tif_increment = sum(fmv_tif_increment, na.rm=TRUE),
  #   fmv_untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
-    fmv_exemptions = sum(all_exemptions/eq_factor/loa, na.rm=TRUE),
+    fmv_exemptions = sum(exe_total_adj/eq_factor/loa, na.rm=TRUE),
     fmv_abatements = sum(exe_abate/eq_factor/loa, na.rm=TRUE),
     zero_bill = sum(zero_bill, na.rm=TRUE),
     fmv_residential = sum(ifelse(res_prop==1, fmv, 0), na.rm = TRUE),
@@ -991,8 +991,8 @@ cook_ratechange <- pin_data |>
     fmv_commercial = sum(ifelse(class %in% commercial_classes, fmv, 0), na.rm = TRUE),
     
     current_rate_avg = mean(tax_code_rate),
-    avg_C2_bill_noexe = mean(ifelse(between(class,200,299) & all_exemptions == 0, (final_tax_to_dist + final_tax_to_tif), NA), na.rm=TRUE),
-    avg_C2_bill_withexe = mean(ifelse(between(class,200,299) & all_exemptions > 0, (final_tax_to_dist + final_tax_to_tif), NA), na.rm=TRUE),
+    avg_C2_bill_noexe = mean(ifelse(between(class,200,299) & exe_total_adj == 0, (final_tax_to_dist + final_tax_to_tif), NA), na.rm=TRUE),
+    avg_C2_bill_withexe = mean(ifelse(between(class,200,299) & exe_total_adj > 0, (final_tax_to_dist + final_tax_to_tif), NA), na.rm=TRUE),
     av_taxed = sum(taxed_av, na.rm = TRUE),
     untaxable_value_av = sum(untaxable_value_av, na.rm=TRUE),
     av = sum(av),
@@ -1000,7 +1000,7 @@ cook_ratechange <- pin_data |>
     eav_untaxable = sum(untaxable_value_eav, na.rm=TRUE),
     fmv = sum(fmv, na.rm=TRUE),
     pins_in_class = n(),
-    all_exemptions = sum(all_exemptions),   # in EAV
+    exe_total_adj = sum(exe_total_adj),   # in EAV
     abatements = sum(exe_abate),            # in EAV
     eav_incents_inTIFs = sum(ifelse(incent_prop == 1 & in_tif == 1, taxed_eav, 0), na.rm = TRUE),
 
@@ -1014,10 +1014,10 @@ cook_ratechange <- pin_data |>
    reducedEAV_indust_incents  = new_TEAV_noIndustIncents - eav_taxed,
     # Absolute maximum TEAV: No Exemptions, no abatements, no TIFS, no Incentive properties
     # Commercial and industrial assessed at 25%
-    TEAV_max = eav_taxed + all_exemptions + abatements + forgone_TIF_EAV +    reducedEAV_comind_incents,
+    TEAV_max = eav_taxed + exe_total_adj + abatements + forgone_TIF_EAV +    reducedEAV_comind_incents,
 
     # no exemptions or incentive classifications:
-    TEAV_neither = eav_taxed + all_exemptions + reducedEAV_comind_incents,
+    TEAV_neither = eav_taxed + exe_total_adj + reducedEAV_comind_incents,
 
     rate_noExe = final_tax_to_dist / new_TEAV_noExemps,
     rate_noCommercInc = final_tax_to_dist / new_TEAV_noCommercIncents,
@@ -1032,7 +1032,7 @@ cook_ratechange <- pin_data |>
     rate_current = final_tax_to_dist / eav_taxed,
     change_noInc = rate_current - rate_noInc,
 
-    forgonerev_noExe = rate_noExe * all_exemptions,
+    forgonerev_noExe = rate_noExe * exe_total_adj,
     forgonerev_noAbate = rate_noAbate * (new_TEAV_noAbates - eav_taxed),
     forgonerev_noIncents = rate_noInc * (new_TEAV_noIncents - eav_taxed),
     forgonerev_noCommercIncents = rate_noInc * (new_TEAV_noCommercIncents - eav_taxed),
@@ -1069,7 +1069,7 @@ cook_ratechange |>
 select("Commerc. EAV w/Incent" = reducedEAV_commerc_incents, 
        "Indust EAV w/ Incent" = reducedEAV_indust_incents,
        "CommInd EAV w/ Incent" = reducedEAV_comind_incents,
-       "Homeowner Exemption Exempt EAV" = all_exemptions) |> 
+       "Homeowner Exemption Exempt EAV" = exe_total_adj) |> 
   flextable()
 
 
