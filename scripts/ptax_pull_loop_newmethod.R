@@ -787,12 +787,12 @@ rm(muni_level_summary2)
 # Export CSVs ------------------------------------------------------------
 
 
-write_csv(county_sums, "./Output/ptaxsim_cook_level_2006to2023_new.csv")
-write_csv(county_MC_sums, "./Output/ptaxsim_cook_MC_level_2006to2023_new.csv")
+write_csv(county_sums, "./Output/ptaxsim_cook_level_2006to2023.csv")
+write_csv(county_MC_sums, "./Output/ptaxsim_cook_MC_level_2006to2023.csv")
 
 
 
-write_csv(muni_level_summary, "./Output/ptaxsim_muni_level_2006to2023_new.csv")
+write_csv(muni_level_summary, "./Output/ptaxsim_muni_level_2006to2023.csv")
 
-write_csv(muni_MC_summary, "./Output/ptaxsim_muni_MC_2006to2023_new.csv")
+write_csv(muni_MC_summary, "./Output/ptaxsim_muni_MC_2006to2023.csv")
 
