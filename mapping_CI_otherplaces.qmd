@@ -73,13 +73,46 @@ keypins <- read.csv("./Output/keypins_from_methodwkshts.csv") |>
 
 
 ```{r}
-keypincheck <- comm_ind |> 
-  left_join(keypins) |> 
-  left_join(bor_pins, by = "pin") |>
-  left_join(pins_sold, by = "pin")
+#| label: read-BOR-data
+bor <- read_csv("Output/borappeals.csv") %>%
+  mutate(project_appellant = paste(project_id, sep = "-", appellant),
+         pin10 = str_sub(pin,1,10)) 
 
-keypincheck <- keypincheck |> 
-  select(pin, pin10, keypin, sale_buyer_name, sale_document_num, num_parcels_sale, proj_appeallant, timesappealed, incent_prop, appellant, appealid = project_id)
+
+
+```
+
+
+```{r}
+
+# bor_pins <- bor %>% 
+#   group_by(pin) %>% 
+#   arrange(desc(tax_year)) %>%
+#   summarize(pin = first(pin),
+#             pin10 = first(pin10),
+#             class_current = first(class),
+#             class_bor = list(class),
+#             appellant = first(appellant),
+#             project_id = first(project_id), 
+#             tax_year_appealed = list(tax_year),
+#             timesappealed = n() ) %>%
+#   mutate(proj_appeallant = paste(project_id, "-", appellant)) |>
+#   mutate(incent_prop = ifelse(as.numeric(class_current) > 599, 1, 0))
+
+
+# keypincheck <- comm_ind |> 
+#   left_join(keypins) |> 
+#   left_join(bor_pins, by = "pin") |>
+#   left_join(pins_sold, by = "pin")
+# 
+# keypincheck <- keypincheck |> 
+#   select(pin, pin10, keypin, sale_buyer_name, sale_document_num, num_parcels_sale, proj_appeallant, timesappealed, incent_prop, appellant, appealid = project_id)
+# 
+# todaydate <- Sys.Date()
+
+#writexl::write_xlsx(keypincheck, "Output/project_check.xlsx")
+
+keypins <- readxl::read_xlsx("Output/project_check_AWMmanualcheck.xlsx")
 ```
 
 - Random parcels that should be grouped in a project:
@@ -87,27 +120,6 @@ keypincheck <- keypincheck |>
   
 
 
-```{r}
-#| label: read-BOR-data
-bor <- read_csv("Output/borappeals.csv") %>%
-  mutate(project_appellant = paste(project_id, sep = "-", appellant),
-         pin10 = str_sub(pin,1,10)) 
-
-
-bor_pins <- bor %>% 
-  group_by(pin) %>% 
-  arrange(desc(tax_year)) %>%
-  summarize(pin = first(pin),
-            pin10 = first(pin10),
-            class_current = first(class),
-            class_bor = list(class),
-            appellant = first(appellant),
-            project_id = first(project_id), 
-            tax_year_appealed = list(tax_year),
-            timesappealed = n() ) %>%
-  mutate(proj_appeallant = paste(project_id, "-", appellant)) |>
-  mutate(incent_prop = ifelse(as.numeric(class_current) > 599, 1, 0))
-```
 
 
 # Mapping Areas
@@ -241,6 +253,21 @@ There are `r paste(parcel_comparison %>% as.data.frame() |> group_by(sale_buyer_
 #| label: fig-muni1-appellantname
 #| fig-cap: "Mapped by Board of Review Appellant name."
 #| layout-ncol: 2
+
+
+bor_pins <- bor %>%
+  group_by(pin) %>%
+  arrange(desc(tax_year)) %>%
+  summarize(#pin = first(pin), # only need parcel level info for mapping.
+            pin10 = first(pin10),
+            class_current = first(class),
+            class_bor = list(class),
+            appellant = first(appellant),
+            project_id = first(project_id),
+            tax_year_appealed = list(tax_year),
+            timesappealed = n() ) %>%
+  mutate(proj_appeallant = paste(project_id, "-", appellant)) |>
+  mutate(incent_prop = ifelse(as.numeric(class_current) > 599, 1, 0))
 
 
 parcel_comparison <- left_join(parcels, bor_pins) %>% 
