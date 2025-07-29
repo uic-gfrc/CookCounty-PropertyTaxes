@@ -1470,9 +1470,6 @@ plot.title.position = "plot",
 #| fig-height: 6
 #| fig-width: 6
 
-cmap_colors = c("#d0e4a4", "#1e478e", "#6dae4f" 
-               )
-
 
 # as a dot graph ## 
 # create order of dots
@@ -1506,8 +1503,7 @@ figure9_data|>
     plot.title.position = "plot",
     plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
   )+
-  scale_fill_manual(values = c("#d0e4a4", "#1e478e", "#6dae4f"),
-                    #  cmap_colors, 
+  scale_fill_manual(values = c("#ade0ee", "#1e478e", "#6dae4f"),
                     labels = c("Current Rate", 
                                "No Incentive Classes: \nLoA = 25%",
                                "Incentive Classification\nLoA = 0%") ) +  
@@ -1522,6 +1518,79 @@ figure9_data|>
        subtitle = "Ordered by Current Composite Tax Rate", 
        x = "Composite Tax Rate (%)", y = "")
 ```
+
+```{r}
+#| label: fig-Figure9-dotplot3dots-focusonbigchanges
+#| fig-cap: "**Figure 9 in Incentive Report.** Only shows municipalities that had more than 1/2 percentage point change in tax rate. Municipalities with less than X amount are in grayscale."
+#| fig-height: 6
+#| fig-width: 6
+
+install.packages("ggtext")
+library(ggtext)
+# as a dot graph ## 
+# create order of dots
+order <- muni_ratechange |>  
+  as_tibble() |> 
+  filter(change_noInc > .005) |>
+  arrange(rate_current) |>
+  select(clean_name, rate_current) |> distinct()
+
+# make dot graph
+figure9_data <- muni_ratechange |> 
+  mutate(lowchange = ifelse(change_noInc < 0.02, TRUE, FALSE)
+         ) |>
+  filter(change_noInc > .005) |>
+  select(clean_name, rate_current, rate_noInc, rate_vacant, lowchange) |> 
+  distinct() |>
+  arrange(rate_current) |>
+  pivot_longer(c("rate_current", 
+                 "rate_noInc", 
+                 "rate_vacant"
+  ), 
+  names_to = "type", values_to = "tax_rate") |> 
+  inner_join(order)  |>
+  mutate(dotcolor = case_when(
+          #lowchange == TRUE ~ "gray",
+          type == "rate_current" ~ "#ade0ee",
+          type == "rate_noInc" ~ "#1e478e",
+          type == "rate_vacant" ~ "#6dae4f"
+          
+         ),
+         dotalpha = case_when(
+          lowchange == TRUE ~ .8,
+          T ~ 1 ),
+      dotlabel = ifelse(lowchange, 
+                              paste0("<span style='color:gray70;'>", clean_name, "</span>"), 
+                              clean_name)
+           
+           )
+label_vec <- setNames(figure9_data$dotlabel, figure9_data$clean_name)
+
+
+figure9_data  |>
+  ggplot(aes(x = tax_rate, y= reorder(clean_name, rate_current)))+
+  geom_line(aes(group = clean_name, alpha = dotalpha))+ 
+  geom_point(aes(fill=dotcolor, alpha = dotalpha ), size=3, pch = 21, color = "black")+
+  theme_minimal() + 
+  theme( 
+    legend.title = element_blank(),
+    legend.position = "none",
+   # legend.position = "bottom",
+    plot.title.position = "plot",
+    plot.background = element_rect(fill='transparent', color=NA), #transparent plot bg
+    axis.text.y = element_markdown(size = 9) # enable HTML styling in axis labels
+
+  )+
+  scale_fill_identity(  labels = c("Current Rate", 
+                               "No Incentive Classes: \nLoA = 25%",
+                               "Incentive Classification\nLoA = 0%")) + 
+  scale_x_continuous(labels = scales::percent) +
+  scale_y_discrete(labels = label_vec) + 
+  labs(#title = "Composite Tax Rate Scenarios",
+       #subtitle = "Ordered by Current Composite Tax Rate", 
+       x = "Composite Tax Rate (%)", y = "")
+```
+ 
 
 ```{r}
 #| eval: false
