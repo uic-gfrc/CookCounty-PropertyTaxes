@@ -24,10 +24,10 @@ library(tidyverse)
 amazon <- amazon %>% 
   mutate(pin_clean = str_remove_all(PIN, "-"),
          parcel = str_sub(pin_clean, 1, 10),
-         block = str_sub(pin_clean,1,7),
-         township = str_sub(pin_clean, 1, 2),
-         keypin = "amazon") |>
-  select(keypin, pin = pin_clean)
+        
+         keypin = "amazon",
+         year = 2025) |>
+  select(keypin, pin = pin_clean, year)
 
 
 # Archived Parcel Universe Dataset -----
@@ -71,7 +71,24 @@ chikeys  <- comval |> select(key_pin, pins = ias_world_pi_ns, classes) |>
   mutate( pins2 = trimws(pins2) ) %>%
   filter(!is.na(pins2)# & pins2 != " "
          ) %>%
-  mutate(check_me = ifelse(str_length(pins2) < 14, 1, 0)) 
+  mutate(check_me = ifelse(str_length(pins2) < 14, 1, 0),
+         year = 2024) 
+
+comval <- read_csv("./output/combined_methodologyworksheets_NORTH2022.csv") 
+north2022  <- comval |> 
+  select(key_pin, pins = pi_ns, classes= class) |>
+  
+  mutate(pins = tolower(pins)) %>%
+  mutate(has_range = ifelse(str_detect(pins,"thru"), 1, 0),
+         pins = str_remove_all(pins, "-"),
+         pins = str_remove_all(pins, ","))  %>%
+  mutate(pins2 = str_split(pins, " ")) %>%
+  unnest(pins2) %>%
+  mutate( pins2 = trimws(pins2) ) %>%
+  filter(!is.na(pins2)# & pins2 != " "
+  ) %>%
+  mutate(check_me = ifelse(str_length(pins2) !=  14, 1, 0), 
+         year = 2022) 
 
 comval <- read_csv("./output/combined_methodologyworksheets_north2025.csv") 
 north  <- comval |> 
@@ -85,8 +102,21 @@ north  <- comval |>
   mutate( pins2 = trimws(pins2) ) %>%
   filter(!is.na(pins2)# & pins2 != " "
   ) %>%
-  mutate(check_me = ifelse(str_length(pins2) !=  14, 1, 0)) 
+  mutate(check_me = ifelse(str_length(pins2) !=  14, 1, 0),
+         year = 2025) 
 
+north <- rbind(north, north2022)  |>
+  filter(check_me == 0) |>
+  select(key_pin, pins = pins2, classes, has_range, year) |>
+  mutate(keypin = str_remove_all(keypin, "-")) |> 
+  arrange(pin, desc(year)) |>
+  group_by(pin) |> 
+  summarize(keypin = first(keypin),
+            year = first(year),
+            classes = first(classes), 
+            has_range = mean(has_range)) 
+
+north |> filter(n() > 1, .by = pin) |> arrange(pin)   # should be zero
 
 comval <- read_csv("./output/combined_methodologyworksheets_SOUTH.csv") 
 south  <- comval |> 
@@ -100,13 +130,14 @@ south  <- comval |>
   mutate( pins2 = trimws(pins2) ) %>%
   filter(!is.na(pins2)# & pins2 != " "
   ) %>%
-  mutate(check_me = ifelse(str_length(pins2) !=  14, 1, 0)) 
+  mutate(check_me = ifelse(str_length(pins2) !=  14, 1, 0), 
+         year = 2023) 
 
 keypins <- rbind(chikeys, north, south)
 
 keypins <- keypins |> 
   filter(check_me == 0) |>
-  select(keypin = key_pin, pin = pins2) |>
+  select(keypin = key_pin, pin = pins2, year) |>
   mutate(keypin = str_remove_all(keypin, "-")) |> 
   rbind(amazon) |>
   distinct()
@@ -114,6 +145,7 @@ keypins <- keypins |>
 
 distinct_keypins <- keypins |> distinct(keypin)
 # 53,710 distinct keypins
+#39K +
 
 keypins |> summarize(n = n(), .by = keypin) |> arrange(desc(n))
 
