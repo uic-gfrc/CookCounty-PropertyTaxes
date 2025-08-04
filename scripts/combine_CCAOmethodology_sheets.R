@@ -37,18 +37,17 @@ file_paths <- list.files(dir_path_north, pattern = "*.xlsx", full.names = TRUE)
 # Combine data from all files
 final_df_north <- map_dfr(file_paths, read_sheets) 
 
-final_df_north <- final_df_north %>% select(-c(x18:x29, x30:x32))
+final_df_north <- final_df_north %>% select(-c(x18:x29, x30:x32)) |>
+  select(key_pin:file_name)
 
 final_df_north <- final_df_north %>%
-  replace_with_na_all(~.x == "NA" )
+  mutate(pi_ns = ifelse(is.na(pi_ns), key_pin, pi_ns)) |>
+  filter(!is.na(pi_ns))
 
-missing <- is.na(final_df_north$key_pin) | is.na(final_df_north$pi_ns  )
-# gets rid of 300,000+ rows that were messed up from reading in the excel files.
-final_df_north <- subset(final_df_north, subset = !missing)
+write.csv(final_df_north, "Output/combined_methodologyworksheets_NORTH2022.csv")
 
 
-write.csv(final_df_north, "Output/combined_methodologyworksheets_NORTH.csv")
-
+# South Triad Townships 2023 ----------------------------------------------
 
 
 dir_path_south <- "inputs/methodologyreports/south_2023"   # Path to the directory containing the files
@@ -60,6 +59,9 @@ file_paths <- list.files(dir_path_south, pattern = "*.xlsx", full.names = TRUE
  final_df_south <- map_dfr(file_paths, read_sheets)
 #final_df_south
 
+ final_df_south <- final_df_south |> 
+   mutate(ias_world_pi_ns = ifelse(is.na(ias_world_pi_ns), key_pin, ias_world_pi_ns)) |>
+   filter(!is.na(ias_world_pi_ns))
  
  final_df_south <- final_df_south %>%
    replace_with_na_all(~.x == "NA" )
@@ -81,13 +83,12 @@ file_paths <- list.files(dir_path_chicago, pattern = "*.xlsx", full.names = TRUE
 # Combine data from all files
 final_df_chi <- map_dfr(file_paths, read_sheets) 
 
-# final_df_chi <- final_df_chi %>% select(-c(x18:x29, x30:x32))
+final_df_chi <- final_df_chi |>
+  mutate(pi_ns = ifelse(is.na(pi_ns), key_pin, pi_ns)) |>
+  filter(!is.na(pi_ns))
 
-final_df_chi <- final_df_chi %>%
-  replace_with_na_all(~.x == "NA" )
-
-missing <- is.na(final_df_chi$key_pin) | is.na(final_df_chi$pi_ns  )
-final_df_chi <- subset(final_df_chi, subset = !missing)
+# final_df_chi <- final_df_chi %>%
+#   mutate(across(replace_with_na,  "NA" ) )
 
 
 write.csv(final_df_chi, "Output/combined_methodologyworksheets_CHICAGO.csv")
@@ -105,14 +106,12 @@ file_paths <- list.files(dir_path_chicago, pattern = "*.xlsx", full.names = TRUE
 # Combine data from all files
 final_df_chi <- map_dfr(file_paths, read_sheets) 
 
-# final_df_chi <- final_df_chi %>% select(-c(x18:x29, x30:x32))
-
-final_df_chi <- final_df_chi %>%
-  replace_with_na_all(~.x == "NA" )
-
-missing <- is.na(final_df_chi$key_pin) | is.na(final_df_chi$ias_world_pi_ns )
-final_df_chi <- subset(final_df_chi, subset = !missing)
-
+final_df_chi <- final_df_chi |>
+  mutate(ias_world_pi_ns = ifelse(is.na(ias_world_pi_ns), key_pin, ias_world_pi_ns)) |>
+  filter(!is.na(ias_world_pi_ns))
+# 
+# final_df_chi <- final_df_chi %>%
+#   replace_with_na_all(~.x == "NA" )
 
 write.csv(final_df_chi, "Output/combined_methodologyworksheets_chicago2024.csv")
  
@@ -127,12 +126,13 @@ file_paths <- list.files(dir_path_chicago, pattern = "*.xlsx", full.names = TRUE
 # Combine data from all files
 final_df_chi <- map_dfr(file_paths, read_sheets) 
 
-final_df_chi <- final_df_chi %>%
-  replace_with_na_all(~.x == "NA" )
 
-missing <- is.na(final_df_chi$key_pin) | is.na(final_df_chi$pi_ns  )
-final_df_chi <- subset(final_df_chi, subset = !missing)
-
+final_df_chi <- final_df_chi |>
+  mutate(pi_ns = ifelse(is.na(pi_ns), key_pin, pi_ns)) |>
+  filter(!is.na(pi_ns))
+# 
+# final_df_chi <- final_df_chi %>%
+#   replace_with_na_all(~.x == "NA" )
 
 write.csv(final_df_chi, "Output/combined_methodologyworksheets_north2025.csv")  
 
