@@ -308,10 +308,6 @@ There are `r paste(parcel_comparison %>% group_by(appellant) %>% summarize(pins_
 #| fig-cap: "Mapped by Commercial valuation keypin"
 #| layout-ncol: 2
 
-#parcel_comparison <- left_join(parcels, keypins) %>% 
-#  select(pin10, keypin,everything()) 
-
-
 parcel_comparison %>% 
   as.data.frame() |>
   group_by(keypin) |>
@@ -326,6 +322,35 @@ parcel_comparison %>%
   geom_sf(aes(fill = as.factor(keypin))) +
   theme_minimal() + 
   scale_fill_discrete(na.value = "white") + 
+  theme(legend.position = "none")
+```
+
+```{r}
+#write_csv(parcel_comparison, "Output/projects_bedfordpark.csv")
+```
+
+```{r}
+parcel_comparison <- readxl::read_xlsx("Output/projects_bedfordpark_checked.xlsx")  |>
+  mutate(pin10 = str_pad(pin10, 10, "left", "0"),
+         pin = str_pad(pin, 14, "left", "0"),
+         keypin = str_pad(keypin, 14, "left", "0")) |>
+  select(-geometry)
+
+parcel_comparison <- left_join(parcels, parcel_comparison, by = "pin10") %>% 
+  select(pin10, keypin, everything()) 
+
+parcel_comparison |>
+  as.data.frame() |>
+  group_by(keypin) |>
+  summarize(n = n()) |>
+  arrange(desc(n))
+
+parcel_comparison %>% 
+    mutate(mapid = str_c(appealid, "-", keypin)) |>
+  ggplot() +
+  geom_sf(aes(fill = mapid)) +
+  theme_minimal() + 
+  scale_fill_discrete(na.value = "white")+
   theme(legend.position = "none")
 ```
 
