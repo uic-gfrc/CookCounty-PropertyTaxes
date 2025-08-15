@@ -23,6 +23,8 @@ library(glue)
 library(sf)
 library(DT)
 library(flextable)
+#install.packages("ggtext")
+library(ggtext)
 
 nicknames <- readxl::read_excel("../Necessary_Files/muni_shortnames.xlsx")
 
@@ -755,20 +757,107 @@ figure7 <- muni_incent_share |>
 filter(clean_name != "Unincorporated") |>
   full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) 
 
+figure7$pct_fmv_w_incent <- cut(
+  figure7$pct_fmv_w_incent,
+  breaks = c(0, 0.075, 0.15, 0.22, 0.30, as.numeric(max(muni_incent_share$pct_fmv_w_incent))),
+  labels = c(
+    "<7.5%",
+    "7.5–14.99%",
+    "15.0–21.99%",
+    "22.0–29.99%",
+    "≥30%"
+  ),
+  include.lowest = TRUE
+)
+
+    # Define color palette
+exemption_colors <- c(
+  "<7.5%" = "#ffffcc",
+  "7.5–14.99%" = "lightblue",
+  "15.0–21.99%" = "#4292C6",
+  "22.0–29.99%" = "#253494",
+  "≥30%" = "#00004d")
+    
+
 figure7 |>
   ggplot(aes(fill = pct_fmv_w_incent)) +
   geom_sf(aes(geometry = geom), color = "black") +
   theme_void() + 
   theme(axis.ticks = element_blank(), axis.text = element_blank())+
-  scale_fill_steps2(
-    high = "#1e478e", low = "black",
-    show.limits=TRUE,
-    nice.breaks=FALSE,
-    na.value="gray",
-    n =4,
-    name = "C&I FMV with\nIncentive Class",
-    labels = scales::percent
-) +
+  scale_fill_manual(
+          na.value = "gray50",
+          name = "% Exempt",
+          values = exemption_colors,
+          na.translate = FALSE
+        ) +
+#   scale_fill_steps2(
+#     high = "#1e478e", low = "black",
+#     show.limits=TRUE,
+#     nice.breaks=FALSE,
+#     na.value="gray",
+#     n =4,
+#     name = "C&I FMV with\nIncentive Class",
+#     labels = scales::percent
+# ) +
+  
+     # scale_fill_stepsn(colors = c("#ffffcc","#a1dab4" ,"#41b6c4","#2c7fb8", "#253494"),
+     #                    show.limits=TRUE, 
+     #                 limits = c(0,1),
+     #                 na.value = "white", # "gray70",
+     #                 n.breaks = 6,
+     #                    name = "Burden with \nExemptions", 
+     #                 labels = scales::percent
+     #                 
+     #                )+
+   geom_sf_pattern(data = no_incentives, aes(geometry = geom), pattern = 'crosshatch', pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray40')+
+  ggtitle(label = "Commercial & Industrial FMV with Incentive Classification")
+
+```
+
+
+```{r}
+#| label: fig-altFigure7-shareofcomindFMV
+#| fig-cap: "Share of Commercial and Industrial FMV that has an incentive property class."
+
+figure7alt <- muni_incent_share |>
+  select(clean_name, pct_fmv_w_incent) |>
+  left_join(nicknames)|>
+filter(clean_name != "Unincorporated") |>
+  full_join(muni_shp, by = c("shpfile_name" = "MUNICIPALITY")) 
+
+figure7alt$pct_fmv_w_incent_label <- cut(
+  figure7alt$pct_fmv_w_incent,
+  breaks = c(0, 0.15, 0.30, 0.45, 0.60, as.numeric(max(muni_incent_share$pct_fmv_w_incent))),
+  labels = c(
+    "<15%",
+    "15–29.99%",
+    "30–44.99%",
+    "45–59.99%",
+    "≥60%"
+  ),
+  include.lowest = TRUE
+)
+
+# Define color palette
+exemption_colors <- c(
+  "<15%" = "#ffffcc",
+  "15–29.99%" = "lightblue",
+  "30–44.99%" = "#4292C6",
+  "45–59.99%" = "#253494",
+  "≥60%" = "#00004d")
+
+
+figure7alt |>
+  ggplot(aes(fill = pct_fmv_w_incent_label)) +
+  geom_sf(aes(geometry = geom), color = "black") +
+  theme_void() + 
+  theme(axis.ticks = element_blank(), axis.text = element_blank())+
+  scale_fill_manual(
+          na.value = "gray50",
+          name = "% Exempt",
+          values = exemption_colors,
+          na.translate = FALSE
+        ) +
    geom_sf_pattern(data = no_incentives, aes(geometry = geom), pattern = 'crosshatch', pattern_spacing = 0.015, pattern_density = 0.1, fill = "white", alpha = .5, color = 'gray40')+
   ggtitle(label = "Commercial & Industrial FMV with Incentive Classification")
 
@@ -1475,7 +1564,7 @@ plot.title.position = "plot",
 # create order of dots
 order <- muni_ratechange |>  
   as_tibble() |> 
-  filter(change_noInc > .005) |>
+  filter(change_noInc > .005 | clean_name == "Chicago") |>
   arrange(rate_current) |>
   select(clean_name, rate_current) |> distinct()
 
@@ -1499,23 +1588,22 @@ figure9_data|>
   theme_minimal() + 
   theme( 
     legend.title = element_blank(),
-    legend.position = "bottom",
+#    legend.position = "bottom",
+    legend.position = "mnone",
+
     plot.title.position = "plot",
-    plot.background = element_rect(fill='transparent', color=NA) #transparent plot bg
-  )+
+    plot.background = element_rect(fill='transparent', color=NA), #transparent plot bg
+      axis.text.y = element_markdown(size = 9) # enable HTML styling in axis labels
+
+)+
   scale_fill_manual(values = c("#ade0ee", "#1e478e", "#6dae4f"),
                     labels = c("Current Rate", 
                                "No Incentive Classes: \nLoA = 25%",
                                "Incentive Classification\nLoA = 0%") ) +  
-  
-  # scale_fill_brewer(palette = "Greys", direction = -1,
-  #                   labels = c("Current Rate", 
-  #                              "No Incentive Classes: \nLoA = 25%",
-  #                              "Incentive Classification\nLoA = 0%") 
-  # )+
+
     scale_x_continuous(labels = scales::percent)+
-  labs(title = "Composite Tax Rate Scenarios",
-       subtitle = "Ordered by Current Composite Tax Rate", 
+  labs(#title = "Composite Tax Rate Scenarios",
+       #subtitle = "Ordered by Current Composite Tax Rate", 
        x = "Composite Tax Rate (%)", y = "")
 ```
 
@@ -1525,8 +1613,7 @@ figure9_data|>
 #| fig-height: 6
 #| fig-width: 6
 
-install.packages("ggtext")
-library(ggtext)
+
 # as a dot graph ## 
 # create order of dots
 order <- muni_ratechange |>  
@@ -1550,7 +1637,6 @@ figure9_data <- muni_ratechange |>
   names_to = "type", values_to = "tax_rate") |> 
   inner_join(order)  |>
   mutate(dotcolor = case_when(
-          #lowchange == TRUE ~ "gray",
           type == "rate_current" ~ "#ade0ee",
           type == "rate_noInc" ~ "#1e478e",
           type == "rate_vacant" ~ "#6dae4f"
@@ -1591,6 +1677,99 @@ figure9_data  |>
        x = "Composite Tax Rate (%)", y = "")
 ```
  
+```{r}
+#| label: fig-JoshRachelPaper-dotplot3dots-focusonbigchanges
+#| fig-cap: "**Image for Academic Paper.** Only shows municipalities that had more than 1/2 percentage point change in tax rate. Municipalities with less than X amount are in grayscale."
+#| fig-height: 10
+#| fig-width: 6
+
+  
+addcook <- cook_ratechange |>   
+  select(rate_current, rate_noInc, rate_vacant, rate_noExe) |>
+  mutate(clean_name = "Cook",
+         lowchange = TRUE) |>
+  select(clean_name, rate_current,rate_noInc, rate_vacant, lowchange, rate_noExe)
+# as a dot graph ## 
+# create order of dots
+order <- muni_ratechange |>  
+  as_tibble() |> 
+    filter(change_noInc > .005 | clean_name == "Chicago" |  change_noExe > 0.01) |>
+
+ # filter((change_noInc > .005 | clean_name == "Chicago" | change_noExe > 0.005) & !is.na(clean_name)) |>
+  arrange(rate_current) |>
+  select(clean_name, rate_current) |> distinct() |>
+  rbind(addcook |> select(clean_name, rate_current))
+
+# make dot graph
+figure9_data <- muni_ratechange |> 
+  mutate(lowchange = ifelse(change_noInc < 0.015 & change_noExe < 0.015, TRUE, FALSE)
+         ) |>
+    filter(change_noInc > .015 | clean_name == "Chicago" | clean_name == "Cook" | change_noExe > 0.015) |>
+
+ # filter(change_noInc > .005 | clean_name == "Chicago" | clean_name == "Cook" | change_noExe > 0.01) |>
+
+  select(clean_name, rate_current, rate_noInc, rate_vacant, lowchange, rate_noExe) |> 
+  rbind(addcook) |>
+
+  distinct() |>
+  arrange(rate_current) |>
+  pivot_longer(c(
+                 "rate_noInc", 
+                # "rate_vacant", 
+                 "rate_noExe",
+                "rate_current"), 
+               names_to = "type", values_to = "tax_rate") |> 
+  inner_join(order)  |>
+  mutate(
+    dotcolor = case_when(
+     
+      type == "rate_noInc" ~ "#ffffcc", #"#4292C6",
+      #type == "rate_vacant" ~ "#6dae4f",
+      type == "rate_noExe" ~ "#4292C6",
+       type == "rate_current" ~ "#253494",
+    ),
+    dotalpha = case_when(
+      lowchange == TRUE ~ .8,
+      T ~ 1 ),
+    dotlabel = ifelse(lowchange, 
+                      paste0("<span style='color:gray70;'>", clean_name, "</span>"), 
+                      clean_name)
+           )
+
+label_vec <- setNames(figure9_data$dotlabel, figure9_data$clean_name)
+
+
+figure9_data  |>
+  ggplot(aes(x = tax_rate, y= reorder(clean_name, rate_current)))+
+  geom_line(aes(group = clean_name, alpha = dotalpha), show.legend = c(alpha = FALSE)
+            )+ 
+  geom_point(aes(fill=dotcolor, alpha = dotalpha ), color = "black", size=3, pch = 21, 
+             show.legend = c(fill = TRUE, alpha = FALSE)
+             )+
+  theme_minimal() + 
+  theme( 
+    legend.title = element_blank(),
+    #legend.position = "none",
+    legend.position = "bottom",
+    plot.title.position = "plot",
+    plot.background = element_rect(fill='transparent', color=NA), #transparent plot bg
+    axis.text.y = element_markdown(size = 9) # enable HTML styling in axis labels
+    
+  ) +
+  scale_fill_identity(labels = rev(c(
+    "No Exemptions",
+    "No Incentive Classes",
+    "Current Rate")
+  ),
+ # breaks = dotcolor, #c("No Exemptions", "No Incentives", "Current Rate"),
+  guide = "legend") +
+  scale_x_continuous(labels = scales::percent) +
+  scale_y_discrete(labels = label_vec) + 
+  labs(#title = "Composite Tax Rate Scenarios",
+       #subtitle = "Ordered by Current Composite Tax Rate", 
+       x = "Composite Tax Rate (%)", y = "")
+```
+
 
 ```{r}
 #| eval: false
