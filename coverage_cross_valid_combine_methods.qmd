@@ -174,19 +174,6 @@ bor |> filter(appealid != project_id)
 
 ```{r}
 
-# cook_sum_stats_incent <- bds |>
-#   filter(type %in% c("Commercial", "Industrial")) |>
-#   filter(incent_prop == "Incentive") |>
-#   group_by(type) |>
-#   summarize(
-#     n = n(),
-#     av = sum(av, na.rm = TRUE),
-#     fmv = sum(fmv, na.rm = TRUE),
-#     in_tif = sum(in_tif, na.rm = TRUE),
-#     total_rev = sum(final_tax_to_dist, na.rm = TRUE),
-#     .groups = "drop"
-#   )
-
 
 # distinct PINs with their most recent appeallant information
 bor_pins <- bor %>% 
@@ -241,14 +228,296 @@ perc_app_cov
 ```{r}
 
 
+appellant_table_coverage_sums <- bds |>
+   filter(type %in% c("Commercial", "Industrial")) |>
+
+  inner_join(bor_pins, by = "pin") |>
+  filter(!is.na(appellant)) |>
+ # filter(type %in% c("Commercial", "Industrial")) |>
+
+  group_by(type, incent_prop) |>
+  summarize(
+    n = n(),
+    n_projects = n_distinct(appealid),
+    av = sum(av, na.rm = TRUE),  
+    fmv = sum(fmv, na.rm = TRUE),
+    in_tif = sum(in_tif, na.rm = TRUE),
+    total_rev = sum(final_tax_to_dist, na.rm = TRUE),
+    .groups = "drop"
+  )
+  
+df_long <- appellant_table_coverage_sums |>
+  pivot_longer(cols = c(n, av, fmv, in_tif, total_rev), names_to = "measure", values_to = "value") |>
+  group_by(type, measure) |>
+  mutate(
+    prop = value / sum(value, na.rm = TRUE)
+  ) |>
+  ungroup()
+
+# Total labels (above bar)
+bar_totals <- df_long |>
+  group_by(type, measure) |>
+  summarise(total = sum(value, na.rm = TRUE), .groups = "drop") |>
+  mutate(
+    label = case_when(
+      measure %in% c("av", "fmv", "total_rev") ~ label_dollar(scale = 1e-9, suffix = "B", accuracy = 0.1)(total),
+      TRUE ~ comma(total)
+    )
+  )
+
+# Label positions (only if prop fits in 1.05 range)
+bar_totals <- bar_totals |>
+  mutate(y_pos = 1.05)  # static position slightly above bar
+
+# Nice labels for facets
+facet_labels <- c(
+  n = "Parcel Count",
+  av = "Assessed Value",
+  fmv = "Fair Market Value",
+  in_tif = "Parcels in TIFs",
+  total_rev = "Total Tax Revenue"
+)
+
+# Plot
+ggplot(df_long, aes(x = type, y = prop, fill = incent_prop)) +
+  geom_bar(stat = "identity", position = "stack", width = 0.6) +
+  geom_text(
+    data = bar_totals,
+    aes(x = type, y = y_pos, label = label),
+    inherit.aes = FALSE,
+    size = 4
+  ) +
+  facet_wrap(~measure, labeller = as_labeller(facet_labels)) +
+  scale_y_continuous(
+    labels = percent_format(accuracy = 1),
+    limits = c(0, 1.1),  # hard limit to cut off anything above 100%
+    expand = c(0, 0)
+  ) +
+  scale_fill_manual(
+    values = c("Incentive" = "#E69F00", "Non-Incentive" = "#56B4E9"),
+    name = "Incentive Status"
+  ) +
+  labs(
+    x = NULL,
+    y = "Percent of Total",
+    title = "Distribution of Parcels, Value, and Tax Revenue\nby Type and Incentive (2023)",
+    subtitle = "Non-missing Appellant Names"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    plot.title = element_text(hjust = 0.5),
+    strip.text = element_text(face = "bold")
+  )
+
 
 ```
 
 
-## Parcel Universe
 
 
-## Board of Review Data
 
 ## Sales Data
+
+```{r}
+sales <- read_csv("../../dissertation/data/raw/Assessor_Parcel_Sales_20250105.csv") %>% 
+ # "./inputs/Assessor_-_Parcel_Sales_20250704.csv") %>%
+  filter(class > 399 & class < 900) %>%
+  mutate(major_class = str_sub(class, 1, 1),
+            pin10 = str_sub(pin,1,10)) |>
+  mutate(incent_prop = ifelse(as.numeric(class) > 599, 1, 0) # already filtered to less than 900 level properties above
+         )
+
+sales_pins <- sales %>% 
+  group_by(pin) %>% 
+  arrange(desc(year)) %>%
+  summarize(year_sold = max(year),
+            class_current = first(class),
+            sale_document_num= first(sale_document_num),
+            sale_buyer_name = first(sale_buyer_name), 
+            num_parcels_sale = first(num_parcels_sale)) 
+
+sales_parcels <- sales %>% 
+  group_by(pin10) %>% 
+  arrange(desc(year)) %>%
+  summarize(sale_document_num= first(sale_document_num),
+            sale_buyer_name = first(sale_buyer_name), 
+            num_parcels_sale = first(num_parcels_sale),
+            incent_prop_pct = mean(incent_prop, na.rm=TRUE))
+
+
+```
+
+
+```{r}
+
+sales_table_coverage_sums <- bds |>
+   filter(type %in% c("Commercial", "Industrial")) |>
+
+  inner_join(sales_pins, by = "pin") |>
+  filter(!is.na(sale_document_num)) |>
+  group_by(type, incent_prop) |>
+  summarize(
+    n = n(),
+    n_projects = n_distinct(sale_document_num),
+    av = sum(av, na.rm = TRUE),  
+    fmv = sum(fmv, na.rm = TRUE),
+    in_tif = sum(in_tif, na.rm = TRUE),
+    total_rev = sum(final_tax_to_dist, na.rm = TRUE),
+    .groups = "drop"
+  )
+  
+df_long <- sales_table_coverage_sums |>
+  pivot_longer(cols = c(n, av, fmv, in_tif, total_rev), names_to = "measure", values_to = "value") |>
+  group_by(type, measure) |>
+  mutate(
+    prop = value / sum(value, na.rm = TRUE)
+  ) |>
+  ungroup()
+
+# Total labels (above bar)
+bar_totals <- df_long |>
+  group_by(type, measure) |>
+  summarise(total = sum(value, na.rm = TRUE), .groups = "drop") |>
+  mutate(
+    label = case_when(
+      measure %in% c("av", "fmv", "total_rev") ~ label_dollar(scale = 1e-9, suffix = "B", accuracy = 0.1)(total),
+      TRUE ~ comma(total)
+    )
+  )
+
+# Label positions (only if prop fits in 1.05 range)
+bar_totals <- bar_totals |>
+  mutate(y_pos = 1.05)  # static position slightly above bar
+
+# Nice labels for facets
+facet_labels <- c(
+  n = "Parcel Count",
+  av = "Assessed Value",
+  fmv = "Fair Market Value",
+  in_tif = "Parcels in TIFs",
+  total_rev = "Total Tax Revenue"
+)
+
+# Plot
+ggplot(df_long, aes(x = type, y = prop, fill = incent_prop)) +
+  geom_bar(stat = "identity", position = "stack", width = 0.6) +
+  geom_text(
+    data = bar_totals,
+    aes(x = type, y = y_pos, label = label),
+    inherit.aes = FALSE,
+    size = 4
+  ) +
+  facet_wrap(~measure, labeller = as_labeller(facet_labels)) +
+  scale_y_continuous(
+    labels = percent_format(accuracy = 1),
+    limits = c(0, 1.1),  # hard limit to cut off anything above 100%
+    expand = c(0, 0)
+  ) +
+  scale_fill_manual(
+    values = c("Incentive" = "#E69F00", "Non-Incentive" = "#56B4E9"),
+    name = "Incentive Status"
+  ) +
+  labs(
+    x = NULL,
+    y = "Percent of Total",
+    title = "Distribution of Parcels, Value, and Tax Revenue\nby Type and Incentive (2023)",
+    subtitle = "Non-missing Sales Document Numbers"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    plot.title = element_text(hjust = 0.5),
+    strip.text = element_text(face = "bold")
+  )
+
+
+```
+
+
+```{r}
+
+
+sales_table_coverage_sums <- bds |>
+   filter(type %in% c("Commercial", "Industrial")) |>
+
+  inner_join(sales_pins, by = "pin") |>
+  filter(!is.na(sale_buyer_name)) |>
+  group_by(type, incent_prop) |>
+  summarize(
+    n = n(),
+    n_projects = n_distinct(sale_buyer_name),
+    av = sum(av, na.rm = TRUE),  
+    fmv = sum(fmv, na.rm = TRUE),
+    in_tif = sum(in_tif, na.rm = TRUE),
+    total_rev = sum(final_tax_to_dist, na.rm = TRUE),
+    .groups = "drop"
+  )
+  
+df_long <- sales_table_coverage_sums |>
+  pivot_longer(cols = c(n, av, fmv, in_tif, total_rev), names_to = "measure", values_to = "value") |>
+  group_by(type, measure) |>
+  mutate(
+    prop = value / sum(value, na.rm = TRUE)
+  ) |>
+  ungroup()
+
+# Total labels (above bar)
+bar_totals <- df_long |>
+  group_by(type, measure) |>
+  summarise(total = sum(value, na.rm = TRUE), .groups = "drop") |>
+  mutate(
+    label = case_when(
+      measure %in% c("av", "fmv", "total_rev") ~ label_dollar(scale = 1e-9, suffix = "B", accuracy = 0.1)(total),
+      TRUE ~ comma(total)
+    )
+  )
+
+# Label positions (only if prop fits in 1.05 range)
+bar_totals <- bar_totals |>
+  mutate(y_pos = 1.05)  # static position slightly above bar
+
+# Nice labels for facets
+facet_labels <- c(
+  n = "Parcel Count",
+  av = "Assessed Value",
+  fmv = "Fair Market Value",
+  in_tif = "Parcels in TIFs",
+  total_rev = "Total Tax Revenue"
+)
+
+# Plot
+ggplot(df_long, aes(x = type, y = prop, fill = incent_prop)) +
+  geom_bar(stat = "identity", position = "stack", width = 0.6) +
+  geom_text(
+    data = bar_totals,
+    aes(x = type, y = y_pos, label = label),
+    inherit.aes = FALSE,
+    size = 4
+  ) +
+  facet_wrap(~measure, labeller = as_labeller(facet_labels)) +
+  scale_y_continuous(
+    labels = percent_format(accuracy = 1),
+    limits = c(0, 1.1),  # hard limit to cut off anything above 100%
+    expand = c(0, 0)
+  ) +
+  scale_fill_manual(
+    values = c("Incentive" = "#E69F00", "Non-Incentive" = "#56B4E9"),
+    name = "Incentive Status"
+  ) +
+  labs(
+    x = NULL,
+    y = "Percent of Total",
+    title = "Distribution of Parcels, Value, and Tax Revenue\nby Type and Incentive (2023)",
+    subtitle = "Non-missing Buyer Names"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    plot.title = element_text(hjust = 0.5),
+    strip.text = element_text(face = "bold")
+  )
+
+
+```
 
