@@ -160,11 +160,9 @@ twnshp_test <- comm_ind %>%
   filter(clean_name == "Bedford Park") %>%
   mutate(pin10 = str_sub(pin, 1, 10))
 
-twnshp_test <- twnshp_test |> distinct(pin10)
 
-pins_geo <- lookup_pin10_geometry(year = 2023, 
+pins_geo <- lookup_pin10_geometry(year = 2022, 
                                         pin10 = twnshp_test$pin10) %>%
-    select(-year) |> distinct() %>%
   st_as_sf(wkt = "geometry", crs = 4326)
 
 points <- st_as_sf(pins_geo, coords = c("longitude", "latitude"), crs = 4326)
@@ -178,6 +176,35 @@ parcels$geometry <- st_make_valid(parcels$geometry)
 # Filter out invalid geometries
 parcels <- parcels[st_is_valid(parcels), ]
 
+neighbors <- st_touches(parcels)
+parcels$group <- rep(NA, nrow(parcels))
+
+group_id <- 1  # Start with the first group ID
+
+# Loop over each parcel
+for (i in seq_along(neighbors)) {
+  if (is.na(parcels$group[i])) {  # If the parcel hasn't been assigned to a group yet
+    
+    # Start a list of parcels to visit (start with the current parcel)
+    to_visit <- i
+    
+    # Use BFS/DFS to explore connected parcels and assign the same group ID
+    while (length(to_visit) > 0) {
+      current <- to_visit[1]  # Get the first parcel to visit
+      to_visit <- to_visit[-1]  # Remove it from the list
+      
+      if (is.na(parcels$group[current])) {  # If the parcel hasn't been visited
+        parcels$group[current] <- group_id  # Assign the current group ID
+        
+        # Add its neighbors (parcels it touches) to the list of parcels to visit
+        to_visit <- c(to_visit, neighbors[[current]])
+      }
+    }
+    
+    # Increment the group ID for the next group of connected parcels
+    group_id <- group_id + 1
+  }
+}
 
 
 
@@ -196,8 +223,6 @@ ggplot(parcels) +
 #| fig-cap: "Grouped by Sale Document Number."
 #| layout-ncol: 2
 
-# parcel_comparison <- left_join(parcels, parcels_sold, by = "pin10") %>% 
-#   select(pin10, everything())
 
 keypins |> filter(pin10%in% twnshp_test$pin10)
 
@@ -258,26 +283,6 @@ There are `r paste(parcel_comparison %>% as.data.frame() |> group_by(sale_buyer_
 #| fig-cap: "Mapped by Board of Review Appellant name."
 #| layout-ncol: 2
 
-# 
-# bor_pins <- bor %>%
-#   group_by(pin) %>%
-#   arrange(desc(tax_year)) %>%
-#   summarize(class_current = first(class),
-#             class_bor = list(class),
-#             appellant = first(appellant),
-#             project_id = first(project_id),
-#             tax_year_appealed = list(tax_year),
-#             timesappealed = n() ) %>%
-#   mutate(proj_appeallant = paste(project_id, "-", appellant),
-#          pin10 = str_sub(pin, 1, 10)) |>
-#   mutate(incent_prop = ifelse(as.numeric(class_current) > 599 & as.numeric(class_current) < 900, 1, 0))
-
-# 
-# parcel_comparison <- left_join(parcels, bor_pins) %>% 
-#   select(pin10, appellant, everything()) 
-
- # parcel_comparison <- left_join(parcels, keypins) %>% 
- #   select(pin10, appellant, everything()) 
 
 parcel_comparison %>% 
   as.data.frame() |>
@@ -289,7 +294,6 @@ parcel_comparison %>%
 
 parcel_comparison %>% 
   group_by(appellant) %>%
- # mutate(pins_ingroup = n()) %>%
   ggplot() +
   geom_sf(aes(fill = as.factor(appellant))) +
   theme_minimal() + 
@@ -333,8 +337,7 @@ parcel_comparison %>%
 parcel_comparison <- readxl::read_xlsx("Output/projects_bedfordpark_checked.xlsx")  |>
   mutate(pin10 = str_pad(pin10, 10, "left", "0"),
          pin = str_pad(pin, 14, "left", "0"),
-         keypin = str_pad(keypin, 14, "left", "0")) |>
-  select(-geometry)
+         keypin = str_pad(keypin, 14, "left", "0"))
 
 parcel_comparison <- left_join(parcels, parcel_comparison, by = "pin10") %>% 
   select(pin10, keypin, everything()) 
@@ -342,12 +345,13 @@ parcel_comparison <- left_join(parcels, parcel_comparison, by = "pin10") %>%
 parcel_comparison |>
   as.data.frame() |>
   group_by(keypin) |>
-  summarize(n = n()) |>
+  summarize(n = n(),
+            incent_pins = sum(incent_prop=="Incentive")) |>
   arrange(desc(n))
 
 parcel_comparison %>% 
-  group(keypin) |>
-  mutate(appealid = first(appealid))
+  group_by(keypin) |>
+  mutate(appealid = first(appealid)) |>
     mutate(mapid = str_c(appealid, "-", keypin)) |>
   ggplot() +
   geom_sf(aes(fill = mapid)) +
@@ -369,9 +373,9 @@ twnshp_test <- comm_ind %>%
   filter(clean_name == "South Holland") %>%
   mutate(pin10 = str_sub(pin, 1, 10))
 
-pins_geo <- lookup_pin10_geometry(year = c(2022:2023), 
-                                        pin10 = twnshp_test$pin10) %>%   
-  select(-year) |> distinct() %>%
+
+pins_geo <- lookup_pin10_geometry(year = 2022, 
+                                        pin10 = twnshp_test$pin10) %>%
   st_as_sf(wkt = "geometry", crs = 4326)
 
 points <- st_as_sf(pins_geo, coords = c("longitude", "latitude"), crs = 4326)
@@ -385,7 +389,35 @@ parcels$geometry <- st_make_valid(parcels$geometry)
 # Filter out invalid geometries
 parcels <- parcels[st_is_valid(parcels), ]
 
+neighbors <- st_touches(parcels)
+parcels$group <- rep(NA, nrow(parcels))
 
+group_id <- 1  # Start with the first group ID
+
+# Loop over each parcel
+for (i in seq_along(neighbors)) {
+  if (is.na(parcels$group[i])) {  # If the parcel hasn't been assigned to a group yet
+    
+    # Start a list of parcels to visit (start with the current parcel)
+    to_visit <- i
+    
+    # Use BFS/DFS to explore connected parcels and assign the same group ID
+    while (length(to_visit) > 0) {
+      current <- to_visit[1]  # Get the first parcel to visit
+      to_visit <- to_visit[-1]  # Remove it from the list
+      
+      if (is.na(parcels$group[current])) {  # If the parcel hasn't been visited
+        parcels$group[current] <- group_id  # Assign the current group ID
+        
+        # Add its neighbors (parcels it touches) to the list of parcels to visit
+        to_visit <- c(to_visit, neighbors[[current]])
+      }
+    }
+    
+    # Increment the group ID for the next group of connected parcels
+    group_id <- group_id + 1
+  }
+}
 
 
 ggplot(parcels) +
@@ -401,10 +433,6 @@ ggplot(parcels) +
 #| label: fig-muni-appellantname
 #| fig-cap: "Mapped by Board of Review Appellant name."
 #| layout-ncol: 2
-
-
-#parcel_comparison <- left_join(parcels, bor_pins) %>%
- # select(group, pin10, appellant, everything())
 
 parcel_comparison <- left_join(parcels, keypins) %>%
   select(pin10, appellant, everything())
@@ -438,10 +466,6 @@ There are `r paste(parcel_comparison %>% group_by(appellant) %>% summarize(pins_
 #| label: fig-muni-buyername
 #| fig-cap: "Mapped by Buyer's name."
 #| layout-ncol: 2
-
-#parcel_comparison <- left_join(parcels, sales, by = "pin10") %>% 
-#  select(group, pin10, everything())
-
 
 
 parcel_comparison  |>
@@ -495,9 +519,6 @@ There are `r paste(parcel_comparison %>% group_by(sale_document_num) %>% summari
 #| fig-cap: "Mapped by Commercial valuation keypin"
 #| layout-ncol: 2
 
-# parcel_comparison <- left_join(parcels, keypins) %>% 
-#   select(group, pin10, keypin, everything()) 
-# 
 
 parcel_comparison %>% 
   
@@ -533,10 +554,10 @@ twnshp_test <- comm_ind %>%
   filter(clean_name == "Franklin Park") %>%
   mutate(pin10 = str_sub(pin, 1, 10))
 
-pins_geo <- lookup_pin10_geometry(year = c(2022:2023), 
-                                        pin10 = twnshp_test$pin10) |> 
-  select(-year) |> distinct() %>%
-  st_as_sf(wkt = "geometry", crs = 4326) 
+
+pins_geo <- lookup_pin10_geometry(year = 2022, 
+                                        pin10 = twnshp_test$pin10) %>%
+  st_as_sf(wkt = "geometry", crs = 4326)
 
 points <- st_as_sf(pins_geo, coords = c("longitude", "latitude"), crs = 4326)
 
@@ -548,6 +569,36 @@ parcels$geometry <- st_make_valid(parcels$geometry)
 
 # Filter out invalid geometries
 parcels <- parcels[st_is_valid(parcels), ]
+
+neighbors <- st_touches(parcels)
+parcels$group <- rep(NA, nrow(parcels))
+
+group_id <- 1  # Start with the first group ID
+
+# Loop over each parcel
+for (i in seq_along(neighbors)) {
+  if (is.na(parcels$group[i])) {  # If the parcel hasn't been assigned to a group yet
+    
+    # Start a list of parcels to visit (start with the current parcel)
+    to_visit <- i
+    
+    # Use BFS/DFS to explore connected parcels and assign the same group ID
+    while (length(to_visit) > 0) {
+      current <- to_visit[1]  # Get the first parcel to visit
+      to_visit <- to_visit[-1]  # Remove it from the list
+      
+      if (is.na(parcels$group[current])) {  # If the parcel hasn't been visited
+        parcels$group[current] <- group_id  # Assign the current group ID
+        
+        # Add its neighbors (parcels it touches) to the list of parcels to visit
+        to_visit <- c(to_visit, neighbors[[current]])
+      }
+    }
+    
+    # Increment the group ID for the next group of connected parcels
+    group_id <- group_id + 1
+  }
+}
 
 
 ggplot(parcels) +
@@ -565,9 +616,6 @@ ggplot(parcels) +
 #| fig-cap: "Mapped by Board of Review Appellant name."
 #| layout-ncol: 2
 
-
-# parcel_comparison <- left_join(parcels, bor_pins) %>%
-#   select(group, pin10, appellant, everything())
 
  parcel_comparison <- left_join(parcels, keypins) %>%
    select(pin10, appellant, everything())
@@ -600,10 +648,6 @@ There are `r paste(parcel_comparison %>% group_by(appellant) %>% summarize(pins_
 #| label: fig-muni3-buyername
 #| fig-cap: "Mapped by Buyer's name."
 #| layout-ncol: 2
-
-# parcel_comparison <- left_join(parcels, sales, by = "pin10") %>% 
-#   select(group, pin10, everything())
-# 
 
 
 parcel_comparison  |>
@@ -656,9 +700,6 @@ parcel_comparison %>%
 #| fig-cap: "Mapped by Commercial valuation keypin. Only shows projects that had at least 1 parcel in it"
 #| layout-ncol: 2
 
-# parcel_comparison <- left_join(parcels, keypins) %>% 
-#   select(group, pin10, keypin, everything()) 
-
 
 parcel_comparison %>% 
   as.data.frame() |>
@@ -691,10 +732,10 @@ twnshp_test <- comm_ind %>%
   filter(clean_name == "Matteson") %>%
   mutate(pin10 = str_sub(pin, 1, 10))
 
-pins_geo <- lookup_pin10_geometry(year = c(2022:2023), 
-                                        pin10 = twnshp_test$pin10) |> 
-  select(-year) |> distinct() %>%
-  st_as_sf(wkt = "geometry", crs = 4326) 
+
+pins_geo <- lookup_pin10_geometry(year = 2022, 
+                                        pin10 = twnshp_test$pin10) %>%
+  st_as_sf(wkt = "geometry", crs = 4326)
 
 points <- st_as_sf(pins_geo, coords = c("longitude", "latitude"), crs = 4326)
 
@@ -706,6 +747,36 @@ parcels$geometry <- st_make_valid(parcels$geometry)
 
 # Filter out invalid geometries
 parcels <- parcels[st_is_valid(parcels), ]
+
+neighbors <- st_touches(parcels)
+parcels$group <- rep(NA, nrow(parcels))
+
+group_id <- 1  # Start with the first group ID
+
+# Loop over each parcel
+for (i in seq_along(neighbors)) {
+  if (is.na(parcels$group[i])) {  # If the parcel hasn't been assigned to a group yet
+    
+    # Start a list of parcels to visit (start with the current parcel)
+    to_visit <- i
+    
+    # Use BFS/DFS to explore connected parcels and assign the same group ID
+    while (length(to_visit) > 0) {
+      current <- to_visit[1]  # Get the first parcel to visit
+      to_visit <- to_visit[-1]  # Remove it from the list
+      
+      if (is.na(parcels$group[current])) {  # If the parcel hasn't been visited
+        parcels$group[current] <- group_id  # Assign the current group ID
+        
+        # Add its neighbors (parcels it touches) to the list of parcels to visit
+        to_visit <- c(to_visit, neighbors[[current]])
+      }
+    }
+    
+    # Increment the group ID for the next group of connected parcels
+    group_id <- group_id + 1
+  }
+}
 
 
 ggplot(parcels) +
@@ -723,9 +794,6 @@ ggplot(parcels) +
 #| fig-cap: "Mapped by Board of Review Appellant name."
 #| layout-ncol: 2
 
-
-# parcel_comparison <- left_join(parcels, bor_pins) %>%
-#   select(group, pin10, appellant, everything())
 
  parcel_comparison <- left_join(parcels, keypins) %>%
    select(pin10, appellant, everything())
@@ -758,10 +826,6 @@ There are `r paste(parcel_comparison %>% group_by(appellant) %>% summarize(pins_
 #| label: fig-muni4-buyername
 #| fig-cap: "Mapped by Buyer's name."
 #| layout-ncol: 2
-
-# parcel_comparison <- left_join(parcels, sales, by = "pin10") %>% 
-#   select(group, pin10, everything())
-# 
 
 
 parcel_comparison  |>
@@ -814,10 +878,6 @@ parcel_comparison %>%
 #| fig-cap: "Mapped by Commercial valuation keypin. Only shows projects that had at least 1 parcel in it"
 #| layout-ncol: 2
 
-# parcel_comparison <- left_join(parcels, keypins) %>% 
-#   select(group, pin10, keypin, everything()) 
-
-
 parcel_comparison %>% 
   as.data.frame() |>
   group_by(keypin) %>%
@@ -850,10 +910,10 @@ twnshp_test <- comm_ind %>%
   filter(clean_name == "Elk Grove Village") %>%
   mutate(pin10 = str_sub(pin, 1, 10))
 
-pins_geo <- lookup_pin10_geometry(year = c(2022:2023), 
-                                        pin10 = twnshp_test$pin10) |> 
-  select(-year) |> distinct() %>%
-  st_as_sf(wkt = "geometry", crs = 4326) 
+
+pins_geo <- lookup_pin10_geometry(year = 2022, 
+                                        pin10 = twnshp_test$pin10) %>%
+  st_as_sf(wkt = "geometry", crs = 4326)
 
 points <- st_as_sf(pins_geo, coords = c("longitude", "latitude"), crs = 4326)
 
@@ -866,6 +926,35 @@ parcels$geometry <- st_make_valid(parcels$geometry)
 # Filter out invalid geometries
 parcels <- parcels[st_is_valid(parcels), ]
 
+neighbors <- st_touches(parcels)
+parcels$group <- rep(NA, nrow(parcels))
+
+group_id <- 1  # Start with the first group ID
+
+# Loop over each parcel
+for (i in seq_along(neighbors)) {
+  if (is.na(parcels$group[i])) {  # If the parcel hasn't been assigned to a group yet
+    
+    # Start a list of parcels to visit (start with the current parcel)
+    to_visit <- i
+    
+    # Use BFS/DFS to explore connected parcels and assign the same group ID
+    while (length(to_visit) > 0) {
+      current <- to_visit[1]  # Get the first parcel to visit
+      to_visit <- to_visit[-1]  # Remove it from the list
+      
+      if (is.na(parcels$group[current])) {  # If the parcel hasn't been visited
+        parcels$group[current] <- group_id  # Assign the current group ID
+        
+        # Add its neighbors (parcels it touches) to the list of parcels to visit
+        to_visit <- c(to_visit, neighbors[[current]])
+      }
+    }
+    
+    # Increment the group ID for the next group of connected parcels
+    group_id <- group_id + 1
+  }
+}
 
 ggplot(parcels) +
   geom_sf(aes()) +
@@ -881,10 +970,6 @@ ggplot(parcels) +
 #| label: fig-muni5-appellantname
 #| fig-cap: "Mapped by Board of Review Appellant name."
 #| layout-ncol: 2
-
-
-# parcel_comparison <- left_join(parcels, bor_pins) %>%
-#   select(group, pin10, appellant, everything())
 
  parcel_comparison <- left_join(parcels, keypins) %>%
    select(pin10, appellant, everything())
@@ -917,10 +1002,6 @@ There are `r paste(parcel_comparison %>% group_by(appellant) %>% summarize(pins_
 #| label: fig-muni5-buyername
 #| fig-cap: "Mapped by Buyer's name."
 #| layout-ncol: 2
-
-# parcel_comparison <- left_join(parcels, sales, by = "pin10") %>% 
-#   select(group, pin10, everything())
-# 
 
 
 parcel_comparison  |>
@@ -975,9 +1056,6 @@ There are `r paste(parcel_comparison %>% group_by(sale_document_num) %>% summari
 #| label: fig-muni5-keypin
 #| fig-cap: "Mapped by Commercial valuation keypin. Only shows projects that had at least 1 parcel in it"
 #| layout-ncol: 2
-
-# parcel_comparison <- left_join(parcels, keypins) %>% 
-#   select(group, pin10, keypin, everything()) 
 
 
 parcel_comparison %>% 
