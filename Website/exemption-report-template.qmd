@@ -16,13 +16,13 @@ library(flextable)
 nicknames <- readxl::read_excel("../Necessary_Files/muni_shortnames.xlsx")
 
 
-county_sums <- read_csv("../Output/ptaxsim_cook_level_2006to2023_new.csv")
+county_sums <- read_csv("../Output/ptaxsim_cook_level_2006to2023.csv")
 
-muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006to2023_new.csv") |> 
+muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006to2023.csv") |> 
  left_join(nicknames)
 
 
-muni_mc_sums <- read_csv("../Output/ptaxsim_muni_MC_2006to2023_new.csv") |>
+muni_mc_sums <- read_csv("../Output/ptaxsim_muni_MC_2006to2023.csv") |>
   rename_all(~str_replace(., "muni_mc_", ""))
 
 
@@ -405,7 +405,7 @@ county_sums |>
   geom_bar( stat = "identity" ) + 
   theme_minimal() +
   labs(title = "Residential Exempt EAV in Cook County", 
-       subtitle = paste0("by Type and Geography, 2006-", params$year), 
+       subtitle = paste0("2006-", params$year), 
        y = "EAV (Billions)", x ="") +
   scale_fill_manual(values = c("deepskyblue3", "chartreuse2",  "darksalmon", "brown2", "blue4" )) +
                     scale_x_continuous(breaks = c(2006, 2010, 2015, 2020, 2023))
@@ -425,7 +425,7 @@ Trends in the total EAV reductions due to homestead exemptions reflect both real
 #| column: page
 
 
-muni_ratechange <- read_csv(paste0("../Output/muni_ratechange_", params$year, ".csv"))
+muni_ratechange <- read_csv(paste0("../Output/website_files/muni_ratechange_", params$year, ".csv"))
 
 
 muni_ratechange |> 
@@ -563,10 +563,10 @@ burden_shift %>%
 pin_data <- read_csv(paste0("../Output/Dont_Upload/0_joined_PIN_data_", params$year, ".csv"))
 
 
-mc_burden <- read_csv(paste0("../Output/muni_mc_burden_", params$year, ".csv"))
+mc_burden <- read_csv(paste0("../Output/website_files/muni_mc_burden_", params$year, ".csv"))
 
 
-burden_shift <- read_csv(paste0("../Output/muni_burden_shift_", params$year, ".csv"))
+burden_shift <- read_csv(paste0("../Output/website_files/muni_burden_shift_", params$year, ".csv"))
 ```
 
 ```{r}
@@ -768,14 +768,14 @@ C2_munistats_filtered <- pin_data |>
   arrange(av) |>
 summarize(
     median_eq_av = round(median(eq_av)),
-    median_taxed_eav = round(median(eq_av-all_exemptions)),
+    median_taxed_eav = round(median(eq_av-exe_total_adj)),
     median_av = round(median(av)), 
     avg_av = round(mean(av)),
     avg_eq_av = round(mean(eq_av)),
-    avg_taxed_eav = round(mean(eq_av-all_exemptions)),
+    avg_taxed_eav = round(mean(eq_av-exe_total_adj)),
 
     C2_pins_in_muni = n(),
-    C2_current_exemptions = sum(all_exemptions, na.rm = TRUE),
+    C2_current_exemptions = sum(exe_total_adj, na.rm = TRUE),
     C2_HO_exemps = sum(exe_homeowner, na.rm = TRUE),
   )
 
@@ -804,7 +804,7 @@ C2_munistats_filtered |>
 
 
 muni_median_summarytable <- pin_data |> 
-  select(pin, av, class, tax_code_num, tax_bill_total, av_certified, exe_homeowner:exe_abate, clean_name, eq_av, all_exemptions, zero_bill, has_HO_exemp, taxed_eav, final_tax_to_dist, final_tax_to_tif) |>
+  select(pin, av, class, tax_code_num, tax_bill_total, av_certified, exe_homeowner:exe_abate, clean_name, eq_av, exe_total_adj, zero_bill, has_HO_exemp, taxed_eav, final_tax_to_dist, final_tax_to_tif) |>
 
   filter(class > 199 & class < 300) |> 
   
@@ -830,7 +830,7 @@ muni_median_summarytable <- pin_data |>
   
   mutate(#bill_current = (final_tax_to_dist + final_tax_to_tif),
          bill_current = rate_current* taxed_eav,
-         bill_noexemps =  rate_noGHE*(eq_av-all_exemptions+exe_homeowner),
+         bill_noexemps =  rate_noGHE*(eq_av-exe_total_adj+exe_homeowner),
          bill_change = bill_noexemps - bill_current) |>
   # 
   group_by(clean_name, 
@@ -843,7 +843,7 @@ muni_median_summarytable <- pin_data |>
             bill_new = round(median(bill_noexemps)),
             bill_change = round(median(bill_change)),
             pincount=n(),
-            perceived_savings = round(median(all_exemptions*rate_current))
+            perceived_savings = round(median(exe_total_adj*rate_current))
             ) |> 
   
   # merge in clean_names variable
@@ -889,7 +889,7 @@ muni_median_summarytable |>
 
 cholton_15000_summarytable <- pin_data |> 
   
-  select(pin, av, class, tax_code_num, tax_bill_total, av_certified, exe_homeowner:exe_abate, clean_name, eq_av, all_exemptions, zero_bill, has_HO_exemp, taxed_eav, final_tax_to_dist, final_tax_to_tif) |>
+  select(pin, av, class, tax_code_num, tax_bill_total, av_certified, exe_homeowner:exe_abate, clean_name, eq_av, exe_total_adj, zero_bill, has_HO_exemp, taxed_eav, final_tax_to_dist, final_tax_to_tif) |>
   filter(clean_name %in% c("Chicago", "Dolton", "Glencoe")) |>
   filter(between(av, 14800, 15200)) |>
 
@@ -915,7 +915,7 @@ cholton_15000_summarytable <- pin_data |>
   
   mutate(
          bill_current = rate_current* taxed_eav,
-         bill_noexemps =  rate_noGHE*(eq_av-all_exemptions+exe_homeowner),
+         bill_noexemps =  rate_noGHE*(eq_av-exe_total_adj+exe_homeowner),
          bill_change = bill_noexemps - bill_current) |>
   # 
   group_by(clean_name, 
@@ -929,7 +929,7 @@ cholton_15000_summarytable <- pin_data |>
             bill_new = round(median(bill_noexemps)),
             bill_change = round(median(bill_change)),
             pincount=n(),
-            perceived_savings = round(median(all_exemptions*rate_current))
+            perceived_savings = round(median(exe_total_adj*rate_current))
             ) |> 
   
   # merge in clean_names variable
@@ -1050,6 +1050,74 @@ mc_burden |>
 
 ```
 
+```{r}
+#| label: fig-dotplotburdenshift-withouttext
+
+order <- mc_burden |>
+  filter(class_1dig == 2) |>
+    select(clean_name, pct_taxburden_current, burden_shift)
+
+slice <-  mc_burden |>
+  filter(class_1dig == 2) |>
+    select(clean_name, pct_taxburden_current, burden_shift) |>
+  arrange(pct_taxburden_current) |>
+  slice(1:5, 63:67, 127:131)
+
+
+
+median_burden <- median(order$pct_taxburden_current)
+median_shift <- median(order$burden_shift)
+
+# median burden change is 5.9 percentage points
+# current median burden is 70.3% of the levy
+
+mc_burden |> 
+  filter(clean_name %in% slice$clean_name) |>
+#filter(!clean_name %in% cross_county_lines$clean_name)|>
+  filter(class_1dig == 2) |>
+#  filter(burden_current > 0.938 |burden_current < .17 |
+ #          ( (burden_current < median(burden_current) + 0.01 )& (burden_current > median(burden_current) - 0.01)) )|> 
+  ungroup() |> 
+      select(clean_name, pct_taxburden_current, hyp_pct_taxburden, burden_shift) |>
+  arrange(burden_shift) |>
+  pivot_longer(c("pct_taxburden_current", "hyp_pct_taxburden"), 
+               names_to = "type", values_to = "pct_burden") |> 
+  inner_join(order) |>
+  ggplot(aes(x = pct_burden, 
+             y= reorder(clean_name, - pct_taxburden_current)))+
+  # y= reorder(clean_name, burden_current)))+
+  geom_vline(xintercept = median_burden, linetype = 3)+
+  geom_line(aes(group = clean_name))+ 
+  geom_hline(yintercept = 5.5, linetype = 2)+
+  geom_hline(yintercept = 10.5, linetype = 2)+
+  geom_point(aes(color=type), size=3 )+
+
+  theme_minimal() + 
+  theme( 
+    legend.title = element_blank(),
+    plot.title.position = "plot",
+ plot.background = element_rect(fill='transparent', color=NA) 
+  )+
+  scale_color_brewer(palette="Paired", labels = c("Current Burden", "Burden if \nNo Exemptions" ), direction = 1) +
+  scale_x_continuous(labels = scales::percent) +
+
+  
+  labs(title = "Change in Class 2 Residential Tax Burden", 
+       subtitle = "Ordered by Current Tax Burden",
+  x = "Share of Levy (%)", y = "" , 
+#  caption = paste0("Dotted line represents median Class 2 burden (", round(median_burden*100), "% of the levy).  \nResidential Tax Burden is theshare of the property tax collected that was paid for by property owners with Class 2 properties."
+#)
+) #+
+  
+#    geom_label(label = "Class 2 pays small share of \nlevy; very little residential", x=.32, y = 13, label.size = 1, size = 3)+
+  
+ #   geom_label(label = paste0("Class 2 pays median share of \nlevy (", round(median_burden*100), "%), mix of land use"), x=.42, y = 7.5, label.size = 1, size = 3) +
+  
+ #   geom_label(label = "Class 2 pays nearly all of levy, \nhighly residential", x=.70, y = 3, label.size = 1,size = 3)
+
+```
+
+
 ### Figure 11. Zero Dollar Bills
 
 ```{r}
@@ -1109,7 +1177,7 @@ taxcodes_current <- pin_data %>%
     taxed_eav = sum(taxed_eav),
     equalized_AV = sum(eq_av),
     pins_in_class = n(),
-    current_exemptions = sum(all_exemptions),
+    current_exemptions = sum(exe_total_adj),
     HO_exemps = sum(exe_homeowner),
     tax_code_rate = first(tax_code_rate), 
     final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE), # used as LEVY amount!!
