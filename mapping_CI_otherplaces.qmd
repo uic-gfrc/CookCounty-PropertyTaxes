@@ -542,6 +542,40 @@ parcel_comparison %>%
 
 There are `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ingroup = n()) |> filter(pins_ingroup > 1) |> n_distinct())` projects with more than 1 pin in them and  `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ingroup = n()) |> n_distinct())` projects overall based on sales data.
 
+```{r}
+write_csv(parcel_comparison, "Output/projects_southholland.csv")
+```
+
+```{r}
+parcel_comparison <- readxl::read_xlsx("Output/projects_bedfordpark_checked.xlsx")  |>
+  mutate(pin10 = str_pad(pin10, 10, "left", "0"),
+         pin = str_pad(pin, 14, "left", "0"),
+         keypin = str_pad(keypin, 14, "left", "0"))
+
+parcel_comparison <- left_join(parcels, parcel_comparison, by = "pin10") %>% 
+  select(pin10, keypin, everything()) 
+
+parcel_comparison |>
+  as.data.frame() |>
+  group_by(keypin) |>
+  summarize(n = n(),
+            incent_pins = sum(incent_prop=="Incentive")) |>
+  arrange(desc(n))
+
+parcel_comparison %>% 
+  group_by(keypin) |>
+  mutate(appealid = first(appealid)) |>
+    mutate(mapid = str_c(appealid, "-", keypin)) |>
+  ggplot() +
+  geom_sf(aes(fill = mapid)) +
+  theme_minimal() + 
+  scale_fill_discrete(na.value = "white")+
+  theme(legend.position = "none")
+```
+
+
+There are `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ingroup = n()) |> filter(pins_ingroup > 1) |> n_distinct())` projects with more than 1 pin in them and  `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ingroup = n()) |> n_distinct())` projects overall based on sales data.
+
 ## Franklin Park
 
 
@@ -720,6 +754,10 @@ parcel_comparison %>%
 
 There are `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ingroup = n()) |> filter(pins_ingroup > 1) |> n_distinct())` projects with more than 1 pin in them and  `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ingroup = n()) |> n_distinct())` projects overall based on sales data.
 
+```{r}
+write_csv(parcel_comparison, "Output/projects_franklinpark.csv")
+```
+
 ## Matteson
 
 
@@ -897,6 +935,10 @@ parcel_comparison %>%
 
 
 There are `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ingroup = n()) |> filter(pins_ingroup > 1) |> n_distinct())` projects with more than 1 pin in them and  `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ingroup = n()) |> n_distinct())` projects overall based on sales data.
+
+```{r}
+write_csv(parcel_comparison, "Output/projects_matteson.csv")
+```
 
 ## Elk Grove Village
 
@@ -1077,4 +1119,35 @@ parcel_comparison %>%
 
 There are `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ingroup = n()) |> filter(pins_ingroup > 1) |> n_distinct())` projects with more than 1 pin in them and  `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ingroup = n()) |> n_distinct())` projects overall based on sales data.
 
+
+
+```{r}
+#| label: fig-muni2-checkedprojects
+#| fig-cap: "Mapped by Commercial valuation keypin"
+#| layout-ncol: 2
+
+keypins_checked <- readxl::read_xlsx("Output/projects_elkgrove_checked.xlsx") |>
+  mutate(pin10 = str_pad(pin10, 10, "left", "0"),
+         pin = str_pad(pin, 14, "left", "0"),
+         keypin = str_pad(keypin, 14, side = "left", pad = "0"))
+parcel_comparison2 <- left_join(parcels, keypins_checked, by = "pin10") %>% 
+  select(pin10, keypin, everything()) 
+
+
+parcel_comparison2 %>% 
+  as.data.frame() |>
+  group_by(keypin) %>%
+  summarize(pins_ingroup = n()) |>
+  arrange(desc(pins_ingroup))
+
+
+parcel_comparison2 %>% 
+  group_by(keypin) %>%
+  mutate(pins_ingroup = n()) %>%
+  ggplot() +
+  geom_sf(aes(fill = as.factor(keypin))) +
+  theme_minimal() + 
+  scale_fill_discrete(na.value = "white") + 
+  theme(legend.position = "none")
+```
 
