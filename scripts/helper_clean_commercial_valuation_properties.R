@@ -91,7 +91,7 @@ north2022  <- comval |>
          year = 2022) 
 
 comval <- read_csv("./output/combined_methodologyworksheets_north2025.csv") 
-north  <- comval |> 
+north2025  <- comval |> 
   select(key_pin, pins = pi_ns, classes) |>
   
   mutate(pins = tolower(pins)) %>%
@@ -105,18 +105,18 @@ north  <- comval |>
   mutate(check_me = ifelse(str_length(pins2) !=  14, 1, 0),
          year = 2025) 
 
-north <- rbind(north, north2022)  |>
-  filter(check_me == 0) |>
-  select(key_pin, pins = pins2, classes, has_range, year) |>
-  mutate(keypin = str_remove_all(keypin, "-")) |> 
-  arrange(pin, desc(year)) |>
-  group_by(pin) |> 
-  summarize(keypin = first(keypin),
-            year = first(year),
-            classes = first(classes), 
-            has_range = mean(has_range)) 
-
-north |> filter(n() > 1, .by = pin) |> arrange(pin)   # should be zero
+# north <- rbind(north2025, north2022)  |>
+#   filter(check_me == 0) |>
+#   select(key_pin, pins = pins2, classes, has_range, year) |>
+#   mutate(keypin = str_remove_all(key_pin, "-")) |> 
+#   arrange(pins, desc(year)) |>
+#   group_by(pins) |> 
+#   summarize(keypin = first(keypin),
+#             year = first(year),
+#             classes = first(classes), 
+#             has_range = mean(has_range)) 
+# 
+# north |> filter(n() > 1, .by = pins) |> arrange(pins)   # should be zero
 
 comval <- read_csv("./output/combined_methodologyworksheets_SOUTH.csv") 
 south  <- comval |> 
@@ -133,7 +133,7 @@ south  <- comval |>
   mutate(check_me = ifelse(str_length(pins2) !=  14, 1, 0), 
          year = 2023) 
 
-keypins <- rbind(chikeys, north, south)
+keypins <- rbind(chikeys, north2025, south)
 
 keypins <- keypins |> 
   filter(check_me == 0) |>
