@@ -5,6 +5,10 @@ format:
     toc: true
     code-tools: true
     code-fold: true
+    toc-location: left
+    tbl-cap-location: margin
+    fig-cap-location: margin
+    df-print: paged
     
 ---
 
@@ -25,6 +29,7 @@ Each year applicants must file a Form PTAX-340, Low-income Senior Citizens Asses
 Additional Info - [Illinois.gov](https://tax.illinois.gov/localgovernments/property/taxrelief.html#:~:text=This%20program%20allows%20persons%2065%247%2C500)
 
 
+## Using PUMA Data
 
 ```{r warning=FALSE, message=FALSE, results='hide'}
 library(tidyverse)
@@ -231,7 +236,7 @@ HHdesign <- survey::svydesign(id = ~SERIAL, nest=TRUE, strata = ~STRATA, weights
 ```
 
 
-## Comparisons
+### Comparisons
 
 ```{r}
 #| label: fig-current-income-threshold-during2018
@@ -327,7 +332,7 @@ new_policy_in2023
 
 
 
-## Current Policy - $65K
+### Current Policy - $65K
 
 Bloom and Rich Townships had 542 more senior households but 2000+ fewer households eligible for senior freeze. Adjusting the senior freeze income threshold to $85K would make the share of senior, owner-occupied households comparable to 2018 when the policy was adjusted last (~ 16% owner occupied, 65+ households in these two townships were eligible in 2018). 
 Worth and Calumet Townships gained 1300 senior, owner occupied households from 2018 to 2023 but had 1400+ fewer eligible households. Share of owner occupied senior households eligible went from 14.6% in 2018 to 12.4% in 2023. 
@@ -438,7 +443,7 @@ current_policy
 ```
 
 
-## New Policy - $85K
+### New Policy - $85K
 
 ```{r include=FALSE}
 HHdesign <- survey::svydesign(id = ~SERIAL, nest=TRUE, strata = ~STRATA, weights = ~HHWT, data = data |> filter(PERNUM==1)) 
@@ -595,5 +600,129 @@ new_policy
 
 
 
+
+
+### PTAXSIM Part
+
+> REMEMBER: **senior freeze exemption is called `exe_freeze`** in ptaxsim. The senior exemption is called `exe_senior`
+
+
+```{r make-sf-pins}
+#| eval: false
+
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(),
+  "./ptaxsim.db/ptaxsim-2023.0.0.db")
+
+pins <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT *
+  FROM pin
+  WHERE exe_freeze > 0 
+  "
+  )
+
+sf_pins <- pins |> distinct(pin) |> select(pin)
+
+# pulls all data for all years for PINs that had a freeze exemption at least one year
+pins <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+    glue_sql(
+  "SELECT *
+  FROM pin
+  WHERE pin IN ({sf_pins$pin*})"
+  ,     
+  .con = ptaxsim_db_conn
+ ))
+
+pins <- pins |> 
+  group_by(pin) |> 
+  arrange(pin, year) |>
+  mutate(years_with_sfexe = sum(exe_freeze > 0),
+         gain_lose = case_when(
+           years_with_sfexe == 18 ~ "Always had SF Exe",
+           exe_freeze > 0 & lag(exe_freeze) == 0 ~ "Gained SF Exe",
+         exe_freeze == 0 & lag(exe_freeze) > 0 ~ "Lost SF Exe",
+         TRUE~"No Change"
+         )) 
+
+write_rds(pins, "inputs/senior_freeze_pins.RDS")
+```
+
+
+```{r}
+pins <- read_rds("inputs/senior_freeze_pins.RDS")
+
+n_distinct(pins$year)
+
+
+
+table(pins$year, pins$gain_lose)
+```
+
+10 million+ observations for pin-years for senior exemption.  
+5,879,046 pin-year combos for **senior freeze exemption**.   
+
+583,163 distinct pins had senior exemption at least 1 year.   
+328,836 had the senior freeze exemption at least 1 year.
+
+50,241 properties had the senior exemption every year from 2006 to 2023.
+7,075 PINs had the senior freeze exemption every year from 2006 to 2023. 
+
+
+```{r}
+pins |> filter(year == 2023) |> group_by(gain_lose) |> summarize(n = n())
+```
+
+```{r}
+pins |> 
+  group_by(year) |> 
+  summarize(had_SF_exe = sum(exe_freeze>0)) |> 
+  ggplot() +
+  geom_line(aes(x=year, y = had_SF_exe)) +
+  geom_vline(aes(xintercept=2017), color= "red", lwd=1) +
+  labs(y= "# PINs", x="", title = "PIN Count: Senior Freeze Exemption", caption = "Tax Year 2017 was the first year for senior freeze exemption increase")+
+  theme_bw()
+```
+
+Senior freeze exemption was last increased and reflected in Tax Year 2017. [Civic Federation](https://www.civicfed.org/iifs/blog/new-state-law-increases-cook-county-property-tax-homestead-exemptions)
+
+
+```{r pinsthatdidnthave_exeforallyears}
+pins2 <- pins |> ungroup() |> filter(years_with_sfexe != 18)
+
+table(pins2$years_with_sfexe[pins2$year==2023])
+```
+
+
+```{r tbl-lost-SF}
+pins2 |> ungroup() |> filter(gain_lose=="Lost SF Exe" & years_with_sfexe > 5) |> arrange(pin)
+```
+
+
+```{r tbl-billchange}
+pins2 |> 
+  group_by(pin)|>
+  summarize(bill_wo_exemp = mean(tax_bill_total[gain_lose== "Lost SF Exe"]),
+            bill_w_exemp = mean(tax_bill_total[gain_lose == "Gained SF Exe"])) |>
+  mutate(avg_diff = bill_wo_exemp - bill_w_exemp)
+```
+
+**Looking at a couple random pins:**
+
+For PIN 01011000430000, their bill went up \$2500 from 2010 to 2011 and  increased $1400 from 2013 to 2014. 
+
+```{r}
+pins |> filter(pin == "01011000430000") # lost exemption in 2011 and 2014
+
+pins  |> filter(pin == "01011240370000") # lost exemption in 2019 and 2023 
+# bill went up $1400 in 2023
+
+pins |> filter(pin == "02112010020000")
+```
+
+```{r}
+pins2 |> ungroup() |> filter(gain_lose=="Gained SF Exe") |> arrange(pin)
+
+```
 
 
