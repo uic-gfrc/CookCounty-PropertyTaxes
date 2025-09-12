@@ -23,6 +23,11 @@ library(ggplot2)
 comm_ind <- read_csv("Output/comm_ind_PINs_2011to2022_timeseries.csv") %>% 
   filter(year == 2022) |> 
   select(-year)
+
+geo_names <- comm_ind |> select(pin, clean_name, Triad, Township)
+
+exists_in2022 <- comm_ind |> filter(class_1dig %in% c(5,6,7,8)) |> select(pin, class)
+write_csv(exists_in2022, "Output/CIpins_in2022_deleteaftermerge.csv")
 ```
 
 ```{r}
@@ -66,7 +71,8 @@ parcels_sold <- sales %>%
   summarize(sale_document_num= first(sale_document_num),
             sale_buyer_name = first(sale_buyer_name), 
             num_parcels_sale = first(num_parcels_sale),
-            incent_prop_pct = mean(incent_prop, na.rm=TRUE))
+            incent_prop_pct = mean(incent_prop, na.rm=TRUE),
+            max_proj_class = max(class))
 
 
 keypins <- read_csv("./Output/keypins_from_methodwkshts.csv") |>
@@ -98,15 +104,11 @@ bor_pins <- bor %>%
   group_by(pin) %>%
   arrange(desc(tax_year)) %>%
   summarize(
-    year_appealed = max(tax_year),
-    #pin = first(pin),
-            # pin10 = first(pin10),
-            # class_current = first(class),
-            # class_bor = list(class),
-            appellant = first(appellant),
-            project_id = first(project_id),
-           # tax_year_appealed = list(tax_year),
-            timesappealed = n() ) %>%
+    year_appealed_mostrecent = max(tax_year),
+    class_bor_mostrecent = first(class),
+    appellant = first(appellant),
+    project_id = first(project_id),
+    timesappealed = n() ) %>%
   mutate(proj_appeallant = paste(project_id, "-", appellant)) 
 
 
@@ -119,20 +121,44 @@ keypincheck <- comm_ind |>
 keypincheck[keypincheck=="NA"] <- NA
 
 keypincheck <- keypincheck |>
-    mutate(pin10=str_sub(pin,1,10))|>
-  select(pin, pin10, keypin, sale_buyer_name, sale_document_num,
-         num_parcels_sale, year_sold, proj_appeallant, timesappealed,
-         incent_prop, appellant, appealid = project_id, year_appealed) #|>
+    mutate(pin10=str_sub(pin,1,10),
+           pin7 = str_sub(pin, 1, 7))|>
+  select(pin, pin10, pin7, keypin, sale_buyer_name, sale_document_num,
+         num_parcels_sale, year_sold,  proj_appeallant, timesappealed,
+         incent_prop, appellant, appealid = project_id, year_appealed_mostrecent, class_bor_mostrecent, class_ptaxsim = class, class, class_sales = class_current) #|>
 
 # commented this out because I wanted to see what keypins were included in original methodology worksheets
   # mutate(keypin = ifelse(is.na(keypin), pin, keypin))
 
+keypincheck <- keypincheck |> left_join(geo_names)
 
 
-writexl::write_xlsx(keypincheck, "Output/project_check2.xlsx")
-
+writexl::write_xlsx(keypincheck, "Output/project_check3.xlsx")
 ```
 
+```{r}
+
+merged_data <- readxl::read_xlsx("Output/project_check3.xlsx") |>
+  mutate(pin = str_pad(pin, 14, side = "left", pad = "0"),
+         keypin = str_pad(keypin, 14, side = "left", pad = "0"),
+         pin10 = str_sub(pin, 1, 10),
+         pin7 = str_sub(pin, 1, 7))
+
+manually_checked <- readxl::read_xlsx("Output/projects_combined_with_municipality.xlsx", col_types = "text")|>
+  mutate(pin = str_pad(pin, 14, side = "left", pad = "0"),
+         keypin = str_pad(keypin, 14, side = "left", pad = "0")) |> 
+  select(pin, keypin, manually_added)
+
+merged_data2 <- full_join(merged_data, manually_checked, by = "pin")
+
+merged_data2 <- merged_data2 |>
+  mutate(main_keypin = ifelse(is.na(keypin.y), keypin.x, keypin.y))
+
+merged_data2 <- merged_data2 |> select(pin, main_keypin, manually_added, Township, class_ptaxsim, everything())  |> select(-c(keypin.x, keypin.y))
+
+# merged_data2 |> writexl::write_xlsx("Output/projects_checked_MAINFILE.xlsx")
+
+```
 
 ```{r warning=FALSE, message=FALSE}
 # keypins <- readxl::read_xlsx("Output/project_check_AWMmanualcheck.xlsx")
