@@ -1,0 +1,227 @@
+---
+title: "PPRT"
+format:
+  html:
+    code-fold: true
+    toc: true
+    toc-location: left
+    tbl-cap-location: margin
+    fig-cap-location: margin
+    df-print: paged
+---
+
+```{r}
+library(tidyverse)
+library(formatR)
+library(lubridate)
+library(scales)
+library(kableExtra)
+library(readxl)
+library(data.table)
+
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+first_year = 1998
+current_year = 2025
+
+rev_temp <- read_csv(paste0("../Fiscal Futures IGPA/Fiscal-Future-Topics/data/FY", current_year, " Files/rev_temp.csv"))
+
+exp_temp <- read_csv(paste0("../Fiscal Futures IGPA/Fiscal-Future-Topics/data/FY", current_year, " Files/exp_temp.csv"))
+
+alea_theme <- function() {
+  font <-"Whitney"
+  
+  ggplot2::theme(
+    legend.position = "right",
+    legend.title = element_blank(),
+    
+    panel.background = ggplot2::element_blank(),
+    panel.grid.minor.x = ggplot2::element_blank(),
+    panel.grid.major.y = element_line(color = "grey"),
+    panel.grid.minor.y = element_line(color = "grey", 
+                                      linetype = "dashed"),
+    # panel.grid.major.x = ggplot2::element_blank(),
+    axis.ticks = element_line(color = "gray"),
+    axis.ticks.x = element_blank()
+  )
+  
+}
+
+theme_set(alea_theme())
+
+exp_temp <- exp_temp %>% 
+  mutate(
+    agency = case_when(
+      fund=="0515" & object=="4470" & type=="08" ~ "971", # income tax to local governments
+      
+      fund=="0515" & object=="4491" & type=="08" & sequence=="00" ~ "971", # object is shared revenue payments
+      
+      fund=="0802" & object=="4491" ~ "972", #pprt transfer
+      
+      fund=="0515" & object=="4491" & type=="08" & sequence=="01" ~ "976", #gst to local
+      
+      fund=="0627" & object=="4472"~ "976" , # public transportation fund but no observations exist
+      
+      fund=="0648" & object=="4472" ~ "976", # downstate public transportation, but doesn't exist
+      
+      fund=="0515" & object=="4470" & type=="00" ~ "976", # object 4470 is grants to local governments
+      
+      object=="4491" & (fund=="0188"|fund=="0189") ~ "976",
+      
+      fund=="0187" & object=="4470" ~ "976",
+      
+      fund=="0186" & object=="4470" ~ "976",
+      
+      object=="4491" & (fund=="0413"|fund=="0414"|fund=="0415")  ~ "975", #mft to local
+      fund == "0952"~ "975", # Added Sept 29 2022 AWM. Transportation Renewal MFT
+      TRUE ~ as.character(agency)),
+    
+    agency_name = case_when(
+      agency == "971"~ "INCOME TAX 1/10 TO LOCAL",
+      agency == "972" ~ "PPRT TRANSFER TO LOCAL",
+      agency == "975" ~ "MFT TO LOCAL",
+      agency == "976" ~ "GST TO LOCAL",
+      TRUE~as.character(agency_name))) %>% 
+  mutate(group = ifelse(agency>"970" & agency < "977", as.character(agency), ""))
+```
+
+
+```{r}
+transfers_long <- exp_temp %>% 
+  filter(group == "971" |group == "972" | group == "975" | group == "976")
+
+
+transfers_long %>% 
+  group_by(agency_name, group, fy) %>% 
+  summarize(expenditure = sum(expenditure, na.rm=TRUE) )%>% 
+  ggplot() + 
+  geom_line(aes(x=fy, y = expenditure, color=agency_name)) + 
+  alea_theme() + 
+  scale_x_continuous(expand = c(0,0), limits = c(1998, current_year+.5), breaks = c(1998, 2005, 2010, 2015, 2020, current_year)) +
+  
+  labs(title = "Transfers to Local Governments", caption = "Data Source: Illinois Office of the Comptroller")
+```
+
+
+
+```{r}
+# Custom billion format
+label_billions <- function(digits = 1) {
+  function(x) {
+    number_format(accuracy = 10^-digits, suffix = "B")(
+      x / 1e9
+    )
+  }
+}
+
+scale_y_billions <- function(..., digits = 1) {
+  scale_y_continuous(labels = label_billions(digits), ...)
+}
+exp_temp |> filter(fund_name_ab == "PERSONAL PROPERTY TAX REPLACE") |> arrange(desc(fy))
+
+exp_temp |> 
+  filter(fund == "0802" & agency == "972") |> arrange(desc(fy)) |>
+  ggplot() + 
+  geom_line(aes(x=fy, y = expenditure, color=agency_name)) + 
+  geom_smooth(aes(x=fy, y = expenditure, color=agency_name), method = "lm", se=FALSE, lty = 2) + 
+  alea_theme() + 
+  scale_x_continuous(expand = c(0,0), limits = c(1998, current_year+.5), breaks = c(1998, 2005, 2010, 2015, 2020, current_year)) +
+  scale_y_billions() + 
+  
+  labs(title = "Expenditures: PPRT to Local Governments", caption = "Data Source: Illinois Office of the Comptroller", 
+       y = NULL, x= NULL)
+```
+
+
+```{r}
+rev_temp |> distinct(rev_type, rev_type_name, rev_type_name_COMPTROLLER)
+
+exp_temp  |> distinct(group)
+exp_temp |> filter(!is.na(group)) |> View()
+
+```
+
+
+```{r}
+
+corp_tax <- rev_temp |> filter(rev_type_name_COMPTROLLER %in% c("CORPORATE INCOME TAXES")  & in_ff == 1) |> arrange(desc(fy)) |>
+  summarise(receipts = sum(receipts),
+            .by = c(fy, rev_type_name_COMPTROLLER)) |>
+  ggplot(aes(x=fy, y = receipts, color = rev_type_name_COMPTROLLER)) +
+   geom_line()
+  # + scale_y_billions() + 
+  # geom_vline(xintercept = 2022) +
+  # labs(title = "Corporate Income Tax Revenue")
+
+pprt_rev <- rev_temp |> filter(source_name_AWM == "PPRT-PERSON PROP TAX REPLACE"  & in_ff == 1) |> arrange(desc(fy)) |>
+  summarise(receipts = sum(receipts),
+            .by = c(fy, rev_type_name_COMPTROLLER)) |>
+  ggplot(aes(x=fy, y = receipts)) +
+  geom_line() # + 
+  # scale_y_billions() + 
+  # geom_vline(xintercept = 2022) +
+  # labs(title = "State Revenue dedicated to PPRT")
+
+ggplot()+ 
+  geom_line(data =(rev_temp |> filter(rev_type_name_COMPTROLLER %in% c("CORPORATE INCOME TAXES")  & in_ff == 1) |>
+  summarise(receipts = sum(receipts),
+            .by = c(fy, rev_type_name_COMPTROLLER))), 
+  aes(x=fy, y = receipts)) +
+  geom_line(data=(rev_temp |> filter(source_name_AWM == "PPRT-PERSON PROP TAX REPLACE"  & in_ff == 1) |> arrange(desc(fy)) |>
+  summarise(receipts = sum(receipts),
+            .by = c(fy, rev_type_name_COMPTROLLER))),
+  aes(x=fy, y = receipts), color = "blue", lty = 2) +
+  scale_y_billions(name = "Billions of Nominal Dollars") +
+  theme(legend.position = "bottom") + labs(title = "Corporate Income Tax and PPRT-Specific Revenue",  x = NULL)
+  
+
+
+
+rev_temp |> filter(rev_type_name_COMPTROLLER %in% c("CORPORATE INCOME TAXES", "INDIVIDUAL INCOME TAXES")  & in_ff == 1) |> arrange(desc(fy)) |>
+  summarise(receipts = sum(receipts),
+            .by = c(fy, rev_type_name_COMPTROLLER)) |>
+  ggplot(aes(x=fy, y = receipts, color = rev_type_name_COMPTROLLER)) +
+  geom_line() + scale_y_billions() + 
+  geom_vline(xintercept = 2022) +
+  labs(title = "Corporate & Individual Income Tax Revenue")
+
+rev_temp |> filter(rev_type_name_COMPTROLLER == "CORPORATE INCOME TAXES"& in_ff == 1) |> arrange(desc(fy)) |>
+  summarise(receipts = sum(receipts),
+            fund_name = first(fund_name_ab), 
+            .by = c(fy, fund)) |>
+  ggplot(aes(x=fy, y = receipts, group = fund, color = fund_name)) + 
+  geom_line() + scale_y_billions() + labs(title = "Funds that Receive Corporate Income Tax Revenue ")
+```
+
+
+```{r}
+rev_temp |> filter(fund_name_ab == "PERSONAL PROPERTY TAX REPLACE")
+
+rev_temp |> filter(source_name_AWM == "PPRT-PERSON PROP TAX REPLACE")
+```
+
+
+
+```{r}
+rev_temp |> filter(source == "0149"| source == "2489")
+```
+
+
+```{r}
+#| label: fig-pprtestimatesbyagency
+#| fig-cap: "Data downloaded from Illinois' Department of Revenue - https://tax.illinois.gov/localgovernments/disbursements/pprt.html"
+
+
+pprt_il <- readxl::read_xlsx("./Circulated Materials/pprt_agency_shares.xlsx")
+
+pprt_il |> 
+  filter(!is.na(Type)) |>
+  group_by(Type) |> 
+  summarize(Share = sum(`Share of Cook`)) |>
+  mutate(Type = reorder(Type, Share)) |>     # reorder factor by Share
+
+  ggplot() + 
+  geom_col(aes(y=Type, x = Share), fill = "blue") + 
+  scale_x_continuous(labels = scales::percent,limit = c(0, .50)) + 
+  labs(title = "Share of Cook County PPRT by Type of Taxing Agency", y = NULL, x = NULL)
+```
+
