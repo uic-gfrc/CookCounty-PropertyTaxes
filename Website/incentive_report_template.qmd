@@ -1236,6 +1236,41 @@ burden_shift |> flextable()
 ## Tables - Difference in Composite Tax Rates
 
 ```{r}
+#| label: tbl-Table1_JD_paper
+#| tbl-cap: "**Composite Tax Rate Change** from hypothetical scenario of taxing property that is current exempt due to exemptions."
+
+
+muni_ratechange_full <- muni_ratechange |> 
+  select(clean_name, rate_current, rate_noExe, change_noExe) |> 
+  arrange(desc(change_noExe) )
+
+
+muni_count <- n_distinct(muni_ratechange_full$clean_name)
+no_incents <- n_distinct(muni_ratechange_full$clean_name[muni_ratechange_full$change_noExe < 0.0001])
+median = round(muni_count/2)
+median_5 = c( (median-2) : (median+2) )
+bottom_5 = c( (muni_count-4) : muni_count )
+
+table1JD_full <- muni_ratechange_full
+
+table1JD <- muni_ratechange_full |>
+  slice(c(1:5, median_5, bottom_5)) 
+
+table1JD  |>
+  mutate(across(is.numeric, scales::percent, accuracy = 0.01) ) |>
+  flextable() |> 
+  border_remove() |>
+  hline_top() |>
+  hline(i = c(5,10,15)) |>
+  set_header_labels(clean_name = "Municipality", rate_current = "Current Comp.\nTax Rate", rate_noExe = "Tax Rate if No\ Exemptions",
+                    change_noExe = "Rate Change") |>
+  bold(i = 8) |>
+  set_table_properties( layout = "autofit") |>
+    align(j = 2:4, align = "right", part = c("all"))
+
+```
+
+```{r}
 #| label: tbl-Table8-munialtrates-frompinlevel
 #| tbl-cap: "**Composite Tax Rate Change** from hypothetical scenario of taxing incentive property at 25% of their FMV instead of 10% of their FMV."
 
@@ -1250,6 +1285,10 @@ no_incents <- n_distinct(muni_ratechange_full$clean_name[muni_ratechange_full$ch
 median = round(muni_count/2)
 median_5 = c( (median-2) : (median+2) )
 bottom_5 = c( (muni_count-4) : muni_count )
+
+table3JD_full <- muni_ratechange_full
+table3JD <- muni_ratechange_full|>
+  slice(c(1:5, median_5)) 
 
 table8 <- muni_ratechange_full|>
   slice(c(1:5, median_5)) 
@@ -1756,12 +1795,13 @@ figure9_data  |>
     axis.text.y = element_markdown(size = 9) # enable HTML styling in axis labels
     
   ) +
-  scale_fill_identity(labels = rev(c(
-    "No Exemptions",
+  scale_fill_identity(labels = rev(
+    c(
     "No Incentive Classes",
+         "No Exemptions",
+
     "Current Rate")
   ),
- # breaks = dotcolor, #c("No Exemptions", "No Incentives", "Current Rate"),
   guide = "legend") +
   scale_x_continuous(labels = scales::percent) +
   scale_y_discrete(labels = label_vec) + 
@@ -1847,6 +1887,181 @@ pin_data |>
 ## Export Tables
 
 ```{r}
+#| label: fig-dotplotburdenshift-withouttext
+#| include: false
+
+
+mc_burden <- read_csv(paste0("../Output/website_files/muni_mc_burden_", params$year, ".csv"))
+
+order <- mc_burden |>
+  filter(class_1dig == 2) |>
+    select(clean_name, pct_taxburden_current, burden_shift)
+
+slice <-  mc_burden |>
+  filter(class_1dig == 2) |>
+    select(clean_name, pct_taxburden_current, burden_shift) |>
+  arrange(pct_taxburden_current) |>
+  slice(1:5, 63:67, 127:131)
+
+
+
+median_burden <- median(order$pct_taxburden_current)
+median_shift <- median(order$burden_shift)
+
+# median burden change is 5.9 percentage points
+# current median burden is 70.3% of the levy
+
+mc_burden |> 
+  filter(clean_name %in% slice$clean_name) |>
+#filter(!clean_name %in% cross_county_lines$clean_name)|>
+  filter(class_1dig == 2) |>
+#  filter(burden_current > 0.938 |burden_current < .17 |
+ #          ( (burden_current < median(burden_current) + 0.01 )& (burden_current > median(burden_current) - 0.01)) )|> 
+  ungroup() |> 
+      select(clean_name, pct_taxburden_current, hyp_pct_taxburden, burden_shift) |>
+  arrange(burden_shift) |>
+  pivot_longer(c("pct_taxburden_current", "hyp_pct_taxburden"), 
+               names_to = "type", values_to = "pct_burden") |> 
+  inner_join(order) |>
+  ggplot(aes(x = pct_burden, 
+             y= reorder(clean_name, - pct_taxburden_current)))+
+  # y= reorder(clean_name, burden_current)))+
+  geom_vline(xintercept = median_burden, linetype = 3)+
+  geom_line(aes(group = clean_name))+ 
+  geom_hline(yintercept = 5.5, linetype = 2)+
+  geom_hline(yintercept = 10.5, linetype = 2)+
+  geom_point(aes(color=type), size=3 )+
+
+  theme_minimal() + 
+  theme( 
+    legend.title = element_blank(),
+    plot.title.position = "plot",
+ plot.background = element_rect(fill='transparent', color=NA) 
+  )+
+  scale_color_brewer(palette="Paired", labels = c("Burden if \nNo Exemptions","Current Burden" ), direction = 1) +
+  scale_x_continuous(labels = scales::percent) +
+
+  
+  labs(title = "Change in Class 2 Residential Tax Burden", 
+       subtitle = "Ordered by Current Tax Burden",
+  x = "Share of Levy (%)", y = "" , 
+#  caption = paste0("Dotted line represents median Class 2 burden (", round(median_burden*100), "% of the levy).  \nResidential Tax Burden is theshare of the property tax collected that was paid for by property owners with Class 2 properties."
+#)
+) #+
+  
+#    geom_label(label = "Class 2 pays small share of \nlevy; very little residential", x=.32, y = 13, label.size = 1, size = 3)+
+  
+ #   geom_label(label = paste0("Class 2 pays median share of \nlevy (", round(median_burden*100), "%), mix of land use"), x=.42, y = 7.5, label.size = 1, size = 3) +
+  
+ #   geom_label(label = "Class 2 pays nearly all of levy, \nhighly residential", x=.70, y = 3, label.size = 1,size = 3)
+
+```
+
+
+```{r}
+#| label: fig-exemptions-overtime
+#| fig-cap: "**Residential Exempt EAV in Cook County**"
+#| include: false
+#
+
+Figure1JD_data <- cook_sums |>
+   # filter(year == params$year) |>
+    group_by(year) |>
+    summarize(
+      
+      'GHE' = sum(exempt_GHE_eav + exempt_LTHO_eav),
+      'Senior homestead' = sum(exempt_SR_eav),
+      'Senior freeze' = sum(exempt_FR_eav),
+     # 'Other Exemps.' = sum(exempt_allexemptions_eav -exempt_GHE_eav - exempt_SR_eav - exempt_FR_eav), 
+      "Veterans (combined)" = sum(exempt_VET_eav, na.rm = T),
+      "Persons with disabilities" = sum(exempt_DIS_eav, na.rm=T),
+        #    "Other Exemptions" = sum(muni_c_exe_disabled + muni_c_exe_vet_returning+ muni_c_exe_vet_dis_lt50 + muni_c_exe_vet_dis_50_69+muni_c_exe_vet_dis_ge70, na.rm = T)
+) |>
+  pivot_longer(cols = c(`GHE`:`Persons with disabilities`), names_to = "Type" ) |>
+  mutate(Type = factor(Type, levels = c(
+                                        "Persons with disabilities", "Veterans (combined)", "Senior freeze", "Senior homestead", "GHE")))
+
+Figure1JD_data |>
+  ggplot(aes(x=year, y = value/1000000000, fill = Type)) +
+  
+  geom_bar( stat = "identity" ) + 
+  theme_minimal() +
+  labs(title = "Residential Exempt EAV in Cook County", 
+       subtitle = paste0("2006-", params$year), 
+       y = "EAV (Billions)", x ="") +
+  scale_fill_manual(values = c("deepskyblue3", "chartreuse2",  "darksalmon", "brown2", "blue4" )) +
+                    scale_x_continuous(breaks = c(2006, 2010, 2015, 2020, 2023))
+```
+
+```{r}
+#| label: fig-exemptionsums-ResidentialEAV
+#| fig-cap: "**Share of residential EAV that is tax exempt due to homestead exemptions. Denominator is a municipality's residential EAV.**"
+#| include: false
+
+muni_mc_sums <- read_csv("../Output/ptaxsim_muni_MC_2006to2023.csv") |>
+  rename_all(~str_replace(., "muni_mc_", ""))
+
+median_exempt <- muni_mc_sums |>
+  filter(year== params$year & major_class_code == "2")|>
+  group_by(clean_name) |>
+  mutate(muni_pct_eav_exempt =( exempt_allexemptions_eav )/  (eav_taxed + exempt_allexemptions_eav))    |> 
+  select(year, major_class_code, muni_pct_eav_exempt, eav_c2_taxed, exempt_allexemptions_eav, clean_name, eav_taxed)
+
+
+midpoint = scales::percent(median(median_exempt$muni_pct_eav_exempt), accuracy = 0.01)
+
+median_muni = median_exempt |>
+  arrange(muni_pct_eav_exempt) |>
+  filter(muni_pct_eav_exempt == median(muni_pct_eav_exempt)) |>
+  select(clean_name) |> 
+  as.character()
+
+
+median_exempt$exemption_category <- cut(
+  median_exempt$muni_pct_eav_exempt,
+  breaks = c(0, 0.075, 0.15, 0.22, 0.30, as.numeric(max(median_exempt$muni_pct_eav_exempt))),
+  labels = c(
+    "<7.5%",
+    "7.5–14.99%",
+    "15.0–21.99%",
+    "22.0–29.99%",
+    "≥30%"
+  ),
+  include.lowest = TRUE
+)
+
+# writexl::write_xlsx(median_exempt, "../Output/Figure2_JD.xlsx")
+  
+# Define color palette
+exemption_colors <- c(
+  "<7.5%" = "#ffffcc",
+  "7.5–14.99%" = "lightblue",
+  "15.0–21.99%" = "#4292C6",
+  "22.0–29.99%" = "#253494",
+  "≥30%" = "#00004d")
+
+print(median_exempt |>
+        left_join(nicknames) |> # to get name that joines with the muni_shp shapefiles
+        mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) |>
+        full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) |>
+        ggplot(aes(fill = exemption_category)) + 
+        geom_sf(aes(geometry = geom), color = "black") + 
+        theme_void()+ 
+        labs(title = "Exempt EAV as a Percent of Residential EAV") +
+        theme(axis.ticks = element_blank(), 
+              axis.text = element_blank()) +
+        scale_fill_manual(
+          na.value = "gray50",
+          name = "% Exempt",
+          values = exemption_colors,
+          na.translate = FALSE
+        ) 
+      
+)
+```
+
+
+```{r}
 library(readxl)
 
 today_date <- Sys.Date()
@@ -1858,6 +2073,17 @@ cook_MC_sums <- cook_MC_sums |> filter(year == params$year)
 muni_sums <- muni_sums |>  filter(year == params$year)
 
 tablelist <- list(
+  "Table1" = table1JD, # increase in comp rate due to exemptions
+  "Table1_full" = table1JD_full, # increase in comp rate due to exemptions
+
+  # "Table2" =         # FMV of incentive PINs. Separate word doc formatted for paper
+  "Table3" = table3JD,   # Increase in comp rate due to incentives. Table 8 in incentive report, table 3 in JD report
+  "Table3_full" = table3JD_full,   # Increase in comp rate due to incentives. Table 8 in incentive report, table 3 in JD report
+  "Figure1JD_data" = Figure1JD_data,
+  "Figure2JD_data" = median_exempt,
+  "Figure3JD_data" = mc_burden,
+  "Figure4JD_data" = figure7alt,
+  "Figure5JD_data" = figure9_data,
   "Muni Stats" = muni_sums,
   "Muni Rate Change" = muni_ratechange,
 
@@ -1866,7 +2092,7 @@ tablelist <- list(
   "Cook Rate Change" = cook_ratechange
 )
 
-file_name = paste0("../Output/calculations_report_content_", params$year, "_", today_date, ".xlsx")
+file_name = paste0("../Output/Report Content/calculations_report_content_", params$year, "_", today_date, ".xlsx")
 
 writexl::write_xlsx(tablelist, file_name)
  
