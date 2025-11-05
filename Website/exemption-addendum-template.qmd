@@ -39,7 +39,7 @@ eq_factor <- read_csv("../Necessary_Files/eq_factor.csv") %>%
   filter(year == i) |> select(eq_factor = eq_factor_final) |> as.numeric()
 
 
-muni_ratechange <- read_csv(paste0("../Output/muni_ratechange_", i, ".csv"))
+muni_ratechange <- read_csv(paste0("../Output/website_files/muni_ratechange_", i, ".csv"))
 
 muni_rates <- muni_ratechange |> # keep just a couple variables to avoid join variable name conflicts later
   select(clean_name, current_rate_avg, rate_noGHE, rate_current)
@@ -88,7 +88,22 @@ C2_munistats <- c2pins %>%
     avg_av = round(mean(av)),
     avg_eav = round(mean(taxed_eav)),
     C2_pins_in_muni = n(),
-    C2_current_exemptions = sum(all_exemptions, na.rm = TRUE),
+    C2_current_exemptions = sum(exe_total_adj, na.rm = TRUE),
+    C2_HO_exemps = sum(exe_homeowner, na.rm = TRUE),
+  ) 
+
+# Class 2 Descriptive Stats 
+C2_munistats_adjusted <- c2pins %>% 
+  filter(class > 199 & class < 300) %>%
+  group_by(clean_name)  %>%
+  arrange(av) %>%
+  summarize(
+    median_eav = round(median(taxed_eav_adj)), 
+    median_av = round(median(av)), 
+    avg_av = round(mean(av)),
+    avg_eav = round(mean(taxed_eav_adj)),
+    C2_pins_in_muni = n(),
+    C2_current_exemptions = sum(exe_total_adj, na.rm = TRUE),
     C2_HO_exemps = sum(exe_homeowner, na.rm = TRUE),
   ) 
 
@@ -149,7 +164,37 @@ tax_bill_change_HO <- c2pins %>%
             perceived_savings = median(exe_homeowner*tax_code_rate)
   )
 
+tax_bill_change_HO_adjusted <- c2pins %>% 
+  left_join(muni_rates) |>
+  filter(av > 0) %>% 
+  arrange(av) %>%
+  mutate(#eq_av = av_clerk*eq_factor,
+         bill_current = (taxed_eav_adj*tax_code_rate),
+         bill_noexemps =  rate_noGHE*(taxed_eav_adj+exe_homeowner),
+         bill_change = bill_noexemps - bill_current) %>%
+  group_by(clean_name, has_HO_exemp) %>% 
+  summarize(median_AV = median(av),
+            median_EAV = median(taxed_eav_adj),
+            median_bill_cur = round(median(bill_current)),
+            median_bill_new = round(median(bill_noexemps)),
+            median_change = round(median(bill_change)),
+            pincount=n(),
+            perceived_savings = median(exe_homeowner*tax_code_rate)
+  )
+
 tax_bill_change_HO |> 
+  filter(clean_name %in% c("Park Forest", "Phoenix", "Winnetka", "Riverdale")) |>
+  mutate(across(c(median_AV:median_change, perceived_savings), scales::dollar) ) |>
+  rename( 'Municipality' = 'clean_name',
+                  'Claims GHE' = 'has_HO_exemp',
+                  'Current Bill' = 'median_bill_cur',
+                  'Hyp. Bill' = 'median_bill_new', 
+                  'Bill Change' = 'median_change',  
+                  'Perceived Savings'='perceived_savings') |>
+  flextable::flextable()
+
+
+tax_bill_change_HO_adjusted |> 
   filter(clean_name %in% c("Park Forest", "Phoenix", "Winnetka", "Riverdale")) |>
   mutate(across(c(median_AV:median_change, perceived_savings), scales::dollar) ) |>
   rename( 'Municipality' = 'clean_name',
@@ -843,7 +888,7 @@ pin_data %>%
 pin_data %>% 
   group_by(clean_name) %>% 
   summarize(
-    all_exemptions = sum(exe_total),
+    all_exemptions = sum(exe_total_adj),
 
     eq_av = sum(av_clerk*eq_factor),
     tif_increment_eav = sum(final_tax_to_tif/tax_code_rate)
@@ -899,7 +944,7 @@ pin_data %>%
     all_exemptions = sum(exe_total_adj),
 
     eq_av = sum(av_clerk*eq_factor),
-    tif_increment_eav = sum(final_tax_to_tif_AWM/tax_code_rate)
+    tif_increment_eav = sum(tif_increment_eav)
   ) %>%
   mutate(taxable_eav = eq_av - tif_increment_eav - all_exemptions) |>
   filter(clean_name %in% c("Blue Island", "Markham", "Matteson", "Park Forest")) %>%
@@ -934,7 +979,7 @@ milhomes_w_exemps <- munis_ranked %>%
   mutate(mil_home = ifelse(class_1dig == 2 & av*10 > 1000000, 1, 0) ) %>%
   filter(has_HO_exemp == 1 & mil_home == 1) %>% 
   summarize(
-    exempt_eav  = sum(exe_total),
+    exempt_eav  = sum(exe_total_adj),
     million_dollar_homes = sum(mil_home),
     bonus_rev = sum(tax_code_rate*exe_homeowner))
 
