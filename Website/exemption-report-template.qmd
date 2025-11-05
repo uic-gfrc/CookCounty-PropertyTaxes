@@ -748,8 +748,9 @@ Difference in taxbills for those that do and do not claim homeowner exemption
 <!---Used Cholton Taxbills file originally when making this for the exemption report. use pin_data, filter out munis we want that are major class 2, with assessed values of $15K ---->
 
 ```{r}
-#| tbl-cap: "Properties that received multiple exemptions were removed when calculating median and average values."
+#| tbl-cap: "**Class 2 Descriptive Statistics.** Properties that received multiple exemptions were removed when calculating median and average values."
 #| column: page
+#| cap-location: top
 
 
 ## removes properties that have more than one exemption type
@@ -790,14 +791,16 @@ C2_munistats_filtered |>
                   'Class 2 Hyp Taxes Paid' = 'avg_taxed_eav',
                   'Class 2 Pin Count'='C2_pins_in_muni',
                   'Class 2 Exempt EAV' = 'C2_current_exemptions'
-                  ),
-                caption = "Class 2 Descriptive Statistics"
-      ) |>
+                  )      
+                ) |>
   formatCurrency(columns = c(2:7, 9,10), digits = 0)
 
 ```
 
 ```{r}
+#| label: tbl-taxbillchange-byGHEclaimed
+#| tbl-cap: "**Change in Tax Bill if Exempt EAV from GHE were added back to tax base.**"
+#| cap-location: top
 #| column: page
 
 ## Grouped by if they have a $0 tax bill and had the GHE per muni
@@ -850,8 +853,7 @@ muni_median_summarytable <- pin_data |>
   left_join(nicknames) |>
   
   select(clean_name, has_HO_exemp, bill_cur, bill_new, bill_change, perceived_savings,  AV, `Taxable EAV`, `Taxed EAV`, 
-         #everything() 
-         ) #|> select(-c(agency_number, agency_name))
+         ) 
 
 muni_median_summarytable |>
   DT::datatable(rownames = FALSE, 
@@ -860,15 +862,14 @@ muni_median_summarytable |>
                   'Current Bill' = 'bill_cur',
                   'Hyp. Bill' = 'bill_new', 
                   'Bill Change' = 'bill_change',  
-                  'Perceived Savings'='perceived_savings'),
-                caption = "Change in Tax Bill if Exempt EAV from GHE were added back to tax base.")  |>
+                  'Perceived Savings'='perceived_savings'))  |>
   formatCurrency(columns = c(3:9), digits = 0)
 ```
 
 ```{r}
 #| label: tbl-Table3
 #| column: page
-#| tbl-cap: "Table 3. Estimated Bill Change for a municipality's median valued property if exempt EAV from the GHE were added to back to the tax base. "
+#| tbl-cap: "**Report Table 3. Estimated Bill Change for a municipality's median valued property if exempt EAV from the GHE were added to back to the tax base.**"
 
 
 muni_median_summarytable |>
@@ -1133,7 +1134,7 @@ muni_mc_sums |>
   ggplot(aes(x=year, y = zerodollar_count, fill = Triad)) + 
   geom_bar(position = "stack", stat = "identity") + theme_minimal()+
   theme(legend.position = "top")+
-  labs(title = element_text("Number of $0 Taxbills")) +
+  labs(title = element_text("Number of $0 Taxbills"), xlab = NULL,) +
   scale_y_continuous(labels = scales::comma, limits = c(0, 41000), name = "")
   
 
@@ -1161,7 +1162,7 @@ pin_data |>
 
 
 ```{r}
-#| tbl-cap: "**South Triad PIN Counts, Taxbase, & Exemptions**"
+#| tbl-cap: "**South Triad PIN Counts, Taxbase & Exemptions**"
 
 class8munis <- read_csv("../Output/datarequests_Class8Munis.csv")
 
@@ -1240,7 +1241,7 @@ tbl_southtriad_exemps
 
 
 ```{r}
-#| tbl-cap: "**Municipalities Eligiblef or Class 8 Incentive Properties - PIN Counts, Taxbase, & Exemptions**"
+#| tbl-cap: "**Municipalities Eligible for Class 8 Incentive Properties - PIN Counts, Taxbase & Exemptions**"
 
 
 tbl_class8muni_exemps <- muni_cl_sums |>
@@ -1267,7 +1268,7 @@ tbl_class8muni_exemps
 
 
 ```{r}
-#| tbl-cap: "**PIN Counts, Taxbase, & Exemptions for Municipalities with a majority of their Taxbase within Cook County**"
+#| tbl-cap: "**PIN Counts, Taxbase & Exemptions for Municipalities with a majority of their Taxbase within Cook County**"
 #| 
 tbl <- muni_cl_sums |>
   filter(!clean_name %in% cross_county_lines) |>
