@@ -60,7 +60,7 @@ amazon <- amazon %>%
 #comval <- read_csv("./Inputs/Assessor_-_Commercial_Valuation_Data_20250723.csv") 
 
 # created from AWM combining com val worksheets
-comval <- read_csv("./output/combined_methodologyworksheets_chicago2024.csv") 
+comval <- read_csv("./output/Combined Methodology Worksheets/combined_methodologyworksheets_chicago2024.csv") 
 chikeys  <- comval |> select(key_pin, pins = ias_world_pi_ns, classes) |>
 
   mutate(pins = tolower(pins)) %>%
@@ -74,7 +74,7 @@ chikeys  <- comval |> select(key_pin, pins = ias_world_pi_ns, classes) |>
   mutate(check_me = ifelse(str_length(pins2) < 14, 1, 0),
          year = 2024) 
 
-comval <- read_csv("./output/combined_methodologyworksheets_NORTH2022.csv") 
+comval <- read_csv("./output/Combined Methodology Worksheets/combined_methodologyworksheets_NORTH2022.csv") 
 north2022  <- comval |> 
   select(key_pin, pins = pi_ns, classes= class) |>
   
@@ -90,7 +90,7 @@ north2022  <- comval |>
   mutate(check_me = ifelse(str_length(pins2) !=  14, 1, 0), 
          year = 2022) 
 
-comval <- read_csv("./output/combined_methodologyworksheets_north2025.csv") 
+comval <- read_csv("./output/Combined Methodology Worksheets/combined_methodologyworksheets_north2025.csv") 
 north2025  <- comval |> 
   select(key_pin, pins = pi_ns, classes) |>
   
@@ -118,7 +118,7 @@ north2025  <- comval |>
 # 
 # north |> filter(n() > 1, .by = pins) |> arrange(pins)   # should be zero
 
-comval <- read_csv("./output/combined_methodologyworksheets_SOUTH.csv") 
+comval <- read_csv("./output/Combined Methodology Worksheets/combined_methodologyworksheets_SOUTH.csv") 
 south  <- comval |> 
   select(key_pin, pins = ias_world_pi_ns, classes) |>
   
@@ -144,6 +144,7 @@ keypins <- keypins |>
   
 
 distinct_keypins <- keypins |> distinct(keypin)
+# 59,457 distinct keypins after adding final townships for FY2025 methodology reports
 # 53,710 distinct keypins
 #39K +
 
