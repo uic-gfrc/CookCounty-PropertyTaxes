@@ -44,7 +44,7 @@ final_df_north <- final_df_north %>%
   mutate(pi_ns = ifelse(is.na(pi_ns), key_pin, pi_ns)) |>
   filter(!is.na(pi_ns))
 
-write.csv(final_df_north, "Output/combined_methodologyworksheets_NORTH2022.csv")
+write.csv(final_df_north, "Output/Combined Methodology Worksheets/combined_methodologyworksheets_NORTH2022.csv")
 
 
 # South Triad Townships 2023 ----------------------------------------------
@@ -69,7 +69,7 @@ file_paths <- list.files(dir_path_south, pattern = "*.xlsx", full.names = TRUE
  
  
  
-write.csv(final_df_south, "Output/combined_methodologyworksheets_SOUTH.csv")
+write.csv(final_df_south, "Output/Combined Methodology Worksheets/combined_methodologyworksheets_SOUTH.csv")
 
  
  
@@ -91,7 +91,7 @@ final_df_chi <- final_df_chi |>
 #   mutate(across(replace_with_na,  "NA" ) )
 
 
-write.csv(final_df_chi, "Output/combined_methodologyworksheets_CHICAGO.csv")
+write.csv(final_df_chi, "Output/Combined Methodology Worksheets/combined_methodologyworksheets_CHICAGO.csv")
 
 
 
@@ -134,7 +134,7 @@ final_df_chi <- final_df_chi |>
 # final_df_chi <- final_df_chi %>%
 #   replace_with_na_all(~.x == "NA" )
 
-write.csv(final_df_chi, "Output/combined_methodologyworksheets_north2025.csv")  
+write.csv(final_df_chi, "Output/Combined Methodology Worksheets/combined_methodologyworksheets_north2025.csv")  
 
 
 
