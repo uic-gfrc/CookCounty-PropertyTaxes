@@ -30,11 +30,19 @@ library(fixest)
 ```
 
 
-```{r warning = FALSE, eval=FALSE}
+```{r warning = FALSE}
 project_pins <- readxl::read_xlsx("./Output/projects_checked_MAINFILE.xlsx")
 
 ptax_pins <- read_csv("./Output/comm_ind_PINs_2011to2022_timeseries.csv") |> 
   filter(year >= 2011)
+
+
+ptax_proj <- ptax_pins %>% 
+  left_join(project_pins, by = c("pin"), relationship = "many-to-many") |>
+  rename(Triad = Triad.x,
+         clean_name = clean_name.x,
+         incent_prop = incent_prop.x) |>
+  select(-c(Triad.y, clean_name.y, incent_prop.y,))
 ```
 
 
@@ -94,60 +102,25 @@ bor_pins <- bor %>%
             project_id = first(project_id), 
             timesappealed = n() ) %>%
   mutate(proj_appeallant = paste(project_id, "-", appellant))
-
-ptax_proj <- ptax_pins %>% 
-  left_join(bor_pins) %>%
-  left_join(puni_keypins, by = c("pin" = "pin14"))  %>%
-  left_join(nbh_pins)
+```
 
 
-proj_xwalk <- read_csv("Output/all_keypins.csv")    
-
-ptax_proj <- ptax_proj %>% left_join(proj_xwalk, by = "pin", relationship = "many-to-many")
-
-
+```{r warning = FALSE, eval=FALSE}
 ptax_proj <- ptax_proj %>% 
   mutate(main_keypin = ifelse(is.na(proj_appeallant), puni_keypin, proj_appeallant))%>%
   mutate(main_keypin = ifelse(is.na(main_keypin), keypin, main_keypin)) %>%
   select(year, main_keypin, pin, nbhd_code, tax_code_num, class, class_bor, tax_code_rate, fmv, av_clerk, tax_bill_total, everything())
 ```
 
-```{r manual-pin-coding, eval = FALSE}
 
-ptax_proj <- ptax_proj |> 
-mutate(main_keypin = case_when(
-  pin %in% c(09253201421002, 09253201421007) ~ "ICUSS - 7720 W. Touhy", 
-  pin %in% c(04333020971001:04333020971020) ~  "611 Milwaukee Ave",
-  pin %in% c(18282000461001) ~ "ADCON EXPRESS INC", 
-  pin %in% c(18282000461003, 20084040010000:20084040060000 ) ~ "959 W 51st St.",
-
-    pin %in% c(17221101220000, 17221101230000, 17221101240000 ) ~ "1231 S. Prairie Ave.",
-  
-   pin %in% c(28273000060000, 28271010170000, 28271010180000) ~ "LPC CCH I LLC",
-  
-  pin %in% c(16321210100000, 16321210110000:16321210180000) ~ "6201-6215 & 6223 W. Ogden Ave",
-  
-  # is missing a digit! 
-  pin %in% c(14182129349999, 14182120371271:14182120371445) ~ "1945 Wilson LLC",
-  pin %in% c(31202180080000:31202140070000) ~ "EPCM Midwest LLC",
-  pin %in% c(18111350100000,18111350110000) ~ "Hart McCook LLC",
-  pin %in% c(14054020411033:14054020411036) ~ "5858 Sheridan LLC",
-  pin %in% c(32282140460000:32282180090000) ~ "Dembay LLC",
-  pin %in% c(17103080120000:17103080140000) ~ "Macy's State Street",
-#  pin %in% c(15212000180000:15212041520000) ~ "Westchester Rising LLC",
-
-  # pin %in% c(25311050220000:25311230010000) ~ "Veterans Services",
-
- # pin %in% c(15063020520000:15071030230000) ~ "IL State Toll Highway",
-  pin %in% c(13313210320000,13313220590000) ~ "Harlem and North Development",
-  
-  TRUE ~ as.character(main_keypin))
-  )
- 
+```{r}
+modelsummary::datasummary_skim(ptax_proj)
 ```
 
-```{r eval = FALSE}
-modelsummary::datasummary_skim(ptax_proj)
+
+```{r}
+# modelsummary::datasummary_skim(project_pins)
+
 ```
 
 **Which came first: The TIF or the incentive class??**
@@ -155,8 +128,6 @@ modelsummary::datasummary_skim(ptax_proj)
 ```{r}
 #| label: tbl-whichcamefirst
 #| tbl-cap: "PINS that were in a TIF before receiving an incentive classification. 254 PINs had incentive classes before they were in a TIF. 1373 PINs were in a TIF before they had an incentive classification"
-#| eval: false
-#| include: false
 
 change_table <- ptax_proj |>
   ungroup() |>
@@ -168,10 +139,10 @@ change_table <- ptax_proj |>
   select(pin, first_tif_year, first_incent_year)|> 
   distinct() 
 
-#254 PINs had incentive classes before they were in a TIF
+# 284 PINs had incentive classes before they were in a TIF
 # change_table |> filter(first_tif_year > first_incent_year)
 
-#1373 PINs were in a TIF before they had an incentive classification
+# 1534 PINs were in a TIF before they had an incentive classification
 change_table |> filter(first_tif_year < first_incent_year)
 ```
 
@@ -179,8 +150,6 @@ change_table |> filter(first_tif_year < first_incent_year)
 ```{r}
 #| label: tbl-keypin-tiforincent
 #| tbl-cap: "Projects that were in a TIF before they also got an incentive classification."
-#| eval: false
-#| include: false
 
 
 change_table <- ptax_proj |>
@@ -193,9 +162,9 @@ change_table <- ptax_proj |>
   select(main_keypin, first_tif_year, first_incent_year)|> 
   distinct() 
 
-# 152 projects were in a tif
-# change_table |> filter(first_tif_year > first_incent_year) 
-# 329 projects were in a TIF before they received incentive classes
+# 156 projects were in a tif
+change_table |> filter(first_tif_year > first_incent_year) 
+# 397 projects were in a TIF before they received incentive classes
 change_table |> filter(first_tif_year < first_incent_year) 
 ```
 
@@ -219,8 +188,10 @@ change_table <- ptax_proj |>
   select(pin, first_commerc_year, first_indust_year, first_other_year)|> 
   distinct() 
 
+# 864
 change_table |> filter(first_commerc_year < first_indust_year)
   
+# 7154
 change_table |> filter(first_commerc_year < first_other_year)
 ```
 
@@ -228,8 +199,7 @@ change_table |> filter(first_commerc_year < first_other_year)
 ```{r }
 #| label: tbl-keypinchange
 #| tbl-cap: "Projects where the first year as a commercial land use is before becoming commercial."
-#| eval: false
-#| include: false
+
 
 change_table <- ptax_proj |>
   ungroup() |>
@@ -242,8 +212,10 @@ change_table <- ptax_proj |>
   select(main_keypin, first_commerc_year, first_indust_year, first_other_year)|> 
   distinct() 
 
+#713 
 change_table |> filter(first_commerc_year < first_other_year)
   
+# 318
 change_table |> filter(first_commerc_year < first_indust_year)
 
 
@@ -343,15 +315,10 @@ block_panel %>% filter(year == 2022) %>%
   summarize(pin_count = sum(project_pins))
 ```
 
-```{r eval=FALSE}
-ptax_pins <- ptax_pins |>
-  select(year, pin, class, tax_code_num:assess_ratio, comparable_props:loa,
-         tax_code_rate, tax_code_distribution_pct, fmv, in_tif, 
-         class_group,landuse_change, incent_change, exe_abate,
-         incent:av_mailed_pct_change)
+```{r}
 
-ptax_proj_summs <- ptax_pins %>% 
-  left_join(project_pins, by = "pin") |>
+ptax_proj_summs <- ptax_proj %>% 
+ # left_join(project_pins, by = "pin") |>
   filter(!is.na(main_keypin)) |>
  # mutate(main_keypin = ifelse(is.na(main_keypin), pin, main_keypin) ) |>
   
@@ -364,7 +331,7 @@ ptax_proj_summs <- ptax_pins %>%
     in_tif = mean(in_tif, na.rm=TRUE),
     # pin_classes = paste(sort(unique(class)), collapse = ", "),
     land_use = paste(sort(unique(land_use)), collapse = ", "),
-    incent_prop = paste(sort(unique(incent_prop.x)), collapse = ", "),
+    incent_prop = paste(sort(unique(incent_prop)), collapse = ", "),
     triad = first(Triad),
     clean_name = first(clean_name),
     reassessed_year = first(reassessed_year),
@@ -431,8 +398,8 @@ ptax_proj_summs <- ptax_proj_summs %>%
 
 ```{r eval=FALSE, include = FALSE}
 ptax_proj_summs %>% 
-  select(-c(landuse_change, land_use, incent_change) ) %>%
-           write_csv("Output/project_summaries_2025_Sept8.csv")
+ # select(-c(landuse_change, land_use, incent_change) ) %>%
+           write_csv("Output/Pin to Project Files/project_summaries_2025_Nov10.csv")
 
 ```
 
@@ -441,8 +408,8 @@ ptax_proj_summs %>%
 # ptax_proj_summs %>% is.finite() %>% modelsummary::datasummary_skim()
 
 ptax_proj_summs %>% 
-  select(-c(land_use, incent_prop, landuse_change, tif_change, incent_change)) %>% 
-  modelsummary::datasummary_skim("categorical")
+#  select(-c(land_use, incent_prop, landuse_change, tif_change, incent_change)) %>% 
+  modelsummary::datasummary_skim()
 
 ```
 
@@ -556,13 +523,13 @@ proj_panel <- ptax_proj_summs %>%
   mutate(fmv_w = DescTools::Winsorize(fmv, quantile(fmv, probs = c(0.005, 0.995), na.rm=TRUE)),
          fmv_growth_2011_w = DescTools::Winsorize(fmv_growth_2011, quantile(fmv_growth_2011, probs = c(0.005, 0.995), na.rm=TRUE)))
 
-write_rds(proj_panel, file = "Output/proj_panel.RDS")
+write_rds(proj_panel, file = "Output/proj_panel2.RDS")
 ```
 
 
 ```{r read-proj-panel}
 
-proj_panel <- read_rds("Output/proj_panel.RDS")
+proj_panel <- read_rds("Output/proj_panel2.RDS")
 
 # table(proj_panel$incent_prop2)
 table(proj_panel$years_existed)
