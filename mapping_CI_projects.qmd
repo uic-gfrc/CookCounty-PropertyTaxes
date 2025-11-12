@@ -48,7 +48,8 @@ ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2023.
 
 
 # we use buyer name for creating groups in later chunks
-sales <- read_csv("../../dissertation/data/raw/Assessor_Parcel_Sales_20250105.csv") %>% 
+sales <- read_csv("../../dissertation/data/raw/Assessor_-_Parcel_Sales_20250709.csv") %>% 
+#sales <- read_csv("../../dissertation/data/raw/Assessor_Parcel_Sales_20250105.csv") %>% 
  # "./inputs/Assessor_-_Parcel_Sales_20250704.csv") %>%
   filter(class > 399 & class < 900) %>%
   mutate(major_class = str_sub(class, 1, 1),
@@ -133,18 +134,20 @@ keypincheck <- keypincheck |>
 keypincheck <- keypincheck |> left_join(geo_names)
 
 
-writexl::write_xlsx(keypincheck, "Output/project_check3.xlsx")
+writexl::write_xlsx(keypincheck, "Output/project_check4.xlsx")
 ```
 
 ```{r}
 
-merged_data <- readxl::read_xlsx("Output/project_check3.xlsx") |>
+merged_data <- readxl::read_xlsx("Output/project_check4.xlsx") |>
+#  merged_data <- readxl::read_xlsx("Output/project_check3.xlsx") |>
+
   mutate(pin = str_pad(pin, 14, side = "left", pad = "0"),
          keypin = str_pad(keypin, 14, side = "left", pad = "0"),
          pin10 = str_sub(pin, 1, 10),
          pin7 = str_sub(pin, 1, 7))
 
-manually_checked <- readxl::read_xlsx("Output/projects_combined_with_municipality.xlsx", col_types = "text")|>
+manually_checked <- readxl::read_xlsx("Output/Pin to Project Files/projects_combined_with_municipality.xlsx", col_types = "text")|>
   mutate(pin = str_pad(pin, 14, side = "left", pad = "0"),
          keypin = str_pad(keypin, 14, side = "left", pad = "0")) |> 
   select(pin, keypin, manually_added)
@@ -370,7 +373,7 @@ parcel_comparison %>%
 ```
 
 ```{r}
-parcel_comparison <- readxl::read_xlsx("Output/projects_bedfordpark_checked.xlsx")  |>
+parcel_comparison <- readxl::read_xlsx("Output/Pin to Project Files/projects_bedfordpark_checked.xlsx")  |>
   mutate(pin10 = str_pad(pin10, 10, "left", "0"),
          pin = str_pad(pin, 14, "left", "0"),
          keypin = str_pad(keypin, 14, "left", "0"))
@@ -611,7 +614,7 @@ There are `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ing
 ```
 
 ```{r}
-parcel_comparison <- readxl::read_xlsx("Output/projects_southholland_checked.xlsx")  |>
+parcel_comparison <- readxl::read_xlsx("Output/Pin to Project Files/projects_southholland_checked.xlsx")  |>
   mutate(pin10 = str_pad(pin10, 10, "left", "0"),
          pin = str_pad(pin, 14, "left", "0"),
          keypin = str_pad(keypin, 14, "left", "0"))
@@ -850,7 +853,7 @@ write_csv(parcel_comparison, "Output/projects_franklinpark.csv")
 ```
 
 ```{r}
-parcel_comparison <- readxl::read_xlsx("Output/projects_franklinpark_checked.xlsx")  |>
+parcel_comparison <- readxl::read_xlsx("Output/Pin to Project Files/projects_franklinpark_checked.xlsx")  |>
   mutate(pin10 = str_pad(pin10, 10, "left", "0"),
          pin = str_pad(pin, 14, "left", "0"),
          keypin = str_pad(keypin, 14, "left", "0"))
@@ -1090,7 +1093,7 @@ There are `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ing
 
 
 ```{r}
-parcel_comparison <- readxl::read_xlsx("Output/projects_matteson_checked.xlsx")  |>
+parcel_comparison <- readxl::read_xlsx("Output/Pin to Project Files/projects_matteson_checked.xlsx")  |>
   mutate(pin10 = str_pad(pin10, 10, "left", "0"),
          pin = str_pad(pin, 14, "left", "0"),
          keypin = str_pad(keypin, 14, "left", "0"))
@@ -1310,7 +1313,7 @@ There are `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ing
 #| fig-cap: "Mapped by Commercial valuation keypin"
 #| layout-ncol: 2
 
-keypins_checked <- readxl::read_xlsx("Output/projects_elkgrove_checked.xlsx") |>
+keypins_checked <- readxl::read_xlsx("Output/Pin to Project Files/projects_elkgrove_checked.xlsx") |>
   mutate(pin10 = str_pad(pin10, 10, "left", "0"),
          pin = str_pad(pin, 14, "left", "0"),
          keypin = str_pad(keypin, 14, side = "left", pad = "0"))
@@ -1438,7 +1441,7 @@ parcel_comparison %>%
 #| layout-ncol: 2
 
 
-keypins_checked <- readxl::read_xlsx("Output/projects_berwyn_checked.xlsx") |>
+keypins_checked <- readxl::read_xlsx("Output/Pin to Project Files/projects_berwyn_checked.xlsx") |>
     mutate(pin10 = str_pad(pin10, 10, "left", "0"),
          pin = str_pad(pin, 14, "left", "0"),
          keypin = str_pad(keypin, 14, side = "left", pad = "0"))
@@ -1571,7 +1574,7 @@ There are `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ing
 # 
 # parcel_comparison <- left_join(parcels, bor_pins) %>% 
 #   select(group, pin10, appellant, everything()) 
-write_csv(parcel_comparison, "Output/projects_berwyn.csv")
+#write_csv(parcel_comparison, "Output/projects_berwyn.csv")
 
 parcel_comparison %>% 
   as.data.frame() |>
