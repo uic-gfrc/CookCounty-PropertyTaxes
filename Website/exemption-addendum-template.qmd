@@ -56,6 +56,15 @@ c2pins <- pin_data |>
 Addendum to Exemption Report - Tax Year `{r} params$year`
 
 ```{r}
+c2pins |> summarize(eq_av = sum(eq_av),
+  taxedby_tif_and_govs = sum(total_taxed_eav_AWM), # eav taxed by governments and TIFs
+                    total_taxed_eav = sum(taxed_eav), ## is the post exemption EAV amount. Equal to taxed_eav_nonTIF variable. 
+                    total_old = sum(taxed_eav_old), # overstated taxaed EAV due to data quirk of exemptions amount from ptaxsim. was missing some exempt EAV for properties that had $0 bills
+                    tif_taxed =sum(taxed_eav_TIFincrement),
+                    eav_postexemptions = sum(eav_postexemptions))
+```
+
+```{r}
 #| label: medianproperty-bymuni
 
 q = c(.1, .25, .5, .75, .9)
@@ -83,12 +92,12 @@ C2_munistats <- c2pins %>%
   group_by(clean_name)  %>%
   arrange(av) %>%
   summarize(
-    median_eav = round(median(taxed_eav)), 
+    median_eav = round(median(eav_postexemptions)), 
     median_av = round(median(av)), 
     avg_av = round(mean(av)),
-    avg_eav = round(mean(taxed_eav)),
+    avg_eav = round(mean(eav_postexemptions)),
     C2_pins_in_muni = n(),
-    C2_current_exemptions = sum(exe_total_adj, na.rm = TRUE),
+    C2_current_exemptions = sum(exe_total_old, na.rm = TRUE),
     C2_HO_exemps = sum(exe_homeowner, na.rm = TRUE),
   ) 
 
@@ -98,10 +107,10 @@ C2_munistats_adjusted <- c2pins %>%
   group_by(clean_name)  %>%
   arrange(av) %>%
   summarize(
-    median_eav = round(median(taxed_eav_adj)), 
+    median_eav = round(median(eav_postexemptions)), 
     median_av = round(median(av)), 
     avg_av = round(mean(av)),
-    avg_eav = round(mean(taxed_eav_adj)),
+    avg_eav = round(mean(eav_postexemptions)),
     C2_pins_in_muni = n(),
     C2_current_exemptions = sum(exe_total_adj, na.rm = TRUE),
     C2_HO_exemps = sum(exe_homeowner, na.rm = TRUE),
@@ -155,13 +164,13 @@ tax_bill_change_HO <- c2pins %>%
          bill_noexemps =  rate_noGHE*(taxed_eav+exe_homeowner),
          bill_change = bill_noexemps - bill_current) %>%
   group_by(clean_name, has_HO_exemp) %>% 
-  summarize(median_AV = median(av),
-            median_EAV = median(taxed_eav),
+  summarize(median_AV = round(median(av)),
+            median_EAV = round(median(taxed_eav)),
             median_bill_cur = round(median(bill_current)),
             median_bill_new = round(median(bill_noexemps)),
             median_change = round(median(bill_change)),
             pincount=n(),
-            perceived_savings = median(exe_homeowner*tax_code_rate)
+            perceived_savings = round(median(exe_homeowner*tax_code_rate))
   )
 
 tax_bill_change_HO_adjusted <- c2pins %>% 
@@ -169,22 +178,29 @@ tax_bill_change_HO_adjusted <- c2pins %>%
   filter(av > 0) %>% 
   arrange(av) %>%
   mutate(#eq_av = av_clerk*eq_factor,
-         bill_current = (taxed_eav_adj*tax_code_rate),
-         bill_noexemps =  rate_noGHE*(taxed_eav_adj+exe_homeowner),
-         bill_change = bill_noexemps - bill_current) %>%
+         bill_current = (taxed_eav*tax_code_rate),
+         bill_current_withTIFs = total_taxed_eav_AWM*tax_code_rate,
+         bill_noexemps =  rate_noGHE*(taxed_eav+exe_homeowner),
+         bill_noexemps_withTIFs =  rate_noGHE*(total_taxed_eav_AWM+exe_homeowner),
+
+         bill_change = bill_noexemps - bill_current,
+         bill_change_wTIFs = bill_noexemps_withTIFs- bill_current_withTIFs) %>%
   group_by(clean_name, has_HO_exemp) %>% 
-  summarize(median_AV = median(av),
-            median_EAV = median(taxed_eav_adj),
+  summarize(median_AV = round(median(av)),
+            median_EAV = round(median(taxed_eav)),
             median_bill_cur = round(median(bill_current)),
+            median_bill_cur_withtifs = round(median(bill_current_withTIFs)),
             median_bill_new = round(median(bill_noexemps)),
+            median_bill_noexemps_withtifs = round(median(bill_noexemps_withTIFs)),
             median_change = round(median(bill_change)),
+            median_change_wTIF = round(median(bill_change_wTIFs)),
             pincount=n(),
-            perceived_savings = median(exe_homeowner*tax_code_rate)
+            perceived_savings = round(median(exe_homeowner*tax_code_rate)),
   )
 
 tax_bill_change_HO |> 
   filter(clean_name %in% c("Park Forest", "Phoenix", "Winnetka", "Riverdale")) |>
-  mutate(across(c(median_AV:median_change, perceived_savings), scales::dollar) ) |>
+  mutate(across(c(median_bill_cur:median_change, perceived_savings), scales::dollar) ) |>
   rename( 'Municipality' = 'clean_name',
                   'Claims GHE' = 'has_HO_exemp',
                   'Current Bill' = 'median_bill_cur',
@@ -192,16 +208,26 @@ tax_bill_change_HO |>
                   'Bill Change' = 'median_change',  
                   'Perceived Savings'='perceived_savings') |>
   flextable::flextable()
+```
 
+
+```{r}
+#| label: tbl-taxbillchange_withTIFrev
+#| tbl-cap: "**Same as table above but includes amount on taxbill that goes to TIFs.** Some municipalities will remain unchanged." 
 
 tax_bill_change_HO_adjusted |> 
   filter(clean_name %in% c("Park Forest", "Phoenix", "Winnetka", "Riverdale")) |>
-  mutate(across(c(median_AV:median_change, perceived_savings), scales::dollar) ) |>
+  mutate(across(c(median_bill_cur:median_change, perceived_savings), scales::dollar) ) |>
   rename( 'Municipality' = 'clean_name',
                   'Claims GHE' = 'has_HO_exemp',
-                  'Current Bill' = 'median_bill_cur',
-                  'Hyp. Bill' = 'median_bill_new', 
+          'Median AV' = 'median_AV', 
+          'Median Taxed EAV' = 'median_EAV',
+                  'Current Bill w/o TIF' = 'median_bill_cur',
+          'Current Bill w/ TIF'  = 'median_bill_cur_withtifs',
+                  'Hyp. Bill w/o TIF' = 'median_bill_new', 
+        'Hyp. Bill w/ TIF' = 'median_bill_noexemps_withtifs',
                   'Bill Change' = 'median_change',  
+        'Bill Change w/ TIF' = 'median_change_wTIF',
                   'Perceived Savings'='perceived_savings') |>
   flextable::flextable()
 ```
@@ -351,6 +377,7 @@ For the different exemption scenarios, we created new exemption variables for al
 
 ```{r increase-exemptions-hypotheticals}
 pin_data <- pin_data %>% 
+  mutate(all_exemptions = exe_total_adj) |>
   left_join(class_dict, by = c("class" = "class_code")) %>%
   mutate(
  
@@ -452,6 +479,7 @@ scenario_taxrates |>
 ```{r}
 munis_billchange <- munis_ranked %>% 
     left_join(scenario_taxrates) %>%
+  mutate(all_exemptions = exe_total_adj) |>
 
   mutate(
     eav = eq_av,
