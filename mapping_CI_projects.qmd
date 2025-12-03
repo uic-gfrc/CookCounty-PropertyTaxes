@@ -26,8 +26,8 @@ comm_ind <- read_csv("Output/comm_ind_PINs_2011to2022_timeseries.csv") %>%
 
 geo_names <- comm_ind |> select(pin, clean_name, Triad, Township)
 
-exists_in2022 <- comm_ind |> filter(class_1dig %in% c(5,6,7,8)) |> select(pin, class)
-write_csv(exists_in2022, "Output/CIpins_in2022_deleteaftermerge.csv")
+#exists_in2022 <- comm_ind |> filter(class_1dig %in% c(5,6,7,8)) |> select(pin, class)
+#write_csv(exists_in2022, "Output/CIpins_in2022_deleteaftermerge.csv")
 ```
 
 ```{r}
@@ -138,6 +138,8 @@ writexl::write_xlsx(keypincheck, "Output/project_check4.xlsx")
 ```
 
 ```{r}
+#| eval: false
+
 
 merged_data <- readxl::read_xlsx("Output/project_check4.xlsx") |>
 #  merged_data <- readxl::read_xlsx("Output/project_check3.xlsx") |>
@@ -164,10 +166,9 @@ merged_data2 <- merged_data2 |> select(pin, main_keypin, manually_added, Townshi
 ```
 
 ```{r warning=FALSE, message=FALSE}
-# keypins <- readxl::read_xlsx("Output/project_check_AWMmanualcheck.xlsx")
 
 keypins <- readxl::read_xlsx("Output/project_check2.xlsx") 
- 
+
 ```
 
 - Random parcels that should be grouped in a project:
@@ -175,7 +176,7 @@ keypins <- readxl::read_xlsx("Output/project_check2.xlsx")
   
 
 
-
+> Code above were all gradual steps to create the projects_checked_mainfile.xlsx
 
 # Mapping Areas
 
@@ -252,12 +253,8 @@ ggplot(parcels) +
 
 
 ```{r}
-#| label: fig-saledocuments
-#| fig-cap: "Grouped by Sale Document Number."
-#| layout-ncol: 2
 
-
-keypins |> filter(pin10%in% twnshp_test$pin10)
+keypins |> filter(pin10 %in% twnshp_test$pin10)
 
 parcel_comparison <- left_join(parcels, keypins, by = "pin10", relationship = "many-to-many") %>% 
   select(pin10, everything())
@@ -269,6 +266,14 @@ parcel_comparison %>%
   summarize(parcels_ingroup = n(), 
             incent_pins = sum(incent_prop=="Incentive")) |>
   arrange(desc(incent_pins), desc(parcels_ingroup))
+```
+
+
+```{r}
+#| label: fig-saledocuments
+#| fig-cap: "Grouped by Sale Document Number."
+#| layout-ncol: 2
+
 
 parcel_comparison %>% 
   group_by(sale_document_num) %>%
@@ -279,7 +284,7 @@ parcel_comparison %>%
   theme(legend.position = "none")
 ```
 
-There are `r paste(parcel_comparison %>% group_by(sale_buyer_name) %>% summarize(pins_ingroup = n()) |> filter(pins_ingroup > 1) |> n_distinct())` projects with more than 1 pin in them and  `r paste(parcel_comparison %>% group_by(sale_buyer_name) %>% summarize(pins_ingroup = n()) |> n_distinct())` projects overall based on the sale document number.
+There are `r paste(parcel_comparison %>% group_by(sale_document_num) %>% summarize(pins_ingroup = n()) |> filter(pins_ingroup > 1) |> n_distinct())` projects with more than 1 pin in them and  `r paste(parcel_comparison %>% group_by(sale_document_num) %>% summarize(pins_ingroup = n()) |> n_distinct())` projects overall based on the sale document number.
 
 There are `r paste(parcel_comparison %>% group_by(pin) %>% n_distinct())` PINs that were C & I class for at least 1 year in the data.
 
@@ -346,18 +351,28 @@ There are `r paste(parcel_comparison %>% group_by(appellant) %>% summarize(pins_
 
 ### Commercial valuation keypins
 
+#### Methodology Worksheets
+
 ```{r}
 #| label: fig-muni1-keypin
 #| fig-cap: "Mapped by Commercial valuation keypin"
 #| layout-ncol: 2
 
-parcel_comparison %>% 
-  as.data.frame() |>
-  group_by(keypin) |>
-  summarize(#n=n(),
-                        #parcels = n_distinct(pin10),
-                        incent_pins = sum(incent_prop=="Incentive")) |>
-  arrange(desc(incent_pins))
+keypins <- read_csv("./Output/keypins_from_methodwkshts.csv") |>
+  mutate(
+    pin10 = str_sub(pin, 1, 10),
+    keypin = ifelse(keypin == "amazon", "28242010220000", keypin)
+                  )
+parcel_comparison <- left_join(parcels, keypins, by = "pin10") %>%
+  select(pin10, keypin, everything())
+
+# parcel_comparison %>% 
+#   as.data.frame() |>
+#   group_by(keypin) |>
+#   summarize(#n=n(),
+#                         #parcels = n_distinct(pin10),
+#                         incent_pins = sum(incent_prop=="Incentive")) |>
+#   arrange(desc(incent_pins))
 
 
 parcel_comparison %>% 
@@ -369,31 +384,36 @@ parcel_comparison %>%
 ```
 
 ```{r}
+# made this before bedfork park, berwyn, and south holland, and matteson were released in the newest methodology worksheets
+
 #write_csv(parcel_comparison, "Output/projects_bedfordpark.csv")
 ```
 
 ```{r}
-parcel_comparison <- readxl::read_xlsx("Output/Pin to Project Files/projects_bedfordpark_checked.xlsx")  |>
-  mutate(pin10 = str_pad(pin10, 10, "left", "0"),
-         pin = str_pad(pin, 14, "left", "0"),
-         keypin = str_pad(keypin, 14, "left", "0"))
+# parcel_comparison <- readxl::read_xlsx("Output/Pin to Project Files/projects_bedfordpark_checked.xlsx")  |>
+#   
+#   filter(clean_name == "Bedford Park") |>
+#   mutate(pin10 = str_pad(pin10, 10, "left", "0"),
+#          pin = str_pad(pin, 14, "left", "0"),
+#          keypin = str_pad(keypin, 14, "left", "0"))
+# 
+# parcel_comparison <- left_join(parcels, parcel_comparison, by = "pin10") %>%
+#   select(pin10, keypin, everything())
 
-parcel_comparison <- left_join(parcels, parcel_comparison, by = "pin10") %>% 
-  select(pin10, keypin, everything()) 
-
-parcel_comparison |>
-  as.data.frame() |>
-  group_by(keypin) |>
-  summarize(n = n(),
-            incent_pins = sum(incent_prop=="Incentive")) |>
-  arrange(desc(n))
+# 
+# parcel_comparison |>
+#   as.data.frame() |>
+#   group_by(keypin) |>
+#   summarize(n = n(),
+#             incent_pins = sum(incent_prop=="Incentive")) |>
+#   arrange(desc(n))
 
 parcel_comparison %>% 
-  group_by(keypin) |>
-  mutate(appealid = first(appealid)) |>
-    mutate(mapid = str_c(appealid, "-", keypin)) |>
+ # group_by(keypin) |>
+ # mutate(appealid = first(appealid)) |>
+  #  mutate(mapid = str_c(appealid, "-", keypin)) |>
   ggplot() +
-  geom_sf(aes(fill = mapid)) +
+  geom_sf(aes(fill = keypin)) +
   theme_minimal() + 
   scale_fill_discrete(na.value = "white")+
   theme(legend.position = "none")
@@ -424,6 +444,145 @@ pin_info |>
   arrange(desc(incentive_pins))
 
 ```
+
+#### Manually coded
+
+```{r}
+library(readxl)
+
+# read this once, reuse across municipalities
+keypins <- read_xlsx("Output/projects_checked_MAINFILE.xlsx") |>
+  mutate(keypin = main_keypin)
+
+make_parcel_map <- function(parcels_sf, keypins_df = keypins) {
+
+  # 1. Join parcels to keypins
+parcel_comparison <- left_join(parcels_sf, keypins_df, by = "pin10") %>%
+  select(pin10, keypin, everything())
+
+  # 2. Summary table (drop geometry instead of as.data.frame)
+  parcel_keypin_summary <- parcel_comparison |>
+    sf::st_drop_geometry() |>
+    group_by(keypin) |>
+    summarize(
+      n = n(),
+      incent_pins = sum(incent_prop == "Incentive", na.rm = TRUE),
+      .groups = "drop"
+    ) |>
+    arrange(desc(n))
+
+  # 3. Map plot
+  parcel_plot <- parcel_comparison |>
+    group_by(keypin) |>
+    ggplot() +
+    geom_sf(aes(fill = keypin)) +
+    theme_minimal() +
+    scale_fill_discrete(na.value = "white") +
+    theme(legend.position = "none")
+
+# 4. PIN-level join: comm_ind x parcel_comparison
+  #    Drop geometry before joining to avoid sf headaches
+  pin_info <- comm_ind |>
+    inner_join(
+      parcel_comparison
+    )
+  
+  # 5. Class-level summary (pins + distinct keypins)
+  class_summary <- pin_info |>
+    filter(!is.na(keypin) & !is.na(class)) |>
+    group_by(class) |>
+    summarize(
+      pins    = n(),
+      keypins = n_distinct(keypin),
+      .groups = "drop"
+    )
+  
+  # 6. Keypin-level summary from comm_ind / pin_info
+  keypin_info_summary <- pin_info |>
+    filter(!is.na(keypin)) |>
+    group_by(keypin) |>
+    summarize(
+      n              = n(),
+      fmv            = sum(fmv,    na.rm = TRUE),
+      incentive_pins = sum(incent, na.rm = TRUE),
+      exempt         = sum(exempt, na.rm = TRUE),
+      .groups        = "drop"
+    ) |>
+    arrange(desc(incentive_pins))
+  
+  # Return everything you might want to look at
+  list(
+    parcel_comparison    = parcel_comparison,
+    parcel_keypin_summary = parcel_keypin_summary,
+    plot                 = parcel_plot,
+    pin_info             = pin_info,
+    class_summary        = class_summary,
+    keypin_info_summary  = keypin_info_summary
+  )
+}
+
+muni_data <- make_parcel_map(parcels,keypins)
+
+muni_data$parcel_comparison
+muni_data$parcel_keypin_summary
+muni_data$plot
+muni_data$pin_info
+muni_data$class_summary
+muni_data$keypin_info_summary
+```
+
+```{r eval = FALSE}
+keypins <- readxl::read_xlsx("Output/projects_checked_MAINFILE.xlsx") |>
+  mutate(keypin = main_keypin)
+
+parcel_comparison <- left_join(parcels, keypins, by = "pin10") %>%
+  select(pin10, keypin, everything())
+
+parcel_comparison |>
+  as.data.frame() |>
+  group_by(keypin) |>
+  summarize(n = n(),
+            incent_pins = sum(incent_prop=="Incentive")) |>
+  arrange(desc(n))
+
+parcel_comparison %>% 
+  group_by(keypin) |>
+  mutate(appealid = first(appealid)) |>
+    mutate(mapid = str_c(appealid, "-", keypin)) |>
+  ggplot() +
+  geom_sf(aes(fill = mapid)) +
+  theme_minimal() + 
+  scale_fill_discrete(na.value = "white")+
+  theme(legend.position = "none")
+
+```
+
+
+```{r eval = FALSE}
+pin_info <- comm_ind |> inner_join(parcel_comparison)
+
+pin_info |>   filter(!is.na(keypin) & !is.na(class)) |>
+group_by(class) |> summarize(pins = n(),
+                                         keypins = n_distinct(keypin))
+
+pin_info |> 
+  filter(!is.na(keypin)) |>
+  group_by(keypin) |> 
+  summarize(n = n(),
+            #av_mailed = sum(av_mailed, na.rm=TRUE),
+            #av_clerk = sum(av_clerk, na.rm=TRUE),
+            fmv = sum(fmv, na.rm=TRUE),
+            incentive_pins = sum(incent),
+            exempt = sum(exempt)
+            ) |>
+  arrange(desc(incentive_pins))
+```
+
+
+
+There are `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ingroup = n()) |> filter(pins_ingroup > 1) |> n_distinct())` projects with more than 1 pin in them and  `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ingroup = n()) |> n_distinct())` projects overall based on manually grouped keypins from combined data sources.
+
+
 
 
 ## South Holland
@@ -588,7 +747,6 @@ There are `r paste(parcel_comparison %>% group_by(sale_document_num) %>% summari
 
 
 parcel_comparison %>% 
-  
   as.data.frame() |>
   group_by(keypin) %>%
   summarize(pins_ingroup = n(),
@@ -619,8 +777,8 @@ parcel_comparison <- readxl::read_xlsx("Output/Pin to Project Files/projects_sou
          pin = str_pad(pin, 14, "left", "0"),
          keypin = str_pad(keypin, 14, "left", "0"))
 
-parcel_comparison <- left_join(parcels, parcel_comparison, by = "pin10") %>% 
-  select(pin10, keypin, everything()) 
+parcel_comparison <- left_join(parcels, parcel_comparison, by = "pin10") %>%
+  select(pin10, keypin, everything())
 
 parcel_comparison |>
   as.data.frame() |>
@@ -818,7 +976,10 @@ parcel_comparison %>%
   theme_minimal() + theme(legend.position = "none")
 ```
 
-There are `r paste(parcel_comparison %>% group_by(sale_buyer_name) %>% summarize(pins_ingroup = n()) |> filter(pins_ingroup > 1) |> n_distinct())` projects with more than 1 pin in them and  `r paste(parcel_comparison %>% group_by(sale_buyer_name) %>% summarize(pins_ingroup = n()) |> n_distinct())` projects overall based on sales data.
+There are `r paste(parcel_comparison %>% group_by(sale_document_num) %>% summarize(pins_ingroup = n()) |> filter(pins_ingroup > 1) |> n_distinct())` projects with more than 1 pin in them and  `r paste(parcel_comparison %>% group_by(sale_document_num) %>% summarize(pins_ingroup = n()) |> n_distinct())` projects overall based on the sale document number.
+
+There are `r paste(parcel_comparison %>% group_by(pin) %>% n_distinct())` PINs that were C & I class for at least 1 year in the data.
+
 
 
 ### Commercial valuation keypins
@@ -849,7 +1010,7 @@ parcel_comparison %>%
 There are `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ingroup = n()) |> filter(pins_ingroup > 1) |> n_distinct())` projects with more than 1 pin in them and  `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ingroup = n()) |> n_distinct())` projects overall based on sales data.
 
 ```{r}
-write_csv(parcel_comparison, "Output/projects_franklinpark.csv")
+#write_csv(parcel_comparison, "Output/projects_franklinpark.csv")
 ```
 
 ```{r}
@@ -858,8 +1019,8 @@ parcel_comparison <- readxl::read_xlsx("Output/Pin to Project Files/projects_fra
          pin = str_pad(pin, 14, "left", "0"),
          keypin = str_pad(keypin, 14, "left", "0"))
 
-parcel_comparison <- left_join(parcels, parcel_comparison, by = "pin10") %>% 
-  select(pin10, keypin, everything()) 
+parcel_comparison <- left_join(parcels, parcel_comparison, by = "pin10") %>%
+  select(pin10, keypin, everything())
 
 parcel_comparison |>
   as.data.frame() |>
@@ -978,7 +1139,7 @@ ggplot(parcels) +
 #| layout-ncol: 2
 
 
- parcel_comparison <- left_join(parcels, keypins) %>%
+parcel_comparison <- left_join(parcels, keypins) %>%
    select(pin10, appellant, everything())
 
 parcel_comparison |>
@@ -1056,7 +1217,9 @@ parcel_comparison %>%
   theme_minimal() + theme(legend.position = "none")
 ```
 
-There are `r paste(parcel_comparison %>% group_by(sale_buyer_name) %>% summarize(pins_ingroup = n()) |> filter(pins_ingroup > 1) |> n_distinct())` projects with more than 1 pin in them and  `r paste(parcel_comparison %>% group_by(sale_buyer_name) %>% summarize(pins_ingroup = n()) |> n_distinct())` projects overall based on sales data.
+There are `r paste(parcel_comparison %>% group_by(sale_document_num) %>% summarize(pins_ingroup = n()) |> filter(pins_ingroup > 1) |> n_distinct())` projects with more than 1 pin in them and  `r paste(parcel_comparison %>% group_by(sale_document_num) %>% summarize(pins_ingroup = n()) |> n_distinct())` projects overall based on the sale document number.
+
+There are `r paste(parcel_comparison %>% group_by(pin) %>% n_distinct())` PINs that were C & I class for at least 1 year in the data.
 
 
 
@@ -1098,8 +1261,8 @@ parcel_comparison <- readxl::read_xlsx("Output/Pin to Project Files/projects_mat
          pin = str_pad(pin, 14, "left", "0"),
          keypin = str_pad(keypin, 14, "left", "0"))
 
-parcel_comparison <- left_join(parcels, parcel_comparison, by = "pin10") %>% 
-  select(pin10, keypin, everything()) 
+parcel_comparison <- left_join(parcels, parcel_comparison, by = "pin10") %>%
+  select(pin10, keypin, everything())
 
 parcel_comparison |>
   as.data.frame() |>
@@ -1533,7 +1696,10 @@ parcel_comparison %>%
   theme_minimal() + theme(legend.position = "none")
 ```
 
-There are `r paste(parcel_comparison %>% group_by(sale_buyer_name) %>% summarize(pins_ingroup = n()) |> filter(pins_ingroup > 1) |> n_distinct())` projects with more than 1 pin in them and  `r paste(parcel_comparison %>% group_by(sale_buyer_name) %>% summarize(pins_ingroup = n()) |> n_distinct())` projects overall based on sales data.
+There are `r paste(parcel_comparison %>% group_by(sale_document_num) %>% summarize(pins_ingroup = n()) |> filter(pins_ingroup > 1) |> n_distinct())` projects with more than 1 pin in them and  `r paste(parcel_comparison %>% group_by(sale_document_num) %>% summarize(pins_ingroup = n()) |> n_distinct())` projects overall based on the sale document number.
+
+There are `r paste(parcel_comparison %>% group_by(pin) %>% n_distinct())` PINs that were C & I class for at least 1 year in the data.
+
 
 
 
