@@ -611,10 +611,10 @@ There are `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ing
 
 parcel_comparison |>
   as.data.frame() |>
-  group_by(appellant) %>%
-  summarize(pins_ingroup = n(),
-            incent_pins = sum(incent_prop == "Incentive")) |> 
-  arrange(desc(incent_pins), desc(pins_ingroup)) 
+  summarize(pins_ingroup = n_distinct(pin),
+            parcels_ingroup = n_distinct(pin10),
+            incent_pins = sum(incent_prop == 1, na.rm=TRUE)) |>
+  arrange(desc(pins_ingroup), desc(incent_pins))
 
 parcel_comparison %>% 
   group_by(appellant) %>%
@@ -644,9 +644,10 @@ There are `r paste(parcel_comparison %>% group_by(pin) %>% n_distinct())` PINs t
 parcel_comparison  |>
   as.data.frame() |>
   group_by(sale_buyer_name) %>%
-  summarize(pins_ingroup = n(),
-            incent_pins = sum(incent_prop == "Incentive")) |>
-  arrange(desc(incent_pins), desc(pins_ingroup))
+  summarize(pins_ingroup = n_distinct(pin),
+            parcels_ingroup = n_distinct(pin10),
+            incent_pins = sum(incent_prop == 1, na.rm=TRUE)) |>
+  arrange(desc(pins_ingroup), desc(incent_pins))
 
 parcel_comparison %>% 
   group_by(sale_buyer_name) %>%
@@ -670,7 +671,8 @@ There are `r paste(parcel_comparison %>% group_by(sale_buyer_name) %>% summarize
 parcel_comparison |>
   as.data.frame() |>
   group_by(sale_document_num) %>%
-  summarize(pins_ingroup = n(),
+  summarize(pins_ingroup = n_distinct(pin),
+            parcels_ingroup = n_distinct(pin10),
             incent_pins = sum(incent_prop == 1, na.rm=TRUE)) |>
   arrange(desc(pins_ingroup), desc(incent_pins))
 
@@ -689,7 +691,6 @@ There are `r paste(parcel_comparison %>% group_by(sale_document_num) %>% summari
 ```{r}
 #| label: fig-muni2-keypin
 #| fig-cap: "Mapped by Commercial valuation keypin"
-#| layout-ncol: 2
 
 
 parcel_comparison <- left_join(parcels, worksheet_keypins, by = "pin10") %>%
@@ -702,13 +703,6 @@ parcel_comparison %>%
   scale_fill_discrete(na.value = "white") +
   theme(legend.position = "none")
 
-
-parcel_comparison |>
-  as.data.frame() |>
-  group_by(keypin) |>
-  summarize(n = n(),
-            ) |>
-  arrange(desc(n))
 ```
 
 
@@ -718,14 +712,15 @@ There are `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ing
 ```{r}
 pin_info <- comm_ind |> inner_join(parcel_comparison)
 
-pin_info |>  # filter(!is.na(keypin) & !is.na(class)) |>
-group_by(class) |> summarize(pins = n(),
-                                         keypins = n_distinct(keypin))
+pin_info |> 
+  group_by(class) |> summarize(pins = n(),
+                               keypins = n_distinct(keypin))
 
 pin_info |> 
- # filter(!is.na(keypin)) |>
   group_by(keypin) |> 
   summarize(n = n(),
+            pins_ingroup = n_distinct(pin),
+            parcels_ingroup = n_distinct(pin10),
             #av_mailed = sum(av_mailed, na.rm=TRUE),
             #av_clerk = sum(av_clerk, na.rm=TRUE),
             fmv = sum(fmv, na.rm=TRUE),
@@ -840,9 +835,10 @@ There are `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ing
 parcel_comparison |>
   as.data.frame() |>
   group_by(appellant) %>%
-  summarize(pins_ingroup = n(),
-            incent_pins = sum(incent_prop == "Incentive", na.rm=TRUE)) |> 
-  arrange(desc(pins_ingroup), desc(incent_pins)) 
+  summarize(pins_ingroup = n_distinct(pin),
+            parcels_ingroup = n_distinct(pin10),
+            incent_pins = sum(incent_prop == 1, na.rm=TRUE)) |>
+  arrange(desc(pins_ingroup), desc(incent_pins))
 
 parcel_comparison %>% 
   group_by(appellant) %>%
@@ -873,8 +869,9 @@ There are `r paste(parcel_comparison %>% group_by(pin) %>% n_distinct())` PINs t
 parcel_comparison  |>
   as.data.frame() |>
   group_by(sale_buyer_name) %>%
-  summarize(pins_ingroup = n(),
-            incent_pins = sum(incent_prop == "Incentive")) |>
+  summarize(pins_ingroup = n_distinct(pin),
+            parcels_ingroup = n_distinct(pin10),
+            incent_pins = sum(incent_prop == 1, na.rm=TRUE)) |>
   arrange(desc(pins_ingroup), desc(incent_pins))
 
 parcel_comparison %>% 
@@ -953,13 +950,15 @@ pin_info |>
   #filter(!is.na(keypin)) |>
   group_by(keypin) |> 
   summarize(n = n(),
+            pins_ingroup = n_distinct(pin),
+            parcels_ingroup = n_distinct(pin10),
+            incent_pins = sum(incent_prop == 1, na.rm=TRUE),
             #av_mailed = sum(av_mailed, na.rm=TRUE),
             #av_clerk = sum(av_clerk, na.rm=TRUE),
             fmv = sum(fmv, na.rm=TRUE),
-            incentive_pins = sum(incent),
             exempt = sum(exempt)
             ) |>
-  arrange(desc(incentive_pins))
+  arrange(desc(pins_ingroup), desc(incent_pins))
 
 ```
 
@@ -1065,8 +1064,9 @@ There are `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ing
 parcel_comparison |>
   as.data.frame() |>
   group_by(appellant) %>%
-  summarize(pins_ingroup = n(),
-            incent_pins = sum(incent_prop == "Incentive", na.rm=TRUE)) |> 
+  summarize(pins_ingroup = n_distinct(pin),
+            parcels_ingroup = n_distinct(pin10),
+            incent_pins = sum(incent_prop == 1, na.rm=TRUE)) |>
   arrange(desc(pins_ingroup), desc(incent_pins)) 
 
 parcel_comparison %>% 
@@ -1098,8 +1098,9 @@ There are `r paste(parcel_comparison %>% group_by(pin) %>% n_distinct())` PINs t
 parcel_comparison  |>
   as.data.frame() |>
   group_by(sale_buyer_name) %>%
-  summarize(pins_ingroup = n(),
-            incent_pins = sum(incent_prop == "Incentive")) |>
+  summarize(pins_ingroup = n_distinct(pin),
+            parcels_ingroup = n_distinct(pin10),
+            incent_pins = sum(incent_prop == 1, na.rm=TRUE)) |>
   arrange(desc(pins_ingroup), desc(incent_pins))
 
 parcel_comparison %>% 
@@ -1180,11 +1181,13 @@ pin_info |>
   summarize(n = n(),
             #av_mailed = sum(av_mailed, na.rm=TRUE),
             #av_clerk = sum(av_clerk, na.rm=TRUE),
+            pins_ingroup = n_distinct(pin),
+            parcels_ingroup = n_distinct(pin10),
             fmv = sum(fmv, na.rm=TRUE),
             incentive_pins = sum(incent),
             exempt = sum(exempt)
             ) |>
-  arrange(desc(incentive_pins))
+  arrange(desc(pins_ingroup), desc(incentive_pins))
 
 ```
 
@@ -1293,9 +1296,10 @@ There are `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ing
 parcel_comparison |>
   as.data.frame() |>
   group_by(appellant) %>%
-  summarize(pins_ingroup = n(),
-            incent_pins = sum(incent_prop == "Incentive", na.rm=TRUE)) |> 
-  arrange(desc(pins_ingroup), desc(incent_pins)) 
+  summarize(pins_ingroup = n_distinct(pin),
+            parcels_ingroup = n_distinct(pin10),
+            incent_pins = sum(incent_prop == 1, na.rm=TRUE)) |>
+  arrange(desc(pins_ingroup), desc(incent_pins))
 
 parcel_comparison %>% 
   group_by(appellant) %>%
@@ -1325,8 +1329,9 @@ There are `r paste(parcel_comparison %>% group_by(pin) %>% n_distinct())` PINs t
 parcel_comparison  |>
   as.data.frame() |>
   group_by(sale_buyer_name) %>%
-  summarize(pins_ingroup = n(),
-            incent_pins = sum(incent_prop == "Incentive")) |>
+  summarize(pins_ingroup = n_distinct(pin),
+            parcels_ingroup = n_distinct(pin10),
+            incent_pins = sum(incent_prop == 1, na.rm=TRUE)) |>
   arrange(desc(pins_ingroup), desc(incent_pins))
 
 parcel_comparison %>% 
@@ -1403,13 +1408,14 @@ pin_info |>
   #filter(!is.na(keypin)) |>
   group_by(keypin) |> 
   summarize(n = n(),
+            pins_ingroup = n_distinct(pin),
+            parcels_ingroup = n_distinct(pin10),
+            incent_pins = sum(incent_prop == 1, na.rm=TRUE),
             #av_mailed = sum(av_mailed, na.rm=TRUE),
             #av_clerk = sum(av_clerk, na.rm=TRUE),
             fmv = sum(fmv, na.rm=TRUE),
-            incentive_pins = sum(incent),
-            exempt = sum(exempt)
             ) |>
-  arrange(desc(incentive_pins))
+  arrange(desc(pins_ingroup), desc(incent_pins))
 
 ```
 
@@ -1516,7 +1522,8 @@ There are `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ing
 
 parcel_comparison %>% 
   group_by(sale_document_num) %>%
-  summarize(pins_ingroup = n(), 
+  summarize(pins_ingroup = n_distinct(pin),
+            parcels_ingroup = n_distinct(pin10),
             incent_pins = sum(incent_prop==1, na.rm=TRUE)) |>
   arrange(desc(incent_pins), desc(pins_ingroup))
 
@@ -1562,7 +1569,8 @@ There are `r paste(parcel_comparison %>% group_by(pin) %>% n_distinct())` PINs t
 parcel_comparison %>% 
   as.data.frame() |>
   group_by(sale_buyer_name) %>%
-  summarize(pins_ingroup = n(), 
+  summarize(pins_ingroup = n_distinct(pin),
+            parcels_ingroup = n_distinct(pin10),
             incent_pins = sum(incent_prop==1)) |>
   arrange(desc(pins_ingroup))
 
@@ -1576,7 +1584,7 @@ parcel_comparison %>%
   theme(legend.position = "none")
 ```
 
-There are `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ingroup = n()) |> filter(pins_ingroup > 1) |> n_distinct())` projects with more than 1 pin in them and  `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ingroup = n()) |> n_distinct())` projects overall based on sales data.
+There are `r paste(parcel_comparison %>% group_by(sale_buyer_name) %>% summarize(pins_ingroup = n()) |> filter(pins_ingroup > 1) |> n_distinct())` projects with more than 1 pin in them and  `r paste(parcel_comparison %>% group_by(sale_buyer_name) %>% summarize(pins_ingroup = n()) |> n_distinct())` projects overall based on sales data.
 
 
 ### Board of Review
@@ -1590,12 +1598,11 @@ There are `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ing
 parcel_comparison %>% 
   as.data.frame() |>
   group_by(appellant) %>%
-  summarize(pins_ingroup = n(), 
+  summarize(pins_ingroup = n_distinct(pin),
+            parcels_ingroup = n_distinct(pin10),
             incent_pins = sum(incent_prop==1))
 
 parcel_comparison %>% 
-  group_by(appellant) %>%
-  mutate(pins_ingroup = n()) %>%
   ggplot() +
   geom_sf(aes(fill = as.factor(appellant))) +
   theme_minimal() + 
@@ -1636,16 +1643,16 @@ group_by(class) |> summarize(pins = n(),
                                          keypins = n_distinct(keypin))
 
 pin_info |> 
- # filter(!is.na(keypin)) |>
   group_by(keypin) |> 
-  summarize(n = n(),
+  summarize(pins_ingroup = n_distinct(pin),
+            parcels_ingroup = n_distinct(pin10),
             #av_mailed = sum(av_mailed, na.rm=TRUE),
             #av_clerk = sum(av_clerk, na.rm=TRUE),
             fmv = sum(fmv, na.rm=TRUE),
             incentive_pins = sum(incent),
             exempt = sum(exempt)
             ) |>
-  arrange(desc(incentive_pins))
+  arrange(desc(pins_ingroup), desc(incentive_pins))
 
 ```
 
