@@ -1,0 +1,254 @@
+---
+title: "C&I Projects by Township"
+params: 
+  township: "Worth"
+format: 
+  html:
+    toc: true
+    toc-location: left
+    fig-cap-location: margin
+    tbl-cap-location: margin
+    code-fold: true
+    df-print: paged
+---
+
+```{r, message=FALSE, warning=FALSE}
+#| label: setup
+#| echo: false
+
+library(tidyverse)
+library(sf)
+library(stringr)
+library(readxl)
+library(ggplot2)
+library(ptaxsim)
+
+# ------------------------------------------------------------------
+# Data inputs
+# ------------------------------------------------------------------
+
+comm_ind <- read_csv("../Output/comm_ind_PINs_2011to2022_timeseries.csv") %>% 
+  filter(year == 2022) |> 
+  select(-year) |>
+    mutate(pin10 = str_sub(pin, 1, 10))
+
+
+geo_names <- comm_ind |> select(pin, clean_name, Triad, Township)
+
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "../ptaxsim.db/ptaxsim-2023.0.0.db")
+
+
+# manually coded projects
+keypins <- read_xlsx("../Output/projects_checked_MAINFILE.xlsx") |>
+  mutate(keypin = main_keypin)
+
+valuation_wksts <- read_csv("../Output/keypins_from_methodwkshts.csv")
+
+```
+
+
+```{r}
+#| label: fn-analyze-township
+#| echo: false
+
+# ------------------------------------------------------------------
+# Core function: run analysis for a single township
+# ------------------------------------------------------------------
+analyze_township <- function(township_name,
+                             year = 2022,
+                             comm_ind_df = comm_ind,
+                             keypins_df = keypins) {
+  
+  # IMPORTANT:
+  # Change `Township` below to whatever column in comm_ind actually holds the township name,
+  # e.g. `twnshp`, `township`, or `clean_name`.
+  twnshp_pins <- comm_ind_df |>
+    dplyr::filter(Township == township_name) |>
+    dplyr::mutate(pin10 = stringr::str_sub(pin, 1, 10))
+  
+  
+  pins_geo <- lookup_pin10_geometry(year = 2022, 
+                                    pin10 = twnshp_pins$pin10) %>%
+    st_as_sf(wkt = "geometry", crs = 4326)
+  
+  points <- st_as_sf(pins_geo, coords = c("longitude", "latitude"), crs = 4326)
+  
+  parcels <- st_as_sf(pins_geo, wkt = "geometry", crs = 4326)
+  
+  invalid_geom <- st_is_valid(parcels)
+  table(invalid_geom)
+  
+  parcels$geometry <- st_make_valid(parcels$geometry)
+  
+  # Filter out invalid geometries
+  parcels <- parcels[st_is_valid(parcels), ]
+  
+  
+  ggplot(parcels) +
+    geom_sf() +
+    theme_minimal() + theme(legend.position = "none")
+  
+  
+  # 2. Join parcels to keypins
+  parcel_comparison <- twnshp_pins |>
+    left_join(parcels, by = "pin10") |>
+    dplyr::left_join(keypins_df) |>
+    dplyr::select(pin10, keypin, dplyr::everything())
+  
+  # 3. Summary by keypin (from parcels)
+  # parcel_keypin_summary <- parcel_comparison |>
+  #   sf::st_drop_geometry() |>
+  #   dplyr::group_by(keypin) |>
+  #   dplyr::summarise(
+  #     n           = dplyr::n(),
+  #     incent_pins = sum(incent_prop == "Incentive", na.rm = TRUE),
+  #     .groups     = "drop"
+  #   ) |>
+  #   dplyr::arrange(dplyr::desc(n))
+
+  # 4. Map by appealid–keypin combo
+  parcel_plot <- parcel_comparison |>
+    ggplot2::ggplot() +
+    ggplot2::geom_sf(ggplot2::aes( geometry = geometry, fill = keypin)) +
+    ggplot2::theme_minimal() +
+    ggplot2::scale_fill_discrete(na.value = "white") +
+    ggplot2::theme(legend.position = "none")
+
+  # 5. Join to comm_ind-level data for this township
+  pin_info <- comm_ind_df |>
+    dplyr::inner_join(
+      parcel_comparison,
+      # by = "pin10"
+    )
+
+  # 6. Class-level summary (pins + distinct keypins)
+  class_summary <- pin_info |>
+        sf::st_drop_geometry() |>
+
+  #  dplyr::filter(!is.na(keypin) & !is.na(class)) |>
+    dplyr::group_by(class) |>
+    dplyr::summarise(
+      pins    = dplyr::n(),
+      keypins = dplyr::n_distinct(keypin),
+     # .groups = "drop"
+    )
+
+  # 7. Keypin-level summary from comm_ind
+  keypin_info_summary <- pin_info |>
+    #dplyr::filter(!is.na(keypin)) |>
+    dplyr::group_by(keypin) |>
+    dplyr::summarise(
+      n             = dplyr::n(),
+      appellant      = first(appellant),
+      fmv            = sum(fmv,    na.rm = TRUE),
+      incentive_pins = sum(incent, na.rm = TRUE),
+      exempt         = sum(exempt, na.rm = TRUE),
+    #  .groups        = "drop"
+    ) |>
+    dplyr::arrange(dplyr::desc(incentive_pins), dplyr::desc(n))
+
+  list(
+    township              = township_name,
+    parcels               = parcels,
+    parcel_comparison     = parcel_comparison,
+  #  parcel_keypin_summary = parcel_keypin_summary,
+    parcel_plot           = parcel_plot,
+    pin_info              = pin_info,
+    class_summary         = class_summary,
+    keypin_info_summary   = keypin_info_summary
+  )
+}
+```
+ 
+```{r}
+#| label: run-analysis
+
+#this_township <- params$township
+
+res <- analyze_township(
+  township_name = params$township,
+  year          = 2022,     # adjust if you want a different year
+  comm_ind_df   = comm_ind,
+  keypins_df    = keypins
+)
+
+```
+
+## Township overview
+
+There are `r paste(comm_ind |> filter(Township == params$township) |> distinct(pin) |> count())` PINs in this township that were commercial or industrial at least once.
+
+
+```{r}
+#| label: township-name
+#| echo: false
+#| layout-ncol: 2
+
+cat("Township:", res$township)
+
+comm_ind |> filter(Township == params$township) |> distinct(clean_name)
+```
+
+## Parcel map (outline only)
+
+```{r}
+#| label: fig-parcels-outline
+#| fig.cap: "All commercial & industrial parcels in the township."
+#| warning: false
+#| message: false
+
+ggplot(res$parcels) +
+  geom_sf() +
+  theme_void() +
+  theme(legend.position = "none")
+```
+
+## Manually coded keypins – map
+
+```{r}
+#| label: fig-keypin-map
+#| fig.cap: "Parcels grouped by manually coded keypins (based off of appeal IDs, sale documents and proximity)."
+#| warning: false
+#| message: false
+
+res$parcel_plot
+```
+
+
+## Class summary (pins vs keypins)
+
+```{r}
+#| label: tbl-class-summary
+#| tbl-cap: "PINs and projects per property class"
+res$class_summary
+```
+
+## Keypin-level summary (fmv, incentives, exemptions)
+
+```{r}
+#| label: tbl-keypin-info-summary
+#| tbl-cap: "Projects in township. You can sort each column!"
+
+res$keypin_info_summary |> DT::datatable(rownames = FALSE)
+```
+
+
+There are `r paste(res$parcel_comparison %>% group_by(keypin) %>% summarize(pins_ingroup = n()) |> filter(pins_ingroup > 1) |> n_distinct())` projects with more than 1 pin in them and  `r paste(res$parcel_comparison %>% group_by(keypin) %>% summarize(pins_ingroup = n()) |> n_distinct())` projects overall based on manually grouped keypins from combined data sources.
+
+
+
+
+
+```{r}
+#| tbl-cap: "This many pins were in the valuation worksheets."
+
+
+valuation_wksts |> filter(pin %in% res$pin_info$pin)
+```
+
+There are `r paste(valuation_wksts |> filter(pin %in% res$pin_info$pin) |> count())` PINs in the valuation worksheets with `r paste(valuation_wksts |> filter(pin %in% res$pin_info$pin)|> distinct(keypin) |> count())` distinct keypins.
+
+
+There were   `r paste(res$parcel_comparison |> distinct(keypin) |> count() ) ` projects overall based on manually grouped keypins from combined data sources.
+
+There were  `r paste(res$parcel_comparison |> distinct(pin) |> count() ) ` PINs within this township that had been commercial or industrial at some point in time. 
