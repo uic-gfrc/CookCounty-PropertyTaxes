@@ -95,7 +95,7 @@ change_table <- ptax_proj |>
 
 # 161 projects were in a tif
 change_table |> filter(first_tif_year > first_incent_year) 
-# 414 projects were in a TIF before they received incentive classes
+# 407 projects were in a TIF before they received incentive classes
 change_table |> filter(first_tif_year < first_incent_year) 
 
 ```
@@ -145,9 +145,10 @@ change_table <- ptax_proj |>
   distinct() 
 
 #2492 
+# 2542
 change_table |> filter(first_commerc_year < first_other_year)
   
-# 416
+# 409
 change_table |> filter(first_commerc_year < first_indust_year)
 
 
@@ -165,9 +166,10 @@ change_table |> filter(first_commerc_year < first_indust_year)
 
 ```{r}
 ptax_proj_summs <- ptax_proj %>% 
- # left_join(project_pins, by = "pin") |>
+
+  # left_join(project_pins, by = "pin") |>
   filter(!is.na(main_keypin)) |>
- # mutate(main_keypin = ifelse(is.na(main_keypin), pin, main_keypin) ) |>
+  # mutate(main_keypin = ifelse(is.na(main_keypin), pin, main_keypin) ) |>
   
   group_by(year, main_keypin) %>%
   summarize(
@@ -206,8 +208,16 @@ ptax_proj_summs <- ptax_proj %>%
       pct_indust > 0 ~ "Industrial",
       pct_land > 0.8 ~ "Land",
       TRUE ~ "Other"
-    ))
+    ))  |>
+  group_by(main_keypin) |> 
+  mutate(
+    land_use3 = case_when(
+      sum(land_use2 == "Commercial")==12  ~ "Always Commercial",
+      sum(land_use2 == "Industrial")==12  ~ "Always Industrial",     
+      TRUE ~ "Changes Land Use At Some Point"
+    ))|> ungroup()
 
+table(ptax_proj_summs$land_use3)
 ```
 
 
@@ -274,7 +284,7 @@ ptax_proj_summs <- ptax_proj_summs %>%
 ```{r eval=FALSE, include = FALSE}
 ptax_proj_summs %>% 
  # select(-c(landuse_change, land_use, incent_change) ) %>%
-           write_csv("Output/Pin to Project Files/project_summaries_2025_Nov15.csv")
+           write_csv("Output/Pin to Project Files/project_summaries_2025_Dec04.csv")
 
 ```
 
@@ -351,13 +361,7 @@ ptax_proj_summs %>% filter(year == 2022) %>%
 ```
 
 
-```{r eval=FALSE}
-modelsummary::datasummary_skim(ptax_proj_summs)
 
-ptax_proj_summs %>%  
-  select(-c(land_use, incent_prop, landuse_change, tif_change, incent_change)) %>% 
-  modelsummary::datasummary_skim("categorical")
-```
 
 ## Fixed Effect Model using Projects
 
@@ -370,8 +374,8 @@ library(dplyr)
 
 proj_panel <- ptax_proj_summs %>% 
     filter(year >= 2012) %>% # drop first year of data when fmv growth is 1
-   select(main_keypin, year, fmv, fmv_w,# incent_prop,
-          land_use2, #in_tif2, 
+   select(main_keypin, year, fmv, fmv_w, incent_prop2,
+          land_use2, land_use3,  #in_tif2, 
           triad, fmv_growth_2011,
          base_year_fmv_2011, reassessed_year, clean_name, fmv_growth_2011_w)  %>% 
   # arrange(main_keypin, year) %>% 
@@ -386,13 +390,13 @@ proj_panel <- ptax_proj_summs %>%
   mutate(fmv_w = DescTools::Winsorize(fmv, quantile(fmv, probs = c(0.005, 0.995), na.rm=TRUE)),
          fmv_growth_2011_w = DescTools::Winsorize(fmv_growth_2011, quantile(fmv_growth_2011, probs = c(0.005, 0.995), na.rm=TRUE)))
 
-write_rds(proj_panel, file = "Output/proj_panel2.RDS")
+write_rds(proj_panel, file = "Output/proj_panel3.RDS")
 ```
 
 
 ```{r read-proj-panel}
 
-proj_panel <- read_rds("Output/proj_panel2.RDS")
+proj_panel <- read_rds("Output/proj_panel3.RDS")
 
 table(proj_panel$incent_prop2)
 
@@ -400,10 +404,6 @@ summary(proj_panel$fmv_growth_2011)
 summary(proj_panel$fmv_growth_2011_w)
 # write_csv(proj_panel, "Output/project_panel_summaries_2025Sept8.csv")
 
-
-proj_panel %>% filter(year == 2022) %>%
-  summarize(project_count = n_distinct(main_keypin),
-            pin_count = sum(project_pins))
 ```
 
 
@@ -433,42 +433,55 @@ modelsummary::modelsummary(model = models, output = "flextable",
 #| tbl-cap: "Similar to incentive report table."
 
 models <- list(
-    reassess_year = feols(fmv_growth_2011_w ~ land_use2 | 
+  reassess_year = feols(fmv_growth_2011_w ~ land_use2 | 
                           main_keypin  + year, 
                         panel.id = c("main_keypin", "year"),                                     
                         vcov = ~clean_name,
-data = proj_panel),
-
+                        data = proj_panel),
+  
   reassess_year = feols(fmv_growth_2011_w ~ land_use2 + incent_prop2 | 
                           main_keypin  + year, 
                         panel.id = c("main_keypin", "year"),                                     
                         vcov = ~clean_name,
-data = proj_panel),
-
+                        data = proj_panel),
+  
   reassess_year = feols(fmv_growth_2011_w ~ land_use2*incent_prop2 | 
                           main_keypin  + year, 
                         panel.id = c("main_keypin", "year"),                                     
+                        vcov = ~clean_name,                                            
+                        data = proj_panel),
+  
+  reassess_year = feols(fmv_growth_2011_w ~ land_use2*incent_prop2 + land_use3*incent_prop2 | 
+                          main_keypin  + year, 
+                        panel.id = c("main_keypin", "year"),                                     
                         vcov = ~clean_name,
-data = proj_panel),
-      reassess_year = feols(fmv_growth_2011_w ~ land_use2 | 
+                        data = proj_panel),
+  
+  reassess_year = feols(fmv_growth_2011_w ~ land_use2 | 
                           clean_name  + year, 
                         panel.id = c("main_keypin", "year"),                                     
                         vcov = ~clean_name,
-data = proj_panel),
-
+                        data = proj_panel),
+  
   reassess_year = feols(fmv_growth_2011_w ~ land_use2 + incent_prop2 | 
                           clean_name + year, 
                         panel.id = c("main_keypin", "year"),                                     
                         vcov = ~clean_name,
-data = proj_panel),
-
+                        data = proj_panel),
+  
   reassess_year = feols(fmv_growth_2011_w ~ land_use2*incent_prop2 | 
-                           clean_name + year, 
+                          clean_name + year, 
                         panel.id = c("main_keypin", "year"),                                     
                         vcov = ~clean_name,
-data = proj_panel)
-
-
+                        data = proj_panel),
+  
+  reassess_year = feols(fmv_growth_2011_w ~ land_use2*incent_prop2 + land_use3*incent_prop2 | 
+                          clean_name  + year, 
+                        panel.id = c("main_keypin", "year"),                                     
+                        vcov = ~clean_name,
+                        data = proj_panel)
+  
+  
 )
 
 
