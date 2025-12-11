@@ -1,0 +1,208 @@
+---
+title: "Summery of PIN-Project Data Differences"
+author: "AWM"
+format: html
+editor: visual
+---
+
+## Valuation Worksheets
+
+There were 94,000 PINs and 59,500 distinct keypins after combining the methodology/valuation worksheets produced by the assessor's office for each township in the year that their triad is reassessed.
+
+## Expanded Keypin Created by RAs
+
+There is....
+
+```{r}
+#| output: false
+#| code-fold: false
+#| warning: false
+#| message: false
+
+library(tidyverse)
+library(sf)
+library(DBI)
+library(ptaxsim)
+library(ggplot2)
+
+
+comm_ind <- read_csv("Output/comm_ind_PINs_2011to2022_timeseries.csv") %>% 
+  filter(year == 2022) |> 
+  select(-year)
+
+geo_names <- comm_ind |> select(pin, clean_name, Triad, Township)
+
+#exists_in2022 <- comm_ind |> filter(class_1dig %in% c(5,6,7,8)) |> select(pin, class)
+#write_csv(exists_in2022, "Output/CIpins_in2022_deleteaftermerge.csv")
+```
+
+```{r}
+# #| warning: false
+# #| message: false
+
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2023.0.0.db")
+```
+
+
+
+Land block 2932100-2932400
+
+
+```{r}
+#| label: fig-parceloutlines
+#| fig-cap: "parcel outlines"
+
+twnshp_test <- comm_ind %>% 
+  mutate(pin10 = str_sub(pin, 1, 10),
+         pin7= as.numeric(str_sub(pin,1, 7)))|> 
+  filter(pin7 %in% c(2930500:2932100))
+
+
+pins_geo <- lookup_pin10_geometry(year = 2022, 
+                                        pin10 = twnshp_test$pin10) %>%
+  st_as_sf(wkt = "geometry", crs = 4326)
+
+points <- st_as_sf(pins_geo, coords = c("longitude", "latitude"), crs = 4326)
+
+parcels <- st_as_sf(pins_geo, wkt = "geometry", crs = 4326)
+
+invalid_geom <- st_is_valid(parcels)
+table(invalid_geom)
+parcels$geometry <- st_make_valid(parcels$geometry)
+
+# Filter out invalid geometries
+parcels <- parcels[st_is_valid(parcels), ]
+
+
+## Commercial Properties in Berwyn
+ggplot(parcels) +
+  geom_sf() +
+  theme_minimal() + theme(legend.position = "none")
+
+```
+
+
+### Manually coded
+
+```{r}
+library(readxl)
+
+# read this once, reuse across municipalities
+keypins <- read_xlsx("Output/projects_checked_MAINFILE.xlsx") |>
+  mutate(keypin = main_keypin)
+
+  # 1. Join parcels to keypins
+parcel_comparison <- left_join(parcels, keypins, by = "pin10") %>%
+  select(pin10, keypin, everything())
+
+make_parcel_map <- function(parcels_sf, keypins_df = keypins) {
+
+
+
+  # 2. Summary table (drop geometry instead of as.data.frame)
+  parcel_keypin_summary <- parcel_comparison |>
+    sf::st_drop_geometry() |>
+    group_by(keypin) |>
+    summarize(
+      n = n(),
+      incent_pins = sum(incent_prop == "Incentive", na.rm = TRUE),
+      .groups = "drop"
+    ) |>
+    arrange(desc(n))
+
+  # 3. Map plot
+  parcel_plot <- parcel_comparison |>
+    group_by(keypin) |>
+    ggplot() +
+    geom_sf(aes(fill = keypin)) +
+    theme_minimal() +
+    scale_fill_discrete(na.value = "white") +
+    theme(legend.position = "none")
+
+# 4. PIN-level join: comm_ind x parcel_comparison
+  #    Drop geometry before joining to avoid sf headaches
+  pin_info <- comm_ind |>
+    inner_join(
+      parcel_comparison
+    )
+  
+  # 5. Class-level summary (pins + distinct keypins)
+  class_summary <- pin_info |>
+    filter(!is.na(keypin) & !is.na(class)) |>
+    group_by(class) |>
+    summarize(
+      pins    = n(),
+      keypins = n_distinct(keypin),
+      .groups = "drop"
+    )
+  
+  # 6. Keypin-level summary from comm_ind / pin_info
+  keypin_info_summary <- pin_info |>
+    filter(!is.na(keypin)) |>
+    group_by(keypin) |>
+    summarize(
+      n              = n(),
+      n_parcels = n_distinct(pin10),
+      fmv            = sum(fmv,    na.rm = TRUE),
+      incentive_pins = sum(incent, na.rm = TRUE),
+      exempt         = sum(exempt, na.rm = TRUE),
+    ) |>
+    arrange(desc(incentive_pins), desc(n)) |>
+    ungroup() |>
+    mutate(avg_pin_perproj = mean(n))
+  
+  # Return everything you might want to look at
+  list(
+    parcel_comparison    = parcel_comparison,
+    parcel_keypin_summary = parcel_keypin_summary,
+    plot                 = parcel_plot,
+    pin_info             = pin_info,
+    class_summary        = class_summary,
+    keypin_info_summary  = keypin_info_summary
+  )
+}
+
+muni_data <- make_parcel_map(parcels,keypins)
+
+muni_data$keypin_info_summary
+muni_data$plot
+
+#muni_data$parcel_comparison
+muni_data$parcel_keypin_summary
+#muni_data$pin_info
+muni_data$class_summary
+```
+```{r}
+#| label: fig-muni1-keypin
+#| fig-cap: "Mapped by Commercial valuation keypin"
+
+worksheet_keypins <- read_csv("./Output/keypins_from_methodwkshts.csv") |>
+  mutate(
+    pin10 = str_sub(pin, 1, 10),
+    pin7 = str_sub(pin, 1, 7),
+    keypin = ifelse(keypin == "amazon", "28242010220000", keypin)
+                  )
+parcel_comparison <- left_join(parcels, worksheet_keypins, by = "pin10") %>%
+  select(pin10, keypin, everything())
+
+
+parcel_comparison %>%
+  ggplot() +
+  geom_sf(aes(fill = as.factor(keypin))) +
+  theme_minimal() +
+  scale_fill_discrete(na.value = "white") +
+  theme(legend.position = "none")
+
+
+parcel_comparison |>
+  as.data.frame() |>
+  group_by(keypin) |>
+  summarize(
+    n = n(),
+    n_parcels = n_distinct(pin10)
+         #   incent_pins = sum(incent_prop=="Incentive")
+            ) |>
+  arrange(desc(n))|> ungroup() |>
+  mutate(avg_pin_perproj = mean(n))
+```
+
