@@ -251,7 +251,7 @@ ggplot(parcels) +
 ```
 
 
-#### Manually coded
+### Manually coded
 
 ```{r}
 library(readxl)
@@ -507,6 +507,13 @@ pin_info |>
 
 ```
 
+```{r}
+township = "Bedford Park"
+in_manually_coded <- keypins|> filter(Township == township) |> count()
+in_wrkshts <- worksheet_keypins |> filter(pin %in% keypins$pin[keypins$Township==township]) |> count()
+```
+
+There are `r in_manually_coded - in_wrkshts` pins identified in the manually coded file than in the valuation worksheets for this township. 
 
 
 
@@ -575,7 +582,7 @@ ggplot(parcels) +
 
 ```
 
-#### Manually coded
+### Manually coded
 
 ```{r}
 
@@ -710,7 +717,7 @@ parcel_comparison %>%
 There are `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ingroup = n()) |> filter(pins_ingroup > 1) |> n_distinct())` projects with more than 1 pin in them and  `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ingroup = n()) |> n_distinct())` projects overall based on manually grouped keypins from combined data sources.
 
 ```{r}
-pin_info <- comm_ind |> inner_join(parcel_comparison)
+pin_info <- comm_ind |> right_join(parcel_comparison)
 
 pin_info |> 
   group_by(class) |> summarize(pins = n(),
@@ -718,20 +725,27 @@ pin_info |>
 
 pin_info |> 
   group_by(keypin) |> 
-  summarize(n = n(),
+  summarize(
             pins_ingroup = n_distinct(pin),
             parcels_ingroup = n_distinct(pin10),
+            incentive_pins = sum(incent),
             #av_mailed = sum(av_mailed, na.rm=TRUE),
             #av_clerk = sum(av_clerk, na.rm=TRUE),
             fmv = sum(fmv, na.rm=TRUE),
-            incentive_pins = sum(incent),
             exempt = sum(exempt)
             ) |>
-  arrange(desc(incentive_pins))
+  arrange(desc(pins_ingroup), desc(incentive_pins))
 
 ```
 
 
+```{r}
+township = "South Holland"
+in_manually_coded <- keypins|> filter(Township == township) |> count()
+in_wrkshts <- worksheet_keypins |> filter(pin %in% keypins$pin[keypins$Township==township]) |> count()
+```
+
+There are `r in_manually_coded - in_wrkshts` pins identified in the manually coded file than in the valuation worksheets for this township. 
 
 
 ## Franklin Park
@@ -800,7 +814,7 @@ ggplot(parcels) +
 
 ```
 
-#### Manually coded
+### Manually coded
 
 ```{r}
 
@@ -942,25 +956,32 @@ There are `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ing
 ```{r}
 pin_info <- comm_ind |> inner_join(parcel_comparison)
 
-pin_info |>   #filter(!is.na(keypin) & !is.na(class)) |>
+pin_info |> 
 group_by(class) |> summarize(pins = n(),
                                          keypins = n_distinct(keypin))
 
 pin_info |> 
-  #filter(!is.na(keypin)) |>
   group_by(keypin) |> 
-  summarize(n = n(),
+  summarize(
             pins_ingroup = n_distinct(pin),
             parcels_ingroup = n_distinct(pin10),
-            incent_pins = sum(incent_prop == 1, na.rm=TRUE),
+            incentive_pins = sum(incent),
             #av_mailed = sum(av_mailed, na.rm=TRUE),
             #av_clerk = sum(av_clerk, na.rm=TRUE),
             fmv = sum(fmv, na.rm=TRUE),
             exempt = sum(exempt)
             ) |>
-  arrange(desc(pins_ingroup), desc(incent_pins))
+  arrange(desc(pins_ingroup), desc(incentive_pins))
 
 ```
+
+```{r}
+township = "Franklin Park"
+in_manually_coded <- keypins|> filter(Township == township) |> count()
+in_wrkshts <- worksheet_keypins |> filter(pin %in% keypins$pin[keypins$Township==township]) |> count()
+```
+
+There are `r in_manually_coded - in_wrkshts` pins identified in the manually coded file than in the valuation worksheets for this township. 
 
 
 ## Matteson
@@ -1029,7 +1050,7 @@ ggplot(parcels) +
 
 ```
 
-#### Manually coded
+### Manually coded
 
 ```{r}
 parcel_comparison <- left_join(parcels, keypins, by = "pin10") %>%
@@ -1178,19 +1199,26 @@ group_by(class) |> summarize(pins = n(),
 pin_info |> 
  # filter(!is.na(keypin)) |>
   group_by(keypin) |> 
-  summarize(n = n(),
-            #av_mailed = sum(av_mailed, na.rm=TRUE),
+  summarize(#av_mailed = sum(av_mailed, na.rm=TRUE),
             #av_clerk = sum(av_clerk, na.rm=TRUE),
             pins_ingroup = n_distinct(pin),
             parcels_ingroup = n_distinct(pin10),
-            fmv = sum(fmv, na.rm=TRUE),
             incentive_pins = sum(incent),
+
+            fmv = sum(fmv, na.rm=TRUE),
             exempt = sum(exempt)
             ) |>
   arrange(desc(pins_ingroup), desc(incentive_pins))
 
 ```
 
+```{r}
+township = "Matteson"
+in_manually_coded <- keypins|> filter(Township == township) |> count()
+in_wrkshts <- worksheet_keypins |> filter(pin %in% keypins$pin[keypins$Township==township]) |> count()
+```
+
+There are `r in_manually_coded - in_wrkshts` pins identified in the manually coded file than in the valuation worksheets for this township. 
 
 
 ## Elk Grove Village
@@ -1259,7 +1287,7 @@ ggplot(parcels) +
 ```
 
 
-#### Manually coded
+### Manually coded
 
 ```{r}
 
@@ -1407,10 +1435,9 @@ group_by(class) |> summarize(pins = n(),
 pin_info |> 
   #filter(!is.na(keypin)) |>
   group_by(keypin) |> 
-  summarize(n = n(),
-            pins_ingroup = n_distinct(pin),
+  summarize(pins_ingroup = n_distinct(pin),
             parcels_ingroup = n_distinct(pin10),
-            incent_pins = sum(incent_prop == 1, na.rm=TRUE),
+            incent_pins = sum(incent, na.rm=TRUE),
             #av_mailed = sum(av_mailed, na.rm=TRUE),
             #av_clerk = sum(av_clerk, na.rm=TRUE),
             fmv = sum(fmv, na.rm=TRUE),
@@ -1419,6 +1446,13 @@ pin_info |>
 
 ```
 
+```{r}
+township = "Elk Grove"
+in_manually_coded <- keypins|> filter(Township == township) |> count()
+in_wrkshts <- worksheet_keypins |> filter(pin %in% keypins$pin[keypins$Township==township]) |> count()
+```
+
+There are `r in_manually_coded - in_wrkshts` pins identified in the manually coded file than in the valuation worksheets for this township. 
 
 ## Berwyn
 
@@ -1484,7 +1518,7 @@ ggplot(parcels) +
 
 ```
 
-#### Manually coded
+### Manually coded
 
 ```{r}
 
@@ -1661,3 +1695,10 @@ pin_info |>
 There are `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ingroup = n()) |> filter(pins_ingroup > 1) |> n_distinct())` projects with more than 1 pin in them and  `r paste(parcel_comparison %>% group_by(keypin) %>% summarize(pins_ingroup = n()) |> n_distinct())` projects overall based on manually grouped keypins from combined data sources.
 
 
+```{r}
+township = "Berwyn"
+in_manually_coded <- keypins|> filter(Township == township) |> count()
+in_wrkshts <- worksheet_keypins |> filter(pin %in% keypins$pin[keypins$Township==township]) |> count()
+```
+
+There are `r in_manually_coded - in_wrkshts` pins identified in the manually coded file than in the valuation worksheets for this township. 
