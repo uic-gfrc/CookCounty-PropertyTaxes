@@ -36,20 +36,36 @@ comm_ind <- read_csv("Output/comm_ind_PINs_2011to2022_timeseries.csv") %>%
 
 geo_names <- comm_ind |> select(pin, clean_name, Triad, Township)
 
-#exists_in2022 <- comm_ind |> filter(class_1dig %in% c(5,6,7,8)) |> select(pin, class)
-#write_csv(exists_in2022, "Output/CIpins_in2022_deleteaftermerge.csv")
+exists_in2022 <- comm_ind |> filter(class_1dig %in% c(5,6,7,8)) |> select(pin, class)
+
+
+library(readxl)
+
+# read this once, reuse across municipalities
+keypins <- read_xlsx("Output/projects_checked_MAINFILE.xlsx") |>
+  mutate(keypin = main_keypin)
 ```
 
 ```{r}
-# #| warning: false
-# #| message: false
 
 ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2023.0.0.db")
 ```
 
 
+```{r}
+exists_in2022 |> filter(pin %in% keypins$pin) |> count()
+```
 
-Land block 2932100-2932400
+```{r}
+worksheet_keypins <- read_csv("./Output/keypins_from_methodwkshts.csv") |>
+  mutate(
+    pin10 = str_sub(pin, 1, 10),
+    pin7 = str_sub(pin, 1, 7),
+    keypin = ifelse(keypin == "amazon", "28242010220000", keypin)
+                  )
+exists_in2022 |> filter(pin %in% worksheet_keypins$pin) |> count()
+
+```
 
 
 # Stickney blocks 1921113 - 1921400
@@ -99,11 +115,7 @@ ggplot(parcels) +
 ### Manually coded
 
 ```{r}
-library(readxl)
 
-# read this once, reuse across municipalities
-keypins <- read_xlsx("Output/projects_checked_MAINFILE.xlsx") |>
-  mutate(keypin = main_keypin)
 
   # 1. Join parcels to keypins
 parcel_comparison <- left_join(parcels, keypins, by = "pin10") %>%
@@ -184,16 +196,12 @@ muni_data$parcel_keypin_summary
 #muni_data$pin_info
 muni_data$class_summary
 ```
+
 ```{r}
 #| label: fig-muni1-keypin
 #| fig-cap: "Mapped by Commercial valuation keypin"
 
-worksheet_keypins <- read_csv("./Output/keypins_from_methodwkshts.csv") |>
-  mutate(
-    pin10 = str_sub(pin, 1, 10),
-    pin7 = str_sub(pin, 1, 7),
-    keypin = ifelse(keypin == "amazon", "28242010220000", keypin)
-                  )
+
 parcel_comparison <- left_join(parcels, worksheet_keypins, by = "pin10") %>%
   select(pin10, keypin, everything())
 
@@ -228,7 +236,6 @@ worksheet_keypins |> filter(pin %in% twnshp_test$pin)  |> count()
 ```
 
 
-
 # Matteson blocks 3116402 - 3129200
 
 ```{r}
@@ -238,23 +245,11 @@ worksheet_keypins |> filter(pin %in% twnshp_test$pin)  |> count()
 twnshp_test <- comm_ind %>% 
   mutate(pin10 = str_sub(pin, 1, 10),
          pin7= as.numeric(str_sub(pin,1, 7)))|> 
- # filter(pin7 %in% c(2930500:2932100))
-#filter(pin7 %in% c(1921113:1921400))  # stickney blocks
-#filter(pin7 %in% c(3116402:3129200))
   filter(pin7 %in% c(3116400:3116403) | 
            pin7 %in% c(3121000:3122200) | 
            pin7 %in% c(3122300:3122301) |
            pin7 %in% c(3122400:3122404) |
            pin7 %in% c(3128200:3128201)) #|>
- # filter(pin7 %in% c(3116402:3116403)) |>
-#filter(pin7 %in% c(3121000:3122200)) |>
-#  filter(pin7 %in% c(3122300:3120301))
-#filter(!pin7 %in% c(3123200:3124100) ) |> 
-#filter(!pin7 %in% c(3123412:3124314) ) |>
-#  filter(!pin7 %in% c(3127400:3127401) ) |>
-
- # filter(!pin7 %in% c(3127400:3132000) )
-
 
 twnshp_test |> count()
 ```
@@ -288,11 +283,6 @@ ggplot(parcels) +
 ### Manually coded
 
 ```{r}
-library(readxl)
-
-# read this once, reuse across municipalities
-keypins <- read_xlsx("Output/projects_checked_MAINFILE.xlsx") |>
-  mutate(keypin = main_keypin)
 
   # 1. Join parcels to keypins
 parcel_comparison <- left_join(parcels, keypins, by = "pin10") %>%
@@ -377,12 +367,6 @@ muni_data$class_summary
 #| label: fig-muni2-keypin
 #| fig-cap: "Mapped by Commercial valuation keypin"
 
-worksheet_keypins <- read_csv("./Output/keypins_from_methodwkshts.csv") |>
-  mutate(
-    pin10 = str_sub(pin, 1, 10),
-    pin7 = str_sub(pin, 1, 7),
-    keypin = ifelse(keypin == "amazon", "28242010220000", keypin)
-                  )
 parcel_comparison <- left_join(parcels, worksheet_keypins, by = "pin10") %>%
   select(pin10, keypin, everything())
 
