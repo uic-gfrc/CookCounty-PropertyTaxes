@@ -29,7 +29,7 @@ townships <- keypins$Township |>
 for (place in townships){
   quarto_render(
     input         = "mapping_CI_projects_cleaned2.qmd",
-    output_file   = paste0(place, "projects", sep = "-"),
+    output_file   = paste0(place, "-projects"),
     execute_params = list(township = place)
   )
 }
