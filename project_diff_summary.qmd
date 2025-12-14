@@ -13,7 +13,7 @@ format:
 
 There were 94,000 PINs and 59,500 distinct keypins after combining the methodology/valuation worksheets produced by the assessor's office for each township in the year that their triad is reassessed.
 
-## Expanded Keypin Created by RAs
+
 
 There is....
 
@@ -44,6 +44,13 @@ library(readxl)
 # read this once, reuse across municipalities
 keypins <- read_xlsx("Output/projects_checked_MAINFILE.xlsx") |>
   mutate(keypin = main_keypin)
+
+
+worksheet_keypins <- read_csv("./Output/keypins_from_methodwkshts.csv") |>
+  mutate(
+    pin10 = str_sub(pin, 1, 10),
+    pin7 = str_sub(pin, 1, 7),
+    keypin = ifelse(keypin == "amazon", "28242010220000", keypin) )
 ```
 
 ```{r}
@@ -51,22 +58,54 @@ keypins <- read_xlsx("Output/projects_checked_MAINFILE.xlsx") |>
 ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2023.0.0.db")
 ```
 
-
 ```{r}
-exists_in2022 |> filter(pin %in% keypins$pin) |> count()
+#| tbl-cap: "Commercial or industrial PINs that existed in 2022 in PTAXSIM"
+
+exists_in2022 |> count()
 ```
 
+
 ```{r}
-worksheet_keypins <- read_csv("./Output/keypins_from_methodwkshts.csv") |>
-  mutate(
-    pin10 = str_sub(pin, 1, 10),
-    pin7 = str_sub(pin, 1, 7),
-    keypin = ifelse(keypin == "amazon", "28242010220000", keypin)
-                  )
+#| tbl-cap: "Commercial or industrial PINs that existed in 2022 in PTAXSIM and are in manually coded project crosswalk file `projects_checked_MAINFILE.xlsx`"
+
+exists_in2022 |> filter(pin %in% keypins$pin) |> count()
+```
+```{r}
+exists_in2022 |> select(pin) |> 
+  left_join(keypins) |> 
+  group_by(main_keypin) |>
+  summarize(n = n(),
+            n_incent = sum(incent_prop == "Incentive") )|> 
+  ungroup() |>
+  summarize(avg_pins_perproj = mean(n),
+            project_count = n(),
+            incent_pins = sum(n_incent, na.rm=TRUE))
+
+```
+
+
+
+```{r}
+#| tbl-cap: "Commercial or industrial PINs in valuation worksheets that existed in 2022"
+                  
 exists_in2022 |> filter(pin %in% worksheet_keypins$pin) |> count()
 
 ```
 
+```{r}
+
+exists_in2022 |> select(pin) |> left_join(worksheet_keypins) |> left_join(keypins) |>
+  group_by(keypin) |> 
+  summarize(n = n(),
+                        n_incent = sum(incent_prop == "Incentive") )|> 
+  ungroup() |>
+  summarize(avg_pins_perproj = mean(n),
+            project_count = n(),
+            incent_pins = sum(n_incent, na.rm=TRUE))
+
+```
+
+## Expanded Keypin Created by RAs
 
 # Stickney blocks 1921113 - 1921400
 
@@ -96,12 +135,12 @@ points <- st_as_sf(pins_geo, coords = c("longitude", "latitude"), crs = 4326)
 
 parcels <- st_as_sf(pins_geo, wkt = "geometry", crs = 4326)
 
-invalid_geom <- st_is_valid(parcels)
-table(invalid_geom)
-parcels$geometry <- st_make_valid(parcels$geometry)
+# invalid_geom <- st_is_valid(parcels)
+# table(invalid_geom)
+# parcels$geometry <- st_make_valid(parcels$geometry)
 
 # Filter out invalid geometries
-parcels <- parcels[st_is_valid(parcels), ]
+#parcels <- parcels[st_is_valid(parcels), ]
 
 
 ## Commercial Properties in Berwyn
@@ -167,13 +206,16 @@ make_parcel_map <- function(parcels_sf, keypins_df = keypins) {
 
       n              = n(),
       n_parcels = n_distinct(pin10),
-      fmv            = sum(fmv,    na.rm = TRUE),
-      incentive_pins = sum(incent, na.rm = TRUE),
+      fmv            = round(sum(fmv,    na.rm = TRUE)),
+      incentive_pins = round(sum(incent, na.rm = TRUE)),
       exempt         = sum(exempt, na.rm = TRUE),
     ) |>
     arrange(desc(incentive_pins), desc(n)) |>
-    ungroup() |>
-    mutate(avg_pin_perproj = mean(n))
+   # ungroup() |>
+    mutate(avg_pin = round(mean(n), digits = 2),
+           median_pincount= median(n), 
+      avg_pin_perproj = round(mean(n[n > 1 ]), digits = 2),
+           median_pin_perproj = round(median(n[n > 1 ]), digits = 2))
   
   # Return everything you might want to look at
   list(
@@ -188,14 +230,19 @@ make_parcel_map <- function(parcels_sf, keypins_df = keypins) {
 
 muni_data <- make_parcel_map(parcels,keypins)
 
-muni_data$keypin_info_summary
+muni_data$keypin_info_summary|> DT::datatable(rownames = FALSE)
 muni_data$plot
 
 #muni_data$parcel_comparison
-muni_data$parcel_keypin_summary
+muni_data$parcel_keypin_summary|> DT::datatable(rownames = FALSE)
 #muni_data$pin_info
-muni_data$class_summary
+muni_data$class_summary |> DT::datatable(rownames = FALSE)
+
+muni_data$parcel_comparison |> as.data.frame() |>  left_join(muni_data$pin_info) |> distinct(pin) |> count()
+
 ```
+
+### Valuation reports
 
 ```{r}
 #| label: fig-muni1-keypin
@@ -203,7 +250,9 @@ muni_data$class_summary
 
 
 parcel_comparison <- left_join(parcels, worksheet_keypins, by = "pin10") %>%
-  select(pin10, keypin, everything())
+  select(pin10, keypin, everything()) |> 
+  mutate(keypin = ifelse(is.na(keypin), pin, keypin))
+
 
 
 parcel_comparison %>%
@@ -216,7 +265,10 @@ parcel_comparison %>%
 
 parcel_comparison |>
   left_join(muni_data$pin_info) |>
+    filter(!is.na(pin)) |>
+
   as.data.frame() |>
+  mutate(keypin = ifelse(is.na(keypin), pin, keypin)) |>
   group_by(keypin) |>
   summarize(
     appellant = first(appellant),
@@ -225,8 +277,14 @@ parcel_comparison |>
     incent_pins = sum(incent_prop=="Incentive")
             ) |>
   arrange(desc(incent_pins), desc(n))|> 
-  ungroup() |>
-  mutate(avg_pin_perproj = mean(n))
+ # ungroup() |>
+  mutate(avg_pin = round(mean(n), digits = 2),
+         median_pincount = median(n),
+    avg_pin_perproj = round(mean(n[n > 1]), digits = 2),
+         mean_pin_perproj = median(n[n > 1 ])) |> 
+  DT::datatable(rownames = FALSE)
+
+parcel_comparison |> as.data.frame() |>  left_join(muni_data$pin_info) |> distinct(pin) |> count()
 ```
 
 
@@ -263,13 +321,13 @@ pins_geo <- lookup_pin10_geometry(year = 2022,
 points <- st_as_sf(pins_geo, coords = c("longitude", "latitude"), crs = 4326)
 
 parcels <- st_as_sf(pins_geo, wkt = "geometry", crs = 4326)
-
-invalid_geom <- st_is_valid(parcels)
-table(invalid_geom)
-parcels$geometry <- st_make_valid(parcels$geometry)
-
-# Filter out invalid geometries
-parcels <- parcels[st_is_valid(parcels), ]
+# 
+# invalid_geom <- st_is_valid(parcels)
+# table(invalid_geom)
+# parcels$geometry <- st_make_valid(parcels$geometry)
+# 
+# # Filter out invalid geometries
+# parcels <- parcels[st_is_valid(parcels), ]
 
 
 ## Commercial Properties in Berwyn
@@ -288,87 +346,96 @@ ggplot(parcels) +
 parcel_comparison <- left_join(parcels, keypins, by = "pin10") %>%
   select(pin10, keypin, everything())
 
-make_parcel_map <- function(parcels_sf, keypins_df = keypins) {
-
-
-
-  # 2. Summary table (drop geometry instead of as.data.frame)
-  parcel_keypin_summary <- parcel_comparison |>
-    sf::st_drop_geometry() |>
-    group_by(keypin) |>
-    summarize(
-      n = n(),
-      incent_pins = sum(incent_prop == "Incentive", na.rm = TRUE),
-      .groups = "drop"
-    ) |>
-    arrange(desc(n))
-
-  # 3. Map plot
-  parcel_plot <- parcel_comparison |>
-    group_by(keypin) |>
-    ggplot() +
-    geom_sf(aes(fill = keypin)) +
-    theme_minimal() +
-    scale_fill_discrete(na.value = "white") +
-    theme(legend.position = "none")
-
-# 4. PIN-level join: comm_ind x parcel_comparison
-  #    Drop geometry before joining to avoid sf headaches
-  pin_info <- comm_ind |>
-    inner_join(
-      parcel_comparison
-    )
-  
-  # 5. Class-level summary (pins + distinct keypins)
-  class_summary <- pin_info |>
-    group_by(class) |>
-    summarize(
-      pins    = n(),
-      keypins = n_distinct(keypin)    )
-  
-  # 6. Keypin-level summary from comm_ind / pin_info
-  keypin_info_summary <- pin_info |>
-    group_by(keypin) |>
-    summarize(
-          appellant = first(appellant),
-
-      n              = n(),
-      n_parcels = n_distinct(pin10),
-      fmv            = sum(fmv,    na.rm = TRUE),
-      incentive_pins = sum(incent, na.rm = TRUE),
-      exempt         = sum(exempt, na.rm = TRUE),
-    ) |>
-    arrange(desc(incentive_pins), desc(n)) |>
-    ungroup() |>
-    mutate(avg_pin_perproj = mean(n))
-  
-  # Return everything you might want to look at
-  list(
-    parcel_comparison    = parcel_comparison,
-    parcel_keypin_summary = parcel_keypin_summary,
-    plot                 = parcel_plot,
-    pin_info             = pin_info,
-    class_summary        = class_summary,
-    keypin_info_summary  = keypin_info_summary
-  )
-}
+# make_parcel_map <- function(parcels_sf, keypins_df = keypins) {
+# 
+# 
+# 
+#   # 2. Summary table (drop geometry instead of as.data.frame)
+#   parcel_keypin_summary <- parcel_comparison |>
+#     sf::st_drop_geometry() |>
+#     group_by(keypin) |>
+#     summarize(
+#       n = n(),
+#       incent_pins = sum(incent_prop == "Incentive", na.rm = TRUE),
+#       .groups = "drop"
+#     ) |>
+#     arrange(desc(n))
+# 
+#   # 3. Map plot
+#   parcel_plot <- parcel_comparison |>
+#     group_by(keypin) |>
+#     ggplot() +
+#     geom_sf(aes(fill = keypin)) +
+#     theme_minimal() +
+#     scale_fill_discrete(na.value = "white") +
+#     theme(legend.position = "none")
+# 
+# # 4. PIN-level join: comm_ind x parcel_comparison
+#   #    Drop geometry before joining to avoid sf headaches
+#   pin_info <- comm_ind |>
+#     inner_join(
+#       parcel_comparison
+#     )
+#   
+#   # 5. Class-level summary (pins + distinct keypins)
+#   class_summary <- pin_info |>
+#     group_by(class) |>
+#     summarize(
+#       pins    = n(),
+#       keypins = n_distinct(keypin)    )
+#   
+#   # 6. Keypin-level summary from comm_ind / pin_info
+#   keypin_info_summary <- pin_info |>
+#     group_by(keypin) |>
+#     summarize(
+#           appellant = first(appellant),
+# 
+#       n              = n(),
+#       n_parcels = n_distinct(pin10),
+#       fmv            = sum(fmv,    na.rm = TRUE),
+#       incentive_pins = sum(incent, na.rm = TRUE),
+#       exempt         = sum(exempt, na.rm = TRUE),
+#     ) |>
+#     arrange(desc(incentive_pins), desc(n)) |>
+#     ungroup() |>
+#     mutate(avg_pin_perproj = round(mean(n[n>1]), digits = 2),
+#            median_pin_perproj = median(n[n>1])
+#   )
+#   
+#   # Return everything you might want to look at
+#   list(
+#     parcel_comparison    = parcel_comparison,
+#     parcel_keypin_summary = parcel_keypin_summary,
+#     plot                 = parcel_plot,
+#     pin_info             = pin_info,
+#     class_summary        = class_summary,
+#     keypin_info_summary  = keypin_info_summary
+#   )
+# }
 
 muni_data <- make_parcel_map(parcels,keypins)
 
-muni_data$keypin_info_summary
+muni_data$keypin_info_summary |> DT::datatable(rownames = FALSE)
 muni_data$plot
 
 #muni_data$parcel_comparison
-muni_data$parcel_keypin_summary
+muni_data$parcel_keypin_summary |> DT::datatable(rownames = FALSE)
 #muni_data$pin_info
-muni_data$class_summary
+muni_data$class_summary |> DT::datatable(rownames = FALSE)
 ```
+
+### Valuation Reports
+
+
 ```{r}
 #| label: fig-muni2-keypin
 #| fig-cap: "Mapped by Commercial valuation keypin"
 
+
+# join actual pins to spatial data based on parcel identifier
 parcel_comparison <- left_join(parcels, worksheet_keypins, by = "pin10") %>%
-  select(pin10, keypin, everything())
+  select(pin10, keypin, everything()) |> 
+  mutate(keypin = ifelse(is.na(keypin), pin, keypin))
 
 
 parcel_comparison %>%
@@ -381,7 +448,10 @@ parcel_comparison %>%
 
 parcel_comparison |>
   left_join(muni_data$pin_info) |>
+    filter(!is.na(pin)) |>
+
   as.data.frame() |>
+  mutate(keypin = ifelse(is.na(keypin), pin, keypin)) |>
   group_by(keypin) |>
   summarize(
     appellant = first(appellant),
@@ -390,13 +460,17 @@ parcel_comparison |>
     incent_pins = sum(incent_prop=="Incentive")
             ) |>
   arrange(desc(incent_pins), desc(n))|> 
-  ungroup() |>
-  mutate(avg_pin_perproj = mean(n))
+  #ungroup() |>
+  mutate(
+    avg_pin = round(mean(n), digits = 2),
+         median_pincount = median(n),
+    avg_pin_perproj = round(mean(n[n>1]), digits = 2),
+         median_pin_perproj = median(n[n>1])) |> 
+  DT::datatable(rownames = FALSE)
 ```
 
 
 ```{r}
-
 worksheet_keypins |> filter(pin %in% twnshp_test$pin)  |> count()
 ```
 
