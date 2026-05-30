@@ -54,13 +54,16 @@ alea_theme <- function() {
 
 ## Recapture Data from PTAXSIM 
 
-```{r}
 
+
+```{r}
 nicknames <- readxl::read_xlsx("../Necessary_Files/muni_shortnames.xlsx") |>
   mutate(agency_number = str_pad(as.character(agency_number), 9, pad = "0" ) ) 
 
-ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(),
-  "../ptaxsim.db/ptaxsim-2023.0.0.db")
+#ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(),
+#  "../ptaxsim.db/ptaxsim-2023.0.0.db")
+
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./../ptaxsim.db/ptaxsim-2024.0.0.db")
 
 agency_info <- DBI::dbGetQuery(
   ptaxsim_db_conn,
@@ -70,7 +73,7 @@ agency_info <- DBI::dbGetQuery(
   ) %>%
   mutate_if(is.integer64, as.integer) |>
   mutate_if(is.integer, as.numeric) |>
-  select(- c(cty_dupage_eav:cty_livingston_eav)) |>
+ # select(- c(cty_dupage_eav:cty_livingston_eav)) |>
    mutate(
      total_final_levy = ifelse(is.na(total_final_levy), total_ext, total_final_levy),
      cty_cook_eav = ifelse(is.na(cty_cook_eav) & total_final_levy > 0, total_final_levy / (total_final_rate/100), cty_cook_eav),
@@ -101,9 +104,27 @@ agency_fund_info <- DBI::dbGetQuery(
   "SELECT *
   FROM agency_fund_info
   "
-  ) 
+  )
 
-agency_funds <- left_join(agency_fund, agency_fund_info)
+
+#-- See all agencies that have changed to funds
+agency_crosswalk <- dbGetQuery(ptaxsim_db_conn,
+  "SELECT * FROM agency_crosswalk")
+
+#-- See the same change at the fund level
+agency_fund_crosswalk <- dbGetQuery(ptaxsim_db_conn,
+  "SELECT * FROM agency_fund_crosswalk")
+
+
+new_agency_fund_info <- dbGetQuery(ptaxsim_db_conn,
+  "SELECT * FROM agency_fund_info WHERE fund_num NOT LIKE '%000'"
+)
+```
+
+
+
+```{r}
+agency_funds <- left_join(agency_fund, agency_fund_info) |> left_join(agency_fund_crosswalk)
 
 agency_funds <- agency_funds %>%
   mutate_if(is.integer64, as.integer) |>
@@ -116,7 +137,7 @@ agency_funds <- left_join(agency_funds, agency_names) |>
   mutate(agency_name = ifelse(agency_num == "042220000", agency_name == "GLENBROOK HIGH SCHOOL DISTRICT 225", agency_name)) |>
   mutate(agency_name = ifelse(agency_num == "030910000", agency_name == "VILLAGE OF OAK LAWN", agency_name))
 
-#agency_funds |> write_csv("agency_funds.csv")
+agency_funds |> write_csv("agency_funds_2024.csv")
 
 ```
 
@@ -132,7 +153,7 @@ agency_info |> filter(total_final_levy!= 0 & year > 2020) |> group_by(year)|>
   summarise(n = n())
 
 agency_funds |> 
-  filter(fund_num == 408 & 
+  filter(fund_type_num == 408 & 
            final_levy != 0 & 
            year > 2020) |> 
   group_by(year)|>
@@ -149,15 +170,15 @@ agency_funds |>
 #| tbl-cap: "**Tax rate change due to fund 408.** Data from PTAXSIM database (agency_fund table). Only shows fund 408 associated with the levy recapture fund."
 
 
-agency_funds |> filter(fund_num==408) |>
+agency_funds |> filter(fund_type_num==408) |>
   select(year, agency_name_short, final_levy, final_rate, fund_num) |>
   arrange(desc(final_rate)) |> DT::datatable(rownames = FALSE)
 ```
 
 
 ```{r}
-agency_funds |> filter(fund_num==408) |>
-  select(year, agency_name_short, final_levy, final_rate, fund_num, major_type) |>
+agency_funds |> filter(fund_type_num==408) |>
+  select(year, agency_name_short, final_levy, final_rate, fund_type_num, major_type) |>
   arrange(desc(final_rate)) |>
   ggplot() + 
   geom_line(aes(x=as.character(year), y=final_rate, group=agency_name_short, color = major_type)) + 
@@ -175,16 +196,16 @@ agency_funds |> filter(fund_num==408) |>
 #| tbl-cap: "**MEMO TABLE - Outliers: Largest Agency Level Tax Rate Change due to Fund 408** Data from PTAXSIM database (agency_fund table). 1483 agencies across the three years."
 
 # Calculate the 5th and 95th percentiles
-lower_cutoff <- quantile(agency_funds$final_rate[agency_funds$fund_num=="408"], 0.05, na.rm=TRUE)
-upper_cutoff <- quantile(agency_funds$final_rate[agency_funds$fund_num=="408"], 0.95, na.rm=TRUE)
+lower_cutoff <- quantile(agency_funds$final_rate[agency_funds$fund_type_num=="408"], 0.05, na.rm=TRUE)
+upper_cutoff <- quantile(agency_funds$final_rate[agency_funds$fund_type_num=="408"], 0.95, na.rm=TRUE)
 
 filtered_df <- agency_funds |>
     filter(
-    fund_num == "408" &
+    fund_type_num == 408 &
     levy > 0 #&
   #  capped_ind == 1
     ) |>
-  select(-c(loss_pct,levy_plus_loss, rate_ceiling, max_levy, prelim_rate, ptell_reduced_levy, ptell_reduced_ind, fund_num, capped_ind, agency_name_original)) |>
+ # select(-( loss_pct,levy_plus_loss, rate_ceiling, max_levy, prelim_rate, ptell_reduced_levy, ptell_reduced_ind, fund_num, capped_ind, agency_name_original)) |>
   select(year, agency_name, final_rate, final_levy, everything()) |> 
   filter(final_rate > upper_cutoff) 
 
@@ -198,7 +219,7 @@ filtered_df |> DT::datatable(rownames = FALSE)
 
 deciles <- agency_funds |>
   filter(
-    fund_num == 408 &
+    fund_type_num == 408 &
     levy > 0 
     ) |>
   group_by(year) |>
@@ -218,7 +239,7 @@ deciles |> filter(probs == 0.95 | probs == .55)
 #| tbl-cap: "**Distribution of tax rate increases due to fund 408** (Data Source: PTAXSIM agency_fund table)"
 #| 
 agency_funds |> 
-  filter(fund_num==408) |>
+  filter(fund_type_num==408) |>
   ggplot() + 
   geom_histogram(aes(x=final_rate)) + 
   alea_theme()+
@@ -236,8 +257,8 @@ Some agencies have a majority of their taxbase outside of cook county. We will e
 
 agency_fund408_sums <- agency_funds |> 
   group_by(year, agency_num, agency_name, major_type, minor_type) |>
-  mutate(fund408 = ifelse(fund_num == 408, final_levy, 0),
-         not_recap = ifelse(fund_num != 408, final_levy, 0) ) |>
+  mutate(fund408 = ifelse(fund_type_num == 408, final_levy, 0),
+         not_recap = ifelse(fund_type_num != 408, final_levy, 0) ) |>
   summarize(across(c(levy, final_levy, final_rate, fund408, not_recap), sum, na.rm=TRUE))
 
 
