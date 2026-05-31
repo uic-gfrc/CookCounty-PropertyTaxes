@@ -25,11 +25,12 @@ nicknames <- readxl::read_excel("./Necessary_Files/muni_shortnames.xlsx") %>%
   mutate(agency_number = as.character(agency_number),
          agency_number = str_pad(string = agency_number, width = 9, side = "left", pad ="0"))
 
-ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2023.0.0.db")
+ #ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2023.0.0.db")
+ptaxsim_db_conn <- DBI::dbConnect(RSQLite::SQLite(), "./ptaxsim.db/ptaxsim-2024.0.0.db")
 
 #years <-(2022) # testing
 
-years <- c(2023)
+years <- c(2024)
 
 cross_county_lines <- c("030440000", "030585000", "030890000", "030320000", "031280000",
                         "030080000", "030560000", "031120000", "030280000", "030340000",
@@ -75,7 +76,7 @@ for(i in years){
   )
   
   
-  agency_dt<- dbGetQuery(ptaxsim_db_conn, paste('SELECT * FROM agency WHERE year = ', i, ';'))
+  agency_dt <- dbGetQuery(ptaxsim_db_conn, paste('SELECT * FROM agency WHERE year = ', i, ';'))
   agency_dt <- agency_dt %>%  mutate_if(is.integer64, as.double)
   
   tax_codes <- dbGetQuery(ptaxsim_db_conn, paste('SELECT DISTINCT tax_code_num, tax_code_rate FROM tax_code WHERE year = ', i, ';'))  
@@ -124,29 +125,37 @@ for(i in years){
     mutate(loa = as.numeric(loa)) %>%
     mutate(loa = ifelse(loa == 0, NA, loa))
   
-
-
-
-
-# Exemptions at PIN level --------------------------------------------------
-
-
-# finds all pins within Cook county and data on their exemptions
-# joins tax code variable by pin
-
-   pin_data <- pin_data |>
+  
+  
+  
+  
+  # Exemptions at PIN level --------------------------------------------------
+  
+  
+  # finds all pins within Cook county and data on their exemptions
+  # joins tax code variable by pin
+  
+  pin_data <- pin_data |>
     mutate_if(is.integer64, as.double ) %>%
     left_join(ccao_loa, by = c("class" = "class_code")) %>%
     left_join(tc_muninames, by = c("tax_code_num")) |>
-    left_join(tif_distrib, by ="tax_code_num") |>
-    mutate(tax_code_distribution_pct = ifelse(is.na(tax_code_distribution_pct), 0, tax_code_distribution_pct)) |>
+    
+    if(i < 2024) {
+      left_join(tif_distrib, by ="tax_code_num")|>
+        
+        mutate(distribution_pct_to_tif = is.na(tax_code_distribution_pct), 0, tax_code_distribution_pct)
+    } else(i >=2024) {
+    left_join(pin_tif_distrib)   |>
+      mutate(distribution_pct_to_tif = is.na(pin_distribution_pct), 0, pin_distribution_pct/100) 
+      } |>
+    
     mutate(
       
       incent_prop = ifelse(between(class, 600, 899), 1, 0),
       res_prop = ifelse(between(class, 200, 399), 1, 0),
       c2_prop = ifelse(between(class, 200, 299), 1, 0),
       
-      in_tif = ifelse(tax_code_num %in% tif_distrib$tax_code_num, 1, 0),
+      in_tif = ifelse(tax_code_num %in% tif_distrib$tax_code_num | pin %in% pin_distribution_pct$pin , 1, 0),
       tif_tax_code_frozen_eav = ifelse(is.na(tax_code_frozen_eav), 0, tax_code_frozen_eav),
       tif_tax_code_eav = ifelse(is.na(tax_code_eav), 0, tax_code_eav), # only TIF taxcodes
       tif_tax_code_increment_eav = tif_tax_code_eav - tif_tax_code_frozen_eav,
