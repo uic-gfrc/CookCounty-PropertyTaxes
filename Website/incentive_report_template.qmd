@@ -3,8 +3,6 @@ subtitle: "Supporting Content for Cook County C&I Report"
 format: 
   html:
     code-fold: true
-    toc: true
-    toc-location: left
     tbl-cap-location: margin
     fig-cap-location: margin
     df-print: paged
@@ -28,17 +26,15 @@ library(ggtext)
 
 nicknames <- readxl::read_excel("../Necessary_Files/muni_shortnames.xlsx")
 
-cook_sums <- read_csv("../Output/ptaxsim_cook_level_2006to2023.csv") 
+cook_sums <- read_csv("../Output/ptaxsim_cook_level_2006to2024.csv") 
 
-muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006to2023.csv")
+muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006to2024.csv")
 
 
-muni_mc_sums <- read_csv("../Output/ptaxsim_muni_MC_2006to2023.csv") |>
+muni_mc_sums <- read_csv("../Output/ptaxsim_muni_MC_2006to2024.csv") |>
   rename_all(~str_replace(., "muni_mc_", ""))
 
 
-muni_cl_sums <- read_csv("../Output/ptaxsim_muni_class_summaries_2006to2023.csv") |>
-  left_join(nicknames)
 
 muni_shp <- read_sf("../Necessary_Files/muni_shp.gpkg")
 
@@ -124,14 +120,18 @@ bor <- read_csv("../Output/borappeals.csv") |>
 
 # Cleaned PIN-Project list after cleaning the commercial valuation dataset found online. 
 # Another temporary work-around until we (maybe) have full keypin list:
-proj_xwalk <- read_csv("../Output/all_keypins.csv")               
+# proj_xwalk <- read_csv("../Output/all_keypins.csv")  
+proj_xwalk <-  readxl::read_xlsx("../Output/projects_checked_MAINFILE.xlsx")
 # all commercial valuation properties but made with not-quite-clean data from commercial valuation dataset on Cook County Data Portal (which was made from combining the Methodology worksheets) 
 # Values are also only the FIRST PASS assessments and do not include appeals or changes in values
 
 # Join project IDs to PINs:
-pin_data <- pin_data |> left_join(proj_xwalk)
+pin_data <- pin_data |>   
+  select(-incent_prop) |> 
+  left_join(proj_xwalk)
 ```
 
+<!--- BE CAREFUL and fix this in the future: pin_data had incent_prop be binary numeric until this point but then the variable is dropped and rejoined by a different incent_prop variable that uses "Incentive" and "Non-Incentive" as the categories  --->
 
 ```{r}
 # original class_dict variables already in 0_joined data
@@ -167,7 +167,7 @@ pin_data <- pin_data |> left_join(bor_pins, by = "pin")
 
 pin_data <- pin_data |> 
   mutate( both_ids = project_id,
-          both_ids = ifelse(is.na(both_ids), keypin, both_ids),
+          both_ids = ifelse(is.na(both_ids), main_keypin, both_ids),
           both_ids = ifelse(is.na(both_ids) & between(class, 300, 899), pin, both_ids))
 ```
 
@@ -608,7 +608,7 @@ library(ggpattern)
 
 no_incentives <-  pin_data |> 
   group_by(clean_name) |> 
-  filter(sum(incent_prop) == 0) |> 
+  filter(sum(incent_prop == "Non-Incentive" ) == 0) |> 
   distinct(clean_name)
 
 
@@ -668,7 +668,7 @@ table2 <- pin_data |>
     filter(land_use != "Land") |>
   group_by(clean_name, incent_prop) |>   # projects can be counted twice if the project has incentive and normal commercial/industrial prop classes.
   summarize(pin_count = n(),
-         project_count = n_distinct(keypin), 
+         project_count = n_distinct(main_keypin), 
          av_adjusted=sum(ifelse(between(class, 600, 899), av*2.5, av)),
          av=sum(av, na.rm=TRUE),
 fmv=sum(fmv)) 
@@ -704,7 +704,7 @@ filter(!agency_num %in% cross_county_line &
   summarize(pin_count = n(),
             incent_PC = sum(ifelse(class >=600 & class <900, 1, 0), na.rm=TRUE),
             fmv_w_incent = sum(ifelse(class >=600 & class <900, fmv, 0), na.rm = TRUE),
-           # project_count = n_distinct(keypin),
+           # project_count = n_distinct(main_keypin),
             fmv_group = sum(fmv, na.rm=TRUE),
             comind_fmv =sum(fmv, na.rm=TRUE),
             pins_inTIF = sum(in_tif, na.rm=TRUE)) |>
@@ -1058,10 +1058,10 @@ cook_ratechange <- pin_data |>
  
     cty_PC = n(),
     # projects = n_distinct(both_ids), # mostly for industrial and commercial properties
-    pins_withincents = sum(ifelse(incent_prop == 1, 1, 0)),
-    fmv_incentive = sum(ifelse(incent_prop == 1, fmv, 0), na.rm = TRUE),
+    pins_withincents = sum(incent_prop == "Incentive"),
+    fmv_incentive = sum(ifelse(incent_prop == "Incentive", fmv, 0), na.rm = TRUE),
     #fmv_taxed =  sum(taxed_fmv, na.rm=TRUE),
-    fmv_incents_inTIFs = sum(ifelse(incent_prop == 1 & final_tax_to_tif > 0, fmv, 0), na.rm = TRUE),
+    fmv_incents_inTIFs = sum(ifelse(incent_prop == "Incentive" & final_tax_to_tif > 0, fmv, 0), na.rm = TRUE),
     fmv_inTIF = sum(fmv_inTIF, na.rm=TRUE),
     fmv_tif_increment = sum(fmv_tif_increment, na.rm=TRUE),
  #   fmv_untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
@@ -1086,7 +1086,7 @@ cook_ratechange <- pin_data |>
     pins_in_class = n(),
     exe_total_adj = sum(exe_total_adj),   # in EAV
     abatements = sum(exe_abate),            # in EAV
-    eav_incents_inTIFs = sum(ifelse(incent_prop == 1 & in_tif == 1, taxed_eav, 0), na.rm = TRUE),
+    eav_incents_inTIFs = sum(ifelse(incent_prop == "Incentive" & in_tif == 1, taxed_eav, 0), na.rm = TRUE),
 
     final_tax_to_dist = sum(final_tax_to_dist), ## Amount of Total Levy
     final_tax_to_tif = sum(final_tax_to_tif),
@@ -1998,7 +1998,7 @@ Figure1JD_data |>
 #| fig-cap: "**Share of residential EAV that is tax exempt due to homestead exemptions. Denominator is a municipality's residential EAV.**"
 #| include: false
 
-muni_mc_sums <- read_csv("../Output/ptaxsim_muni_MC_2006to2023.csv") |>
+muni_mc_sums <- read_csv("../Output/ptaxsim_muni_MC_2006to2024.csv") |>
   rename_all(~str_replace(., "muni_mc_", ""))
 
 median_exempt <- muni_mc_sums |>
