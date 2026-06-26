@@ -10,8 +10,7 @@ format:
     df-print: paged
 ---
 
-
-```{r warning = FALSE, message = FALSE}
+```{r warning = FALSE, message = FALSE, include=FALSE}
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 options(scipen=999)
 
@@ -51,10 +50,43 @@ alea_theme <- function() {
 }
 ```
 
+## Summary of UIC GFRC’s Research on the Recapture Provision of the Property Tax Extension Limitation Law
 
-## Recapture Data from PTAXSIM 
+The research team was asked to examine whether the recently introduced recapture provision created significant problems in property tax administration in Cook County.
 
+### What is the Recapture Provision?
 
+Property tax refunds arise from three sources: certificates of error, decisions of the Property Tax Appeal Board (PTAB), and, in rare cases, Circuit Court orders.
+
+In 2021, Illinois amended its Property Tax Extension Limitation Law (PTELL) to account for the potential effect of these property tax refunds. The amendment, called the Recapture Provision, increases a taxing agency’s levy by the amount paid out by that agency the prior year in property tax refunds. The percentage increase in the tax rate is equal to refund’s share of the levy. This means that a refund equal to 5% of the levy will increase the tax rate by 5%.[^1] This levy increase is automatic unless the taxing agency decides to forego the increase.
+
+[^1]: For example, assume that the original levy is \$100, the tax rate is 2% and the tax base is \$5000 and that a refund of \$5 is required. The new tax rate will be 2.1% because 2.1%\*5000=105 so that the new levy will be just sufficient to provide additional revenue sufficient to pay the refund.
+
+### What the data show (2021 – 2024)
+
+While only a few years of data are available, three trends have emerged. First, no agency has opted out of the recapture provision thus far. Second, property tax refunds are equal to less than 5% of levies for the vast majority of agencies. In 2021 and 2023, 95% of agencies had refunds less than 3% of their levy, and 95% of agencies had refunds less than 5% of their levy in 2022.
+
+For 95% of the agencies eligible for recapturing refunds, the Recapture Provision added less than 0.2 percentage points to their tax rates. The agencies that recaptured the largest shares of their levies were often special purpose agencies such as park or library districts that generally have relatively low tax rates and have small dollar levies. This mitigated the effect of the recapture provision on composite rates. Figures 1 and 2 provide more detailed information about the distribution of refunds.
+
+**Figure 1. Share of Levy Recaptured. \**
+Only non-homerule taxing agencies are eligible to recapture refunds. Share of levy recaptured = recaptured funds / agency levy.
+
+![](images/clipboard-3118867582.png)
+
+**Figure 2. Refunds as a Percent of Levy.** \
+Over 800 taxing agencies had levies and refunds in a given year, but only non-homerule agencies are eligible to recapture refunds. Image excludes agencies with a refund larger than 30% of their levy (n=41) to improve legibility. Taxing agencies that had refunds but did not have a tax levy are excluded from the graph.  Share of levy = refunds / levy.
+
+![](images/clipboard-3072202614.png)
+
+### The Recapture Provision can matter due to overlapping taxing bodies
+
+For most taxpayers, the effect of the Recapture Provision on their property tax bills is negligible. The exception is when multiple overlapping taxing bodies *recapture lost revenues in the same tax bill*, which can cause small increases to add up for individual taxpayers. Ford Heights and Calumet City, for example, saw increases in their composite tax rates of approximately 0.5 percentage points. However, since the composite tax rate is relatively high in those areas, that 0.5 percentage point increase due to recapture was only a 3.6% increase in their tax rates compared to what it would have been without the recapture provision.
+
+### Conclusion
+
+The research team found that the Recapture Provision is widely used but has had a minimal impact on tax rates for several reasons. While some taxing agencies see a large share of their levy recaptured, they only account for a few percentage points of the composite tax rate. Moreover, most taxing districts have relatively small levies and thus recapturing even a handful of refunds could dramatically impact individual agency rates without a concomitant increase in composite tax rates seen by taxpayers.
+
+## Supporting Code
 
 ```{r}
 nicknames <- readxl::read_xlsx("../Necessary_Files/muni_shortnames.xlsx") |>
@@ -121,8 +153,6 @@ new_agency_fund_info <- dbGetQuery(ptaxsim_db_conn,
 )
 ```
 
-
-
 ```{r}
 agency_funds <- left_join(agency_fund, agency_fund_info) |> left_join(agency_fund_crosswalk)
 
@@ -143,10 +173,7 @@ agency_funds |> write_csv("agency_funds_2024.csv")
 
 According to PTAXIM agency data, there are 811 agencies with levies in 2021 and 2022, and 816 in 2023.
 
-
-Of those, 488, 496, and 499 taxing agencies had fund 408 levy amounts greater than $0 in 2021, 2022, and 2023, respectively. 
-
-
+Of those, 488, 496, and 499 taxing agencies had fund 408 levy amounts greater than \$0 in 2021, 2022, and 2023, respectively.
 
 ```{r include=FALSE}
 agency_info |> filter(total_final_levy!= 0 & year > 2020) |> group_by(year)|>
@@ -162,9 +189,6 @@ agency_funds |>
 
 ### PTAXSIM Fund Data: Rate Change from Levy Adjustment
 
-
- 
-
 ```{r}
 #| label: tbl-PTAXSIM-fund408-ratechange
 #| tbl-cap: "**Tax rate change due to fund 408.** Data from PTAXSIM database (agency_fund table). Only shows fund 408 associated with the levy recapture fund."
@@ -174,7 +198,6 @@ agency_funds |> filter(fund_type_num==408) |>
   select(year, agency_name_short, final_levy, final_rate, fund_num) |>
   arrange(desc(final_rate)) |> DT::datatable(rownames = FALSE)
 ```
-
 
 ```{r}
 agency_funds |> filter(fund_type_num==408) |>
@@ -189,7 +212,6 @@ agency_funds |> filter(fund_type_num==408) |>
            caption = "Source: PTAXSIM database; agency_fund table.")
 
 ```
-
 
 ```{r}
 #| label: tbl-filtered-fund408table
@@ -212,7 +234,6 @@ filtered_df <- agency_funds |>
 filtered_df |> DT::datatable(rownames = FALSE)
 ```
 
-
 ```{r}
 #| label: tbl-fund408-deciles
 #| tbl-cap: "**95th and 5th percentile cutoff for taxing agencies with fund 408 and levies greater than $0** Data from PTAXSIM database (agency_fund table). Only includes levy amounts for fund 408 associated with the levy recapture fund."
@@ -233,7 +254,6 @@ deciles |> filter(probs == 0.95 | probs == .55)
 
 ```
 
-
 ```{r}
 #| label: tbl-memo-histogram
 #| tbl-cap: "**Distribution of tax rate increases due to fund 408** (Data Source: PTAXSIM agency_fund table)"
@@ -250,7 +270,6 @@ agency_funds |>
 ```
 
 Some agencies have a majority of their taxbase outside of cook county. We will exclude those from this analysis.
-
 
 ```{r fig-ptaxsimfund408}
 #| fig-cap: "Data from PTAXSIM database fund level data, and agency level info. Identifies the money amount from fund 408 (recapture) and all other funds that are not 408."
@@ -279,7 +298,6 @@ alea_theme() +
        Excludes agencies with more than 25% of their taxbase outside of Cook County.")
 ```
 
-
 ```{r}
 agency_fund408_sums |> 
   filter(year > 2019 & pct_inCook > 0.75) |>
@@ -297,7 +315,6 @@ agency_fund408_sums |>
 
 ```
 
-
 ```{r}
 #| label: tbl-datatable-from-ptaxsim
 #| tbl-cap: "Values created from PTAXSIM fund table and agency table."
@@ -306,14 +323,11 @@ agency_fund408_sums |>
 agency_fund408_sums |> DT::datatable(rownames = FALSE)
 ```
 
-
 ### Comparison to Fund 408 File from Clerk/Treasurer
 
-
-File name: `Levy Adjustment Fund 408 Extension 2021-2023.xlsx`  
+File name: `Levy Adjustment Fund 408 Extension 2021-2023.xlsx`
 
 > Coding Note: Agency names had double spaces between words in the excel file. They were CTRL-F and replaced with a single space in the excel file.
-
 
 ```{r}
 #| label: tbl-fund408-fromtreasurer
@@ -347,22 +361,19 @@ agency_fund408_sums |>
   DT::datatable(rownames = FALSE)
 ```
 
-
 > Taxing districts with the largest differences appear seem to generally be border crossers so it might just be a data issue of what is included in ptaxsim vs what is included in the treasurer's files. Agencies with less than 75% EAV in Cook County have been excluded from the table above.
-
 
 ## PTAB Documents from Clerk / Treasurer
 
 ### Recapture data from the Levy Adjustment Files
 
-The **Levy Adjustment** Files exist for 4 years. They use the refund amounts from the previous year to calculate how much to add to Fund 408 for the tax year in the file. 
+The **Levy Adjustment** Files exist for 4 years. They use the refund amounts from the previous year to calculate how much to add to Fund 408 for the tax year in the file.
 
-These are the files that Merriman wants us to fill in the non-eligible agencies' information. 
+These are the files that Merriman wants us to fill in the non-eligible agencies' information.
 
-For example, Levy Adjustment 2021 shows the amount that was refunded in 2020. 
-`ptab_refunds` from these files represent the recaptured funds from eligible agencies (if they did not waive their right to recapture the funds) that they had to give back the previous tax year due to successful PTAB appeals.
+For example, Levy Adjustment 2021 shows the amount that was refunded in 2020. `ptab_refunds` from these files represent the recaptured funds from eligible agencies (if they did not waive their right to recapture the funds) that they had to give back the previous tax year due to successful PTAB appeals.
 
-All observations' `aggregate_refund` amounts equal their `levy_adjustment` values. 
+All observations' `aggregate_refund` amounts equal their `levy_adjustment` values.
 
 ```{r}
 #| label: tbl-levyadjustments
@@ -450,23 +461,21 @@ adjust_all <- rbind(adjust2021, adjust2022, adjust2023, adjust2024) |>
 adjust_all |> select(year, agency_name, agency_number, adjust_eligible, aggregate_refunds, levy_adjustment, everything() )|>  DT::datatable(rownames = FALSE)
 ```
 
-
 ```{r}
 #| include: FALSE
 
 adjust_all |> filter(levy_adjustment == 0 & total_levy > 0 & adjust_eligible == "Eligible")
 ```
 
-**24 agencies had levies > $0 and were eligible for recapture and had no levy adjustments BUT they also had no refunds. This makes it appear like all agencies eligible for recapture accepted the recaptured funds.**
-
+**24 agencies had levies \> \$0 and were eligible for recapture and had no levy adjustments BUT they also had no refunds. This makes it appear like all agencies eligible for recapture accepted the recaptured funds.**
 
 ### Recapture Eligible Descriptive Stats
 
 **"Descriptive Stats for 2024 property tax refunds"**
 
-Four Levy Adjustment Excel Files have the taxing agency, adjustment eligibility, previous year's tax rate and previous year's levy, as well a the amount of refunds from PTAB and COEs. 
+Four Levy Adjustment Excel Files have the taxing agency, adjustment eligibility, previous year's tax rate and previous year's levy, as well a the amount of refunds from PTAB and COEs.
 
-> These are descriptive stats for non-homerule taxing agencies that are eligible for recapture! 
+> These are descriptive stats for non-homerule taxing agencies that are eligible for recapture!
 
 ```{r}
 adjust_all |>  
@@ -482,10 +491,6 @@ adjust_all |>
   labs(caption = "Excludes observations with levy shares > 20% (only a couple outliers)", x = "Share of Levy Recaptured", y = "# Taxing Agencies")
 ```
 
-
-
-
- 
 ```{r}
 #| tbl-cap: "**Alea's Method** Uses aggregate_refunds/total_final_levy to create recap levyshare. Aggregate Refunds is from the clerk & treasurers files with levy adjustment information and the levy amount is from ptaxsim. Excludes agencies that did not have a levy amount (which ends up droping tax year 2024 since there isn't levy values for that year in the ptaxsim database)."
 
@@ -505,7 +510,6 @@ awm_levyshare_byagency |>
 
 
 ```
- 
 
 ```{r}
 #| label: tbl-deciles_AWM
@@ -523,9 +527,7 @@ deciles |> filter(probs == 0.95 | probs == .55)
 
 ```
 
-
-**In 2022, 95% of actively taxing taxing agencies had RECAPTURED refunds equal to less than 5% of their levy. In 2021 and 2023, 95% of agencies had 3% of their levy be refunded. This is out of the ~480 agencies that were at least 75% within Cook County (based on their EAV), eligible for recapture funds, and had non-zero values for their levies.** 
-
+**In 2022, 95% of actively taxing taxing agencies had RECAPTURED refunds equal to less than 5% of their levy. In 2021 and 2023, 95% of agencies had 3% of their levy be refunded. This is out of the \~480 agencies that were at least 75% within Cook County (based on their EAV), eligible for recapture funds, and had non-zero values for their levies.**
 
 ```{r tbl-mtable3}
 #| tbl-cap: "Levy Share for Tax Year 2021. Uses levy adjustment / total_final_levy to create recap levyshare. Shows eligible and non-eligible taxing agencies from the levy_adjustment files." 
@@ -536,7 +538,6 @@ awm_levyshare_byagency |>
   DT::datatable(rownames = FALSE)
 ```
 
-
 ```{r tbl-mtable4}
 #| tbl-cap: "Levy Share for Tax Year 2022. Uses levy levy_adjustment / total_final_levy to create recap levyshare" 
 
@@ -545,7 +546,6 @@ awm_levyshare_byagency |> filter(year == 2022) |>
   DT::datatable(rownames = FALSE)
 ```
 
-
 ```{r tbl-mtable5}
 #| tbl-cap: "Levy Share for Tax Year 2023. Uses levy_adjustment / total_final_levy to create recap levyshare." 
 
@@ -553,19 +553,17 @@ awm_levyshare_byagency |> filter(year == 2023)|>
   filter(pct_inCook > 0.75) |> DT::datatable(rownames = FALSE)
 ```
 
-
 ### Refund data from the Levy Recapture Files (Source: Clerk / Treasurer)
 
 > There are taxing agencies that have refunds and are not active taxing agencies. The agencies themselves are named things like "2013A Bond Escrow Account". Refunds from these accounts are probably not included in recapture funds that are added to the levy since the money was in an escrow fund agency and the taxing agency does not actively tax the public
 
+The **Levy Recapture Files** break up the refunds into 2 categories: PTAB/SP Refunds and CofE (Over-Assessment) Refunds.
 
-The **Levy Recapture Files** break up the refunds into 2 categories: PTAB/SP Refunds and CofE (Over-Assessment) Refunds. 
-
-Treasurer's office sent the account specific files to the Clerk's office, and the Clerk's office sent them to Drucker and Merriman. 
+Treasurer's office sent the account specific files to the Clerk's office, and the Clerk's office sent them to Drucker and Merriman.
 
 Two of the file have very detailed PTAB&SP and CofE tabs that have very detailed sheets of the amount of refund from previous years' appeals, but not sure how to use that information for now. (2022 and 2023 are missing the detailed sheets)
 
-_Note: the variables are named "recouped" in these files which is potentially confusing_ ^However, the variable names do make sense from the Treasurer's point of view, and they made the files in the first place.  
+*Note: the variables are named "recouped" in these files which is potentially confusing* \^However, the variable names do make sense from the Treasurer's point of view, and they made the files in the first place.
 
 ```{r}
 #| label: tbl-refundsdata
@@ -635,7 +633,6 @@ write_csv(adjust_all, "../output/adjust_all.csv")
 write_csv(refund_all, "../output/refunds_all.csv")
 ```
 
-
 ```{r}
 refund_all |>
   group_by(year) |>
@@ -644,10 +641,7 @@ refund_all |>
             n_with_levy = sum(ifelse(total_final_levy != 0, 1, 0), na.rm=TRUE))
 ```
 
-
-
-#### Refunds Levy Share 
-
+#### Refunds Levy Share
 
 <!---Merriman said he looked at refunds, but he looked at refunds only for agencies eligible for recapture. (Non Homerule Agencies.)--->
 
@@ -659,18 +653,16 @@ refund_all |>
 adjust_all |> mutate(share = levy_adjustment / lastyear_levy) |> filter(year == 2024 & share > 0.027)
 ```
 
-There are around 680 actively taxing agencies each year in the refund data. 2037 agencies have non-zero levies (for all years together). 
+There are around 680 actively taxing agencies each year in the refund data. 2037 agencies have non-zero levies (for all years together).
 
 There are around 1500 agencies with refunds each year. Most are Escrow accounts!
 
-
-There are 678, 680, and 679 agencies with levies that also had refunds in 2021, 2022, and 2023, respectively. 
+There are 678, 680, and 679 agencies with levies that also had refunds in 2021, 2022, and 2023, respectively.
 
 ```{r}
 refund_all |> filter( total_final_levy!=0 & total_refunds != 0) |> 
    group_by(year) |> summarize(n = n())
 ```
-
 
 ```{r fig-table6-histogram}
 #| fig-cap: "Histograms of total_refunds / levy from the refund_all dataframe."
@@ -703,7 +695,6 @@ refund_all |>
   scale_x_continuous(label = scales::percent)+
   facet_wrap(vars(homerule_label, year))
 ```
-
 
 ```{r}
 #| label: tbl-outlierobservations
@@ -778,7 +769,6 @@ refund_all |>
 # 41 observations excluded by filtering below
 ```
 
-
 ```{r fig-table6b}
 #| fig-cap: "Uses total_refunds / levy from the refund_all dataframe. Excludes ratios above 0.25."
 #| fig-column: margin
@@ -803,8 +793,7 @@ refund_all |>
        y = "Share of Levy")
 ```
 
-
-```{r tbl-taxingagencies-withlevies} 
+```{r tbl-taxingagencies-withlevies}
 #| tbl-cap: "Over 8000 observations exist for the 3 years of data, but only 5,906 had refunds. Of those, only 2,390 are actively taxing properties (i.e. have a levy > $0). 2,037 of the agencies with a levy also have refunds. This includes homerule and non-homerule agencies! It is not just recaptured refunds, but **all** refunds. Uses total_refunds/total_final_levy to create refund levyshare. Total Refunds is from the clerk & treasurers files with refund information and the levy amount is from ptaxsim. 2021-2024 refund values. Excludes agencies that did not have a levy amount (which ends up droping tax year 2024 since there isn’t levy values for that year in the ptaxsim database)."
 
 
@@ -860,7 +849,7 @@ rm(adjust2021, adjust2022, adjust2023, adjust2024,
 
 ### Join data
 
-`Refund_all` had `r paste(count(refund_all))` observations and `adjust_all` had `r paste(count(adjust_all))` observations. 
+`Refund_all` had `r paste(count(refund_all))` observations and `adjust_all` had `r paste(count(adjust_all))` observations.
 
 ```{r}
 #| label: tbl-joineddata
@@ -905,9 +894,9 @@ adjust_recap_all |> DT::datatable(rownames = FALSE)
 
 ### Final Data Assembly
 
-At this point, we have the data for all Eligible taxing agencies, but missing values for Agencies that are not eligible for levy adjustments (from Fund 408). 
+At this point, we have the data for all Eligible taxing agencies, but missing values for Agencies that are not eligible for levy adjustments (from Fund 408).
 
-We want to get the values for all agencies. 
+We want to get the values for all agencies.
 
 ```{r}
 #| label: tbl-finaldatable
@@ -929,7 +918,6 @@ final_df <- left_join(adjust_recap_all, agency_fund408_sums|>
 
 final_df |> DT::datatable(rownames = FALSE)
 ```
-
 
 ```{r}
 #| label: tbl-differences-invariables
@@ -986,9 +974,7 @@ refund_outliers <- final_df |>
 refund_outliers |> DT::datatable(rownames = FALSE)
 ```
 
-
 ## Data Exploration
-
 
 ### Aggregation to some Composite increase?
 
@@ -1030,7 +1016,6 @@ impacted_taxcodes <- taxcodes |>
 
 ```
 
-
 ```{r}
 #| label: tbl-taxcode-aggregation2023
 #| tbl-cap: "Aggregating up to Tax Code Level: 2023"
@@ -1041,7 +1026,6 @@ impacted_taxcodes <- taxcodes |>
 impacted_taxcodes |> filter(year == 2023)  |> DT::datatable(rownames = FALSE)
 
 ```
-
 
 ```{r}
 
@@ -1143,26 +1127,19 @@ final_df |>
 
 ```
 
-
-
 ### Who is Eligible but Not Recouping Their Full Amount?
 
-> Barrington and Matteson became homerule by vote in Nov. 2022. They were not eligible for recapture funds as of the 2022 levy. Can be seen in the agency_info table within ptaxsim and in Notes column of 2022 Adjustment excel file. 
+> Barrington and Matteson became homerule by vote in Nov. 2022. They were not eligible for recapture funds as of the 2022 levy. Can be seen in the agency_info table within ptaxsim and in Notes column of 2022 Adjustment excel file.
 
+Some differences in tables below:
 
-Some differences in tables below: 
+- School District 145: Arbor Park School District, had refunds and levies, but FundExtension from treasurer says \$0 for fund 408.
 
-- School District 145: Arbor Park School District, had refunds and levies, but FundExtension from treasurer says $0 for fund 408.   
+- [Palatine SD 211](https://go.boarddocs.com/il/thsd211/Board.nsf/files/CLXT6W75E666/$file/Adoption%20of%20the%202022%20Tax%20Levy%20(12-15-22).pdf): submitted motion to abate recapture amount. That is not seen in the adjust_all file. So it either got voted down OR the adjustment files do not reflect those that submitted abatements.
 
-- [Palatine SD 211](https://go.boarddocs.com/il/thsd211/Board.nsf/files/CLXT6W75E666/$file/Adoption%20of%20the%202022%20Tax%20Levy%20(12-15-22).pdf): submitted motion to abate recapture amount. That is not seen in the adjust_all file. So it either got voted down OR the adjustment files do not reflect those that submitted abatements.  
-  - Palatine SD 211 had $0 recapture when using fund408 == 0, but Palatine SD had a levy_adjustment value that was not \$0.   
-  - Does that mean that ptaxsim reflects the abatements? or just a data difference by mistake?   
-  - Had FundExtension = $0 too (variable from fund 408 extensions from treasurers office)  
-  
-  
-  
-
-
+  - Palatine SD 211 had \$0 recapture when using fund408 == 0, but Palatine SD had a levy_adjustment value that was not \$0.\
+  - Does that mean that ptaxsim reflects the abatements? or just a data difference by mistake?\
+  - Had FundExtension = \$0 too (variable from fund 408 extensions from treasurers office)
 
 ```{r}
 #| label: tbl-eligible
@@ -1201,7 +1178,6 @@ check3 <- eligible |>
 check3 |>   pivot_wider(names_from = "year", values_from = "year") |> DT::datatable(rownames = FALSE)
 ```
 
-
 ```{r}
 anti_join(check1, check2) |>
   pivot_wider(names_from = "year", values_from = "year")
@@ -1221,8 +1197,6 @@ not_eligible <- final_df |> filter(adjust_eligible == "Not Eligible") |>
 not_eligible |> filter(levy_adjustment!=0 | fund408!=0) |> DT::datatable(rownames = FALSE)
 ```
 
-
-
 ```{r}
 
 final_df |> filter(levy_adjustment == 0 & total_levy > 0 & adjust_eligible == "Eligible")
@@ -1230,7 +1204,6 @@ final_df |> filter(levy_adjustment == 0 & total_levy > 0 & adjust_eligible == "E
 ```
 
 ### Refunds and Recapture by Minor Class
-
 
 ```{r}
 final_df |>
@@ -1271,7 +1244,6 @@ final_df |>
 
 ## Recapture Ratios
 
- 
 ```{r}
 final_df |> 
   filter(year > 2020) |>
@@ -1327,8 +1299,6 @@ final_df |>
          Excludes > .5 ratios.")
 ```
 
-
-
 ```{r}
 #| include: false
 
@@ -1348,8 +1318,6 @@ final_df |>
  
 ```
 
-
-
 ```{r}
 #| include: false
 
@@ -1367,5 +1335,3 @@ final_df |>
        caption = "Looked the same as using Levy Adjustment / Levy", x= element_blank())
  
 ```
-
-
