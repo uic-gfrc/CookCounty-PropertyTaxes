@@ -16,18 +16,18 @@ library(flextable)
 nicknames <- readxl::read_excel("../Necessary_Files/muni_shortnames.xlsx")
 
 
-county_sums <- read_csv("../Output/ptaxsim_cook_level_2006to2023.csv")
+county_sums <- read_csv("../Output/ptaxsim_cook_level_2006to2024.csv")
 
-muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006to2023.csv") |> 
+muni_sums <- read_csv("../Output/ptaxsim_muni_level_2006to2024.csv") |> 
  left_join(nicknames)
 
 
-muni_mc_sums <- read_csv("../Output/ptaxsim_muni_MC_2006to2023.csv") |>
+muni_mc_sums <- read_csv("../Output/ptaxsim_muni_MC_2006to2024.csv") |>
   rename_all(~str_replace(., "muni_mc_", ""))
 
 
-muni_cl_sums <- read_csv("../Output/ptaxsim_muni_class_summaries_2006to2023.csv") |>
-  left_join(nicknames)
+# muni_cl_sums <- read_csv("../Output/ptaxsim_muni_class_summaries_2006to2023.csv") |>
+#   left_join(nicknames)
 
 muni_shp <- read_sf("../Necessary_Files/muni_shp.gpkg")
 
@@ -35,7 +35,7 @@ muni_shp <- read_sf("../Necessary_Files/muni_shp.gpkg")
 #  params <- data.frame(year = numeric(0))
 # 
 # # Add the value 2021 to the "year" column
-#  params <- rbind(params, data.frame(year = 2023))
+#  params <- rbind(params, data.frame(year = 2024))
 
 ```
 
@@ -125,10 +125,11 @@ midpoint = scales::percent(median(median_exempt$muni_pct_eav_exempt), accuracy =
 median_muni = median_exempt |>
   arrange(muni_pct_eav_exempt) |>
   filter(muni_pct_eav_exempt == median(muni_pct_eav_exempt)) |>
-  select(clean_name) |> as.character()
+  select(clean_name) |> 
+  as.character()
 
 print(median_exempt |>
-    mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) |>
+    mutate(agency_name = as.character(ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", as.character(agency_name) ))) |>
  full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) |>
   ggplot(aes(fill = exemption_category)) + 
   geom_sf(aes(geometry = geom), color = "black") + 
@@ -194,7 +195,7 @@ exemption_colors <- c(
 
 print(median_exempt |>
         left_join(nicknames) |> # to get name that joines with the muni_shp shapefiles
-        mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) |>
+        mutate(agency_name = as.character(ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", as.character(agency_name) ) )) |>
         full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) |>
         ggplot(aes(fill = exemption_category)) + 
         geom_sf(aes(geometry = geom), color = "black") + 
@@ -257,7 +258,7 @@ median_muni = median_exempt |>
 
 print(median_exempt |>
         left_join(nicknames) |>
-        mutate(agency_name = ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", agency_name) ) |>
+        mutate(agency_name = as.character(ifelse(agency_name == "TOWN CICERO", "CITY OF CICERO", as.character(agency_name)) ) ) |>
         full_join(muni_shp, by = c("agency_name" = "AGENCY_DESC")) |>
         ggplot(aes(fill = exemption_category)) + 
         geom_sf(aes(geometry = geom), color = "black") + 
@@ -286,15 +287,15 @@ The percent of municipal EAV exempt from property taxes are greatest across Cook
 #| column: margin
 
 ## makes table in margin for suburbs and city
-geom_sums <- muni_cl_sums |> 
+geom_sums <- muni_sums |> 
   filter(year == params$year) |> 
-  select(clean_name, muni_c_all_exemptions) |>
+  select(clean_name, exempt_allexemptions_eav) |>
   mutate(clean_name = ifelse(is.na(clean_name), "Unincorporated", clean_name),
          Geography = ifelse(clean_name == "Chicago", "City", "Suburbs"),
          Geography = ifelse(is.na(clean_name), "Unincorporated", Geography),
          Geography = factor(Geography, levels = c("Suburbs", "City", "Unincorporated"))) |>
   group_by(Geography) |>
-  summarize("ExemptEAV" = sum(muni_c_all_exemptions, na.rm=TRUE))
+  summarize("ExemptEAV" = sum(exempt_allexemptions_eav, na.rm=TRUE))
 
 geom_sums |> 
   flextable() |>
@@ -306,18 +307,18 @@ geom_sums |>
 #| fig-cap: "**Exempt EAV in Cook County** Exemption use varies between suburban Cook County and the City of Chicago which may point to broader socioeconomic patterns as well as residents' eligibility and update. Note: Our current calculations undervalue the disabled veterans exemption."
 
 
-muni_cl_sums |> 
+muni_mc_sums |> 
   filter(year == params$year) |> 
-  select(clean_name, muni_c_exe_homeowner:muni_c_exe_vet_dis) |>
+ # select(clean_name, muni_c_exe_homeowner:muni_c_exe_vet_dis) |>
   mutate(clean_name = ifelse(is.na(clean_name), "Unincorporated", clean_name),
     Geography = ifelse(clean_name == "Chicago", "City", "Suburbs"),
          Geography = ifelse(is.na(clean_name), "Unincorporated", Geography),
          Geography = factor(Geography, levels = c("Suburbs", "City", "Unincorporated"))) |>
   group_by(Geography) |>
-  summarize("GHE" = sum(muni_c_exe_homeowner, na.rm=TRUE),
-            "Senior Homestead" = sum(muni_c_exe_senior, na.rm=TRUE),
-            "Senior Freeze" = sum(muni_c_exe_freeze, na.rm=TRUE),
-            "Other Exemptions" = sum(muni_c_exe_longtime_homeowner+muni_c_exe_disabled+muni_c_exe_vet_returning+ muni_c_exe_vet_dis_lt50 + muni_c_exe_vet_dis_50_69+muni_c_exe_vet_dis_ge70)) |>
+  summarize("GHE" = sum(exempt_GHE_eav, na.rm=TRUE),
+            "Senior Homestead" = sum(exempt_SR_eav, na.rm=TRUE),
+            "Senior Freeze" = sum(exempt_FR_eav, na.rm=TRUE),
+            "Other Exemptions" = sum(exempt_LTHO_eav + exempt_DIS_eav + exempt_VET_eav)) |>
   
   pivot_longer(cols = c(`GHE`:`Other Exemptions`), names_to = "Type" ) |>
    mutate(Type = factor(Type, levels = c("GHE", "Senior Homestead", "Senior Freeze", "Other Exemptions" 
@@ -337,43 +338,6 @@ muni_cl_sums |>
   scale_fill_manual(values = c("blue3", "deepskyblue3", "gray") )
 ```
 
-```{r}
-#| label: fig-adjusted-exemptiontotals_cityburbs
-#| fig-cap: "Uses adjusted exemption total"
-#| eval: false
-#| include: false
-
-
-muni_cl_sums |> 
-  filter(year == params$year) |> 
-  select(clean_name, muni_c_exe_homeowner:muni_c_exe_vet_dis) |>
-  mutate(clean_name = ifelse(is.na(clean_name), "Unincorporated", clean_name),
-    Geography = ifelse(clean_name == "Chicago", "City", "Suburbs"),
-         Geography = ifelse(is.na(clean_name), "Unincorporated", Geography),
-         Geography = factor(Geography, levels = c("Suburbs", "City", "Unincorporated"))) |>
-  group_by(Geography) |>
-  summarize("GHE" = sum(muni_c_exe_homeowner, na.rm=TRUE),
-            "Senior Homestead" = sum(muni_c_exe_senior, na.rm=TRUE),
-            "Senior Freeze" = sum(muni_c_exe_freeze, na.rm=TRUE),
-            "Other Exemptions" = sum(muni_c_exe_longtime_homeowner+muni_c_exe_disabled+muni_c_exe_vet_returning+ muni_c_exe_vet_dis_lt50 + muni_c_exe_vet_dis_50_69+muni_c_exe_vet_dis_ge70)) |>
-  
-  pivot_longer(cols = c(`GHE`:`Other Exemptions`), names_to = "Type" ) |>
-   mutate(Type = factor(Type, levels = c("GHE", "Senior Homestead", "Senior Freeze", "Other Exemptions" 
-                                         #"Senior Freeze", "Senior Homestead", "GHE"
-                                        )
-                                        )) |>
-  ggplot(aes(x=Type, y = value/1e9, fill = Geography
-             )) +
-  
-  geom_col( position = "dodge" ) +
-  geom_text(aes(label = round(value/1e9, digits=1)), vjust=-0.5, position = position_dodge(.9)) +
-  theme_minimal() +
-  labs(title = paste0("Exempt EAV in Cook County, Tax Year ", params$year), 
-       subtitle = "by Type and Geography", 
-       y = "EAV (Billions)", x = "Exemption Type") + 
-  scale_y_continuous(limits = c(0, 8)) +
-  scale_fill_manual(values = c("blue3", "deepskyblue3", "gray") )
-```
 
 Exemption use varies between suburban Cook County (`r scales::comma(geom_sums$ExemptEAV[[1]])` EAV) and the City of Chicago (`r scales::comma(geom_sums$ExemptEAV[[2]])` EAV) , which may point to broader socioeconomic patterns as well as residents' eligibility and uptake.
 
@@ -408,7 +372,7 @@ county_sums |>
        subtitle = paste0("2006-", params$year), 
        y = "EAV (Billions)", x ="") +
   scale_fill_manual(values = c("deepskyblue3", "chartreuse2",  "darksalmon", "brown2", "blue4" )) +
-                    scale_x_continuous(breaks = c(2006, 2010, 2015, 2020, 2023))
+                    scale_x_continuous(breaks = c(2006, 2010, 2015, 2020, params$year + 2))
 ```
 
 Trends in the total EAV reductions due to homestead exemptions reflect both real estate market shifts and the legislative changes in their availability, eligibility, and value.
@@ -591,7 +555,7 @@ mc_burden |>
   theme_classic()+
   theme(legend.title = element_blank(), legend.position = "bottom",
         axis.title.x  = element_blank()) + 
-  scale_y_continuous(label = scales::percent, name = "Share of Levy")
+  scale_y_continuous(labels = scales::percent, name = "Share of Levy")
 ```
 
 ```{r}
@@ -1164,7 +1128,7 @@ pin_data |>
 ```{r}
 #| tbl-cap: "**South Triad PIN Counts, Taxbase & Exemptions**"
 
-class8munis <- read_csv("../Output/datarequests_Class8Munis.csv")
+class8munis <- read_csv("../Output/old_files/datarequests_Class8Munis.csv")
 
 
 cross_county_lines <- c("030440000", "030585000", "030890000", "030320000", "031280000",
@@ -1217,23 +1181,23 @@ better_cost_est_allexe = taxcodes_current |>
 
 
 
-tbl_southtriad_exemps <- muni_cl_sums |>
+tbl_southtriad_exemps <- muni_sums |>
+  left_join(nicknames) |>
   filter(Triad == "South") |>
   filter(!clean_name %in% cross_county_lines) |>
   filter(year == params$year) |>
   group_by(year) |>
   summarize(
-    'PINs' = sum(muni_c_pins_in_muni),
-    'PINs (w/ exemps.)' = sum(muni_c_has_HO_exemp),
-    "EqAV" = sum(muni_c_equalized_av),
-    'Taxed EAV' = sum(muni_c_current_taxable_eav),
-    'Exempt EAV' = sum(muni_c_all_exemptions),
-    'GHE' = sum(muni_c_exe_homeowner),
-    'Senior' = sum(muni_c_exe_senior),
-    'Senior Freeze' = sum(muni_c_exe_freeze),
-    'Other Exemps.' = sum(muni_c_all_exemptions - muni_c_exe_homeowner - muni_c_exe_senior - muni_c_exe_freeze )
-  ) |>
-  pivot_longer(cols = c('PINs':'Other Exemps.'),
+    'PINs' = sum(muni_PC_total),
+    'PINs (w/ exemps.)' = sum(muni_PC_claimed_exe),
+    "EqAV" = sum(total_value_eav),
+    'Taxed EAV' = sum(muni_eav_taxed),
+    'Exempt EAV' = sum(total_value_eav),
+    "GHE" = sum(exempt_SR_eav, na.rm=TRUE),
+    "Senior Homestead" = sum(exempt_FR_eav, na.rm=TRUE),
+    "Senior Freeze" = sum(exempt_FR_eav, na.rm=TRUE),
+    "Other Exemptions" = sum(exempt_LTHO_eav + exempt_DIS_eav + exempt_VET_eav)) |>
+  pivot_longer(cols = c('PINs':'Other Exemptions'),
                names_to = "Metric", values_to = "Total") |>
   select(-year)
 tbl_southtriad_exemps
@@ -1244,23 +1208,23 @@ tbl_southtriad_exemps
 #| tbl-cap: "**Municipalities Eligible for Class 8 Incentive Properties - PIN Counts, Taxbase & Exemptions**"
 
 
-tbl_class8muni_exemps <- muni_cl_sums |>
+tbl_class8muni_exemps <- muni_sums |>
   filter(clean_name %in% class8munis$clean_name) |>
   filter(!clean_name %in% cross_county_lines) |>
   filter(year == params$year) |>
   group_by(year) |>
+  
   summarize(
-    'PINs' = sum(muni_c_pins_in_muni),
-    'PINs (w/ exemps.)' = sum(muni_c_has_HO_exemp),
-    "EqAV" = sum(muni_c_equalized_av),
-    'Taxed EAV' = sum(muni_c_current_taxable_eav),
-    'Exempt EAV' = sum(muni_c_all_exemptions),
-    'GHE' = sum(muni_c_exe_homeowner),
-    'Senior' = sum(muni_c_exe_senior),
-    'Senior Freeze' = sum(muni_c_exe_freeze),
-    'Other Exemps.' = sum(muni_c_all_exemptions -muni_c_exe_homeowner- muni_c_exe_senior - muni_c_exe_freeze )
-  ) |>
-  pivot_longer(cols = c('PINs':'Other Exemps.'),
+    'PINs' = sum(muni_PC_total),
+    'PINs (w/ exemps.)' = sum(muni_PC_claimed_exe),
+    "EqAV" = sum(total_value_eav),
+    'Taxed EAV' = sum(muni_eav_taxed),
+    'Exempt EAV' = sum(total_value_eav),
+    "GHE" = sum(exempt_SR_eav, na.rm=TRUE),
+    "Senior Homestead" = sum(exempt_FR_eav, na.rm=TRUE),
+    "Senior Freeze" = sum(exempt_FR_eav, na.rm=TRUE),
+    "Other Exemptions" = sum(exempt_LTHO_eav + exempt_DIS_eav + exempt_VET_eav)) |>
+  pivot_longer(cols = c('PINs':'Other Exemptions'),
                names_to = "Metric", values_to = "Total") |>
   select(-year)
 tbl_class8muni_exemps
@@ -1270,23 +1234,22 @@ tbl_class8muni_exemps
 ```{r}
 #| tbl-cap: "**PIN Counts, Taxbase & Exemptions for Municipalities with a majority of their Taxbase within Cook County**"
 #| 
-tbl <- muni_cl_sums |>
+tbl <- muni_sums |>
   filter(!clean_name %in% cross_county_lines) |>
   filter(year == params$year) |>
   group_by(year) |>
   summarize(
-    'PINs' = sum(muni_c_pins_in_muni),
-    'PINs (w/ exemps.)' = sum(muni_c_has_HO_exemp),
-    "EqAV" = sum(muni_c_equalized_av),
-    'Taxed EAV' = sum(muni_c_current_taxable_eav),
-    'Exempt EAV' = sum(muni_c_all_exemptions),
-    'GHE' = sum(muni_c_exe_homeowner),
-    'Senior' = sum(muni_c_exe_senior),
-    'Senior Freeze' = sum(muni_c_exe_freeze),
-    'Other Exemps.' = sum(muni_c_all_exemptions - muni_c_exe_homeowner- muni_c_exe_senior - muni_c_exe_freeze )
-  ) |>
-  pivot_longer(cols = c('PINs':'Other Exemps.'),
-               names_to = "Metric", values_to = "Total") |>
+    'PINs' = sum(muni_PC_total),
+    'PINs (w/ exemps.)' = sum(muni_PC_claimed_exe),
+    "EqAV" = sum(total_value_eav),
+    'Taxed EAV' = sum(muni_eav_taxed),
+    'Exempt EAV' = sum(total_value_eav),
+    "GHE" = sum(exempt_SR_eav, na.rm=TRUE),
+    "Senior Homestead" = sum(exempt_FR_eav, na.rm=TRUE),
+    "Senior Freeze" = sum(exempt_FR_eav, na.rm=TRUE),
+    "Other Exemptions" = sum(exempt_LTHO_eav + exempt_DIS_eav + exempt_VET_eav)) |>
+  pivot_longer(cols = c('PINs':'Other Exemptions'),
+             names_to = "Metric", values_to = "Total") |>
   select(-year) 
 tbl
 ```
