@@ -40,7 +40,7 @@ muni_shp <- read_sf("../Necessary_Files/muni_shp.gpkg")
 
 
 
-knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
 
 set_flextable_defaults(theme_fun = theme_vanilla, 
                        padding = 2,
@@ -57,6 +57,8 @@ FitFlextableToPage <- function(ft, pgwidth = 6){
   ft_out <- width(ft_out, width = dim(ft_out)$widths*pgwidth /(flextable_dim(ft_out)$widths))
   return(ft_out)
 }
+
+
 
 pin_data <- read_csv(paste0("../Output/Dont_Upload/0_joined_PIN_data_", params$year, ".csv"))
 
@@ -121,14 +123,15 @@ bor <- read_csv("../Output/borappeals.csv") |>
 # Cleaned PIN-Project list after cleaning the commercial valuation dataset found online. 
 # Another temporary work-around until we (maybe) have full keypin list:
 # proj_xwalk <- read_csv("../Output/all_keypins.csv")  
-proj_xwalk <-  readxl::read_xlsx("../Output/projects_checked_MAINFILE.xlsx")
+proj_xwalk <-  readxl::read_xlsx("../Output/projects_checked_MAINFILE.xlsx") 
 # all commercial valuation properties but made with not-quite-clean data from commercial valuation dataset on Cook County Data Portal (which was made from combining the Methodology worksheets) 
 # Values are also only the FIRST PASS assessments and do not include appeals or changes in values
 
 # Join project IDs to PINs:
 pin_data <- pin_data |>   
-  select(-incent_prop) |> 
-  left_join(proj_xwalk)
+# select(-incent_prop) |> 
+  left_join(proj_xwalk |> select(-incent_prop)
+)
 ```
 
 <!--- BE CAREFUL and fix this in the future: pin_data had incent_prop be binary numeric until this point but then the variable is dropped and rejoined by a different incent_prop variable that uses "Incentive" and "Non-Incentive" as the categories  --->
@@ -206,7 +209,7 @@ stopifnot(
 
 ```
 
-# Cook County Total Value
+## Cook County Total Value
 
 $$
 \mbox{AV = Fair Market Value * Level of Assessment}
@@ -230,7 +233,7 @@ $$\mbox{Taxed EAV} = {\frac{\sum{final\_tax\_to\_dist}}{\mbox{tax code rate}} = 
 
 ```{r}
 #| label: tbl-cooktotals
-#| tbl-cap: "**FMV of PINs in Cook County**       Taxed FMV represents the property value that was actually taxed by local taxing jurisdictions(equal to the amount levied) but converted to FMV. We use the the portion of an individuals tax bill that does NOT go to a TIF to calculate the composite levy for taxing jursidictions. This means that the \"levy\" actually represents the amount collected by the taxing agencies, not the amount that was levied. Therefore the composite levy does not include unpaid taxbills."
+#| tbl-cap: "**FMV of PINs in Cook County**       Taxed FMV represents the property value that was actually taxed by local taxing jurisdictions(equal to the amount levied) but converted to FMV. We use the portion of an individual's tax bill that does NOT go to a TIF to calculate the composite levy for taxing jurisdictions. This means that the \"levy\" actually represents the amount collected by the taxing agencies, not the amount that was levied. Therefore the composite levy does not include unpaid taxbills."
 
 cook_sums |> 
   filter(year == params$year) |>
@@ -460,7 +463,7 @@ Untaxable EAV includes homeowner exemptions for 200 level properties, abatements
 ```{r}
 #| tbl-cap: "The Fair Market Value (FMV) is also called the Market Value for Assessment Purposes and can be calculated from the `av` / `loa`, or the Assessed Value divided by the Level of Assessment. However, the values used for the level of assessment are an approximation for incentive properties since we do not have the PIN level assessment ratios."
 
-cook_MC_sums <- read_csv("../Output/ptaxsim_cook_MC_level_2006to2023.csv") 
+cook_MC_sums <- read_csv("../Output/ptaxsim_cook_MC_level_2006to2024.csv") 
 
 cook_MC_sums |>  
   filter(year == params$year) |>
@@ -486,7 +489,7 @@ cook_MC_sums |>
 ```
 
 
-# Municipality Level Stats
+## Municipality Level Stats
 
 *Ignore stats for these Municipalities. Simple rounding errors may cause bizarre results for rate changes & other calculations. These municipalities are dropped from summary tables in this website but are included in exported files.*
 
@@ -496,9 +499,9 @@ cook_MC_sums |>
 -   University Park has 4
 -   Oak Brook, Deer Park, Deerfield, & Bensenville each have less than 75 PINs in Cook County, IL
 
-## Frequency of Incentives 
+### Frequency of Incentives 
 
-### Fair Market Value of Incentive PINs
+#### Fair Market Value of Incentive PINs
 
 ```{r}
 #| label: tbl-top10industrialincentive-munis
@@ -557,7 +560,7 @@ commerc_top10 |>
   set_table_properties( layout = "autofit", width = .75)
 ```
 
-### Share of Total FMV with Incentive Classification
+#### Share of Total FMV with Incentive Classification
 
 Combined Industrial and Commercial FMV with incentive classification  divided by total FMV in municipality. Not included in a table in the report.
 
@@ -608,7 +611,7 @@ library(ggpattern)
 
 no_incentives <-  pin_data |> 
   group_by(clean_name) |> 
-  filter(sum(incent_prop == "Non-Incentive" ) == 0) |> 
+  filter(sum(incent_prop) == 0) |> 
   distinct(clean_name)
 
 
@@ -687,7 +690,7 @@ datatable(table2,
 
 
 
-## Share of Commercial & Industrial FMV with Incentive Classification
+### Share of Commercial & Industrial FMV with Incentive Classification
 
 ```{r}
 #| label: tbl-muni-comind-shareofFMV
@@ -863,7 +866,7 @@ figure7alt |>
 
 ```
 
-## Share of Industrial FMV with Incentive Classification within each Municipality
+### Share of Industrial FMV with Incentive Classification within each Municipality
 
 
 ```{r}
@@ -931,7 +934,7 @@ figure7B |>
 ```
 
 
-## Share of Commercial FMV with Incentive Classification within each Municipality
+### Share of Commercial FMV with Incentive Classification within each Municipality
 
 ```{r}
 #| label: tbl-commercialsharewithincentive
@@ -1000,14 +1003,14 @@ figure7C |>
 ```
 
 
-# The Costs of Incentives
+## The Costs of Incentives
 
-## Shifted Tax Revenue and Tax Burden
+### Shifted Tax Revenue and Tax Burden
 
 Read in CCAO level of assessment rates for each property class. Read in Summary file for Municipalities from 2006 to `r params$year`.
 
 ```{r}
-muni_rate <- read_csv("../Output/ptaxsim_muni_level_2006to2023.csv") |>
+muni_rate <- read_csv("../Output/ptaxsim_muni_level_2006to2024.csv") |>
   filter(year == params$year) |>
   left_join(nicknames) |> 
   select(clean_name, muni_current_rate_avg, muni_pct_eav_taxed) |>
@@ -1018,7 +1021,7 @@ muni_ratechange <- read_csv(paste0("../Output/website_files/muni_ratechange_", p
   filter(!clean_name %in% cross_county_line)
 ```
 
-## Not Taxed Value - PIN aggregated to County Level
+### Not Taxed Value - PIN aggregated to County Level
 
 
 ```{r old-calculate-cook-altrates-fromPINlevel}
@@ -1058,10 +1061,10 @@ cook_ratechange <- pin_data |>
  
     cty_PC = n(),
     # projects = n_distinct(both_ids), # mostly for industrial and commercial properties
-    pins_withincents = sum(incent_prop == "Incentive"),
-    fmv_incentive = sum(ifelse(incent_prop == "Incentive", fmv, 0), na.rm = TRUE),
+    pins_withincents = sum(incent_prop == 1),
+    fmv_incentive = sum(ifelse(incent_prop == 1, fmv, 0), na.rm = TRUE),
     #fmv_taxed =  sum(taxed_fmv, na.rm=TRUE),
-    fmv_incents_inTIFs = sum(ifelse(incent_prop == "Incentive" & final_tax_to_tif > 0, fmv, 0), na.rm = TRUE),
+    fmv_incents_inTIFs = sum(ifelse(incent_prop == 1 & final_tax_to_tif > 0, fmv, 0), na.rm = TRUE),
     fmv_inTIF = sum(fmv_inTIF, na.rm=TRUE),
     fmv_tif_increment = sum(fmv_tif_increment, na.rm=TRUE),
  #   fmv_untaxable_value = sum(untaxable_value_fmv , na.rm=TRUE),
@@ -1086,7 +1089,7 @@ cook_ratechange <- pin_data |>
     pins_in_class = n(),
     exe_total_adj = sum(exe_total_adj),   # in EAV
     abatements = sum(exe_abate),            # in EAV
-    eav_incents_inTIFs = sum(ifelse(incent_prop == "Incentive" & in_tif == 1, taxed_eav, 0), na.rm = TRUE),
+    eav_incents_inTIFs = sum(ifelse(incent_prop == 1 & in_tif == 1, taxed_eav, 0), na.rm = TRUE),
 
     final_tax_to_dist = sum(final_tax_to_dist), ## Amount of Total Levy
     final_tax_to_tif = sum(final_tax_to_tif),
@@ -1174,7 +1177,7 @@ table7 |>
   flextable()
 ```
 
-### Naive Revenue Shift
+#### Naive Revenue Shift
 
 Uses old current tax rate and multiplies it by the new taxbase.
 
@@ -1628,10 +1631,11 @@ figure9_data|>
   theme( 
     legend.title = element_blank(),
 #    legend.position = "bottom",
-    legend.position = "mnone",
+    legend.position = "none",
 
     plot.title.position = "plot",
     plot.background = element_rect(fill='transparent', color=NA), #transparent plot bg
+
       axis.text.y = element_markdown(size = 9) # enable HTML styling in axis labels
 
 )+
@@ -1640,7 +1644,7 @@ figure9_data|>
                                "No Incentive Classes: \nLoA = 25%",
                                "Incentive Classification\nLoA = 0%") ) +  
 
-    scale_x_continuous(labels = scales::percent)+
+    scale_x_continuous(labels = scales::percent) +
   labs(#title = "Composite Tax Rate Scenarios",
        #subtitle = "Ordered by Current Composite Tax Rate", 
        x = "Composite Tax Rate (%)", y = "")
@@ -1685,11 +1689,13 @@ figure9_data <- muni_ratechange |>
           lowchange == TRUE ~ .8,
           T ~ 1 ),
       dotlabel = ifelse(lowchange, 
-                              paste0("<span style='color:gray70;'>", clean_name, "</span>"), 
+                              paste0("<span style='color:#B3B3B3;'>", clean_name, "</span>"), 
                               clean_name)
            
            )
-label_vec <- setNames(figure9_data$dotlabel, figure9_data$clean_name)
+
+
+ label_vec <- setNames(figure9_data$dotlabel, figure9_data$clean_name)
 
 
 figure9_data  |>
@@ -1697,23 +1703,26 @@ figure9_data  |>
   geom_line(aes(group = clean_name, alpha = dotalpha))+ 
   geom_point(aes(fill=dotcolor, alpha = dotalpha ), size=3, pch = 21, color = "black")+
   theme_minimal() + 
-  theme( 
-    legend.title = element_blank(),
-    legend.position = "none",
-   # legend.position = "bottom",
-    plot.title.position = "plot",
-    plot.background = element_rect(fill='transparent', color=NA), #transparent plot bg
-    axis.text.y = element_markdown(size = 9) # enable HTML styling in axis labels
 
-  )+
   scale_fill_identity(  labels = c("Current Rate", 
                                "No Incentive Classes: \nLoA = 25%",
                                "Incentive Classification\nLoA = 0%")) + 
   scale_x_continuous(labels = scales::percent) +
   scale_y_discrete(labels = label_vec) + 
+
   labs(#title = "Composite Tax Rate Scenarios",
        #subtitle = "Ordered by Current Composite Tax Rate", 
-       x = "Composite Tax Rate (%)", y = "")
+       x = "Composite Tax Rate (%)", y = "")+
+    theme( 
+    legend.title = element_blank(),
+    legend.position = "none",
+   # legend.position = "bottom",
+    plot.title.position = "plot",
+    plot.background = element_rect(fill='transparent', color=NA), #transparent plot bg
+    axis.text.y = ggtext::element_markdown(size = 9), # enable HTML styling in axis labels
+    axis.text.y.left = ggtext::element_markdown(size = 9)
+
+  )
 ```
  
 ```{r}
@@ -1771,7 +1780,7 @@ figure9_data <- muni_ratechange |>
       lowchange == TRUE ~ .8,
       T ~ 1 ),
     dotlabel = ifelse(lowchange, 
-                      paste0("<span style='color:gray70;'>", clean_name, "</span>"), 
+                      paste0("<span style='color:#B3B3B3;'>", clean_name, "</span>"), 
                       clean_name)
            )
 
@@ -1792,22 +1801,21 @@ figure9_data  |>
     legend.position = "bottom",
     plot.title.position = "plot",
     plot.background = element_rect(fill='transparent', color=NA), #transparent plot bg
-    axis.text.y = element_markdown(size = 9) # enable HTML styling in axis labels
-    
+    axis.text.y = ggtext::element_markdown(size = 9), # enable HTML styling in axis labels
+    axis.text.y.left = ggtext::element_markdown(size = 9)    
   ) +
   scale_fill_identity(labels = rev(
     c(
-    "No Incentive Classes",
-         "No Exemptions",
-
-    "Current Rate")
+      "No Incentive Classes",
+      "No Exemptions",
+      "Current Rate")
   ),
   guide = "legend") +
   scale_x_continuous(labels = scales::percent) +
   scale_y_discrete(labels = label_vec) + 
   labs(#title = "Composite Tax Rate Scenarios",
-       #subtitle = "Ordered by Current Composite Tax Rate", 
-       x = "Composite Tax Rate (%)", y = "")
+    #subtitle = "Ordered by Current Composite Tax Rate", 
+    x = "Composite Tax Rate (%)", y = "")
 ```
 
 
