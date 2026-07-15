@@ -4,7 +4,6 @@ format:
   html:
     code-fold: true
     toc: true
-    toc-location: left
     tbl-cap-location: margin
     fig-cap-location: margin
     df-print: paged
@@ -62,13 +61,14 @@ In 2021, Illinois amended its Property Tax Extension Limitation Law (PTELL) to a
 
 [^1]: For example, assume that the original levy is \$100, the tax rate is 2% and the tax base is \$5000 and that a refund of \$5 is required. The new tax rate will be 2.1% because 2.1%\*5000=105 so that the new levy will be just sufficient to provide additional revenue sufficient to pay the refund.
 
-### What the data show (2021 – 2024)
+### What the data show (2021 – 2023)
 
 While only a few years of data are available, three trends have emerged. First, no agency has opted out of the recapture provision thus far. Second, property tax refunds are equal to less than 5% of levies for the vast majority of agencies. In 2021 and 2023, 95% of agencies had refunds less than 3% of their levy, and 95% of agencies had refunds less than 5% of their levy in 2022.
 
 For 95% of the agencies eligible for recapturing refunds, the Recapture Provision added less than 0.2 percentage points to their tax rates. The agencies that recaptured the largest shares of their levies were often special purpose agencies such as park or library districts that generally have relatively low tax rates and have small dollar levies. This mitigated the effect of the recapture provision on composite rates. Figures 1 and 2 provide more detailed information about the distribution of refunds.
 
-**Figure 1. Share of Levy Recaptured. \**
+**Figure 1. Share of Levy Recaptured.** 
+
 Only non-homerule taxing agencies are eligible to recapture refunds. Share of levy recaptured = recaptured funds / agency levy.
 
 ![](images/clipboard-3118867582.png)
@@ -87,6 +87,8 @@ For most taxpayers, the effect of the Recapture Provision on their property tax 
 The research team found that the Recapture Provision is widely used but has had a minimal impact on tax rates for several reasons. While some taxing agencies see a large share of their levy recaptured, they only account for a few percentage points of the composite tax rate. Moreover, most taxing districts have relatively small levies and thus recapturing even a handful of refunds could dramatically impact individual agency rates without a concomitant increase in composite tax rates seen by taxpayers.
 
 ## Supporting Code
+
+<!--- New variable: authority_num --->
 
 ```{r}
 nicknames <- readxl::read_xlsx("../Necessary_Files/muni_shortnames.xlsx") |>
@@ -293,7 +295,7 @@ agency_fund408_sums |>
   ggplot() + 
   geom_line(aes(x=year, y=recap_levyshare, group=agency_name, alpha = .4, color = major_type)) +
 alea_theme() +
-  scale_y_continuous(label = scales::percent) +
+  scale_y_continuous(labels = scales::percent) +
   labs(title = "Fund 408 / Levy", caption = "Fund data form PTAXSIM.
        Excludes agencies with more than 25% of their taxbase outside of Cook County.")
 ```
@@ -306,7 +308,7 @@ agency_fund408_sums |>
   ggplot() + 
   geom_line(aes(x=year, y=recap_revratio, group=agency_name, alpha = .4, color = major_type)) +
   alea_theme() +
-    scale_y_continuous(label = scales::percent) +
+    scale_y_continuous(labels = scales::percent) +
 
   labs(title = "Fund 408 / Non-Recapture Levy", 
        caption = "Fund data form PTAXSIM. 
@@ -375,6 +377,8 @@ For example, Levy Adjustment 2021 shows the amount that was refunded in 2020. `p
 
 All observations' `aggregate_refund` amounts equal their `levy_adjustment` values.
 
+> AWM added the 2025 adjustment file on July 14, 2026, much later than the memo was written.
+
 ```{r}
 #| label: tbl-levyadjustments
 #| tbl-cap: "**Recaptured levy amounts** `adjust_all` has all levy adjustments from the new recapture legislation since 2021. Variables labeled with `refund` represent the amount that was recaptured due to refunds for eligible taxing agencies. Many agencies are Not Eligible due to homerule status."
@@ -437,8 +441,22 @@ adjust2024 <- readxl::read_xlsx("../PTAB/Levy Adjustment 2024 for PA 102-0519.xl
          levy_adjustment = `2024 Prior Year Levy Adjustment\r\n(Fund 408)`
          )
 
+adjust2025 <- readxl::read_xlsx("../PTAB/levy-adjustment-2025-for-pa-102-0519.xlsx") |>
+  mutate(year = 2025) |>
+      select(year, 
+         agency_number = Agency,
+         agency_name = `Agency Name`, 
+        adjust_eligible = `Adjustment Eligibility`,
+         lastyear_rate = `2024 Rate`,
+         lastyear_levy = `2024 Total Tax`,
+         total_ptab_refunds = `Total SPO/PTAB Refunds`,
+         total_coe_refunds = `Total Certificate of Error Refunds`,
+         aggregate_refunds = `Aggregate Refunds`,
+         levy_adjustment = `2025 Prior Year Levy Adjustment\r\n(Fund 408)`
+         )
 
-adjust_all <- rbind(adjust2021, adjust2022, adjust2023, adjust2024) |>
+
+adjust_all <- rbind(adjust2021, adjust2022, adjust2023, adjust2024, adjust2025) |>
   mutate(levy_adjustment = as.numeric(levy_adjustment)) |>
   left_join(agency_info, by = c("agency_number" = "agency_num", "year")) |>
   mutate(recap_levyshare =  round(levy_adjustment / total_final_levy, digits = 3) ) |>
@@ -458,13 +476,15 @@ adjust_all <- rbind(adjust2021, adjust2022, adjust2023, adjust2024) |>
   mutate(agency_name = ifelse(agency_number == "030910000", agency_name == "VILLAGE OF OAK LAWN", agency_name))
 
 
-adjust_all |> select(year, agency_name, agency_number, adjust_eligible, aggregate_refunds, levy_adjustment, everything() )|>  DT::datatable(rownames = FALSE)
+adjust_all |> 
+  select(year, agency_name, agency_number, adjust_eligible, aggregate_refunds, levy_adjustment, everything() )|>  
+  DT::datatable(rownames = FALSE)
 ```
 
 ```{r}
 #| include: FALSE
 
-adjust_all |> filter(levy_adjustment == 0 & total_levy > 0 & adjust_eligible == "Eligible")
+adjust_all |> filter(levy_adjustment == 0 & total_levy > 0 & adjust_eligible == "Eligible" & year < 2024)
 ```
 
 **24 agencies had levies \> \$0 and were eligible for recapture and had no levy adjustments BUT they also had no refunds. This makes it appear like all agencies eligible for recapture accepted the recaptured funds.**
@@ -553,6 +573,14 @@ awm_levyshare_byagency |> filter(year == 2023)|>
   filter(pct_inCook > 0.75) |> DT::datatable(rownames = FALSE)
 ```
 
+
+```{r tbl-mtable-2024}
+#| tbl-cap: "Levy Share for Tax Year 2024. Uses levy_adjustment / total_final_levy to create recap levyshare. (Added to website post-memo)" 
+
+awm_levyshare_byagency |> filter(year == 2024)|>
+  filter(pct_inCook > 0.75) |> DT::datatable(rownames = FALSE)
+```
+
 ### Refund data from the Levy Recapture Files (Source: Clerk / Treasurer)
 
 > There are taxing agencies that have refunds and are not active taxing agencies. The agencies themselves are named things like "2013A Bond Escrow Account". Refunds from these accounts are probably not included in recapture funds that are added to the levy since the money was in an escrow fund agency and the taxing agency does not actively tax the public
@@ -589,6 +617,7 @@ refund2023 <- readxl::read_xlsx("../PTAB/levy recapture/Levy Recapture - 231129 
 # refund data for Nov 1 2023 through Oct 31 2024. These refunds would be added to the levy for tax year 2024?
 refund2024 <- readxl::read_xlsx("../PTAB/levy recapture/Levy Recapture - 241115 orig from TR.xlsx") |>
   mutate(year = 2024)
+
 
 refund_all <- rbind(refund2021, refund2022, refund2023, refund2024) |>
   rename(agency_number = `Agency Number`,
@@ -658,6 +687,8 @@ There are around 680 actively taxing agencies each year in the refund data. 2037
 There are around 1500 agencies with refunds each year. Most are Escrow accounts!
 
 There are 678, 680, and 679 agencies with levies that also had refunds in 2021, 2022, and 2023, respectively.
+
+> The drop in agencies with refunds in 2024 may be due to the use of an `authority_num` used by the Clerk. Some taxing agencies were consolidated into an "authority" 
 
 ```{r}
 refund_all |> filter( total_final_levy!=0 & total_refunds != 0) |> 
@@ -949,7 +980,7 @@ write_csv(final_df |>
             filter(between(year, 2021, 2023)), 
           "../Output/levy_refunds_recoupments_by_agency_2021-2023.csv")
 
-write_csv(df,  "../Output/levy_refunds_recoupments_by_agency_2021-2024.csv")
+write_csv(final_df,  "../Output/levy_refunds_recoupments_by_agency_2021-2024.csv")
 
 ```
 
@@ -1144,7 +1175,7 @@ Some differences in tables below:
 ```{r}
 #| label: tbl-eligible
 #| tbl-cap: "Agencies that are eligible for recapture and did not have recapture funds."
-#| layout-ncol: 3
+#| layout-ncol: 2
 
 eligible <- final_df |> filter(adjust_eligible == "Eligible" #& levy > 0
                          ) |>
@@ -1167,7 +1198,13 @@ check2 <- eligible |>
 
 check2 |>
   pivot_wider(names_from = "year", values_from = "year") |> DT::datatable(rownames = FALSE)
+```
 
+
+```{r}
+#| label: tbl-eligible-cont
+#| tbl-cap: "Agencies that are eligible for recapture and did not have recapture funds."
+#| layout-ncol: 2
 
 # Eligible agencies from Fund 408 file from Clerk/Treasurer with $0 Extensions
 check3 <- eligible |> 
@@ -1176,9 +1213,9 @@ check3 <- eligible |>
   distinct(agency_name, year)
 
 check3 |>   pivot_wider(names_from = "year", values_from = "year") |> DT::datatable(rownames = FALSE)
-```
 
-```{r}
+
+
 anti_join(check1, check2) |>
   pivot_wider(names_from = "year", values_from = "year")
 ```
