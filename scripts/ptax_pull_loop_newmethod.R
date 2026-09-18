@@ -298,7 +298,7 @@ for (i in years) {
 
       untaxable_value_av = untaxable_value_eav / eq_factor,
       untaxable_value_fmv = untaxable_value_av / loa,
-      untaxable_value_fmv = ifelse(is.nan(untaxable_value_av), 0, untaxable_value_av),
+      untaxable_value_fmv = ifelse(is.nan(untaxable_value_fmv), 0, untaxable_value_fmv),
 
       exempt_eav_inTIF = ifelse(in_tif == 1,
         exe_total_adj, 0),
