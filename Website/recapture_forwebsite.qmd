@@ -1032,14 +1032,14 @@ muni_names <- taxcodes |>
 impacted_taxcodes <- taxcodes |> 
   select(-agency_rate) |>
   left_join(agency_funds, by = c("year", "agency_num") ) |>
-  select(year, agency_num, fund_num, levy, final_levy, final_rate, tax_code_num, tax_code_rate) |>
+  select(year, agency_num, fund_num, fund_type_num, levy, final_levy, final_rate, tax_code_num, tax_code_rate) |>
   #filter(final_levy > 0) |>
   left_join(muni_names, by = "tax_code_num") |>
   group_by(year, tax_code_num, tax_code_rate) |>
   summarize(
     muni_name = first(agency_name),
-    rate_408 = sum(ifelse(fund_num==408, final_rate, 0), na.rm=TRUE),
-         rate_non408 = sum(ifelse(fund_num!=408, final_rate, 0), na.rm=TRUE)
+    rate_408 = sum(ifelse(fund_type_num==408, final_rate, 0), na.rm=TRUE),
+         rate_non408 = sum(ifelse(fund_type_num!=408, final_rate, 0), na.rm=TRUE)
   ) |> 
     mutate(rate_ratio = round(rate_408 / rate_non408, digits =3)) |>
   arrange(desc(rate_ratio))
@@ -1063,13 +1063,13 @@ impacted_taxcodes |> filter(year == 2023)  |> DT::datatable(rownames = FALSE)
 impacted_munis <- taxcodes |> 
   select(-agency_rate) |>
   left_join(agency_funds, by = c("year", "agency_num") ) |>
-  select(year, agency_num, fund_num, levy, final_levy, final_rate, tax_code_num, tax_code_rate) |>
+  select(year, agency_num, fund_num,fund_type_num, levy, final_levy, final_rate, tax_code_num, tax_code_rate) |>
   left_join(muni_names, by = "tax_code_num") |>
    group_by(year, tax_code_num, tax_code_rate) |>
   summarize(
     muni_name = first(agency_name),
-    rate_408 = sum(ifelse(fund_num==408, final_rate, 0), na.rm=TRUE),
-         rate_non408 = sum(ifelse(fund_num!=408, final_rate, 0), na.rm=TRUE)
+    rate_408 = sum(ifelse(fund_type_num==408, final_rate, 0), na.rm=TRUE),
+         rate_non408 = sum(ifelse(fund_type_num!=408, final_rate, 0), na.rm=TRUE)
   ) |> 
   group_by(year, muni_name) |>
   summarize(
