@@ -76,10 +76,18 @@ for (i in years) {
       transmute(
         year,
         tax_code_num,
+        tif_agency_num = agency_num,
+        tif_record_present = 1L,
         tif_eav = tax_code_eav,
         tif_frozen_eav = tax_code_frozen_eav,
         tif_revenue = tax_code_revenue,
-        tif_distribution_pct = tax_code_distribution_pct / 100
+        tif_increment_eav_reported = NA_real_,
+        tif_revenue_gross_reported = NA_real_,
+        tif_distribution_pct = tax_code_distribution_pct / 100,
+        transit_tif_to_cps = NA_real_,
+        transit_tif_to_tif = NA_real_,
+        transit_tif_to_dist = NA_real_,
+        is_transit_tif = agency_num %in% c("030210900", "030210901")
       )
 
   } else {
@@ -91,10 +99,13 @@ for (i in years) {
         year,
         pin,
         tax_code_num,
+        tif_agency_num = agency_num,
+        tif_record_present = 1L,
         tif_eav = pin_eav,
         tif_frozen_eav = pin_frozen_eav,
         tif_revenue = pin_revenue,
-        tif_increment_eav = pin_increment_eav,
+        tif_increment_eav_reported = pin_increment_eav,
+        tif_revenue_gross_reported = pin_revenue,
         tif_distribution_pct = pin_distribution_pct / 100,
         transit_tif_to_cps,
         transit_tif_to_tif,
@@ -117,7 +128,14 @@ for (i in years) {
   agency_dt <- dbGetQuery(ptaxsim_db_conn, paste("SELECT * FROM agency WHERE year = ", i, ";"))
   agency_dt <- agency_dt %>%  mutate_if(is.integer64, as.double)
 
-  tax_codes <- dbGetQuery(ptaxsim_db_conn, paste("SELECT DISTINCT tax_code_num, tax_code_rate FROM tax_code WHERE year = ", i, ";"))
+  tax_codes <- dbGetQuery(ptaxsim_db_conn, paste(
+    "SELECT tax_code_num,
+       MAX(tax_code_rate) AS tax_code_rate,
+       MAX(CASE WHEN agency_num = '044060000' THEN agency_rate END) AS cps_agency_rate
+     FROM tax_code
+     WHERE year = ", i, "
+     GROUP BY tax_code_num;"
+  ))
 
   sql <- "SELECT * FROM tax_code WHERE agency_num IN ({muni_agency_names$agency_num*}) AND year = ?year"
   query <- sqlInterpolate(ptaxsim_db_conn, sql, year = i)
@@ -135,7 +153,10 @@ for (i in years) {
     mutate(agency_num = as.character(agency_num)) |>
     left_join(nicknames, by = c("agency_num" = "agency_number"))  |>
 
-    mutate(tax_code_rate = tax_code_rate / 100)
+    mutate(
+      tax_code_rate = tax_code_rate / 100,
+      cps_agency_rate = cps_agency_rate / 100
+    )
 
 
 
@@ -186,18 +207,30 @@ for (i in years) {
   }
 
   pin_data <- pin_data |>
-    mutate(tif_distribution_pct = ifelse(is.na(tif_distribution_pct), 0, tif_distribution_pct)) |>
+    mutate(
+      tif_record_present = replace_na(tif_record_present, 0L),
+      tif_distribution_pct = replace_na(tif_distribution_pct, 0),
+      is_transit_tif = replace_na(is_transit_tif, FALSE),
+      transit_tif_to_cps = replace_na(transit_tif_to_cps, 0),
+      transit_tif_to_tif = replace_na(transit_tif_to_tif, 0),
+      transit_tif_to_dist = replace_na(transit_tif_to_dist, 0)
+    ) |>
     mutate(
       incent_prop = ifelse(between(class, 600, 899), 1, 0),
       res_prop = ifelse(between(class, 200, 399), 1, 0),
       c2_prop = ifelse(between(class, 200, 299), 1, 0),
       parcels = str_sub(pin, 1, 10),
-      in_tif = ifelse(tax_code_num %in% tif_info$tax_code_num, 1, 0),
+      # Membership and increment are separate. In 2024, the PIN-level TIF
+      # table includes PINs in a TIF that currently have a zero increment.
+      in_tif = as.integer(tif_record_present == 1L),
+      has_tif_increment = as.integer(tif_distribution_pct > 0),
+
       # tif_tax_code_frozen_eav = ifelse(is.na(tax_code_frozen_eav), 0, tax_code_frozen_eav),
       # tif_tax_code_eav = ifelse(is.na(tax_code_eav), 0, tax_code_eav), # only TIF taxcodes
       # tif_tax_code_increment_eav = tif_tax_code_eav - tif_tax_code_frozen_eav,
       # tif_tax_code_increment_eav = ifelse(tif_tax_code_increment_eav < 0, 0, tif_tax_code_increment_eav),
-      in_tif_andpays_revtotif = ifelse(in_tif == 1 & tif_eav > tif_frozen_eav, 1, 0),
+      # Backward-compatible name used by older output code.
+      in_tif_andpays_revtotif = has_tif_increment,
     ) |>
 
     mutate(
@@ -214,7 +247,9 @@ for (i in years) {
 
     mutate(taxed_eav_adj = ifelse(taxed_eav_old > 1000 & flag_missingdata == 1, 0, taxed_eav_old),
       total_taxed_eav_AWM = tax_bill_total / tax_code_rate,  # EAV that was taxed by TIFs and taxing districts
-      taxed_eav_TIFincrement = total_taxed_eav_AWM * tif_distribution_pct,
+      tif_increment_eav_bill_allocated = total_taxed_eav_AWM * tif_distribution_pct,
+      # Retain the old name as an alias for downstream files.
+      taxed_eav_TIFincrement = tif_increment_eav_bill_allocated,
       taxed_eav_nonTIF = total_taxed_eav_AWM * (1 - tif_distribution_pct)) |>
 
     mutate(exe_total_adj = rowSums(across(starts_with("exe_"))) - exe_total_old) |> # don't double count the old total value when summing the values
@@ -239,8 +274,38 @@ for (i in years) {
       tax_amt_post_exe = tax_amt_pre_exe - tax_amt_exe,
       tax_amt_post_exe = ifelse(tax_amt_post_exe < 0, 0, tax_amt_post_exe),
 
-      final_tax_to_tif = taxed_eav_TIFincrement * tax_code_rate,
-      final_tax_to_dist = taxed_eav_nonTIF * tax_code_rate,
+      tif_revenue_gross_bill_allocated = tif_increment_eav_bill_allocated * tax_code_rate,
+
+      # A transit TIF first returns the CPS share. Of the remainder, 80%
+      # stays with the TIF and 20% returns to the other taxing districts.
+      # For 2024+, use CCAO's reported components as allocation ratios so
+      # the allocations remain reconciled to the recorded Treasurer bill.
+      transit_component_total = transit_tif_to_cps + transit_tif_to_tif + transit_tif_to_dist,
+      transit_cps_share = case_when(
+        !is_transit_tif ~ 0,
+        transit_component_total > 0 ~ transit_tif_to_cps / transit_component_total,
+        tax_code_rate > 0 ~ pmin(pmax(cps_agency_rate / tax_code_rate, 0), 1),
+        TRUE ~ 0
+      ),
+      transit_tif_share = case_when(
+        !is_transit_tif ~ 1,
+        transit_component_total > 0 ~ transit_tif_to_tif / transit_component_total,
+        TRUE ~ (1 - transit_cps_share) * 0.8
+      ),
+      transit_dist_share = case_when(
+        !is_transit_tif ~ 0,
+        transit_component_total > 0 ~ transit_tif_to_dist / transit_component_total,
+        TRUE ~ (1 - transit_cps_share) * 0.2
+      ),
+      tif_revenue_to_cps_bill_allocated = tif_revenue_gross_bill_allocated * transit_cps_share,
+      tif_revenue_to_other_districts_bill_allocated = tif_revenue_gross_bill_allocated * transit_dist_share,
+      tif_revenue_retained_bill_allocated = tif_revenue_gross_bill_allocated * transit_tif_share,
+
+      # Existing website code treats these as the mutually exclusive split
+      # of the recorded bill. CPS and other returned transit revenue belong
+      # in the district amount; only retained revenue belongs to the TIF.
+      final_tax_to_tif = tif_revenue_retained_bill_allocated,
+      final_tax_to_dist = tax_bill_total - final_tax_to_tif,
 
 
       # NOTE: the number of $0 tax bills identified when using the tax_bill() command from ptaxsim is different than using the tax bill total value directly from the pin db table
@@ -287,7 +352,7 @@ for (i in years) {
       untaxable_value_eav = exe_total_adj +
 
         ## TIF increment EAV above frozen EAV, which becomes TIF revenue
-        (final_tax_to_tif /  tax_code_rate) +
+        tif_increment_eav_bill_allocated +
 
         ## difference between 25% and reduced level of assessment for incentive class properties. Excludes TIF increment when calculating the difference!
         ifelse(incent_prop == 1, (taxed_av / loa * 0.25 - taxed_av) * eq_factor, 0),
@@ -307,13 +372,13 @@ for (i in years) {
 
       fmv_inTIF = ifelse(in_tif == 1,
         av / loa, 0),
-      fmv_tif_increment = ifelse(final_tax_to_tif > 0,
-        ((final_tax_to_tif / (tax_code_rate)) / eq_factor) / loa, 0),
+      fmv_tif_increment = ifelse(has_tif_increment == 1,
+        (tif_increment_eav_bill_allocated / eq_factor) / loa, 0),
 
       fmv_incents_inTIF = ifelse(incent_prop == 1 & in_tif == 1,
         fmv, 0),
-      fmv_incents_tif_increment = ifelse(incent_prop == 1 & final_tax_to_tif > 0,
-        ((final_tax_to_tif / (tax_code_rate)) / eq_factor) / loa, 0),
+      fmv_incents_tif_increment = ifelse(incent_prop == 1 & has_tif_increment == 1,
+        (tif_increment_eav_bill_allocated / eq_factor) / loa, 0),
       eav_incents_inTIF = fmv_incents_inTIF * loa * eq_factor
     ) %>%
     select(tax_code_num, class, pin, taxed_fmv,
@@ -335,6 +400,7 @@ for (i in years) {
       cty_PC_ind_incent = sum(ifelse(class %in% industrial_classes & incent_prop == 1, 1, 0), na.rm = TRUE),
       cty_PC_ind_incent_inTIF = sum(ifelse(class %in% industrial_classes & incent_prop == 1 & in_tif == 1, 1, 0), na.rm = TRUE),
       cty_PC_inTIF = sum(in_tif, na.rm = TRUE),
+      cty_PC_withTIFincrement = sum(has_tif_increment, na.rm = TRUE),
       cty_PC_withincents = sum(ifelse(incent_prop == 1, 1, 0), na.rm = TRUE),
       cty_PC_incents_inTIFs = sum(ifelse(incent_prop == 1 & in_tif == 1, 1, 0), na.rm = TRUE),
       cty_PC_claimed_exe = sum(ifelse(exe_total_adj > 0, 1, 0), na.rm = TRUE),
@@ -378,6 +444,9 @@ for (i in years) {
 
       cty_final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE),
       cty_final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+      cty_tif_revenue_gross_bill_allocated = sum(tif_revenue_gross_bill_allocated, na.rm = TRUE),
+      cty_tif_revenue_to_cps_bill_allocated = sum(tif_revenue_to_cps_bill_allocated, na.rm = TRUE),
+      cty_tif_revenue_to_other_districts_bill_allocated = sum(tif_revenue_to_other_districts_bill_allocated, na.rm = TRUE),
 
       cty_taxed_eav = sum(taxed_eav, na.rm = TRUE),
       cty_taxed_eav_commerc = sum(ifelse(class %in% commercial_classes, taxed_eav, 0), na.rm = TRUE),
@@ -449,6 +518,7 @@ for (i in years) {
       cty_mc_PC_ind_incent = sum(ifelse(class %in% industrial_classes & incent_prop == 1, 1, 0), na.rm = TRUE),
       cty_mc_PC_ind_incent_inTIF = sum(ifelse(class %in% industrial_classes & incent_prop == 1 & in_tif == 1, 1, 0), na.rm = TRUE),
       cty_mc_PC_inTIF = sum(in_tif, na.rm = TRUE),
+      cty_mc_PC_withTIFincrement = sum(has_tif_increment, na.rm = TRUE),
       cty_mc_PC_withincents = sum(ifelse(incent_prop == 1, 1, 0), na.rm = TRUE),
       cty_mc_PC_incents_inTIFs = sum(ifelse(incent_prop == 1 & in_tif == 1, 1, 0), na.rm = TRUE),
       cty_mc_PC_claimed_exe = sum(ifelse(exe_total_adj > 0, 1, 0), na.rm = TRUE),
@@ -492,6 +562,9 @@ for (i in years) {
 
       cty_mc_final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE),
       cty_mc_final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+      cty_mc_tif_revenue_gross_bill_allocated = sum(tif_revenue_gross_bill_allocated, na.rm = TRUE),
+      cty_mc_tif_revenue_to_cps_bill_allocated = sum(tif_revenue_to_cps_bill_allocated, na.rm = TRUE),
+      cty_mc_tif_revenue_to_other_districts_bill_allocated = sum(tif_revenue_to_other_districts_bill_allocated, na.rm = TRUE),
 
       cty_mc_taxed_eav = sum(taxed_eav, na.rm = TRUE),
       cty_mc_taxed_eav_commerc = sum(ifelse(class %in% commercial_classes, taxed_eav, 0), na.rm = TRUE),
@@ -582,6 +655,7 @@ for (i in years) {
       muni_PC_industrial  = sum(ifelse(class %in% industrial_classes, 1, 0), na.rm = TRUE),
       muni_PC_commercial = sum(ifelse(class %in% commercial_classes, 1, 0), na.rm = TRUE),
       muni_PC_inTIF = sum(in_tif, na.rm = TRUE),
+      muni_PC_withTIFincrement = sum(has_tif_increment, na.rm = TRUE),
       muni_PC_withincents = sum(ifelse(incent_prop == 1, 1, 0), na.rm = TRUE),
       muni_PC_incents_inTIFs = sum(ifelse(incent_prop == 1 & in_tif == 1, 1, 0), na.rm = TRUE),
       muni_PC_claimed_exe = sum(ifelse(exe_total_adj - exe_abate > 0, 1, 0)),
@@ -615,6 +689,9 @@ for (i in years) {
 
       muni_final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE),
       muni_final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+      muni_tif_revenue_gross_bill_allocated = sum(tif_revenue_gross_bill_allocated, na.rm = TRUE),
+      muni_tif_revenue_to_cps_bill_allocated = sum(tif_revenue_to_cps_bill_allocated, na.rm = TRUE),
+      muni_tif_revenue_to_other_districts_bill_allocated = sum(tif_revenue_to_other_districts_bill_allocated, na.rm = TRUE),
       untaxable_value_av = sum(untaxable_value_av, na.rm = TRUE),
       muni_av = sum(av, na.rm = TRUE),
       muni_av_taxed = sum(taxed_av, na.rm = TRUE),
@@ -699,6 +776,7 @@ for (i in years) {
       PC_industrial  = sum(ifelse(class %in% industrial_classes, 1, 0), na.rm = TRUE),
       PC_commercial = sum(ifelse(class %in% commercial_classes, 1, 0), na.rm = TRUE),
       PC_inTIF = sum(in_tif, na.rm = TRUE),
+      PC_withTIFincrement = sum(has_tif_increment, na.rm = TRUE),
       PC_withincents = sum(ifelse(incent_prop == 1, 1, 0), na.rm = TRUE),
       PC_incents_inTIFs = sum(ifelse(incent_prop == 1 & in_tif == 1, 1, 0), na.rm = TRUE),
       PC_claimed_exe = sum(ifelse(exe_total_adj > 0, 1, 0)),
@@ -737,6 +815,9 @@ for (i in years) {
       avg_C2_bill_withexe = mean(ifelse(c2_prop == 1 & exe_total_adj > 0, (final_tax_to_dist + final_tax_to_tif), NA), na.rm = TRUE),
       final_tax_to_dist = sum(final_tax_to_dist, na.rm = TRUE),
       final_tax_to_tif = sum(final_tax_to_tif, na.rm = TRUE),
+      tif_revenue_gross_bill_allocated = sum(tif_revenue_gross_bill_allocated, na.rm = TRUE),
+      tif_revenue_to_cps_bill_allocated = sum(tif_revenue_to_cps_bill_allocated, na.rm = TRUE),
+      tif_revenue_to_other_districts_bill_allocated = sum(tif_revenue_to_other_districts_bill_allocated, na.rm = TRUE),
       zero_bills = sum(zero_bill, na.rm = TRUE),
 
       exempt_allexemptions_eav = sum(exe_total_adj, na.rm = TRUE),

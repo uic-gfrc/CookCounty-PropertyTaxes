@@ -124,6 +124,16 @@ tax_codes_muni <- DBI::dbGetQuery(
 tax_codes_muni <- tax_codes_muni |>
   left_join(nicknames, by = c("agency_num" = "agency_number"))
 
+# CPS's agency rate is needed to reproduce the pre-2024 transit-TIF split.
+cps_tax_code_rates <- DBI::dbGetQuery(
+  ptaxsim_db_conn,
+  "SELECT year, tax_code_num, agency_rate AS cps_agency_rate
+   FROM tax_code
+   WHERE agency_num = '044060000'
+   AND year >= 2006
+   AND year <= 2024"
+)
+
 ## Identify all comm/ind PINs -------------------
 
 # 1,739,306 obs.
@@ -199,17 +209,19 @@ tif_info_old <- purrr::map_dfr(years[years < 2024], function(i) {
     transmute(
       year,
       tax_code_num,
-      # tif_eav = tax_code_eav,
-      # tif_frozen_eav = tax_code_frozen_eav,
-      # tif_revenue = tax_code_revenue,
-      # tif_increment_eav = tax_code_eav - tax_code_frozen_eav,
+      tif_agency_num = agency_num,
+      tif_record_present = 1L,
+      tif_eav = tax_code_eav,
+      tif_frozen_eav = tax_code_frozen_eav,
+      tif_revenue = tax_code_revenue,
+      # The old table contains tax-code totals, not PIN-level reported values.
+      tif_increment_eav_reported = NA_real_,
+      tif_revenue_gross_reported = NA_real_,
       tif_distribution_pct = tax_code_distribution_pct / 100,
-
-      # These fields only exist in the 2024+ PIN-level table.
       transit_tif_to_cps = NA_real_,
       transit_tif_to_tif = NA_real_,
       transit_tif_to_dist = NA_real_,
-      is_transit_tif = NA
+      is_transit_tif = agency_num %in% c("030210900", "030210901")
     )
 })
 
@@ -224,10 +236,13 @@ tif_info_new <- purrr::map_dfr(years[years >= 2024], function(i) {
       year,
       pin,
       tax_code_num,
+      tif_agency_num = agency_num,
+      tif_record_present = 1L,
       tif_eav = pin_eav,
       tif_frozen_eav = pin_frozen_eav,
       tif_revenue = pin_revenue,
-      tif_increment_eav = pin_increment_eav,
+      tif_increment_eav_reported = pin_increment_eav,
+      tif_revenue_gross_reported = pin_revenue,
       tif_distribution_pct = pin_distribution_pct / 100,
       transit_tif_to_cps,
       transit_tif_to_tif,
@@ -235,8 +250,6 @@ tif_info_new <- purrr::map_dfr(years[years >= 2024], function(i) {
       is_transit_tif
     )
 })
-
-in_tif <- as.character(ifelse(tax_code_num %in% tif_info$tax_code_num, 1, 0))
 
 # Mutate new variables ---------------------------------------------
 
@@ -249,6 +262,7 @@ comm_ind_pins_ever <- comm_ind_pins_ever |>
 
   # Has muni clean_name in it.
   left_join(tax_codes_muni, by = c("year", "tax_code_num")) |>
+  left_join(cps_tax_code_rates, by = c("year", "tax_code_num")) |>
 
   # Pre-2024 TIF information is at the tax-code level.
   left_join(tif_info_old, by = c("year", "tax_code_num")) |>
@@ -262,36 +276,69 @@ comm_ind_pins_ever <- comm_ind_pins_ever |>
 
   mutate(
     # Collapse old and new TIF variables into one standardized set.
-    # tif_eav = coalesce(tif_eav_new, tif_eav_old),
-    # tif_frozen_eav = coalesce(tif_frozen_eav_new, tif_frozen_eav_old),
-    # tif_revenue = coalesce(tif_revenue_new, tif_revenue_old),
-    # tif_increment_eav = coalesce(tif_increment_eav_new, tif_increment_eav_old),
+    tif_agency_num = coalesce(tif_agency_num_new, tif_agency_num_old),
+    tif_record_present = coalesce(tif_record_present_new, tif_record_present_old),
+    tif_eav = coalesce(tif_eav_new, tif_eav_old),
+    tif_frozen_eav = coalesce(tif_frozen_eav_new, tif_frozen_eav_old),
+    tif_revenue = coalesce(tif_revenue_new, tif_revenue_old),
+    tif_increment_eav_reported = coalesce(tif_increment_eav_reported_new, tif_increment_eav_reported_old),
+    tif_revenue_gross_reported = coalesce(tif_revenue_gross_reported_new, tif_revenue_gross_reported_old),
     tif_distribution_pct = coalesce(tif_distribution_pct_new, tif_distribution_pct_old),
-    # transit_tif_to_cps = coalesce(transit_tif_to_cps_new, transit_tif_to_cps_old),
-    # transit_tif_to_tif = coalesce(transit_tif_to_tif_new, transit_tif_to_tif_old),
-    # transit_tif_to_dist = coalesce(transit_tif_to_dist_new, transit_tif_to_dist_old),
+    transit_tif_to_cps = coalesce(transit_tif_to_cps_new, transit_tif_to_cps_old),
+    transit_tif_to_tif = coalesce(transit_tif_to_tif_new, transit_tif_to_tif_old),
+    transit_tif_to_dist = coalesce(transit_tif_to_dist_new, transit_tif_to_dist_old),
     is_transit_tif = coalesce(is_transit_tif_new, is_transit_tif_old),
 
     # Keep non-TIF rows from becoming NA in later summaries.
+    tif_record_present = replace_na(tif_record_present, 0L),
     tif_eav = replace_na(tif_eav, 0),
     tif_frozen_eav = replace_na(tif_frozen_eav, 0),
     tif_revenue = replace_na(tif_revenue, 0),
-    tif_increment_eav = replace_na(tif_increment_eav, 0),
-    tif_increment_eav = ifelse(tif_increment_eav < 0, 0, tif_increment_eav),
     tif_distribution_pct = replace_na(tif_distribution_pct, 0),
 
-    # transit_tif_to_cps = replace_na(transit_tif_to_cps, 0),
-    # transit_tif_to_tif = replace_na(transit_tif_to_tif, 0),
-    # transit_tif_to_dist = replace_na(transit_tif_to_dist, 0),
-    is_transit_tif = replace_na(is_transit_tif, 0),
+    transit_tif_to_cps = replace_na(transit_tif_to_cps, 0),
+    transit_tif_to_tif = replace_na(transit_tif_to_tif, 0),
+    transit_tif_to_dist = replace_na(transit_tif_to_dist, 0),
+    is_transit_tif = replace_na(is_transit_tif, FALSE),
 
     has_AB_exemp = as.character(ifelse(exe_abate > 0, 1, 0)),
     fmv = av_clerk / loa,
     fmv_NA_flag = ifelse(is.na(fmv), 1, 0),
     fmv = ifelse(is.na(fmv), 0, fmv),
 
-    # Use the standardized TIF variable instead of checking one raw table.
-    in_tif = as.character(ifelse(tif_distribution_pct > 0, 1, 0)),
+    # TIF membership and a positive increment are distinct in the 2024 data.
+    in_tif = as.integer(tif_record_present == 1L),
+    has_tif_increment = as.integer(tif_distribution_pct > 0),
+    in_tif_andpays_revtotif = has_tif_increment,
+
+    # Bill-allocated values are comparable across years and reconcile to the
+    # Treasurer bill. The source-reported 2024 values remain available above.
+    total_taxed_eav_AWM = ifelse(tax_code_rate > 0, tax_bill_total / (tax_code_rate / 100), 0),
+    tif_increment_eav_bill_allocated = total_taxed_eav_AWM * tif_distribution_pct,
+    taxed_eav_TIFincrement = tif_increment_eav_bill_allocated,
+    tif_revenue_gross_bill_allocated = tax_bill_total * tif_distribution_pct,
+    transit_component_total = transit_tif_to_cps + transit_tif_to_tif + transit_tif_to_dist,
+    transit_cps_share = case_when(
+      !is_transit_tif ~ 0,
+      transit_component_total > 0 ~ transit_tif_to_cps / transit_component_total,
+      tax_code_rate > 0 ~ pmin(pmax(cps_agency_rate / tax_code_rate, 0), 1),
+      TRUE ~ 0
+    ),
+    transit_tif_share = case_when(
+      !is_transit_tif ~ 1,
+      transit_component_total > 0 ~ transit_tif_to_tif / transit_component_total,
+      TRUE ~ (1 - transit_cps_share) * 0.8
+    ),
+    transit_dist_share = case_when(
+      !is_transit_tif ~ 0,
+      transit_component_total > 0 ~ transit_tif_to_dist / transit_component_total,
+      TRUE ~ (1 - transit_cps_share) * 0.2
+    ),
+    tif_revenue_to_cps_bill_allocated = tif_revenue_gross_bill_allocated * transit_cps_share,
+    tif_revenue_to_other_districts_bill_allocated = tif_revenue_gross_bill_allocated * transit_dist_share,
+    tif_revenue_retained_bill_allocated = tif_revenue_gross_bill_allocated * transit_tif_share,
+    final_tax_to_tif = tif_revenue_retained_bill_allocated,
+    final_tax_to_dist = tax_bill_total - final_tax_to_tif,
 
     class_group = str_sub(class, 1, 1),
     class_group = case_when( # well this is quite the thirsty case_when, isn't it?
