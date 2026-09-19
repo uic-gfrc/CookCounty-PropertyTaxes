@@ -1152,9 +1152,12 @@ taxcodes_current <- pin_data %>%
   
   mutate(total_bill_current = final_tax_to_dist + final_tax_to_tif) %>%
   rename(cur_comp_TC_rate = tax_code_rate) %>%
-  mutate(current_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate),
-         new_taxable_eav = final_tax_to_dist/(cur_comp_TC_rate) + HO_exemps,
-         new_taxable_eav2 = final_tax_to_dist/(cur_comp_TC_rate) + current_exemptions,
+  # Use the explicit non-TIF EAV. In a transit TIF, district revenue includes
+  # returned increment revenue and cannot be divided by the composite rate to
+  # reconstruct this tax base.
+  mutate(current_taxable_eav = taxed_eav,
+         new_taxable_eav = taxed_eav + HO_exemps,
+         new_taxable_eav2 = taxed_eav + current_exemptions,
 
          ) %>%
   mutate(
