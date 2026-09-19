@@ -381,7 +381,9 @@ pin_data <- pin_data %>%
   left_join(class_dict, by = c("class" = "class_code")) %>%
   mutate(
  
-    tif_increment_eav = final_tax_to_tif / tax_code_rate,
+    # Use the gross increment EAV. For transit TIFs, final_tax_to_tif is only
+    # the retained share and cannot be converted back to the full increment.
+    tif_increment_eav = tif_increment_eav_bill_allocated,
     
     nontif_eav_preexe = av_clerk*eq_factor - tif_increment_eav,
     nontif_eav_postexe = av_clerk*eq_factor - tif_increment_eav - all_exemptions,
@@ -421,11 +423,11 @@ scenario_calcs <- pin_data %>%
   group_by(clean_name) %>%
 
     summarize(MuniLevy = round(sum(final_tax_to_dist, na.rm = TRUE)), # amount billed by munis with current exemptions in place
-            current_nonTIF_EAV_post_exemps = sum(final_tax_to_dist/(tax_code_rate), na.rm = TRUE),
-            current_TIF_increment_EAV = sum(final_tax_to_tif/(tax_code_rate), na.rm=TRUE),  
+            current_nonTIF_EAV_post_exemps = sum(taxed_eav, na.rm = TRUE),
+            current_TIF_increment_EAV = sum(tif_increment_eav_bill_allocated, na.rm=TRUE),
             current_Exempt_EAV = sum(all_exemptions, na.rm=T), 
             current_GHE = sum(exe_homeowner, na.rm=TRUE),
-            Total_EAV = sum(all_exemptions+(final_tax_to_dist+final_tax_to_tif)/(tax_code_rate), na.rm = TRUE),
+            Total_EAV = sum(all_exemptions + total_taxed_eav_AWM, na.rm = TRUE),
             exe_neg10 = sum(exe_neg10),
             exe_0 = sum(exe_0), # no change, for comparison
             exe_plus10 = sum(exe_plus10),
@@ -919,7 +921,7 @@ pin_data %>%
     all_exemptions = sum(exe_total_adj),
 
     eq_av = sum(av_clerk*eq_factor),
-    tif_increment_eav = sum(final_tax_to_tif/tax_code_rate)
+    tif_increment_eav = sum(tif_increment_eav_bill_allocated)
   ) %>%
   mutate(taxable_eav = eq_av - tif_increment_eav - all_exemptions) |>
   filter(clean_name %in% c("Blue Island", "Markham", "Matteson", "Park Forest")) %>%
@@ -944,7 +946,7 @@ pin_data %>%
   summarize(
     all_exemptions = sum(exe_total_adj),
     eq_av = sum(av_clerk*eq_factor),
-    tif_increment_eav = sum(final_tax_to_tif/tax_code_rate)
+    tif_increment_eav = sum(tif_increment_eav_bill_allocated)
   ) %>%
   mutate(taxable_eav = eq_av - tif_increment_eav - all_exemptions) |>
   filter(clean_name %in% c("Blue Island", "Markham", "Matteson", "Park Forest")) %>%
