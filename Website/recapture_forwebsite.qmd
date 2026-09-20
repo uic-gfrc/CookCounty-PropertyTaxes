@@ -197,11 +197,20 @@ agency_funds |>
 
 
 agency_funds |> filter(fund_type_num==408) |>
-  select(year, agency_name_short, final_levy, final_rate, fund_num) |>
-  arrange(desc(final_rate)) |> DT::datatable(rownames = FALSE)
+  arrange(desc(final_rate))  |>
+  select(
+    `Tax year` = year,
+    `Taxing agency` = agency_name_short,
+    `Final levy` = final_levy,
+    `Fund 408 rate` = final_rate,
+    `Fund number` = fund_num
+  )  |> DT::datatable(rownames = FALSE)
 ```
 
 ```{r}
+#| label: fig-fund-408-tax-rates
+#| fig-cap: "Tax-rate additions associated with levy recapture Fund 408 by taxing agency and agency type"
+#| 
 agency_funds |> filter(fund_type_num==408) |>
   select(year, agency_name_short, final_levy, final_rate, fund_type_num, major_type) |>
   arrange(desc(final_rate)) |>
@@ -233,7 +242,17 @@ filtered_df <- agency_funds |>
   select(year, agency_name, final_rate, final_levy, everything()) |> 
   filter(final_rate > upper_cutoff) 
 
-filtered_df |> DT::datatable(rownames = FALSE)
+filtered_df |>
+  select(
+    `Tax year` = year,
+    `Taxing agency` = agency_name,
+    `Fund 408 rate` = final_rate,
+    `Final levy` = final_levy,
+    `Agency number` = agency_num,
+    `Fund number` = fund_num,
+    `Agency type` = major_type
+  ) |>
+  DT::datatable(rownames = FALSE)
 ```
 
 ```{r}
@@ -257,8 +276,8 @@ deciles |> filter(probs == 0.95 | probs == .55)
 ```
 
 ```{r}
-#| label: tbl-memo-histogram
-#| tbl-cap: "**Distribution of tax rate increases due to fund 408** (Data Source: PTAXSIM agency_fund table)"
+#| label: fig-fund-408-rate-distribution
+#| fig-cap: "Distribution of tax-rate additions associated with Fund 408 by tax year. Source: PTAXSIM agency_fund table."
 #| 
 agency_funds |> 
   filter(fund_type_num==408) |>
@@ -301,6 +320,8 @@ alea_theme() +
 ```
 
 ```{r}
+#| label: fig-fund-408-nonrecapture-share
+#| fig-cap: "Fund 408 revenue as a share of non-recapture levy by taxing agency and agency type"
 agency_fund408_sums |> 
   filter(year > 2019 & pct_inCook > 0.75) |>
   mutate(recap_levyshare = round(fund408/final_levy, digits = 3),
@@ -359,7 +380,17 @@ agency_fund408_sums |>
 
   mutate(across(fund408:difference, round, digits =0)) |>
     filter(year>2020 & pct_inCook > 0.75) |>
-
+  select(
+    `Tax year` = year,
+    `Taxing agency` = agency_name,
+    `PTAXSIM Fund 408 amount` = fund408,
+    `Treasurer Fund 408 amount` = FundExtension,
+    Difference = difference,
+    `Final levy` = total_final_levy,
+    `Total extension` = total_ext,
+    `Share of EAV in Cook County` = pct_inCook,
+    `Agency number` = agency_num
+  ) |>
   DT::datatable(rownames = FALSE)
 ```
 
@@ -477,7 +508,17 @@ adjust_all <- rbind(adjust2021, adjust2022, adjust2023, adjust2024, adjust2025) 
 
 
 adjust_all |> 
-  select(year, agency_name, agency_number, adjust_eligible, aggregate_refunds, levy_adjustment, everything() )|>  
+  select(
+    `Tax year` = year,
+    `Taxing agency` = agency_name,
+    `Agency number` = agency_number,
+    `Recapture eligibility` = adjust_eligible,
+    `Aggregate refunds` = aggregate_refunds,
+    `Levy adjustment` = levy_adjustment,
+    `Final levy` = total_final_levy,
+    `Recaptured share of levy` = recap_levyshare,
+    `Share of EAV in Cook County` = pct_inCook
+  ) |>
   DT::datatable(rownames = FALSE)
 ```
 
@@ -498,6 +539,8 @@ Four Levy Adjustment Excel Files have the taxing agency, adjustment eligibility,
 > These are descriptive stats for non-homerule taxing agencies that are eligible for recapture!
 
 ```{r}
+#| label: fig-recapture-levy-share-distribution
+#| fig-cap: "Distribution of the share of levy recaptured among eligible non-home-rule taxing agencies, by year"
 adjust_all |>  
   filter(
     adjust_eligible == "Eligible" &
@@ -526,6 +569,14 @@ awm_levyshare_byagency <- adjust_all |>
 awm_levyshare_byagency |> 
   filter(pct_inCook > 0.75) |>   # n becomes 2,233 agencies
   filter(adjust_eligible == "Eligible") |>  # n becomes 1,454
+  select(
+    `Tax year` = year,
+    `Taxing agency` = agency_name,
+    `Recaptured share of levy` = recap_levyshare,
+    `Levy adjustment` = levy_adjustment,
+    `Final levy` = total_final_levy,
+    `Share of EAV in Cook County` = pct_inCook
+  ) |>
   DT::datatable(rownames = FALSE)  
 
 
@@ -555,6 +606,13 @@ deciles |> filter(probs == 0.95 | probs == .55)
 awm_levyshare_byagency |> 
   filter(year == 2021) |>
   filter(pct_inCook > 0.75) |>
+  select(
+    `Taxing agency` = agency_name,
+    `Recaptured share of levy` = recap_levyshare,
+    `Levy adjustment` = levy_adjustment,
+    `Final levy` = total_final_levy,
+    `Recapture eligibility` = adjust_eligible
+  ) |>
   DT::datatable(rownames = FALSE)
 ```
 
@@ -563,6 +621,13 @@ awm_levyshare_byagency |>
 
 awm_levyshare_byagency |> filter(year == 2022) |>
   filter(pct_inCook > 0.75) |>
+  select(
+    `Taxing agency` = agency_name,
+    `Recaptured share of levy` = recap_levyshare,
+    `Levy adjustment` = levy_adjustment,
+    `Final levy` = total_final_levy,
+    `Recapture eligibility` = adjust_eligible
+  ) |>
   DT::datatable(rownames = FALSE)
 ```
 
@@ -570,7 +635,15 @@ awm_levyshare_byagency |> filter(year == 2022) |>
 #| tbl-cap: "Levy Share for Tax Year 2023. Uses levy_adjustment / total_final_levy to create recap levyshare." 
 
 awm_levyshare_byagency |> filter(year == 2023)|>
-  filter(pct_inCook > 0.75) |> DT::datatable(rownames = FALSE)
+  filter(pct_inCook > 0.75) |>
+  select(
+    `Taxing agency` = agency_name,
+    `Recaptured share of levy` = recap_levyshare,
+    `Levy adjustment` = levy_adjustment,
+    `Final levy` = total_final_levy,
+    `Recapture eligibility` = adjust_eligible
+  ) |>
+  DT::datatable(rownames = FALSE)
 ```
 
 
@@ -578,7 +651,15 @@ awm_levyshare_byagency |> filter(year == 2023)|>
 #| tbl-cap: "Levy Share for Tax Year 2024. Uses levy_adjustment / total_final_levy to create recap levyshare. (Added to website post-memo)" 
 
 awm_levyshare_byagency |> filter(year == 2024)|>
-  filter(pct_inCook > 0.75) |> DT::datatable(rownames = FALSE)
+  filter(pct_inCook > 0.75) |>
+  select(
+    `Taxing agency` = agency_name,
+    `Recaptured share of levy` = recap_levyshare,
+    `Levy adjustment` = levy_adjustment,
+    `Final levy` = total_final_levy,
+    `Recapture eligibility` = adjust_eligible
+  ) |>
+  DT::datatable(rownames = FALSE)
 ```
 
 ### Refund data from the Levy Recapture Files (Source: Clerk / Treasurer)
@@ -648,7 +729,17 @@ refund_all <- refund_all |>
   
 
 refund_all |> 
-  select(year,agency_name, refund_levyshare, everything()) |> 
+  select(
+    `Tax year` = year,
+    `Taxing agency` = agency_name,
+    `Refund share of levy` = refund_levyshare,
+    `Total refunds` = total_refunds,
+    `Final levy` = total_final_levy,
+    `Final tax rate` = total_final_rate,
+    `Home-rule indicator` = home_rule_ind,
+    `Share of EAV in Cook County` = pct_inCook,
+    `Agency number` = agency_number
+  ) |>
   DT::datatable(rownames = FALSE)
 ```
 
@@ -723,7 +814,7 @@ refund_all |>
        caption = "Excludes agencies that had refunds but no levy.",
        x = "Refund Share of Levy",
        y = "# Taxing Agencies") +
-  scale_x_continuous(label = scales::percent)+
+  scale_x_continuous(labels = scales::percent)+
   facet_wrap(vars(homerule_label, year))
 ```
 
@@ -746,7 +837,24 @@ refund_outliers <- refund_all |>
 
 #write_csv(refund_outliers, "./output/refund_outliers.csv")
 
-refund_outliers |> DT::datatable(rownames = FALSE)
+refund_outliers |>
+  rename(
+    `Tax year` = year,
+    `Taxing agency` = agency_name,
+    `Total refunds` = total_refunds,
+    `Final levy` = total_final_levy,
+    `Final tax rate` = total_final_rate,
+    `Refund share of levy` = refund_levyshare,
+    `Home-rule status` = homerule_label
+  ) |>
+  DT::datatable(rownames = FALSE)
+```
+
+```{r}
+
+refund_all |> 
+    filter( (total_final_levy==0 | is.na(total_final_levy)) & total_refunds != 0) |> arrange(total_refunds)
+
 ```
 
 ```{r}
@@ -754,9 +862,6 @@ refund_outliers |> DT::datatable(rownames = FALSE)
 #| fig-cap: "Histograms of total_refunds / levy from the refund_all dataframe. Excludes 41 observations with shares larger than 30% to increase legibility. 2170 agencies have levies and refunds across the three years of data."
 
 
-
-refund_all |> 
-    filter( (total_final_levy==0 | is.na(total_final_levy)) & total_refunds != 0) |> arrange(total_refunds)
 
 refund_all |> 
     filter( total_final_levy!=0 & total_refunds != 0) |> 
@@ -778,7 +883,7 @@ refund_all |>
        Excludes agencies with refund share greater than 15% of their levy.",
        color = "Home Rule", y = "# Taxing Agencies",
        x = "Share of Levy") +
-    scale_x_continuous(label = scales::percent)+
+    scale_x_continuous(labels = scales::percent)+
   facet_wrap(vars(homerule_label, year ))
 
 
@@ -792,9 +897,14 @@ refund_all |>
 refund_all |>
   mutate(share = round(abs(total_refunds)/total_final_levy, digits =4),
          year = as.character(year)) |>
+    arrange(desc(share)) |>
   filter(share > 0.3) |>
-  select(agency_name, share, home_rule_ind, year)  |>
-  arrange(desc(share)) |>
+  select(
+    `Taxing agency` = agency_name,
+    `Refund share of levy` = share,
+    `Home-rule indicator` = home_rule_ind,
+    `Tax year` = year
+  ) |>
   DT::datatable(rownames = FALSE) 
 
 # 41 observations excluded by filtering below
@@ -818,7 +928,7 @@ refund_all |>
 #aes(x=year, y = share, label = agency_name), nudge_y =.05 ) + 
   alea_theme() +
   scale_y_continuous(limits = c(0, 0.25), 
-                     breaks = c(0, .1, .25), label = scales::percent) + 
+                     breaks = c(0, .1, .25), labels = scales::percent) + 
   labs(title = "Refunds / Levy Amount",
        color = "Home Rule", x=element_blank(),
        y = "Share of Levy")
@@ -835,7 +945,13 @@ refund_all |>
         |
          total_refunds != 0
          ) |> 
-  select(agency_name, refund_share, year, total_refunds, total_final_levy) |>
+  select(
+    `Taxing agency` = agency_name,
+    `Refund share of levy` = refund_share,
+    `Tax year` = year,
+    `Total refunds` = total_refunds,
+    `Final levy` = total_final_levy
+  ) |>
   DT::datatable(rownames = FALSE)
 ```
 
@@ -884,7 +1000,7 @@ rm(adjust2021, adjust2022, adjust2023, adjust2024,
 
 ```{r}
 #| label: tbl-joineddata
-#| tbl-caption: "Joined data from the recapture files and levy_adjustment files from the Clerk and Treasurer. Remember, the names of the files are misleading. Levy_adjustment files include the recapture data."
+#| tbl-cap: "Joined recapture, refund, and levy-adjustment records from the Cook County Clerk and Treasurer"
 
 adjust_recap_all <- full_join(
   refund_all, adjust_all,
@@ -920,7 +1036,21 @@ adjust_recap_all <- adjust_recap_all |>
          
          everything())
 
-adjust_recap_all |> DT::datatable(rownames = FALSE)
+adjust_recap_all |>
+  select(
+    `Tax year` = year,
+    `Taxing agency` = agency_name,
+    `Home-rule indicator` = home_rule_ind,
+    `Refund share of levy` = refund_levyshare,
+    `Recaptured share of levy` = recap_levyshare,
+    `Total refunds` = total_refund,
+    `Aggregate refunds in levy-adjustment file` = aggregate_refunds,
+    `Levy adjustment` = levy_adjustment,
+    `Final levy` = total_final_levy,
+    `Recapture eligibility` = adjust_eligible,
+    `Share of EAV in Cook County` = pct_inCook
+  ) |>
+  DT::datatable(rownames = FALSE)
 ```
 
 ### Final Data Assembly
@@ -947,7 +1077,21 @@ final_df <- left_join(adjust_recap_all, agency_fund408_sums|>
                             ) )
 
 
-final_df |> DT::datatable(rownames = FALSE)
+final_df |>
+  select(
+    `Tax year` = year,
+    `Taxing agency` = agency_name,
+    `Recapture eligibility` = adjust_eligible,
+    `Home-rule indicator` = home_rule_ind,
+    `Total refunds` = total_refund,
+    `Levy adjustment` = levy_adjustment,
+    `PTAXSIM Fund 408 amount` = fund408,
+    `Final levy` = total_final_levy,
+    `Refund share of levy` = refund_levyshare,
+    `Recaptured share of levy` = recap_levyshare,
+    `Share of EAV in Cook County` = pct_inCook
+  ) |>
+  DT::datatable(rownames = FALSE)
 ```
 
 ```{r}
@@ -965,7 +1109,14 @@ final_df |>
   
   arrange(#desc(diff),
           agency_name )  |>
-  select(year, agency_name, diff, fund408, levy_adjustment, total_refund ) |>  
+  select(
+    `Tax year` = year,
+    `Taxing agency` = agency_name,
+    Difference = diff,
+    `PTAXSIM Fund 408 amount` = fund408,
+    `Clerk levy adjustment` = levy_adjustment,
+    `Total refunds` = total_refund
+  ) |>
   DT::datatable(rownames = FALSE)
 ```
 
@@ -1059,6 +1210,8 @@ impacted_taxcodes |> filter(year == 2023)  |> DT::datatable(rownames = FALSE)
 ```
 
 ```{r}
+#| label: tbl-municipal-fund-408-rates
+#| tbl-cap: "Average Fund 408 and non-recapture tax rates by municipality and year"
 
 impacted_munis <- taxcodes |> 
   select(-agency_rate) |>
@@ -1080,12 +1233,31 @@ impacted_munis <- taxcodes |>
   arrange(desc(rate_ratio)) |>
   filter(year > 2020)
 
-impacted_munis |> DT::datatable(rownames = FALSE)
+impacted_munis |>
+  select(
+    `Tax year` = year,
+    Municipality = muni_name,
+    `Fund 408 rate` = rate_408,
+    `Other-fund rate` = rate_non408,
+    `Fund 408 to other-fund ratio` = rate_ratio
+  ) |>
+  DT::datatable(rownames = FALSE)
 
 ```
 
 ```{r}
-impacted_munis |> filter(rate_408 > .5) |> DT::datatable(rownames = FALSE)
+#| label: tbl-high-fund-408-rates
+#| tbl-cap: "Municipalities with an average Fund 408 tax-rate addition greater than 0.5 percentage points"
+impacted_munis |>
+  filter(rate_408 > .5) |>
+  select(
+    `Tax year` = year,
+    Municipality = muni_name,
+    `Fund 408 rate` = rate_408,
+    `Other-fund rate` = rate_non408,
+    `Fund 408 to other-fund ratio` = rate_ratio
+  ) |>
+  DT::datatable(rownames = FALSE)
 
 ```
 
@@ -1096,6 +1268,8 @@ rm(agency_info, agency_fund_info, agency_fund, agency_names)
 ```
 
 ```{r}
+#| label: fig-agency-recapture-eligibility-counts
+#| fig-cap: "Number of taxing agencies with positive levies by recapture eligibility and year"
 final_df |>
   group_by(year, adjust_eligible) |>
   filter(final_levy>0) |>
@@ -1109,6 +1283,9 @@ final_df |>
 ```
 
 ```{r}
+#| label: fig-recapture-eligibility-comparisons
+#| fig-cap: "Levy and refund comparisons for recapture-eligible and ineligible taxing agencies"
+#| fig-subcap: ["Total levy", "Average levy", "Total refunds", "Refunds as a share of levy"]
 #| layout-ncol: 3
 
 final_df |>
@@ -1231,27 +1408,53 @@ not_eligible <- final_df |> filter(adjust_eligible == "Not Eligible") |>
          )
 
 #non eligible agencies should not have adjustment values or fund408 values
-not_eligible |> filter(levy_adjustment!=0 | fund408!=0) |> DT::datatable(rownames = FALSE)
+not_eligible |>
+  filter(levy_adjustment!=0 | fund408!=0) |>
+  select(
+    `Tax year` = year,
+    `Taxing agency` = agency_name,
+    `Levy adjustment` = levy_adjustment,
+    `PTAXSIM Fund 408 amount` = fund408,
+    Difference = diff
+  ) |>
+  DT::datatable(rownames = FALSE)
 ```
 
 ```{r}
+#| label: tbl-eligible-agencies-without-adjustments
+#| tbl-cap: "Recapture-eligible agencies with a positive levy and no levy adjustment"
 
-final_df |> filter(levy_adjustment == 0 & total_levy > 0 & adjust_eligible == "Eligible")
+final_df |>
+  filter(levy_adjustment == 0 & total_levy > 0 & adjust_eligible == "Eligible") |>
+  select(
+    `Tax year` = year,
+    `Taxing agency` = agency_name,
+    `Final levy` = total_levy,
+    `Levy adjustment` = levy_adjustment,
+    `Recapture eligibility` = adjust_eligible
+  ) |>
+  DT::datatable(rownames = FALSE)
 
 ```
 
 ### Refunds and Recapture by Minor Class
 
 ```{r}
+#| label: tbl-recapture-eligibility-minor-type-counts
+#| tbl-cap: "Counts of taxing agencies by minor agency type and recapture eligibility in tax year 2021"
 final_df |>
   filter(year == 2021 & final_levy > 0 ) |>
   group_by(minor_type, adjust_eligible) |>
   summarize(n = n()) |>
-  arrange(desc(n)) |> 
-  pivot_wider(names_from = adjust_eligible, values_from = n)
+  arrange(desc(n)) |>
+  pivot_wider(names_from = adjust_eligible, values_from = n) |>
+  rename(`Agency type` = minor_type) |>
+  DT::datatable(rownames = FALSE)
 ```
 
 ```{r}
+#| label: fig-recapture-eligibility-minor-type
+#| fig-cap: "Counts of park, library, and elementary-school agencies by recapture eligibility and year"
 final_df |>
   filter(minor_type %in% c("PARK", "LIBRARY", "ELEMENTARY") & 
            final_levy>0) |>
@@ -1267,6 +1470,8 @@ final_df |>
 ```
 
 ```{r}
+#| label: fig-recapture-eligibility-major-type
+#| fig-cap: "Counts of taxing agencies by recapture eligibility, major agency type, and year"
 final_df |>
   filter(final_levy>0) |>
   group_by(year, major_type, adjust_eligible ) |>
@@ -1282,7 +1487,9 @@ final_df |>
 ## Recapture Ratios
 
 ```{r}
-final_df |> 
+#| label: fig-recapture-change-ratio
+#| fig-cap: "Annual recapture amount relative to the prior year's recapture amount by taxing agency"
+final_df |>
   filter(year > 2020) |>
   group_by(agency_name, agency_number) |>
   arrange(agency_number, year) |>
