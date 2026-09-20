@@ -193,6 +193,9 @@ obs_perPUMA
 ```
 
 ```{r}
+#| label: fig-income-distributions-2018-2023
+#| fig-cap: "Weighted household and earnings distributions used to evaluate Senior Freeze income thresholds"
+#| fig-subcap: ["Household income, 2018", "Household income, 2023", "Individual earnings, 2018", "Individual earnings, 2023"]
 #| layout-ncol: 2
 
 # INCEARN
@@ -346,7 +349,7 @@ All numbers are based off of ACS 5-year estimates downloaded from the IPUMS USA 
 
 ```{r}
 #| label: tbl-changeinseniorhouseholds
-#| tbl-caption: "Change in Owner occupied senior households"
+#| tbl-cap: "Change in owner-occupied senior households from 2018 to 2023 by PUMA area"
 
 incometable <- svytable(~ YEAR + PUMA + OWNERSHP  + age_cat, design = HHdesign)
 
@@ -369,15 +372,15 @@ mapPUMAboth |>
   group_by(puma_area) |> 
   pivot_wider( id_cols = c(puma_area), names_from = "YEAR", values_from = "n") |> 
   mutate(change = `2018`-`2023`) |>
-  select(change, puma_area# Prop, puma_area
+  select(`Change in households` = change, `PUMA area` = puma_area# Prop, puma_area
   ) |> 
-  arrange(desc(change)) |> 
+  arrange(desc(`Change in households`)) |> 
   DT::datatable(rownames = FALSE)
 ```
 
 ```{r}
 #| label: tbl-currenteligible-change
-#| fig-caption: "Change in number of people eligible from 2018 to 2023, based on the $65,000 household income threshold  for the senior freeze."
+#| tbl-cap: "Change from 2018 to 2023 in owner-occupied senior households eligible under the $65,000 Senior Freeze income threshold"
 
 incometable <- svytable(~ YEAR + PUMA + OWNERSHP  + age_cat + below_freeze, design = HHdesign)
 
@@ -400,9 +403,9 @@ mapPUMAboth |>
   group_by(puma_area) |> 
   pivot_wider( id_cols = c(puma_area), names_from = "YEAR", values_from = "n") |> 
   mutate(change = `2018`-`2023`) |>
-  select(change, puma_area# Prop, puma_area
+  select(`Change in eligible households` = change, `PUMA area` = puma_area# Prop, puma_area
   ) |> 
-  arrange(desc(change)) |> 
+  arrange(desc(`Change in eligible households`)) |> 
   DT::datatable(rownames = FALSE)
 ```
 
@@ -670,6 +673,8 @@ pins |> filter(year == 2023) |> group_by(gain_lose) |> summarize(n = n())
 ```
 
 ```{r}
+#| label: fig-senior-freeze-pin-count
+#| fig-cap: "PINs receiving the Senior Freeze Exemption by tax year; the vertical line marks the 2017 income-limit increase"
 pins |> 
   group_by(year) |> 
   summarize(had_SF_exe = sum(exe_freeze>0)) |> 
