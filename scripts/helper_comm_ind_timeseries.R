@@ -11,9 +11,9 @@ library(glue)
 cde <- read_csv("./Necessary_Files/class_dict_expanded.csv") |>
   mutate(class = as.numeric(class_code)) |>  # rename to match other data frames
   select(-c(loa_2022, Option2, class_desc, land, vacant_ind, last2dig,
-    Res_nonRes, assessment_level, used_in2021, class_code)) |>
-  mutate_at(.vars = c("improvement_ind", "incent_prop", "class_1dig", "major_class_code"), .funs = as.character
-  )
+    Res_nonRes, assessment_level, used_in2021, class_code)) # |>
+# mutate_at(.vars = c("improvement_ind", "incent_prop", "class_1dig", "major_class_code"), .funs = as.character
+#  )
 
 # Levels of assessment by year (they change over time)
 
@@ -62,13 +62,14 @@ industrial_classes <- c(480:489, 493,
 )
 
 comm_ind_pins_ever <- read_csv("./Output/comm_ind_PINs_ever_2006to2024.csv") |>
-  select(-incent_prop, -class_1dig)
+  select(-incent_prop, -class_1dig, -land_use)
 
 #  Create 2006 to 2023 Timeseries ############################
 timespan <- 18 + 1
 
 
 comm_ind_pins <- comm_ind_pins_ever  %>%
+  mutate(comparable_props = as.character(comparable_props)) |>
   left_join(cde) |>
 
   rename(land_use = Alea_cat) |>
@@ -261,6 +262,7 @@ write_csv(comm_ind_pins, "./Output/comm_ind_PINs_2006to2024_timeseries.csv")
 timespan <- 13 + 1
 
 comm_ind_pins <- comm_ind_pins_ever  %>%
+  mutate(comparable_props = as.character(comparable_props)) |>
   left_join(cde) |>
   rename(land_use = Alea_cat) |>
 
